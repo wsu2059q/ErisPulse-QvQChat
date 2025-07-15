@@ -79,7 +79,7 @@ class Main:
             
             # 添加昵称标记
             if self.ai_chat_config.get("show_nickname", True):
-                message = f"[{user_nickname}]: {message}"
+                message = f"{user_nickname}说: {message}"
                 
             response = await self.get_ai_response(chat_id, message)
             await self.send_response(data, response)
@@ -90,7 +90,6 @@ class Main:
             if '*' in pattern or '?' in pattern:
                 if fnmatch.fnmatch(message_lower, pattern.lower()):
                     return True
-            # 否则检查是否包含普通关键词
             else:
                 if pattern.lower() in message_lower:
                     return True
