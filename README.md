@@ -18,7 +18,6 @@ trigger_words = ["AI"]  # 触发词列表，可以是单个或多个
 system_prompt = "你是一个AI助手，你叫AI，你是一个智能聊天机器人"
 clear_command = "/clear"  # 清除历史记录指令
 max_history_length = 10  # 最大历史消息长度
-show_nickname = true  # 是否在消息前显示用户昵称
 ```
 
 ### 触发方式说明
