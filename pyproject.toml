@@ -1,6 +1,6 @@
 [project]
 name = "ErisPulse-AIChat"
-version = "3.0.0"
+version = "3.0.1"
 description = "ErisPulse AIChat 聊天机器人模块"
 readme = "README.md"
 requires-python = ">=3.9"

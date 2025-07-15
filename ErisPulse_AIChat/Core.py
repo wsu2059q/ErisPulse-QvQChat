@@ -1,4 +1,5 @@
 import asyncio
+import fnmatch
 from typing import Dict, List, Optional, Callable, Any
 from ErisPulse import sdk
 
@@ -7,7 +8,9 @@ class Main:
         self.sdk = sdk
         self.logger = sdk.logger
         self.ai_chat_config = self._getConfig()
-        self.bot_name = self.ai_chat_config.get("bot_name", "AI")
+        self.trigger_words = self._parse_trigger_words(self.ai_chat_config.get("trigger_words", ["AI"]))
+        self.clear_command = self.ai_chat_config.get("clear_command", "/clear")
+        self.max_history_length = self.ai_chat_config.get("max_history_length", 10)
         
         # 获取 OpenAI 模块实例
         if not hasattr(sdk, "OpenAI"):
@@ -28,13 +31,23 @@ class Main:
         config = sdk.env.getConfig("AIChat")
         if not config:
             default_config = {
-                "bot_name": "AI",
+                "trigger_words": ["AI"],
                 "system_prompt": "你是一个AI助手，你叫AI，你是一个智能聊天机器人",
+                "clear_command": "/clear",
+                "max_history_length": 10,
+                "show_nickname": True
             }
             sdk.env.setConfig("AIChat", default_config)
             self.logger.warning("AIChat 已生成默认配置")
             return default_config
         return config
+    
+    def _parse_trigger_words(self, trigger_words) -> List[str]:
+        if isinstance(trigger_words, str):
+            return [trigger_words.strip()]
+        elif isinstance(trigger_words, list):
+            return [word.strip() for word in trigger_words]
+        return ["AI"]
     
     def _register_handlers(self):
         self.sdk.adapter.on("message")(self._handle_message)
@@ -46,15 +59,42 @@ class Main:
             if not message:
                 return
                 
-            if self.bot_name.lower() not in message.lower():
-                return
-                
             chat_id = self._get_chat_id(data)
             if not chat_id:
                 return
                 
+            user_nickname = data.get("user_nickname", data.get("user_id", "未知用户"))
+            self.logger.info(f"收到消息：{message}，来自：{user_nickname}，来自：{chat_id}")
+            
+            # 处理清除历史指令
+            if message.startswith(self.clear_command):
+                await self.clear_history(chat_id)
+                reply = f"已清空当前聊天历史记录"
+                await self.send_response(data, reply)
+                return
+            
+            # 检查是否触发机器人
+            if not self._is_triggered(message):
+                return
+            
+            # 添加昵称标记
+            if self.ai_chat_config.get("show_nickname", True):
+                message = f"[{user_nickname}]: {message}"
+                
             response = await self.get_ai_response(chat_id, message)
             await self.send_response(data, response)
+
+    def _is_triggered(self, message: str) -> bool:
+        message_lower = message.lower()
+        for pattern in self.trigger_words:
+            if '*' in pattern or '?' in pattern:
+                if fnmatch.fnmatch(message_lower, pattern.lower()):
+                    return True
+            # 否则检查是否包含普通关键词
+            else:
+                if pattern.lower() in message_lower:
+                    return True
+        return False
 
     def _get_chat_id(self, data) -> Optional[Any]:
         detail_type = data.get("detail_type", "private")
@@ -102,12 +142,20 @@ class Main:
             self.logger.error(f"发送AI响应失败: {e}")
 
     async def get_message_history(self, chatId) -> List[Dict]:
-        return self.message_store.get(chatId, [])
+        history = self.message_store.get(chatId, [])
+        if len(history) > self.max_history_length:
+            history = history[-self.max_history_length:]
+            self.message_store[chatId] = history
+            self.sdk.env.set("aichat_message_store", self.message_store)
+        return history
 
     async def add_message(self, chatId, role: str, content: str):
         if chatId not in self.message_store:
             self.message_store[chatId] = []
         self.message_store[chatId].append({"role": role, "content": content})
+
+        if len(self.message_store[chatId]) > self.max_history_length * 2:
+            self.message_store[chatId] = self.message_store[chatId][-self.max_history_length * 2:]
         self.sdk.env.set("aichat_message_store", self.message_store)
 
     async def clear_history(self, chatId):
