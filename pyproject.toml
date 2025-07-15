@@ -1,0 +1,18 @@
+[project]
+name = "ErisPulse-AIChat"
+version = "3.0.0"
+description = "ErisPulse AIChat 聊天机器人模块"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [ { name = "wsu2059q", email = "wsu2059@qq.com" } ]
+dependencies = [
+    "ErisPulse-OpenAI"
+]
+
+
+[project.urls]
+"homepage" = "https://github.com/wsu2059q/ErisPulse-AIChat"
+
+[project.entry-points]
+"erispulse.module" = { "AIChat" = "ErisPulse_AIChat:Main" }
