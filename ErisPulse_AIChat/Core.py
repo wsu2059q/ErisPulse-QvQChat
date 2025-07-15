@@ -34,8 +34,7 @@ class Main:
                 "trigger_words": ["AI"],
                 "system_prompt": "你是一个AI助手，你叫AI，你是一个智能聊天机器人",
                 "clear_command": "/clear",
-                "max_history_length": 10,
-                "show_nickname": True
+                "max_history_length": 10
             }
             sdk.env.setConfig("AIChat", default_config)
             self.logger.warning("AIChat 已生成默认配置")
@@ -64,7 +63,6 @@ class Main:
                 return
                 
             user_nickname = data.get("user_nickname", data.get("user_id", "未知用户"))
-            self.logger.info(f"收到消息：{message}，来自：{user_nickname}，来自：{chat_id}")
             
             # 处理清除历史指令
             if message.startswith(self.clear_command):
@@ -76,12 +74,11 @@ class Main:
             # 检查是否触发机器人
             if not self._is_triggered(message):
                 return
-            
-            # 添加昵称标记
-            if self.ai_chat_config.get("show_nickname", True):
-                message = f"{user_nickname}说: {message}"
                 
-            response = await self.get_ai_response(chat_id, message)
+            # 存储带昵称的消息
+            message_with_nickname = f"{user_nickname}: {message}"
+                
+            response = await self.get_ai_response(chat_id, message_with_nickname)
             await self.send_response(data, response)
 
     def _is_triggered(self, message: str) -> bool:
@@ -109,18 +106,9 @@ class Main:
 
         messages.append({"role": "user", "content": message})
 
-        ai_response = ""
-
-        async def stream_handler(content: str):
-            nonlocal ai_response
-            ai_response += content
-            for handler in self.custom_handlers:
-                await handler(content)
-
         ai_response = await sdk.OpenAI.chat(
             messages=messages,
-            stream=True,
-            stream_handler=stream_handler
+            stream=False
         )
 
         await self.add_message(chat_id, "user", message)
