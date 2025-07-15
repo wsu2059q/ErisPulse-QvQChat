@@ -10,6 +10,8 @@ dependencies = [
     "ErisPulse-OpenAI"
 ]
 
+[tool.setuptools]
+packages = ["ErisPulse_AIChat"]
 
 [project.urls]
 "homepage" = "https://github.com/wsu2059q/ErisPulse-AIChat"

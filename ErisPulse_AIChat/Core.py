@@ -12,8 +12,6 @@ class Main:
         # 获取 OpenAI 模块实例
         if not hasattr(sdk, "OpenAI"):
             raise RuntimeError("AIChat 模块需要依赖 OpenAI 模块，请先安装 OpenAI 模块")
-        self.openai = sdk.OpenAI
-
         self.system_prompt = self.ai_chat_config.get("system_prompt", "")
         self.message_store = sdk.env.get("aichat_message_store", {})
         self.custom_handlers = []
@@ -80,7 +78,7 @@ class Main:
             for handler in self.custom_handlers:
                 await handler(content)
 
-        ai_response = await self.openai.chat(
+        ai_response = await sdk.OpenAI.chat(
             messages=messages,
             stream=True,
             stream_handler=stream_handler
@@ -99,7 +97,7 @@ class Main:
             
             if adapter_name:
                 adapter = getattr(self.sdk.adapter, adapter_name)
-                await adapter.Send.To("user" if detail_type == "private" else "group", chat_id).Text(response)
+                await adapter.Send.To("user" if detail_type == "private" else "group", chat_id).Text(response.strip())
         except Exception as e:
             self.logger.error(f"发送AI响应失败: {e}")
 
