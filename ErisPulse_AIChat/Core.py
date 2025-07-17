@@ -7,6 +7,7 @@ class Main:
     def __init__(self, sdk):
         self.sdk = sdk
         self.logger = sdk.logger
+        self.openai_module = sdk.OpenAI
         self.ai_chat_config = self._getConfig()
         self.trigger_words = self._parse_trigger_words(self.ai_chat_config.get("trigger_words", ["AI"]))
         self.clear_command = self.ai_chat_config.get("clear_command", "/clear")
@@ -106,7 +107,7 @@ class Main:
 
         messages.append({"role": "user", "content": message})
 
-        ai_response = await sdk.OpenAI.chat(
+        ai_response = await self.openai_module.chat(
             messages=messages,
             stream=False
         )
