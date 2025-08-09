@@ -125,7 +125,11 @@ class Main:
             
             if adapter_name:
                 adapter = getattr(self.sdk.adapter, adapter_name)
-                await adapter.Send.To("user" if detail_type == "private" else "group", chat_id).Text(response.strip())
+                self.logger.info(f"发送AI响应到 {adapter_name} - {detail_type} - {chat_id}: {response.strip()}")
+                if not response.strip():
+                    response = "抱歉，我没有理解您的问题。"             
+                msgInfo = await adapter.Send.To("user" if detail_type == "private" else "group", chat_id).Text(response.strip())
+                self.logger.info(f"消息信息: {msgInfo}")
         except Exception as e:
             self.logger.error(f"发送AI响应失败: {e}")
 
