@@ -195,3 +195,5 @@ cython_debug/
 .cursorindexingignore
 
 config.toml
+config/config.db-wal
+config/config.db-shm

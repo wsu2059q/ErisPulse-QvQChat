@@ -1,7 +1,7 @@
 # QvQChat 模块文档
 
 ## 简介
-QvQChat 是一个智能对话模块，支持多AI协同、个性化记忆管理和上下文理解。
+QvQChat 是一个智能对话模块，支持多AI协同、个性化记忆管理、视觉识别和上下文理解。
 
 ## 安装
 
@@ -19,6 +19,9 @@ ep install AIChat
 
 ### 最小配置（必需）
 ```toml
+[QvQChat]
+bot_nicknames = ["你的机器人名字"]  # 配置机器人昵称
+
 [QvQChat.dialogue]
 base_url = "https://api.openai.com/v1"
 api_key = "sk-your-actual-api-key-here"
@@ -31,13 +34,33 @@ model = "gpt-4"
 clear_command = "/qvc clear"
 max_history_length = 20
 
+# 机器人识别配置
+bot_nicknames = ["AI助手", "小B"]  # 机器人昵称列表，用于文本匹配
+bot_ids = ["123456789"]  # 机器人ID列表，用于@匹配
+
 [QvQChat.dialogue]
 base_url = "https://api.openai.com/v1"
 api_key = "sk-your-actual-api-key-here"
 model = "gpt-4"
 temperature = 0.7
-max_tokens = 2000
-system_prompt = "你是一个智能AI助手"
+max_tokens = 500
+system_prompt = "你是一个智能AI助手。回复要求：1. 简短精炼，通常1-2句话，不超过100字；2. 不要使用Markdown格式；3. 自然口语化，直接回答"
+
+[QvQChat.vision]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-actual-api-key-here"
+model = "gpt-4-vision-preview"
+temperature = 0.3
+max_tokens = 300
+system_prompt = "你是一个视觉描述助手。用简洁的语言描述图片内容，不超过50字。"
+
+[QvQChat.reply_judge]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-actual-api-key-here"
+model = "gpt-3.5-turbo"
+temperature = 0.1
+max_tokens = 100
+system_prompt = "你是一个对话分析助手。判断用户的最新消息是否需要AI回复。只回复true或false。"
 
 [QvQChat.memory]
 base_url = "https://api.openai.com/v1"
@@ -77,17 +100,20 @@ max_tokens = 500
 **解决方法**:
 1. 复制 `config.example.toml` 为 `config.toml`
 2. 将其中的 `sk-your-api-key-here` 替换为实际API密钥
-3. 重启程序
+3. 配置 `bot_nicknames` 和 `bot_ids`
+4. 重启程序
 
 ### 问题3：部分AI功能不可用
 **原因**: 只配置了对话AI，其他AI未配置
 
 **影响**:
 - 仅对话AI配置: 基本对话功能正常，记忆查询会返回原始结果
+- 未配置视觉AI: 无法识别和描述图片
+- 未配置回复判断AI: 使用简单的规则判断（可能不够智能）
 - 未配置意图识别AI: 使用规则匹配识别意图（可能不够精确）
 - 未配置记忆AI: 无法使用记忆压缩功能
 
-**解决方法**: 为对应AI配置API密钥，建议至少配置 dialogue 和 query 两个AI
+**解决方法**: 为对应AI配置API密钥，建议至少配置 dialogue、vision 和 reply_judge 三个AI
 
 ### 问题4：发送响应失败
 **原因**: 消息发送到平台失败
@@ -99,44 +125,59 @@ max_tokens = 500
 
 ## 功能说明
 
-### 0. 智能回复策略（新增）
-QvQChat 现在采用智能回复策略，**不会每条消息都回复**，而是：
+### 0. 智能回复策略（核心特性）
+QvQChat 采用**AI智能回复策略**，不会每条消息都回复，而是：
 
 - **主动积累记忆**：所有消息都会被记录到短期和长期记忆
-- **智能判断回复时机**：根据多种条件决定是否回复
-- **提升对话质量**：通过积攒上下文，让回复更连贯
+- **AI判断回复时机**：使用专门的AI分析对话上下文，智能判断是否需要回复
+- **理解对话流程**：不是简单的消息计数，而是真正理解对话节奏
+- **提升对话质量**：通过积累上下文，让回复更连贯自然
 
-**回复触发条件**（可配置）：
-1. 被@提及机器人
-2. 遇到特定关键词
-3. 概率随机回复
-4. 累积一定数量消息后回复
-5. 命令总是回复
+**AI判断标准**：
+1. ✅ 明确的问题、请求、指令 → 需要回复
+2. ✅ 被@机器人或叫机器人名字 → 需要回复
+3. ✅ 对话中断后重新开始 → 需要回复
+4. ✅ 情绪强烈的表达 → 需要回复
+5. ❌ 纯表情或简单的打招呼 → 可以不回复
+6. ❌ 对话中的简短回应（"嗯"、"好"） → 可以不回复
+7. ❌ 只是消息分享，无互动意图 → 可以不回复
 
 **配置示例**：
 ```toml
+[QvQChat]
+bot_nicknames = ["AI助手"]  # 用于昵称匹配
+bot_ids = ["123456789"]  # 用于@匹配
+
 [QvQChat.reply_strategy]
-auto_reply = false  # 不主动回复，只积累记忆
+auto_reply = false  # AI智能判断
 reply_on_mention = true  # 被@时回复
 reply_on_keyword = ["小B", "机器人"]  # 关键词触发
-message_threshold = 5  # 累积5条后回复
-min_reply_interval = 30  # 最小间隔30秒
+message_threshold = 5  # 备用阈值
+min_reply_interval = 5  # 最小间隔5秒
 ```
 
 ### 1. 多AI协同
 - **对话AI (dialogue)**: 负责与用户直接交流（必需）
+- **视觉AI (vision)**: 负责识别和描述图片（推荐）
+- **回复判断AI (reply_judge)**: 智能判断是否需要回复（推荐）
 - **记忆AI (memory)**: 负责整理和修剪记忆（可选）
 - **查询AI (query)**: 负责检索相关记忆（推荐）
 - **意图识别AI (intent)**: 识别用户意图（可选）
 
+**说明**：vision 和 reply_judge 未配置时会自动复用 dialogue 的配置。
+
 ### 2. 记忆管理
 - **分层记忆**:
-  - 短期记忆：当前会话的最近消息
+  - 短期记忆：当前会话的最近消息（最多20条）
   - 长期记忆：经过整理的重要信息
+- **记忆存储**:
+  - 使用 `sdk.storage` 存储（而非config模块）
+  - 用户配置: `QvQChat.users.{user_id}`
+  - 群配置: `QvQChat.groups.{group_id}`
+  - 记忆数据: `user:{user_id}:memory` 等
 - **记忆隐私**:
-  - 用户级记忆：`user:{user_id}:memory`
-  - 群聊级记忆：`group:{group_id}:memory`（仅存储发送者信息）
-  - 群聊上下文：`group:{group_id}:context`（群公共信息）
+  - 用户级记忆：独立的用户记忆空间
+  - 群聊级记忆：每个群独立的记忆
 
 ### 3. 意图识别
 - 对话: 普通交流
@@ -149,6 +190,12 @@ min_reply_interval = 30  # 最小间隔30秒
 - 每个群可独立配置提示词、模型参数
 - 群专属记忆空间
 - 群角色设定
+
+### 5. 视觉识别（新增）
+- 自动识别消息中的图片
+- 使用视觉AI描述图片内容
+- 图片描述会作为上下文辅助对话
+- 支持多种图片格式
 
 ## 命令列表
 
@@ -195,9 +242,24 @@ min_reply_interval = 30  # 最小间隔30秒
 /qvc memory compress
 ```
 
+## 机器人识别配置
+
+### bot_nicknames（昵称列表）
+用于文本匹配，当消息中包含这些昵称时会被触发：
+```toml
+bot_nicknames = ["AI助手", "小B", "机器人"]
+```
+
+### bot_ids（ID列表）
+用于@匹配，当机器人被@时直接回复：
+```toml
+bot_ids = ["123456789", "987654321"]
+```
+
+**说明**：不同平台的@机制可能不同，有些平台使用ID，有些使用昵称。
+
 ## 依赖
 本模块依赖 OpenAI API，需要配置相应的 API 密钥。
 
 ## 参考链接
 - https://github.com/ErisPulse/ErisPulse/
-
