@@ -1,7 +1,7 @@
-# ErisPulse-AIChat 模块文档
+# QvQChat 模块文档
 
 ## 简介
-ErisPulse-AIChat 是一个基于OpenAI的智能聊天机器人模块，支持多种触发方式和上下文管理。
+QvQChat 是一个智能对话模块，支持多AI协同、个性化记忆管理和上下文理解。
 
 ## 安装
 
@@ -9,44 +9,195 @@ ErisPulse-AIChat 是一个基于OpenAI的智能聊天机器人模块，支持多
 ep install AIChat
 ```
 
-## 配置
-安装完毕后首次加载模块时，会自动创建一个名为 `AIChat` 的配置文件，配置文件内容如下：
+## 快速配置
 
+### 第一步：获取API密钥
+访问 [OpenAI API Keys](https://platform.openai.com/api-keys) 创建API密钥。
+
+### 第二步：配置文件
+首次加载模块后，会在项目目录生成 `config.toml` 文件。或者参考 `config.example.toml` 创建配置文件。
+
+### 最小配置（必需）
 ```toml
-[AIChat]
-trigger_words = ["AI"]  # 触发词列表，可以是单个或多个
-system_prompt = "你是一个AI助手，你叫AI，你是一个智能聊天机器人"
-clear_command = "/clear"  # 清除历史记录指令
-max_history_length = 10  # 最大历史消息长度
+[QvQChat.dialogue]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-actual-api-key-here"
+model = "gpt-4"
 ```
 
-### 触发方式说明
-1. **默认模式**:
-   - 消息中包含任意触发词即可触发
-   - 例如: "你好AI"、"AI你好"、"这个AI很聪明"
+### 完整配置（推荐）
+```toml
+[QvQChat]
+clear_command = "/qvc clear"
+max_history_length = 20
 
-2. **通配符模式**:
-   - 触发词列表中定义的触发词可以包含通配符 `*`/`?`
-   - 例如: "AI*"、"AI?你好"
+[QvQChat.dialogue]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-actual-api-key-here"
+model = "gpt-4"
+temperature = 0.7
+max_tokens = 2000
+system_prompt = "你是一个智能AI助手"
 
-### 其他功能
-- 使用 `/clear` 指令可以清除当前会话的历史记录
-- 自动管理对话上下文，可配置最大历史消息长度
-- 支持在消息前显示用户昵称，帮助AI区分不同用户
+[QvQChat.memory]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-actual-api-key-here"
+model = "gpt-3.5-turbo"
+temperature = 0.3
+max_tokens = 1000
+
+[QvQChat.query]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-actual-api-key-here"
+model = "gpt-3.5-turbo"
+temperature = 0.3
+max_tokens = 1000
+
+[QvQChat.intent]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-actual-api-key-here"
+model = "gpt-3.5-turbo"
+temperature = 0.1
+max_tokens = 500
+```
+
+## 故障排除
+
+### 问题1：API错误 401 - Invalid token
+**原因**: API密钥未配置或配置错误
+
+**解决方法**:
+1. 检查 `config.toml` 中 `[QvQChat.dialogue.api_key]` 是否已填入正确的API密钥
+2. 确保API密钥格式为 `sk-...` 开头
+3. 验证API密钥是否有效（访问 OpenAI 控制台检查）
+
+### 问题2：所有AI均未配置API密钥
+**原因**: 首次运行，未进行配置
+
+**解决方法**:
+1. 复制 `config.example.toml` 为 `config.toml`
+2. 将其中的 `sk-your-api-key-here` 替换为实际API密钥
+3. 重启程序
+
+### 问题3：部分AI功能不可用
+**原因**: 只配置了对话AI，其他AI未配置
+
+**影响**:
+- 仅对话AI配置: 基本对话功能正常，记忆查询会返回原始结果
+- 未配置意图识别AI: 使用规则匹配识别意图（可能不够精确）
+- 未配置记忆AI: 无法使用记忆压缩功能
+
+**解决方法**: 为对应AI配置API密钥，建议至少配置 dialogue 和 query 两个AI
+
+### 问题4：发送响应失败
+**原因**: 消息发送到平台失败
+
+**检查方法**:
+1. 查看日志中具体的错误信息
+2. 确认适配器配置正确
+3. 检查网络连接
+
+## 功能说明
+
+### 0. 智能回复策略（新增）
+QvQChat 现在采用智能回复策略，**不会每条消息都回复**，而是：
+
+- **主动积累记忆**：所有消息都会被记录到短期和长期记忆
+- **智能判断回复时机**：根据多种条件决定是否回复
+- **提升对话质量**：通过积攒上下文，让回复更连贯
+
+**回复触发条件**（可配置）：
+1. 被@提及机器人
+2. 遇到特定关键词
+3. 概率随机回复
+4. 累积一定数量消息后回复
+5. 命令总是回复
+
+**配置示例**：
+```toml
+[QvQChat.reply_strategy]
+auto_reply = false  # 不主动回复，只积累记忆
+reply_on_mention = true  # 被@时回复
+reply_on_keyword = ["小B", "机器人"]  # 关键词触发
+message_threshold = 5  # 累积5条后回复
+min_reply_interval = 30  # 最小间隔30秒
+```
+
+### 1. 多AI协同
+- **对话AI (dialogue)**: 负责与用户直接交流（必需）
+- **记忆AI (memory)**: 负责整理和修剪记忆（可选）
+- **查询AI (query)**: 负责检索相关记忆（推荐）
+- **意图识别AI (intent)**: 识别用户意图（可选）
+
+### 2. 记忆管理
+- **分层记忆**:
+  - 短期记忆：当前会话的最近消息
+  - 长期记忆：经过整理的重要信息
+- **记忆隐私**:
+  - 用户级记忆：`user:{user_id}:memory`
+  - 群聊级记忆：`group:{group_id}:memory`（仅存储发送者信息）
+  - 群聊上下文：`group:{group_id}:context`（群公共信息）
+
+### 3. 意图识别
+- 对话: 普通交流
+- 记忆查询: 查询历史信息
+- 记忆管理: 添加/删除/修改记忆
+- 系统控制: 切换模型、配置等
+- 群配置: 群级设置
+
+### 4. 群聊自定义
+- 每个群可独立配置提示词、模型参数
+- 群专属记忆空间
+- 群角色设定
+
+## 命令列表
+
+### 基础命令
+- `/qvc clear` - 清除当前会话历史
+- `/qvc help` - 显示帮助信息
+
+### 记忆管理
+- `/qvc memory list` - 查看记忆摘要
+- `/qvc memory search <关键词>` - 搜索记忆
+- `/qvc memory compress` - 压缩整理记忆
+- `/qvc memory delete <索引>` - 删除指定记忆
+
+### 系统控制
+- `/qvc config` - 查看当前配置
+- `/qvc model <类型>` - 切换AI模型（dialogue/memory/query）
+- `/qvc export` - 导出记忆
+
+### 群聊配置（仅在群聊中可用）
+- `/qvc group info` - 查看群配置
+- `/qvc group prompt <内容>` - 设置群提示词
+- `/qvc group style <风格>` - 设置对话风格
+
+### 个性化
+- `/qvc prompt <内容>` - 自定义个人提示词
+- `/qvc style <风格>` - 设置对话风格（友好/专业/幽默等）
+
+## 使用示例
+
+```bash
+# 查询历史记忆
+/qvc memory search 我昨天说过什么
+
+# 设置群提示词
+/qvc group prompt 你是一个专业的技术顾问
+
+# 设置对话风格
+/qvc style 幽默
+
+# 切换对话模型
+/qvc model dialogue
+
+# 压缩记忆
+/qvc memory compress
+```
 
 ## 依赖
-本模块依赖 ErisPulse 的 `OpenAI` 模块，以下是 `OpenAI` 模块的配置文件示例：
-
-```toml
-[OpenAI]
-base_url = "https://api.openai.com/v1"
-key = "您的API密钥"
-model = "使用的模型"
-
-[OpenAI.Args]
-temperature = 0.7
-max_tokens = 1024
-```
+本模块依赖 OpenAI API，需要配置相应的 API 密钥。
 
 ## 参考链接
 - https://github.com/ErisPulse/ErisPulse/
+
