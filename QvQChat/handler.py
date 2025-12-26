@@ -68,15 +68,49 @@ class QvQHandler:
 
         # 添加当前上下文提示（包含用户昵称）
         user_nickname = context_info.get("user_nickname", "")
+        platform = context_info.get("platform", "")
+
+        # 检查是否支持语音（QQ平台）
+        support_voice = platform in self.config.get("voice.platforms", ["qq", "onebot11"])
+        voice_hint = ""
+
+        # 多消息回复格式规则
+        multi_message_hint = """
+【多消息回复格式】
+如果你想说多句话，用这种格式：
+第一句话
+[间隔:3]
+第二句话
+[间隔:2]
+第三句话
+
+数字表示秒数，最多3条消息，每条间隔1-5秒。"""
+
+        if support_voice:
+            voice_hint = """
+【语音输出功能】
+- 如果你想发送语音，请在回复中包含 `<speak>` 标签包裹的语音内容
+- 文本和语音可以同时发送：文本在标签外，语音内容在标签内
+- 语音内容使用 `<speak>` 标签包裹，如：`<speak>你好</speak>`
+- 使用 `<|endofprompt|>` 标签控制语音生成的特性（方言、语气等）
+- 示例格式：`这是文本消息<speak>用撒娇的语气说这句话<|endofprompt|>主人你怎么现在才来找我玩喵~</speak>`
+- 支持的特性：
+  1. 说话风格：指定语气（如"用撒娇的语气"、"用开心的语气"）
+  2. 方言控制：指定方言（如"用粤语说"、"用四川话"）"""
+
         if group_id:
             scene_prompt = "当前是群聊场景，你是一个普通群友，像真人一样自然参与对话，不需要每条消息都回复。"
             if user_nickname:
                 scene_prompt += f" 对方的名字是「{user_nickname}」，回复时可以自然地称呼对方。"
+            scene_prompt += voice_hint
+            scene_prompt += multi_message_hint
             messages.append({"role": "system", "content": scene_prompt})
         else:
             scene_prompt = "当前是私聊场景，你是一个普通群友，可以更自由地表达，但也要保持自然。"
             if user_nickname:
                 scene_prompt += f" 对方的名字是「{user_nickname}」，回复时可以自然地称呼对方。"
+            scene_prompt += voice_hint
+            scene_prompt += multi_message_hint
             messages.append({"role": "system", "content": scene_prompt})
 
         # 使用历史消息（包含刚添加的用户消息，使用更多历史）

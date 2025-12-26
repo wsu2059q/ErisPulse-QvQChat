@@ -93,19 +93,6 @@ class QvQConfig:
 3. 没什么实质内容的闲聊
 4. 与你无关的话题
 
-【多消息回复格式】：
-如果你想说多句话，用这种格式：
-第一句话
-[间隔:3]
-第二句话
-[间隔:2]
-第三句话
-
-数字表示秒数，最多3条消息，每条间隔1-5秒。
-
-【如果发送图片】：
-自然地回复图片内容，不要说"这是一张图片"或类似的话。
-
 记住：你是一个普通群友，不是助手，不要表现得太积极主动。"""
             },
 
@@ -165,6 +152,19 @@ class QvQConfig:
                 "temperature": 0.3,
                 "max_tokens": 300,
                 "system_prompt": "你是一个图片分析助手。请详细描述图片的内容，包括图片中的物体、文字、场景、人物表情等。如果有多张图片，请分别描述每张图片。"
+            },
+
+            # 语音合成配置（用于生成语音）
+            "voice": {
+                "enabled": False,  # 是否启用语音
+                "api_url": "https://api.siliconflow.cn/v1/audio/speech",
+                "api_key": "",  # SiliconFlow API密钥
+                "model": "FunAudioLLM/CosyVoice2-0.5B",
+                "voice": "speech:amer:nu5h6ye36m:ahldwvelhofwpcqcxoky",  # 语音音色
+                "speed": 1.0,
+                "gain": 0.0,
+                "sample_rate": 44100,
+                "platforms": ["qq", "onebot11"],  # 支持的平台
             },
             
             # 意图识别AI配置
