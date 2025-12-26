@@ -1,158 +1,72 @@
-# QvQChat 模块文档
+# QvQChat 智能对话模块
 
 ## 简介
-QvQChat 是一个智能对话模块，支持多AI协同、个性化记忆管理、视觉识别和上下文理解。
 
-## 核心特性：普通群友模式 ⭐
+QvQChat 是一个基于多AI协同的智能对话模块，采用"普通群友模式"，让AI像真人一样自然参与聊天。
 
-QvQChat 默认采用**普通群友模式**，像真人一样自然参与聊天：
+### 核心特性 ⭐
 
-### 🎯 AI智能决策
-- **是否回复**：AI根据对话上下文判断，不会每条消息都回复
-- **是否记忆**：AI自动判断什么值得记住，无需用户手动指定
-- **是否看图**：AI判断是否需要使用视觉AI，而不是有图就看
+- **AI自主决策**：无需命令格式，直接用自然语言交互
+- **记忆自然融合**：询问"你记得我的生日吗"，AI根据记忆自然回答
+- **配置简化**：只需配置dialogue的API密钥，其他AI自动复用
+- **窥屏模式**：群聊默默观察，适时回复（默认3%回复率）
+- **多模态支持**：支持图片理解（需要gpt-4o等视觉模型）
 
-### 🤖 真人感
-- 回复自然随意，不机械化
-- 适当参与，不刷屏
-- 理解对话节奏和氛围
+### 与传统AI助手的区别
 
-## 安装
+| 特性 | 传统AI助手 | QvQChat |
+|------|-------------|----------|
+| 回复方式 | 积极回复每条消息 | AI智能判断，适当回复 |
+| 记忆方式 | 用户显式查询 | 记忆自然融入对话 |
+| 对话风格 | 正式、格式化 | 随意、无格式 |
+| 群聊行为 | 积极参与 | 窥屏模式，更像真人 |
+
+## 快速开始
+
+### 第一步：获取API密钥
+
+访问 [OpenAI API Keys](https://platform.openai.com/api-keys) 创建API密钥。
+
+### 第二步：配置文件
+
+首次运行后会自动生成 `config.toml`，或者参考 `config.example.toml` 创建配置。
+
+**最小配置（必需）**：
+```toml
+[QvQChat]
+bot_nicknames = ["你的机器人名字"]
+bot_ids = ["你的机器人ID"]
+
+[QvQChat.dialogue]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-actual-api-key-here"
+model = "gpt-4o"  # 建议使用支持视觉的模型
+```
+
+### 第三步：安装
 
 ```bash
 ep install AIChat
 ```
 
-## 快速配置
+### 第四步：配置机器人识别
 
-### 第一步：获取API密钥
-访问 [OpenAI API Keys](https://platform.openai.com/api-keys) 创建API密钥。
-
-### 第二步：配置文件
-首次加载模块后，会在项目目录生成 `config.toml` 文件。或者参考 `config.example.toml` 创建配置文件。
-
-### 最小配置（必需）
+编辑 `config.toml`：
 ```toml
 [QvQChat]
-command_prefix = "/qvc"  # 命令前缀，可自定义（如 /ai）
-bot_nicknames = ["你的机器人名字"]  # 配置机器人昵称
-
-[QvQChat.dialogue]
-base_url = "https://api.openai.com/v1"
-api_key = "sk-your-actual-api-key-here"
-model = "gpt-4o"  # 建议使用支持视觉的模型
+bot_nicknames = ["AI助手", "小B"]  # 文本匹配
+bot_ids = ["123456789"]  # @匹配
 ```
-
-### 自定义命令前缀
-默认命令前缀为 `/qvc`，你可以通过配置自定义为任意前缀：
-```toml
-[QvQChat]
-command_prefix = "/ai"  # 改为 /ai
-```
-这样所有命令就会变成 `/ai clear`, `/ai help` 等等。
-
-### 完整配置（推荐）
-```toml
-[QvQChat]
-command_prefix = "/qvc"  # 命令前缀
-min_reply_interval = 10  # 最小回复间隔（秒），避免频繁回复
-max_history_length = 20
-
-# 机器人识别配置（用于AI判断）
-bot_nicknames = ["AI助手", "小B"]  # 机器人昵称列表
-bot_ids = ["123456789"]  # 机器人ID列表，用于@判断
-
-[QvQChat.dialogue]
-base_url = "https://api.openai.com/v1"
-api_key = "sk-your-actual-api-key-here"
-model = "gpt-4o"  # 建议使用支持视觉的模型
-temperature = 0.7
-max_tokens = 500
-system_prompt = "你是一个智能AI助手。回复要求：1. 简短精炼，通常1-2句话，不超过100字；2. 不要使用Markdown格式；3. 自然口语化，直接回答；4. 如果有图片，根据图片内容自然回复"
-
-[QvQChat.reply_judge]
-base_url = "https://api.openai.com/v1"
-api_key = "sk-your-actual-api-key-here"
-model = "gpt-3.5-turbo"
-temperature = 0.1
-max_tokens = 100
-system_prompt = "你是一个对话分析助手。判断用户的最新消息是否需要AI回复。只回复true或false。"
-
-[QvQChat.memory]
-base_url = "https://api.openai.com/v1"
-api_key = "sk-your-actual-api-key-here"
-model = "gpt-3.5-turbo"
-temperature = 0.3
-max_tokens = 1000
-
-[QvQChat.query]
-base_url = "https://api.openai.com/v1"
-api_key = "sk-your-actual-api-key-here"
-model = "gpt-3.5-turbo"
-temperature = 0.3
-max_tokens = 1000
-
-[QvQChat.intent]
-base_url = "https://api.openai.com/v1"
-api_key = "sk-your-actual-api-key-here"
-model = "gpt-3.5-turbo"
-temperature = 0.1
-max_tokens = 500
-```
-
-## 故障排除
-
-### 问题1：API错误 401 - Invalid token
-**原因**: API密钥未配置或配置错误
-
-**解决方法**:
-1. 检查 `config.toml` 中 `[QvQChat.dialogue.api_key]` 是否已填入正确的API密钥
-2. 确保API密钥格式为 `sk-...` 开头
-3. 验证API密钥是否有效（访问 OpenAI 控制台检查）
-
-### 问题2：所有AI均未配置API密钥
-**原因**: 首次运行，未进行配置
-
-**解决方法**:
-1. 复制 `config.example.toml` 为 `config.toml`
-2. 将其中的 `sk-your-api-key-here` 替换为实际API密钥
-3. 配置 `bot_nicknames` 和 `bot_ids`
-4. 重启程序
-
-### 问题3：部分AI功能不可用
-**原因**: 只配置了对话AI，其他AI未配置
-
-**影响**:
-- 仅对话AI配置: 基本对话功能正常，记忆查询会返回原始结果
-- dialogue AI不支持视觉: 无法理解图片内容
-- 未配置回复判断AI: 使用简单的规则判断（可能不够智能）
-- 未配置意图识别AI: 使用规则匹配识别意图（可能不够精确）
-- 未配置记忆AI: 无法使用记忆压缩功能
-
-**解决方法**: 为对应AI配置API密钥，建议至少配置 dialogue 和 reply_judge。dialogue AI应使用支持视觉的模型（如gpt-4o）
-
-### 问题4：发送响应失败
-**原因**: 消息发送到平台失败
-
-**检查方法**:
-1. 查看日志中具体的错误信息
-2. 确认适配器配置正确
-3. 检查网络连接
 
 ## 功能说明
 
-### 0. AI智能决策（普通群友模式）⭐
+### 1. AI智能决策（普通群友模式）⭐
 
 QvQChat 完全由AI进行所有决策，更像真正的群友：
 
 #### 📊 两大决策
 1. **是否回复** - AI根据对话上下文判断
 2. **是否记忆** - AI自动判断什么值得记住
-
-#### 🖼️ 图片处理
-- **直接理解**：如果dialogue AI支持视觉功能（如gpt-4o），图片会直接传给AI理解
-- **自动回退**：如果模型不支持视觉，会自动跳过图片，只处理文字
-- **无需配置**：不需要单独的视觉AI，dialogue AI即可处理图片
 
 #### 🔍 AI回复判断标准
 
@@ -189,27 +103,20 @@ QvQChat 完全由AI进行所有决策，更像真正的群友：
 - ❌ 对你的评价（除非重要）
 - ❌ 已经说过很多次的事情
 
-**配置示例**：
-```toml
-[QvQChat]
-command_prefix = "/qvc"
-min_reply_interval = 10  # 最小回复间隔（秒）
-bot_nicknames = ["AI助手"]  # 用于AI判断
-bot_ids = ["123456789"]  # 用于@判断
-```
+### 2. 多AI协同
 
-### 1. 多AI协同
-- **对话AI (dialogue)**: 负责与用户直接交流，支持图片理解（必需，建议使用gpt-4o）
-- **回复判断AI (reply_judge)**: 智能判断是否需要回复（推荐）
-- **记忆AI (memory)**: 负责整理和修剪记忆（可选）
-- **查询AI (query)**: 负责检索相关记忆（推荐）
-- **意图识别AI (intent)**: 识别用户意图（可选）
+| AI类型 | 用途 | 必需 | 默认复用dialogue |
+|--------|--------|--------|-----------------|
+| dialogue | 对话AI | ✅ | - |
+| intent | 意图识别 | ✅ | ✅ |
+| intent_execution | 意图执行（系统操作） | ✅ | ✅ |
+| memory | 记忆提取 | ❌ | ✅ |
+| reply_judge | 回复判断（私聊） | ❌ | ✅ |
+| vision | 图片分析 | ❌ | ✅ |
 
-**说明**：reply_judge 未配置时会自动复用 dialogue 的配置。dialogue AI应使用支持视觉的模型（如gpt-4o）才能理解图片。
+**说明**：未配置API密钥的AI会自动复用dialogue的配置。
 
-### 2. 智能记忆管理（核心特性）
-
-QvQChat 采用**多AI协同的智能记忆机制**，无需用户手动告诉AI，自动识别和保存重要信息。
+### 3. 智能记忆管理
 
 #### 工作原理
 ```
@@ -229,147 +136,295 @@ QvQChat 采用**多AI协同的智能记忆机制**，无需用户手动告诉AI�
 保存到长期记忆
 ```
 
-#### 记忆标准
-✅ **会自动记忆的信息**：
-- 用户的个人偏好、喜好、习惯
-- 重要日期（生日、纪念日、截止日期等）
-- 用户正在进行的任务、计划、目标
-- 重要人际关系、家庭信息
-- 影响后续对话的关键信息
+#### 记忆使用
 
-❌ **不会记忆的信息**：
-- 日常闲聊、打招呼、"好的"、"嗯"
-- 表情符号、纯表情消息
-- 临时性话题讨论
-- AI已经回答过的问题
-- 一次性话题
-- 天气、时间等通用信息
-
-#### 多AI协同机制
-1. **dialogue AI** - 分析对话上下文，判断是否值得记忆
-2. **memory AI** - 提取关键信息，严格遵守记忆标准
-3. **去重机制** - 自动检测重复信息，避免冗余记忆
-
-#### 配置建议
-```toml
-[QvQChat.memory]
-# 必须配置才能使用智能记忆
-api_key = "sk-your-api-key"
-model = "gpt-3.5-turbo"  # 建议使用较便宜的模型
-temperature = 0.3  # 较低温度保证一致性
+**自然融入对话**（推荐）：
+```
+用户：你记得我的生日吗？
+AI：是的，我记得你的生日是6月15日。
 ```
 
-#### 记忆查询与使用
-- 记忆会自动注入到对话上下文中
-- AI会根据记忆提供更个性化的回复
-- 可以通过命令查询和管理记忆：
-  - `/qvc memory search <关键词>` - 搜索记忆
-  - `/qvc memory list` - 查看记忆摘要
-  - `/qvc memory delete <索引>` - 删除记忆
+**用户主动要求记忆**：
+```
+用户：记住这件事，我下周五生日
+AI：好的，我会记住你下周五生日。✅
+```
 
-#### 记忆隐私
-- 用户级记忆：每个用户独立的记忆空间
-- 群聊级记忆：每个群独立的记忆
-- 使用 `sdk.storage` 存储，数据持久化
+**删除记忆**：
+```
+用户：忘记这件事
+AI：我会帮你删除相关记忆。
+```
 
-### 2.1 分层记忆
-- **短期记忆**：当前会话的最近消息（最多20条）
-- **长期记忆**：经过AI智能提取和整理的重要信息
+#### 记忆存储
 
-### 3. 意图识别
-- 对话: 普通交流
-- 记忆查询: 查询历史信息
-- 记忆管理: 添加/删除/修改记忆
-- 系统控制: 切换模型、配置等
-- 群配置: 群级设置
+- **私聊**：只存用户个人记忆
+- **群聊**：用户个人记忆 + 群记忆（混合模式）
+- **群记忆模式**：
+  - `mixed`：保存发送者记忆 + 群公共上下文（默认）
+  - `sender_only`：只保存发送者的个人记忆
 
-### 4. 群聊自定义
-- 每个群可独立配置提示词、模型参数
-- 群专属记忆空间
-- 群角色设定
+### 4. 意图执行（自然语言操作）
+
+无需命令格式，直接用自然语言描述操作：
+
+| 操作 | 示例 |
+|------|--------|
+| 添加记忆 | "记住这件事" |
+| 删除记忆 | "忘记这件事"、"删掉这条记忆" |
+| 修改群提示词 | "把群提示词改成XX" |
+| 修改群记忆模式 | "群记忆模式改成混合模式" |
+| 清除会话 | "清除会话"、"清空对话历史" |
+| 导出记忆 | "导出我的记忆" |
 
 ### 5. 图片理解
-- **直接传递**：如果dialogue AI支持视觉功能（如gpt-4o），图片会直接传给AI理解
-- **自动回退**：如果模型不支持视觉，会自动跳过图片，只处理文字
-- **无需额外配置**：不需要单独的视觉AI，dialogue AI即可处理图片
 
-**配置提示**：
-- dialogue AI应使用支持视觉的模型（如gpt-4o）
-- 如果图片理解失败，会自动回退到纯文字模式
+- **直接传递**：dialogue AI支持视觉功能（如gpt-4o）时，图片直接传给AI
+- **自动回退**：模型不支持视觉时，自动跳过图片，只处理文字
+- **视觉AI备用**：如果配置了vision AI，先用vision分析再传给dialogue
+
+### 6. 窥屏模式（群聊）
+
+群聊默认启用窥屏模式，更像真人参与：
+
+| 参数 | 默认值 | 说明 |
+|------|----------|------|
+| enabled | true | 启用窥屏模式 |
+| default_probability | 0.03 | 默认回复概率（3%） |
+| mention_probability | 0.8 | 被@时回复概率（80%） |
+| keyword_probability | 0.5 | 匹配关键词时回复概率（50%） |
+| question_probability | 0.4 | 提问时回复概率（40%） |
+| min_messages_between_replies | 15 | 两次回复之间至少间隔多少条消息 |
+| max_replies_per_hour | 8 | 每小时最多回复次数 |
+
+## 配置说明
+
+### 完整配置
+
+```toml
+[QvQChat]
+# 基础配置
+max_history_length = 20
+min_reply_interval = 10
+bot_nicknames = ["AI助手"]
+bot_ids = ["123456789"]
+
+# 窥屏模式配置
+[QvQChat.stalker_mode]
+enabled = true
+default_probability = 0.03
+mention_probability = 0.8
+keyword_probability = 0.5
+question_probability = 0.4
+min_messages_between_replies = 15
+max_replies_per_hour = 8
+
+# 对话AI（必需）
+[QvQChat.dialogue]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-actual-api-key-here"
+model = "gpt-4o"
+temperature = 0.7
+max_tokens = 500
+
+# 意图识别AI（必需，会自动复用dialogue配置）
+[QvQChat.intent]
+api_key = ""  # 留空则使用dialogue配置
+model = "gpt-3.5-turbo"
+temperature = 0.1
+max_tokens = 500
+
+# 意图执行AI（必需，会自动复用dialogue配置）
+[QvQChat.intent_execution]
+api_key = ""
+model = "gpt-3.5-turbo"
+temperature = 0.3
+max_tokens = 1000
+
+# 记忆AI（可选，会自动复用dialogue配置）
+[QvQChat.memory]
+api_key = ""
+model = "gpt-3.5-turbo"
+temperature = 0.3
+max_tokens = 1000
+
+# 回复判断AI（可选，会自动复用dialogue配置）
+[QvQChat.reply_judge]
+api_key = ""
+model = "gpt-3.5-turbo"
+temperature = 0.1
+max_tokens = 100
+
+# 视觉AI（可选，会自动复用dialogue配置）
+[QvQChat.vision]
+api_key = ""
+model = "gpt-4o"
+temperature = 0.3
+max_tokens = 300
 ```
 
-## 命令列表
+### 运行时配置
 
-> **提示**: 默认命令前缀为 `/qvc`，可通过配置 `[QvQChat.command_prefix]` 自定义（如改为 `/ai`）
+运行时自动生成群和用户配置（无需手动配置）：
 
-### 基础命令
-- `/qvc clear` - 清除当前会话历史
-- `/qvc help` - 显示帮助信息
+```toml
+# 群配置
+[QvQChat.groups."123456789"]
+system_prompt = "这个群是技术交流群"
+memory_mode = "mixed"  # mixed | sender_only
+enable_memory = true
+model_overrides = {}
 
-### 记忆管理
-- `/qvc memory list` - 查看记忆摘要
-- `/qvc memory search <关键词>` - 搜索记忆
-- `/qvc memory compress` - 压缩整理记忆
-- `/qvc memory delete <索引>` - 删除指定记忆
-
-### 系统控制
-- `/qvc config` - 查看当前配置
-- `/qvc model <类型>` - 切换AI模型（dialogue/memory/query）
-- `/qvc export` - 导出记忆
-
-### 群聊配置（仅在群聊中可用）
-- `/qvc group info` - 查看群配置
-- `/qvc group prompt <内容>` - 设置群提示词
-- `/qvc group style <风格>` - 设置对话风格
-
-### 个性化
-- `/qvc prompt <内容>` - 自定义个人提示词
-- `/qvc style <风格>` - 设置对话风格（友好/专业/幽默等）
-
-### 意图识别命令
-除了使用命令，也可以直接对话，AI会自动识别意图：
-- "删除第1条记忆" - 删除指定记忆
-- "我昨天说过什么" - 查询历史记忆
-- "记住这件事" - 添加新记忆
-- "切换模型" - 切换AI模型
+# 用户配置
+[QvQChat.users."user_id"]
+style = "友好"
+preferences = {}
+```
 
 ## 使用示例
 
+### 日常对话
+
+```
+用户：在吗？
+AI：[不回复，保持安静]
+
+用户：你觉得这个怎么样？
+AI：我觉得挺好的。[偶尔回复，自然参与]
+
+用户：@机器人 今天的天气怎么样？
+AI：今天天气不错，适合出去玩。[被@时高概率回复]
+```
+
+### 记忆相关
+
+```
+用户：你记得我的生日吗？
+AI：是的，我记得你的生日是6月15日。[记忆自然融入对话]
+
+用户：记住这件事，我下周五要考试
+AI：好的，我会记住你下周五要考试。[用户主动要求记忆]
+
+用户：忘记这件事
+AI：我会帮你删除相关记忆。
+```
+
+### 图片理解
+
+```
+用户：[发送图片] 这是什么？
+AI：这是一张猫的照片，看起来很可爱。[dialogue AI直接理解图片]
+```
+
+### 系统操作
+
+```
+用户：清除会话
+AI：好的，已清除当前会话历史。[intent_execution AI执行]
+
+用户：把群提示词改成你是一个专业的技术顾问
+AI：已将群提示词更新为：你是一个专业的技术顾问。
+
+用户：群记忆模式改成sender_only
+AI：已将群记忆模式更改为仅发送者模式。
+```
+
+## 故障排除
+
+### 问题1：API错误 401 - Invalid token
+
+**原因**: API密钥未配置或配置错误
+
+**解决方法**:
+1. 检查 `config.toml` 中 `[QvQChat.dialogue.api_key]` 是否已填入正确的API密钥
+2. 确保API密钥格式为 `sk-...` 开头
+3. 验证API密钥是否有效（访问 OpenAI 控制台检查）
+
+### 问题2：所有AI均未配置API密钥
+
+**原因**: 首次运行，未进行配置
+
+**解决方法**:
+1. 复制 `config.example.toml` 为 `config.toml`
+2. 将其中的 `sk-your-api-key-here` 替换为实际API密钥
+3. 配置 `bot_nicknames` 和 `bot_ids`
+4. 重启程序
+
+### 问题3：部分AI功能不可用
+
+**原因**: 只配置了对话AI，其他AI未配置
+
+**影响**:
+- 仅对话AI配置: 基本对话功能正常，记忆会使用dialogue AI
+- dialogue AI不支持视觉: 无法理解图片内容
+
+**解决方法**: 为对应AI配置API密钥，或留空自动复用dialogue配置。
+
+### 问题4：AI不回复任何消息
+
+**可能原因**:
+1. 窥屏模式概率过低（可调高 default_probability）
+2. bot_ids/bot_nicknames 未正确配置
+3. API密钥无效或过期
+
+**检查方法**:
+1. 查看日志中的AI判断结果
+2. 确认机器人ID和昵称正确
+3. 测试API连接
+
+### 问题5：记忆不准确或过多
+
+**解决方法**:
+1. 调整记忆AI的temperature（降低会更严格）
+2. 清理冗余记忆（通过意图执行删除）
+3. 检查记忆提取标准（在handler._extract_and_save_memory中）
+
+## 架构文档
+
+详细的架构说明、组件设计和数据流请查看 [ARCHITECTURE.md](ARCHITECTURE.md)。
+
+## 开发与贡献
+
+欢迎参与 QvQChat 的开发！详细的贡献指南请查看 [ARCHITECTURE.md](ARCHITECTURE.md) 中的"贡献指南"章节。
+
+### 快速开发设置
+
 ```bash
-# 查询历史记忆
-/qvc memory search 我昨天说过什么
+# 1. Fork 项目
+git clone https://github.com/your-username/ErisPulse-AIChat.git
+cd ErisPulse-AIChat
 
-# 设置群提示词
-/qvc group prompt 你是一个专业的技术顾问
+# 2. 安装依赖
+pip install -e .
 
-# 设置对话风格
-/qvc style 幽默
-
-# 切换对话模型
-/qvc model dialogue
-
-# 压缩记忆
-/qvc memory compress
+# 3. 运行测试
+python -m ErisPulse-AIChat
 ```
 
-## 机器人识别配置
+### 核心组件
 
-### bot_nicknames（昵称列表）
-用于文本匹配，当消息中包含这些昵称时会被触发：
-```toml
-bot_nicknames = ["AI助手", "小B", "机器人"]
-```
-
-### bot_ids（ID列表）
-用于@匹配，当机器人被@时直接回复：
-```toml
-bot_ids = ["123456789", "987654321"]
-```
-
-**说明**：不同平台的@机制可能不同，有些平台使用ID，有些使用昵称。
+| 组件 | 文件 | 职责 |
+|------|--------|------|
+| Main | Core.py | 模块入口、事件处理、消息路由 |
+| Config | config.py | 配置管理、配置继承 |
+| AI Manager | ai_client.py | AI客户端管理、统一调用接口 |
+| Intent | intent.py | 意图识别、意图路由 |
+| Handler | handler.py | 意图处理、对话处理、记忆提取 |
+| Memory | memory.py | 记忆管理、会话历史 |
+| State | state.py | 状态管理、主题跟踪 |
 
 ## 依赖
-本模块依赖 OpenAI API，需要配置相应的 API 密钥。
 
-## 参考链接
-- https://github.com/ErisPulse/ErisPulse/
+- Python >= 3.9
+- openai >= 1.0.0
+- ErisPulse SDK
+
+## 许可证
+
+MIT License - 详见 [LICENSE](LICENSE) 文件
+
+## 联系方式
+
+- 作者：wsu2059q
+- 邮箱：wsu2059@qq.com
+- GitHub：https://github.com/wsu2059q/ErisPulse-AIChat

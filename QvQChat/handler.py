@@ -27,14 +27,14 @@ class QvQHandler:
         intent_data: Dict[str, Any]
     ) -> str:
         """
-        处理普通对话
-        
+        处理普通对话（记忆自然融入对话）
+
         Args:
             user_id: 用户ID
             group_id: 群ID（可选）
             params: 参数字典（包含image_urls和context_info）
             intent_data: 意图数据
-            
+
         Returns:
             str: AI回复内容
         """
@@ -44,9 +44,6 @@ class QvQHandler:
 
         # 获取会话历史（已包含当前用户消息，因为Core.py已添加）
         session_history = await self.memory.get_session_history(user_id, group_id)
-
-        # 获取相关记忆（使用更多关键词进行搜索）
-        search_results = await self.memory.search_memory(user_id, user_input, group_id)
 
         # 构建消息列表
         messages = []
@@ -63,27 +60,27 @@ class QvQHandler:
         elif system_prompt:
             messages.append({"role": "system", "content": system_prompt})
 
-        # 添加相关记忆作为上下文
-        if search_results:
-            # 分类记忆：用户个人记忆和群聊记忆
-            user_memories = [r for r in search_results if r['source'] == 'long_term']
-            group_memories = [r for r in search_results if r['source'] in ['group_sender', 'group_context']]
+        # 直接获取用户的长时记忆作为上下文（不进行搜索，让AI自己判断）
+        user_memory = await self.memory.get_user_memory(user_id)
+        long_term_memories = user_memory.get("long_term", [])
 
-            memory_context_parts = []
-            if user_memories:
-                memory_context_parts.append("【用户个人记忆】")
-                memory_context_parts.extend([f"- {r['content']}" for r in user_memories[:3]])
-
-            if group_memories:
-                memory_context_parts.append("【群聊记忆】")
-                memory_context_parts.extend([f"- {r['content']}" for r in group_memories[:3]])
-
-            if memory_context_parts:
-                memory_context = "\n".join(memory_context_parts)
-                messages.append({"role": "system", "content": memory_context})
+        if long_term_memories:
+            # 将用户的长时记忆作为上下文传递给AI
+            memory_list = [mem["content"] for mem in long_term_memories[-10:]]  # 最近10条
+            memory_text = "【用户长期记忆】\n" + "\n".join([f"- {mem}" for mem in memory_list])
+            messages.append({"role": "system", "content": memory_text})
         else:
-            # 如果没有找到相关记忆，提示AI不需要依赖记忆
-            messages.append({"role": "system", "content": "当前没有找到相关的历史记忆，直接根据对话内容回复。"})
+            # 没有记忆时提示AI
+            messages.append({"role": "system", "content": "当前还没有关于这个用户的长期记忆。随着对话的进行，会自动记住重要信息。"})
+
+        # 添加当前上下文提示
+        if group_id:
+            messages.append({"role": "system", "content": "当前是群聊场景，你是一个普通群友，像真人一样自然参与对话，不需要每条消息都回复。"})
+        else:
+            messages.append({"role": "system", "content": "当前是私聊场景，你是一个普通群友，可以更自由地表达，但也要保持自然。"})
+
+        # 使用历史消息（包含刚添加的用户消息，使用更多历史）
+        messages.extend(session_history[-15:])
 
         # 添加当前上下文提示
         if group_id:
@@ -603,52 +600,20 @@ class QvQHandler:
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
     
-    async def handle_memory_query(
-        self,
-        user_id: str,
-        group_id: Optional[str],
-        params: Dict[str, Any],
-        intent_data: Dict[str, Any]
-    ) -> str:
-        """
-        处理记忆查询
-        
-        Args:
-            user_id: 用户ID
-            group_id: 群ID（可选）
-            params: 参数字典
-            intent_data: 意图数据
-            
-        Returns:
-            str: 查询结果
-        """
-        query = params.get("query", intent_data["raw_input"])
-        
-        # 搜索记忆
-        search_results = await self.memory.search_memory(user_id, query, group_id)
-        
-        if not search_results:
-            return f"我没有找到关于'{query}'的记忆。"
-        
-        # 直接返回搜索结果
-        return f"找到 {len(search_results)} 条相关记忆:\n" + "\n".join([
-            f"{i+1}. {r['content']}" for i, r in enumerate(search_results)
-        ])
-    
     async def handle_memory_add(
         self,
         user_id: str,
-        params: Dict[str, Any],
+        _params: Dict[str, Any],  # type: ignore[unused-argument]
         intent_data: Dict[str, Any]
     ) -> str:
         """
         处理添加记忆
-        
+
         Args:
             user_id: 用户ID
-            params: 参数字典（保留用于兼容性）
+            _params: 参数字典（保留用于兼容性，当前未使用）
             intent_data: 意图数据
-            
+
         Returns:
             str: 添加结果
         """
@@ -713,20 +678,20 @@ class QvQHandler:
 
     async def handle_intent_execution(
         self,
-        user_id: str,
-        params: Dict[str, Any],
+        _user_id: str,  # type: ignore[unused-argument]
+        _params: Dict[str, Any],  # type: ignore[unused-argument]
         intent_data: Dict[str, Any],
         context_info: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         使用意图执行模型处理系统操作（替代传统命令）
-        
+
         Args:
-            user_id: 用户ID
-            params: 参数字典（用于获取上下文信息，由Core.py传递）
+            _user_id: 用户ID（未使用，保留用于兼容性）
+            _params: 参数字典（未使用，保留用于兼容性）
             intent_data: 意图数据
             context_info: 上下文信息（可选）
-            
+
         Returns:
             str: 执行结果
         """

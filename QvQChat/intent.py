@@ -4,17 +4,16 @@ from typing import Dict, Optional, Callable
 class QvQIntent:
     """
     意图识别处理器
-    
+
     负责识别用户输入的意图，并路由到对应的处理器。
-    
+
     意图类型：
-    - dialogue: 普通对话交流
-    - memory_query: 查询历史记忆
-    - memory_add: 记住某些信息
-    - memory_delete: 删除记忆
-    - intent_execution: 系统操作指令
+    - dialogue: 普通对话交流（记忆自然融入对话）
+    - memory_add: 记住某些信息（用户主动要求记住）
+    - memory_delete: 删除记忆（用户主动要求删除）
+    - intent_execution: 系统操作指令（配置管理、会话管理等）
     """
-    
+
     def __init__(self, ai_manager, config_manager, logger):
         self.ai_manager = ai_manager
         self.config = config_manager
@@ -23,10 +22,14 @@ class QvQIntent:
         # 意图处理器映射
         self.intent_handlers: Dict[str, Callable] = {}
 
-        # 查询关键词（用于规则匹配）
-        self.query_keywords = [
-            "记得", "记录", "忘记", "说过", "提到",
-            "history", "记忆", "历史", "之前", "刚才"
+        # 系统操作关键词（规则匹配作为后备）
+        self.system_keywords = [
+            "清除会话", "清空会话", "清空对话历史", "清除对话",
+            "清除记忆", "清空记忆", "删除记忆",
+            "导出记忆", "备份记忆", "导出",
+            "切换模型", "改模型", "换模型",
+            "设置风格", "改风格", "换风格", "修改提示词",
+            "群提示词", "群设定", "群配置", "群模式"
         ]
     
     def register_handler(self, intent_type: str, handler: Callable) -> None:
@@ -56,26 +59,27 @@ class QvQIntent:
         confidence = 0.1
         extracted_params = {}
 
-        # 1. 检查查询关键词（规则匹配）
-        for keyword in self.query_keywords:
-            if keyword.lower() in user_input.lower():
-                intent = "memory_query"
-                confidence = 0.7
-                extracted_params["query"] = user_input
+        # 1. 检查系统操作关键词（规则匹配）
+        for keyword in self.system_keywords:
+            if keyword in user_input:
+                intent = "intent_execution"
+                confidence = 0.9
+                extracted_params["command"] = keyword
+                self.logger.debug(f"规则匹配识别为 intent_execution: {keyword}")
                 break
 
-        # 2. 使用AI识别（更精确，如果没有intent客户端则使用规则结果）
-        if self.ai_manager.get_client("intent"):
+        # 2. 如果不是系统操作，使用AI识别
+        if intent == "dialogue" and self.ai_manager.get_client("intent"):
             try:
                 ai_intent = await self.ai_manager.identify_intent(user_input)
                 if ai_intent and ai_intent.strip() in [
-                    "dialogue", "memory_query", "memory_add", "memory_delete",
+                    "dialogue", "memory_add", "memory_delete",
                     "intent_execution"
                 ]:
                     intent = ai_intent.strip()
                     confidence = 0.9
             except Exception as e:
-                self.logger.warning(f"AI意图识别失败，使用规则识别: {e}")
+                self.logger.warning(f"AI意图识别失败: {e}")
 
         return {
             "intent": intent,

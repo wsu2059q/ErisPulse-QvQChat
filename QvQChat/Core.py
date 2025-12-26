@@ -112,14 +112,13 @@ class Main:
     def _register_intent_handlers(self) -> None:
         """
         注册意图处理器
-        
+
         将意图类型映射到对应的处理函数。
         """
-        # 核心意图：普通对话
+        # 核心意图：普通对话（记忆自然融入对话）
         self.intent.register_handler("dialogue", self.handler.handle_dialogue)
 
-        # 记忆相关意图（保留为AI自主判断调用）
-        self.intent.register_handler("memory_query", self.handler.handle_memory_query)
+        # 记忆相关意图（用户主动要求）
         self.intent.register_handler("memory_add", self.handler.handle_memory_add)
         self.intent.register_handler("memory_delete", self.handler.handle_memory_delete)
 
