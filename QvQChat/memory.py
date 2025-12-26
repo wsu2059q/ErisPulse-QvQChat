@@ -141,52 +141,59 @@ class QvQMemory:
     ) -> None:
         """
         添加短期记忆（会话历史）
-        
+
         Args:
             user_id: 用户ID
             role: 角色（user/assistant）
             content: 内容
             group_id: 群ID（可选）
         """
-        memory_key = self._get_session_key(user_id if not group_id else f"{group_id}:{user_id}")
+        # 群聊使用group_id作为key（所有用户共享会话历史），私聊使用user_id
+        memory_key = self._get_session_key(user_id if not group_id else f"group:{group_id}")
         session = self.storage.get(memory_key, [])
-        
+
+        # 对于群聊，在消息中添加发送者信息以区分不同用户
+        if group_id and role == "user":
+            content = f"[{user_id}]: {content}"
+
         session.append({
             "role": role,
             "content": content,
             "timestamp": datetime.now().isoformat()
         })
-        
+
         max_length = self.config.get("max_history_length", 20)
         if len(session) > max_length:
             session = session[-max_length:]
-        
+
         self.storage.set(memory_key, session)
     
     async def get_session_history(self, user_id: str, group_id: Optional[str] = None) -> List[Dict[str, str]]:
         """
         获取会话历史
-        
+
         Args:
             user_id: 用户ID
             group_id: 群ID（可选）
-            
+
         Returns:
             List[Dict[str, str]]: 会话历史列表
         """
-        session_key = self._get_session_key(user_id if not group_id else f"{group_id}:{user_id}")
+        # 群聊使用group_id作为key（所有用户共享会话历史），私聊使用user_id
+        session_key = self._get_session_key(user_id if not group_id else f"group:{group_id}")
         session = self.storage.get(session_key, [])
         return [{"role": msg["role"], "content": msg["content"]} for msg in session]
     
     async def clear_session(self, user_id: str, group_id: Optional[str] = None) -> None:
         """
         清除会话历史
-        
+
         Args:
             user_id: 用户ID
             group_id: 群ID（可选）
         """
-        session_key = self._get_session_key(user_id if not group_id else f"{group_id}:{user_id}")
+        # 群聊使用group_id作为key（所有用户共享会话历史），私聊使用user_id
+        session_key = self._get_session_key(user_id if not group_id else f"group:{group_id}")
         self.storage.set(session_key, [])
     
     async def add_long_term_memory(self, user_id: str, content: str, tags: List[str] = None) -> None:
@@ -262,20 +269,19 @@ class QvQMemory:
     ) -> List[Dict[str, Any]]:
         """
         搜索记忆
-        
+
         Args:
             user_id: 用户ID
             query: 查询词
             group_id: 群ID（可选）
-            
+
         Returns:
             List[Dict[str, Any]]: 搜索结果列表
         """
         results = []
-        
+
+        # 搜索用户个人长期记忆
         user_memory = await self.get_user_memory(user_id)
-        
-        # 搜索长期记忆
         for entry in user_memory.get("long_term", []):
             if query.lower() in entry["content"].lower():
                 results.append({
@@ -283,12 +289,12 @@ class QvQMemory:
                     "content": entry["content"],
                     "timestamp": entry["timestamp"]
                 })
-        
-        # 如果在群聊中，搜索群记忆
+
+        # 如果在群聊中，搜索该用户在群中的记忆
         if group_id:
             group_memory = await self.get_group_memory(group_id)
-            
-            # 搜索发送者的群记忆
+
+            # 只搜索发送者的群记忆，不搜索其他人的记忆
             if sender_memory := group_memory.get("sender_memory", {}).get(user_id, []):
                 for entry in sender_memory:
                     if query.lower() in entry["content"].lower():
@@ -297,8 +303,8 @@ class QvQMemory:
                             "content": entry["content"],
                             "timestamp": entry["timestamp"]
                         })
-            
-            # 搜索群公共上下文
+
+            # 搜索群公共上下文（所有用户共享）
             for entry in group_memory.get("shared_context", []):
                 if query.lower() in entry["content"].lower():
                     results.append({
@@ -306,7 +312,7 @@ class QvQMemory:
                         "content": entry["content"],
                         "timestamp": entry["timestamp"]
                     })
-        
+
         return results[:10]  # 返回最多10条结果
     
     async def compress_memory(self, user_id: str, ai_client) -> str:

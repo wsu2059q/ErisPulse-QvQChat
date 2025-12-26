@@ -1,4 +1,5 @@
 import time
+import asyncio
 from typing import Dict, List, Optional, Any
 from ErisPulse import sdk
 
@@ -137,17 +138,36 @@ class Main:
     def _get_session_key(self, user_id: str, group_id: Optional[str] = None) -> str:
         """
         获取会话唯一标识
-        
+
         Args:
             user_id: 用户ID
             group_id: 群ID（可选）
-            
+
         Returns:
             str: 会话唯一标识
         """
         if group_id:
-            return f"{group_id}:{user_id}"
-        return user_id
+            # 群聊：使用群ID，所有用户共享同一个会话历史
+            return f"group:{group_id}"
+        # 私聊：使用用户ID
+        return f"user:{user_id}"
+
+    def _get_reply_count_key(self, user_id: str, group_id: Optional[str] = None) -> str:
+        """
+        获取回复计数器key
+
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            str: 计数器key
+        """
+        if group_id:
+            # 群聊：使用群ID，所有用户共享计数器
+            return f"group:{group_id}"
+        # 私聊：使用用户ID
+        return f"user:{user_id}"
 
     async def _handle_intent_execution(self, user_id: str, group_id: Optional[str], params: Dict[str, Any], intent_data: Dict[str, Any]) -> str:
         """
@@ -196,7 +216,7 @@ class Main:
             # 如果未启用窥屏模式，使用AI判断
             return await self._should_reply_ai(data, alt_message, user_id, group_id)
 
-        session_key = self._get_session_key(user_id, group_id)
+        session_key = self._get_reply_count_key(user_id, group_id)
         current_time = time.time()
 
         # 重置每小时计数器（每个会话独立）
@@ -328,7 +348,7 @@ class Main:
 
         # 检查回复间隔，避免刷屏
         if should_reply:
-            session_key = self._get_session_key(user_id, group_id)
+            session_key = self._get_reply_count_key(user_id, group_id)
             last_reply = self._last_reply_time.get(session_key, 0)
             min_interval = self.config.get("min_reply_interval", 10)  # 默认10秒
             if time.time() - last_reply < min_interval:
@@ -411,15 +431,15 @@ class Main:
                 await self._send_response(data, "AI服务未配置，请联系管理员配置API密钥。", platform)
                 return
 
-            # 识别意图
-            intent_data = await self.intent.identify_intent(alt_message)
+            # 识别意图和判断是否回复（并行执行）
+            identify_task = self.intent.identify_intent(alt_message)
+            should_reply_task = self._should_reply(data, alt_message, user_id, group_id)
+            intent_data, should_reply = await asyncio.gather(identify_task, should_reply_task)
+
             self.logger.debug(
                 f"用户 {user_nickname}({user_id}) 意图: {intent_data['intent']} "
                 f"(置信度: {intent_data['confidence']})"
             )
-
-            # 检查是否需要回复（AI智能判断）
-            should_reply = await self._should_reply(data, alt_message, user_id, group_id)
 
             # 累积消息到短期记忆（无论是否回复）
             await self.memory.add_short_term_memory(user_id, "user", alt_message, group_id)
@@ -461,7 +481,7 @@ class Main:
             await self._send_response(data, response, platform)
 
             # 记录回复时间
-            session_key = self._get_session_key(user_id, group_id)
+            session_key = self._get_reply_count_key(user_id, group_id)
             self._last_reply_time[session_key] = time.time()
 
         except Exception as e:

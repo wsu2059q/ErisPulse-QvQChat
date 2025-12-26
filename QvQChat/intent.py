@@ -42,31 +42,30 @@ class QvQIntent:
     async def identify_intent(self, user_input: str) -> Dict[str, any]:
         """
         识别用户意图
-        
+
         使用AI进行意图识别，结合规则匹配提高准确性。
-        
+
         Args:
             user_input: 用户输入
-            
+
         Returns:
             Dict[str, any]: 包含intent、confidence、params、raw_input
         """
         user_input = user_input.strip()
         intent = "dialogue"
-        confidence = 0.5
+        confidence = 0.1
         extracted_params = {}
-        
+
         # 1. 检查查询关键词（规则匹配）
-        if intent == "dialogue":
-            for keyword in self.query_keywords:
-                if keyword.lower() in user_input.lower():
-                    intent = "memory_query"
-                    confidence = 0.7
-                    extracted_params["query"] = user_input
-                    break
-        
-        # 2. 使用AI识别（更精确）
-        if intent == "dialogue" and self.ai_manager.get_client("intent"):
+        for keyword in self.query_keywords:
+            if keyword.lower() in user_input.lower():
+                intent = "memory_query"
+                confidence = 0.7
+                extracted_params["query"] = user_input
+                break
+
+        # 2. 使用AI识别（更精确，如果没有intent客户端则使用规则结果）
+        if self.ai_manager.get_client("intent"):
             try:
                 ai_intent = await self.ai_manager.identify_intent(user_input)
                 if ai_intent and ai_intent.strip() in [
@@ -76,8 +75,8 @@ class QvQIntent:
                     intent = ai_intent.strip()
                     confidence = 0.9
             except Exception as e:
-                self.logger.debug(f"AI意图识别失败，使用规则识别: {e}")
-        
+                self.logger.warning(f"AI意图识别失败，使用规则识别: {e}")
+
         return {
             "intent": intent,
             "confidence": confidence,
