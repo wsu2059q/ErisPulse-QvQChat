@@ -2,7 +2,15 @@ from typing import Dict, List, Any, Optional
 
 
 class QvQHandler:
-    """意图处理器"""
+    """
+    意图处理器
+    
+    负责处理各种意图的具体执行逻辑，包括：
+    - 普通对话
+    - 记忆查询、添加、删除
+    - 群配置管理
+    - 会话管理
+    """
     
     def __init__(self, config, memory, ai_manager, state_manager, logger):
         self.config = config
@@ -18,7 +26,18 @@ class QvQHandler:
         params: Dict[str, Any],
         intent_data: Dict[str, Any]
     ) -> str:
-        """处理普通对话"""
+        """
+        处理普通对话
+        
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+            params: 参数字典（包含image_urls和context_info）
+            intent_data: 意图数据
+            
+        Returns:
+            str: AI回复内容
+        """
         user_input = intent_data["raw_input"]
         image_urls = params.get("image_urls", [])  # 获取图片URL列表
         context_info = params.get("context_info", {})  # 获取上下文信息
@@ -77,8 +96,45 @@ class QvQHandler:
 
         # 调用对话AI
         try:
-            # 如果有图片，修改最后一条用户消息为多模态格式
+            # 如果有图片，先尝试使用视觉AI分析图片内容
             if image_urls:
+                use_multimodal = True
+                image_descriptions = []
+
+                # 尝试使用视觉AI分析图片
+                for url in image_urls[:3]:  # 最多3张图片
+                    description = await self.ai_manager.analyze_image(url, user_input if len(image_urls) == 1 else "")
+                    if description:
+                        image_descriptions.append(description)
+
+                # 如果成功分析了图片，使用视觉分析结果
+                if image_descriptions:
+                    image_analysis = "\n".join([f"[图片{i+1}]: {desc}" for i, desc in enumerate(image_descriptions)])
+                    self.logger.info(f"视觉AI分析图片: {len(image_descriptions)}/{len(image_urls)} 张图片")
+
+                    # 找到最后一条用户消息（当前用户的消息）
+                    last_user_msg = None
+                    last_user_msg_index = -1
+                    for i, msg in enumerate(messages):
+                        if msg["role"] == "user":
+                            last_user_msg = msg
+                            last_user_msg_index = i
+
+                    if last_user_msg:
+                        # 将用户消息转换为文字+图片描述的格式
+                        combined_content = last_user_msg["content"]
+                        if image_analysis:
+                            combined_content += f"\n\n{image_analysis}"
+
+                        messages[last_user_msg_index] = {
+                            "role": "user",
+                            "content": combined_content
+                        }
+                        use_multimodal = False
+                        self.logger.debug("使用视觉AI分析结果，图片描述已合并到文本")
+
+            # 如果没有视觉分析结果，使用多模态模式
+            if image_urls and use_multimodal:
                 # 找到最后一条用户消息（当前用户的消息）
                 last_user_msg = None
                 last_user_msg_index = -1
@@ -96,6 +152,7 @@ class QvQHandler:
                             *[{"type": "image_url", "image_url": {"url": url}} for url in image_urls[:3]]  # 最多3张图片
                         ]
                     }
+                    self.logger.debug("使用多模态模式，图片直接传递给AI")
 
             response = await self.ai_manager.dialogue(messages)
 
@@ -170,11 +227,27 @@ class QvQHandler:
             return "抱歉，我现在无法回复。请稍后再试。"
 
     async def extract_and_save_memory(self, user_id: str, session_history: List[Dict[str, str]], response: str, group_id: Optional[str] = None) -> None:
-        """公共方法：智能提取重要信息并保存到长期记忆（多AI协同）"""
+        """
+        公共方法：智能提取重要信息并保存到长期记忆（多AI协同）
+        
+        Args:
+            user_id: 用户ID
+            session_history: 会话历史
+            response: AI回复
+            group_id: 群ID（可选）
+        """
         await self._extract_and_save_memory(user_id, session_history, response, group_id)
 
     async def _extract_and_save_memory(self, user_id: str, session_history: List[Dict[str, str]], response: str, group_id: Optional[str] = None) -> None:
-        """智能提取重要信息并保存到长期记忆（多AI协同）"""
+        """
+        智能提取重要信息并保存到长期记忆（多AI协同）
+        
+        Args:
+            user_id: 用户ID
+            session_history: 会话历史
+            response: AI回复
+            group_id: 群ID（可选）
+        """
         try:
             # 获取最近15条对话
             recent_dialogues = session_history[-15:] if len(session_history) > 15 else session_history
@@ -259,7 +332,16 @@ class QvQHandler:
             self.logger.warning(f"提取和保存记忆失败: {e}")
 
     async def _should_remember_dialogue(self, dialogue_text: str, ai_response: str) -> bool:
-        """AI判断是否值得记录本次对话（普通群友记忆模式）"""
+        """
+        AI判断是否值得记录本次对话（普通群友记忆模式）
+        
+        Args:
+            dialogue_text: 对话文本
+            ai_response: AI回复
+            
+        Returns:
+            bool: 是否值得记录
+        """
         try:
             # 使用dialogue AI进行判断
             dialogue_client = self.ai_manager.get_client("dialogue")
@@ -314,7 +396,14 @@ class QvQHandler:
             return False
 
     async def _save_filtered_memories(self, user_id: str, important_info: str, group_id: Optional[str] = None) -> None:
-        """保存记忆（带去重机制，支持群聊混合模式）"""
+        """
+        保存记忆（带去重机制，支持群聊混合模式）
+        
+        Args:
+            user_id: 用户ID
+            important_info: 重要信息
+            group_id: 群ID（可选）
+        """
         # 分割新信息
         new_memories = []
         for line in important_info.split('\n'):
@@ -385,7 +474,16 @@ class QvQHandler:
                         break  # 只保存一条
 
     def _build_context_prompt(self, context_info: Dict[str, Any], is_group: bool) -> str:
-        """构建上下文提示"""
+        """
+        构建上下文提示
+        
+        Args:
+            context_info: 上下文信息字典
+            is_group: 是否是群聊
+            
+        Returns:
+            str: 上下文提示文本
+        """
         prompt_lines = []
 
         # 场景信息
@@ -426,7 +524,15 @@ class QvQHandler:
         return "\n".join(prompt_lines) if prompt_lines else ""
 
     def _parse_multi_messages(self, text: str) -> list:
-        """解析多条消息（带延迟）"""
+        """
+        解析多条消息（带延迟）
+        
+        Args:
+            text: 包含多条消息格式的文本
+            
+        Returns:
+            list: 消息列表，每条消息包含content和delay
+        """
         import re
 
         # 尝试解析多消息格式：消息1\n\n[间隔:3]\n\n消息2
@@ -438,7 +544,6 @@ class QvQHandler:
 
         for i in range(1, len(parts), 2):
             if i + 1 < len(parts):
-                delay = int(parts[i])
                 next_msg = parts[i + 1].strip()
 
                 if current_msg:
@@ -464,7 +569,15 @@ class QvQHandler:
         return messages[:3]
 
     def _remove_markdown(self, text: str) -> str:
-        """移除Markdown格式"""
+        """
+        移除Markdown格式
+        
+        Args:
+            text: 原始文本
+            
+        Returns:
+            str: 移除Markdown后的文本
+        """
         import re
         if not text:
             return text
@@ -497,29 +610,25 @@ class QvQHandler:
         params: Dict[str, Any],
         intent_data: Dict[str, Any]
     ) -> str:
-        """处理记忆查询"""
+        """
+        处理记忆查询
+        
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+            params: 参数字典
+            intent_data: 意图数据
+            
+        Returns:
+            str: 查询结果
+        """
         query = params.get("query", intent_data["raw_input"])
         
-        # 构建查询提示
+        # 搜索记忆
         search_results = await self.memory.search_memory(user_id, query, group_id)
         
         if not search_results:
             return f"我没有找到关于'{query}'的记忆。"
-        
-        # 使用查询AI生成自然回复（如果可用）
-        if self.ai_manager.get_client("query"):
-            try:
-                memory_text = "\n".join([f"{i+1}. {r['content']}" for i, r in enumerate(search_results)])
-                prompt = f"""用户查询: {query}
-
-找到的相关记忆:
-{memory_text}
-
-请用自然语言回答用户的问题，不要直接列出记忆。"""
-                response = await self.ai_manager.query(prompt)
-                return response
-            except Exception as e:
-                self.logger.error(f"记忆查询AI处理失败: {e}")
         
         # 直接返回搜索结果
         return f"找到 {len(search_results)} 条相关记忆:\n" + "\n".join([
@@ -529,11 +638,20 @@ class QvQHandler:
     async def handle_memory_add(
         self,
         user_id: str,
-        group_id: Optional[str],
         params: Dict[str, Any],
         intent_data: Dict[str, Any]
     ) -> str:
-        """处理添加记忆"""
+        """
+        处理添加记忆
+        
+        Args:
+            user_id: 用户ID
+            params: 参数字典（保留用于兼容性）
+            intent_data: 意图数据
+            
+        Returns:
+            str: 添加结果
+        """
         content = intent_data["raw_input"]
 
         # 使用记忆AI提取关键信息（如果可用）
@@ -555,17 +673,26 @@ class QvQHandler:
     async def handle_memory_delete(
         self,
         user_id: str,
-        group_id: Optional[str],
         params: Dict[str, Any],
         intent_data: Dict[str, Any]
     ) -> str:
-        """处理删除记忆"""
+        """
+        处理删除记忆
+        
+        Args:
+            user_id: 用户ID
+            params: 参数字典（用于获取命令参数）
+            intent_data: 意图数据
+            
+        Returns:
+            str: 删除结果
+        """
         # 如果是命令模式，使用命令参数
         groups = params.get("groups", [])
         if groups and len(groups) >= 2 and groups[0].lower() == "memory" and groups[1].lower() == "delete":
             try:
                 index = int(groups[2]) if len(groups) > 2 else 0
-                success = await self.memory.delete_memory(user_id, index, group_id)
+                success = await self.memory.delete_memory(user_id, index)
                 return "记忆已删除" if success else "删除失败，索引无效"
             except ValueError:
                 return "请提供有效的数字索引"
@@ -578,256 +705,42 @@ class QvQHandler:
             if match:
                 try:
                     index = int(match.group())
-                    success = await self.memory.delete_memory(user_id, index, group_id)
+                    success = await self.memory.delete_memory(user_id, index)
                     return "记忆已删除" if success else "删除失败，索引无效"
                 except ValueError:
                     pass
             return "请提供要删除的记忆索引（如：删除第1条记忆）"
 
-    async def handle_memory_management(
+    async def handle_intent_execution(
         self,
         user_id: str,
-        group_id: Optional[str],
         params: Dict[str, Any],
-        intent_data: Dict[str, Any]
+        intent_data: Dict[str, Any],
+        context_info: Optional[Dict[str, Any]] = None
     ) -> str:
-        """处理记忆管理命令"""
-        groups = params.get("groups", [])
-        if not groups:
-            return "请指定操作: list, search, compress, delete"
+        """
+        使用意图执行模型处理系统操作（替代传统命令）
         
-        action = groups[0].lower()
-        
-        if action == "list":
-            return await self.memory.get_memory_summary(user_id, group_id)
-        
-        elif action == "search":
-            if len(groups) < 2:
-                return "请提供搜索关键词"
-            query = groups[1]
-            results = await self.memory.search_memory(user_id, query, group_id)
-            if results:
-                return "\n".join([f"{i+1}. {r['content']}" for i, r in enumerate(results)])
-            return "没有找到相关记忆"
-        
-        elif action == "compress":
-            memory_client = self.ai_manager.get_client("memory")
-            if not memory_client:
-                return "记忆AI未配置，无法压缩记忆。请在配置中设置[QvQChat.memory].api_key"
-            try:
-                result = await self.memory.compress_memory(user_id, memory_client)
-                return result
-            except Exception as e:
-                return f"压缩记忆失败: {e}"
-        
-        elif action == "delete":
-            if len(groups) < 2:
-                return "请提供要删除的记忆索引"
-            try:
-                index = int(groups[1])
-                success = await self.memory.delete_memory(user_id, index, group_id)
-                return "记忆已删除" if success else "删除失败，索引无效"
-            except ValueError:
-                return "请提供有效的数字索引"
-        
-        else:
-            return f"未知的操作: {action}"
-    
-    async def handle_system_control(
-        self,
-        user_id: str,
-        group_id: Optional[str],
-        params: Dict[str, Any],
-        intent_data: Dict[str, Any]
-    ) -> str:
-        """处理系统控制命令"""
-        groups = params.get("groups", [])
-        
-        if not groups or groups[0] == "config":
-            # 显示配置
-            ai_status = await self.ai_manager.test_all_connections()
-            status_text = "\n".join([
-                f"{ai_type}: {'✓' if status else '✗'}" 
-                for ai_type, status in ai_status.items()
-            ])
-            return f"系统状态:\n{status_text}\n\n使用 /{self.config.command_prefixq} model <类型> 切换AI模型"
-        
-        elif groups[0] == "model":
-            # 切换模型
-            if len(groups) < 2:
-                return "请指定要切换的AI类型: dialogue, memory, query, intent"
-            ai_type = groups[1].lower()
-            if ai_type in ["dialogue", "memory", "query", "intent"]:
-                success = self.ai_manager.reload_client(ai_type)
-                return f"{ai_type} AI已重新加载" if success else f"{ai_type} AI重新加载失败"
-            else:
-                return "无效的AI类型"
-        
-        else:
-            return f"未知的系统命令: {groups[0]}"
-    
-    async def handle_group_config(
-        self,
-        user_id: str,
-        group_id: Optional[str],
-        params: Dict[str, Any],
-        intent_data: Dict[str, Any]
-    ) -> str:
-        """处理群配置命令"""
-        if not group_id:
-            return "此命令仅在群聊中可用"
+        Args:
+            user_id: 用户ID
+            params: 参数字典（用于获取上下文信息，由Core.py传递）
+            intent_data: 意图数据
+            context_info: 上下文信息（可选）
+            
+        Returns:
+            str: 执行结果
+        """
+        try:
+            user_input = intent_data["raw_input"]
 
-        groups = params.get("groups", [])
-        if not groups:
-            group_config = self.config.get_group_config(group_id)
-            current_mode = group_config.get('memory_mode', 'mixed')
-            return f"群配置:\n提示词: {group_config.get('system_prompt', '未设置')}\n记忆模式: {current_mode} ({self.config.get_memory_mode_description(current_mode)})"
+            # 使用AI判断应该执行什么操作并返回结构化结果
+            # AI会直接返回自然语言回复给用户
+            execution_result = await self.ai_manager.execute_intent(user_input, context_info)
+            self.logger.debug(f"AI意图执行结果: {execution_result}")
 
-        action = groups[0].lower()
+            # AI会直接返回自然语言回复，无需额外处理
+            return execution_result
 
-        if action == "info":
-            return await self.handle_group_config(user_id, group_id, {}, intent_data)
-
-        elif action == "prompt":
-            if len(groups) < 2:
-                return "请提供提示词内容"
-            prompt = " ".join(groups[1:])
-            group_config = self.config.get_group_config(group_id)
-            group_config["system_prompt"] = prompt
-            self.config.set_group_config(group_id, group_config)
-            return "群提示词已更新"
-
-        elif action == "memory":
-            if len(groups) < 2:
-                return "请指定记忆模式: mixed (混合模式) 或 sender_only (仅发送者模式)"
-            mode = groups[1].lower()
-            if mode not in ["mixed", "sender_only"]:
-                return "无效的记忆模式，请选择: mixed 或 sender_only"
-            group_config = self.config.get_group_config(group_id)
-            group_config["memory_mode"] = mode
-            self.config.set_group_config(group_id, group_config)
-            mode_desc = self.config.get_memory_mode_description(mode)
-            return f"群记忆模式已设置为: {mode} ({mode_desc})"
-
-        elif action == "style":
-            if len(groups) < 2:
-                return "请提供风格"
-            style = " ".join(groups[1:])
-            group_config = self.config.get_group_config(group_id)
-            group_config["style"] = style
-            self.config.set_group_config(group_id, group_config)
-            return f"群对话风格已设置为: {style}"
-
-        else:
-            return f"未知的群配置操作: {action}"
-    
-    async def handle_prompt_custom(
-        self,
-        user_id: str,
-        group_id: Optional[str],
-        params: Dict[str, Any],
-        intent_data: Dict[str, Any]
-    ) -> str:
-        """处理自定义提示词"""
-        groups = params.get("groups", [])
-        if not groups:
-            return "请提供提示词内容"
-        
-        prompt = " ".join(groups)
-        user_config = self.config.get_user_config(user_id)
-        user_config["custom_prompt"] = prompt
-        self.config.set_user_config(user_id, user_config)
-        return "个人提示词已更新"
-    
-    async def handle_style_change(
-        self,
-        user_id: str,
-        group_id: Optional[str],
-        params: Dict[str, Any],
-        intent_data: Dict[str, Any]
-    ) -> str:
-        """处理风格改变"""
-        groups = params.get("groups", [])
-        if not groups:
-            return "请指定风格: 友好, 专业, 幽默, 简洁"
-        
-        style = groups[0].lower()
-        valid_styles = ["友好", "专业", "幽默", "简洁", "友好", "专业", "幽默", "简洁"]
-        
-        if style in valid_styles:
-            user_config = self.config.get_user_config(user_id)
-            user_config["style"] = style
-            self.config.set_user_config(user_id, user_config)
-            return f"对话风格已设置为: {style}"
-        else:
-            return f"无效的风格，可选: {', '.join(valid_styles)}"
-    
-    async def handle_session_clear(
-        self,
-        user_id: str,
-        group_id: Optional[str],
-        params: Dict[str, Any],
-        intent_data: Dict[str, Any]
-    ) -> str:
-        """处理清除会话"""
-        await self.memory.clear_session(user_id, group_id)
-        return "当前会话历史已清除"
-    
-    async def handle_export(
-        self,
-        user_id: str,
-        group_id: Optional[str],
-        params: Dict[str, Any],
-        intent_data: Dict[str, Any]
-    ) -> str:
-        """处理导出记忆"""
-        export_data = await self.memory.export_memory(user_id, group_id)
-        
-        # 简化输出
-        summary = export_data["user_memory"]
-        count = len(summary.get("long_term", []))
-        
-        if group_id:
-            group_memory = export_data.get("group_memory", {})
-            sender_count = len(group_memory.get("sender_memory", {}).get(user_id, []))
-            return f"用户记忆: {count} 条\n群聊记忆: {sender_count} 条\n完整数据已保存到存储中"
-        else:
-            return f"用户记忆: {count} 条\n完整数据已保存到存储中"
-    
-    async def handle_help(
-        self,
-        user_id: str,
-        group_id: Optional[str],
-        params: Dict[str, Any],
-        intent_data: Dict[str, Any]
-    ) -> str:
-        """处理帮助"""
-        prefix = self.config.get_command_prefix()
-        return f"""QvQChat 智能助手
-
-基础命令：
-{prefix} clear       - 清除当前会话历史
-{prefix} help        - 显示帮助信息
-
-记忆管理：
-{prefix} memory list      - 查看记忆摘要
-{prefix} memory search <关键词>  - 搜索记忆
-{prefix} memory compress  - 压缩整理记忆
-{prefix} memory delete <索引>   - 删除指定记忆
-
-系统控制：
-{prefix} config           - 查看当前配置
-{prefix} model <类型>     - 切换AI模型（dialogue/memory/query）
-{prefix} export           - 导出记忆
-
-群聊配置：
-{prefix} group info       - 查看群配置
-{prefix} group prompt <内容>   - 设置群提示词
-{prefix} group memory <模式>   - 设置群记忆模式 (mixed/sender_only)
-{prefix} group style <风格>   - 设置对话风格
-
-个性化：
-{prefix} prompt <内容>    - 自定义个人提示词
-{prefix} style <风格>      - 设置对话风格
-
-直接与我对话，我会自动识别您的意图并做出响应！"""
+        except Exception as e:
+            self.logger.error(f"意图执行失败: {e}")
+            return "抱歉，执行操作时出现错误。"

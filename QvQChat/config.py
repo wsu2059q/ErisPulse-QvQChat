@@ -3,7 +3,17 @@ from ErisPulse import sdk
 
 
 class QvQConfig:
-    """配置管理器"""
+    """
+    配置管理器
+    
+    负责加载、保存和管理QvQChat的所有配置项。
+    使用ErisPulse SDK提供的存储接口持久化配置。
+    
+    配置简化说明：
+    - 只需配置dialogue的API密钥
+    - 其他AI（intent、memory、query等）默认使用dialogue配置
+    - 如需使用不同的API密钥，可单独配置
+    """
 
     def __init__(self):
         self.config = self._load_config()
@@ -11,7 +21,12 @@ class QvQConfig:
         self.logger = sdk.logger.get_child("QvQConfig")
     
     def _load_config(self) -> Dict[str, Any]:
-        """加载或创建默认配置"""
+        """
+        加载或创建默认配置
+        
+        Returns:
+            Dict[str, Any]: 配置字典
+        """
         config = sdk.env.getConfig("QvQChat")
         if not config:
             default_config = self._get_default_config()
@@ -20,15 +35,19 @@ class QvQConfig:
         return config
     
     def _get_default_config(self) -> Dict[str, Any]:
-        """获取默认配置"""
+        """
+        获取默认配置
+        
+        Returns:
+            Dict[str, Any]: 默认配置字典
+        """
         return {
             # 基础配置
-            "command_prefix": "/qvc",  # 命令前缀
-            "max_history_length": 20,
-            "memory_cleanup_interval": 86400,
-            "enable_vector_search": False,
-            "max_memory_tokens": 10000,
-            "memory_compression_threshold": 5,
+            "max_history_length": 20,  # 最大会话历史长度
+            "memory_cleanup_interval": 86400,  # 记忆清理间隔（秒）
+            "enable_vector_search": False,  # 是否启用向量搜索
+            "max_memory_tokens": 10000,  # 最大记忆tokens数
+            "memory_compression_threshold": 5,  # 记忆压缩阈值
 
             # 机器人识别配置
             "bot_nicknames": [],  # 机器人昵称列表（用于文本匹配）
@@ -45,7 +64,7 @@ class QvQConfig:
                 "max_replies_per_hour": 8,  # 每小时最多回复次数
             },
             
-            # 对话AI配置
+            # 对话AI配置（必需配置，其他AI默认使用此配置）
             "dialogue": {
                 "base_url": "https://api.openai.com/v1",
                 "api_key": "",
@@ -55,11 +74,11 @@ class QvQConfig:
                 "system_prompt": """你是一个普通群友，和大家一起聊天。
 
 【重要】回复策略（像真人一样）：
-- 默认保持安静，不要每条消息都回复
-- 只在真正需要回应的时候说话
-- 简短自然，1-2句话，不要太长
-- 不要使用任何格式（不要加粗、代码、列表、标题等）
-- 用口语化的方式，像真人聊天一样
+|- 默认保持安静，不要每条消息都回复
+|- 只在真正需要回应的时候说话
+|- 简短自然，1-2句话，不要太长
+|- 不要使用任何格式（不要加粗、代码、列表、标题等）
+|- 用口语化的方式，像真人聊天一样
 
 【什么情况才回复】：
 1. 别人直接向你提问
@@ -100,9 +119,9 @@ class QvQConfig:
                 "system_prompt": """你是一个普通群友，判断是否需要回复这条消息。
 
 【你的角色】
-- 你是一个普通群友，和大家一起聊天
-- 默认保持安静，只在真正需要的时候回复
-- 不要每条消息都回复
+|- 你是一个普通群友，和大家一起聊天
+|- 默认保持安静，只在真正需要的时候回复
+|- 不要每条消息都回复
 
 【必须回复的情况】（满足任一）：
 1. 有人直接向你提问（"你怎么看？"、"对吧？"）
@@ -121,14 +140,14 @@ class QvQConfig:
 5. 你刚回复过不久，避免刷屏
 
 【判断逻辑】
-- 默认不回复（false）
-- 只有在明确需要回应时才回复（true）
-- 宁可错过，也不要乱回复
+|- 默认不回复（false）
+|- 只有在明确需要回应时才回复（true）
+|- 宁可错过，也不要乱回复
 
 输出格式：只回复"true"或"false"，不要解释。"""
             },
             
-            # 记忆AI配置
+            # 记忆AI配置（智能提取重要信息）
             "memory": {
                 "base_url": "https://api.openai.com/v1",
                 "api_key": "",
@@ -137,7 +156,17 @@ class QvQConfig:
                 "max_tokens": 1000,
                 "system_prompt": "你是一个记忆整理助手，负责总结、压缩和整理对话记忆。提取关键信息，删除冗余内容。"
             },
-            
+
+            # 视觉AI配置（用于分析图片内容）
+            "vision": {
+                "base_url": "https://api.openai.com/v1",
+                "api_key": "",
+                "model": "gpt-4o",
+                "temperature": 0.3,
+                "max_tokens": 300,
+                "system_prompt": "你是一个图片分析助手。请详细描述图片的内容，包括图片中的物体、文字、场景、人物表情等。如果有多张图片，请分别描述每张图片。"
+            },
+
             # 查询AI配置
             "query": {
                 "base_url": "https://api.openai.com/v1",
@@ -162,11 +191,7 @@ class QvQConfig:
 2. memory_query - 明确要求查询历史记忆（如"我记得我昨天说过"、"查一下我之前说的"）
 3. memory_add - 明确要求记住某些信息（如"记住这件事"、"记下来"、"这是重要信息"）
 4. memory_delete - 明确要求删除记忆（如"忘记这件事"、"删掉这段记忆"）
-5. system_control - 系统控制指令（如"切换模型"、"修改配置"、"设置风格"、"重启系统"）
-6. group_config - 群聊配置相关（如"群设置"、"群提示词"、"改变群设定"）
-7. prompt_custom - 自定义提示词（如"把提示词改成..."、"换个提示词"）
-8. style_change - 改变对话风格（如"变专业点"、"幽默一点"、"换个风格"）
-9. export - 导出记忆（如"导出我的记忆"、"备份记忆"）
+5. intent_execution - 系统操作指令（如"切换模型"、"修改配置"、"设置风格"、"改变群设定"、"清除会话"、"导出记忆"等）
 
 重要提示（避免误判）：
 - 【严格】只有明确提及"记忆"、"查询"、"记住"、"忘记"、"删除"等关键词时才归类为memory相关意图
@@ -186,7 +211,15 @@ class QvQConfig:
         }
 
     def get_memory_mode_description(self, mode: str) -> str:
-        """获取记忆模式描述"""
+        """
+        获取记忆模式描述
+        
+        Args:
+            mode: 记忆模式（mixed或sender_only）
+            
+        Returns:
+            str: 模式描述文本
+        """
         descriptions = {
             "mixed": "混合模式：同时保存发送者个人记忆和群公共记忆",
             "sender_only": "仅发送者模式：只保存发送者的个人记忆"
@@ -194,7 +227,16 @@ class QvQConfig:
         return descriptions.get(mode, "未知模式")
     
     def get(self, key: str, default: Any = None) -> Any:
-        """获取配置项"""
+        """
+        获取配置项（支持点号分隔的嵌套键）
+        
+        Args:
+            key: 配置键，如"dialogue.model"
+            default: 默认值
+            
+        Returns:
+            Any: 配置值或默认值
+        """
         keys = key.split(".")
         value = self.config
         for k in keys:
@@ -205,7 +247,13 @@ class QvQConfig:
         return value if value is not None else default
     
     def set(self, key: str, value: Any) -> None:
-        """设置配置项"""
+        """
+        设置配置项（支持点号分隔的嵌套键）
+        
+        Args:
+            key: 配置键，如"dialogue.model"
+            value: 要设置的值
+        """
         keys = key.split(".")
         config = self.config
         for k in keys[:-1]:
@@ -216,20 +264,54 @@ class QvQConfig:
         sdk.env.setConfig("QvQChat", self.config)
     
     def get_ai_config(self, ai_type: str) -> Dict[str, Any]:
-        """获取指定AI的配置"""
-        # reply_judge AI如果未配置，则使用dialogue的配置
-        if ai_type == "reply_judge":
-            judge_config = self.get("reply_judge", {})
-            if not judge_config.get("api_key"):
-                dialogue_config = self.get("dialogue", {})
-                judge_config = dialogue_config.copy()
-                judge_config["temperature"] = 0.1
-                judge_config["max_tokens"] = 100
-            return judge_config
-        return self.get(ai_type, {})
+        """
+        获取指定AI的配置
+        
+        配置简化逻辑：
+        - 如果AI未配置api_key，使用dialogue配置作为基础
+        - 根据AI类型调整temperature和max_tokens参数
+        
+        Args:
+            ai_type: AI类型（dialogue、memory、query、intent等）
+            
+        Returns:
+            Dict[str, Any]: AI配置字典
+        """
+        ai_config = self.get(ai_type, {})
+        dialogue_config = self.get("dialogue", {})
+
+        # 如果AI未配置api_key，使用dialogue配置作为基础
+        if not ai_config.get("api_key") and dialogue_config.get("api_key"):
+            ai_config = dialogue_config.copy()
+            # 为特定AI类型调整参数
+            if ai_type == "reply_judge":
+                ai_config["temperature"] = 0.1
+                ai_config["max_tokens"] = 100
+            elif ai_type == "vision":
+                ai_config["temperature"] = 0.3
+                ai_config["max_tokens"] = 300
+            elif ai_type == "intent":
+                ai_config["temperature"] = 0.1
+                ai_config["max_tokens"] = 500
+            elif ai_type == "intent_execution":
+                ai_config["temperature"] = 0.3
+                ai_config["max_tokens"] = 1000
+            elif ai_type == "memory":
+                ai_config["temperature"] = 0.3
+                ai_config["max_tokens"] = 1000
+
+        return ai_config
     
     def get_user_config(self, user_id: str) -> Dict[str, Any]:
-        """获取用户配置（使用storage存储）"""
+        """
+        获取用户配置（使用storage存储）
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            Dict[str, Any]: 用户配置字典
+        """
         key = f"QvQChat.users.{user_id}"
         user_config = self.storage.get(key, {
             "style": "友好",
@@ -238,12 +320,26 @@ class QvQConfig:
         return user_config
 
     def set_user_config(self, user_id: str, config: Dict[str, Any]) -> None:
-        """设置用户配置（使用storage存储）"""
+        """
+        设置用户配置（使用storage存储）
+        
+        Args:
+            user_id: 用户ID
+            config: 用户配置字典
+        """
         key = f"QvQChat.users.{user_id}"
         self.storage.set(key, config)
 
     def get_group_config(self, group_id: str) -> Dict[str, Any]:
-        """获取群配置（使用storage存储）"""
+        """
+        获取群配置（使用storage存储）
+        
+        Args:
+            group_id: 群ID
+            
+        Returns:
+            Dict[str, Any]: 群配置字典
+        """
         key = f"QvQChat.groups.{group_id}"
         group_config = self.storage.get(key, {
             "system_prompt": "",
@@ -254,12 +350,27 @@ class QvQConfig:
         return group_config
 
     def set_group_config(self, group_id: str, config: Dict[str, Any]) -> None:
-        """设置群配置（使用storage存储）"""
+        """
+        设置群配置（使用storage存储）
+        
+        Args:
+            group_id: 群ID
+            config: 群配置字典
+        """
         key = f"QvQChat.groups.{group_id}"
         self.storage.set(key, config)
     
     def get_effective_system_prompt(self, user_id: str, group_id: Optional[str] = None) -> str:
-        """获取有效的系统提示词（群配置优先）"""
+        """
+        获取有效的系统提示词（优先级：群配置 > 用户配置 > 默认配置）
+        
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+            
+        Returns:
+            str: 系统提示词
+        """
         base_prompt = self.get("dialogue.system_prompt", "")
         
         if group_id:
@@ -273,8 +384,17 @@ class QvQConfig:
         
         return base_prompt
     
-    def get_effective_model_config(self, ai_type: str, user_id: str, group_id: Optional[str] = None) -> Dict[str, Any]:
-        """获取有效的模型配置（群配置 > 用户配置 > 默认配置）"""
+    def get_effective_model_config(self, ai_type: str, group_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        获取有效的模型配置（优先级：群配置 > 默认配置）
+        
+        Args:
+            ai_type: AI类型
+            group_id: 群ID（可选）
+            
+        Returns:
+            Dict[str, Any]: 模型配置字典
+        """
         base_config = self.get_ai_config(ai_type).copy()
         
         if group_id:
@@ -283,7 +403,3 @@ class QvQConfig:
             base_config.update(overrides)
         
         return base_config
-    
-    def get_command_prefix(self) -> str:
-        """获取命令前缀"""
-        return self.get("command_prefix", "/qvc")

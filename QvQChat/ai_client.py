@@ -3,7 +3,11 @@ from openai import AsyncOpenAI, APIError, RateLimitError, APITimeoutError
 
 
 class QvQAIClient:
-    """AI客户端封装"""
+    """
+    AI客户端封装
+    
+    封装OpenAI API客户端，提供统一的对话接口。
+    """
 
     def __init__(self, config: Dict[str, Any], logger):
         self.config = config
@@ -12,7 +16,9 @@ class QvQAIClient:
         self._init_client()
 
     def _init_client(self):
-        """初始化OpenAI客户端"""
+        """
+        初始化OpenAI客户端
+        """
         try:
             self.client = AsyncOpenAI(
                 base_url=self.config.get("base_url", "https://api.openai.com/v1"),
@@ -24,7 +30,12 @@ class QvQAIClient:
             self.client = None
 
     def update_config(self, new_config: Dict[str, Any]) -> None:
-        """更新配置"""
+        """
+        更新配置并重新初始化客户端
+        
+        Args:
+            new_config: 新配置字典
+        """
         self.config.update(new_config)
         self._init_client()
 
@@ -35,7 +46,24 @@ class QvQAIClient:
         max_tokens: Optional[int] = None,
         stream: bool = False
     ) -> str:
-        """发送聊天请求"""
+        """
+        发送聊天请求
+        
+        Args:
+            messages: 消息列表
+            temperature: 温度参数（可选）
+            max_tokens: 最大tokens数（可选）
+            stream: 是否流式输出（默认False）
+            
+        Returns:
+            str: AI回复内容
+            
+        Raises:
+            RuntimeError: 客户端未初始化
+            RateLimitError: API速率限制
+            APITimeoutError: 请求超时
+            APIError: API错误
+        """
         if not self.client:
             raise RuntimeError("AI客户端未初始化，请检查API密钥配置")
 
@@ -67,7 +95,12 @@ class QvQAIClient:
             raise
 
     async def test_connection(self) -> bool:
-        """测试连接"""
+        """
+        测试连接
+        
+        Returns:
+            bool: 连接是否成功
+        """
         try:
             response = await self.chat(
                 messages=[{"role": "user", "content": "test"}],
@@ -80,7 +113,12 @@ class QvQAIClient:
 
 
 class QvQAIManager:
-    """多AI管理器"""
+    """
+    多AI管理器
+    
+    管理多个AI客户端，提供统一的调用接口。
+    支持的AI类型：dialogue、memory、query、intent、intent_execution、reply_judge、vision
+    """
     
     def __init__(self, config_manager, logger):
         self.config = config_manager
@@ -89,8 +127,20 @@ class QvQAIManager:
         self._init_ai_clients()
     
     def _init_ai_clients(self):
-        """初始化所有AI客户端"""
-        ai_types = ["dialogue", "memory", "query", "intent", "reply_judge"]
+        """
+        初始化所有AI客户端
+        
+        未配置API密钥的AI会被跳过，其他AI会复用dialogue配置。
+        
+        AI类型说明：
+        - dialogue: 对话AI（必需）
+        - intent: 意图识别AI（必需）
+        - intent_execution: 意图执行AI（必需，替代命令系统）
+        - memory: 记忆提取AI（可选）
+        - reply_judge: 回复判断AI（可选）
+        - vision: 视觉AI（可选）
+        """
+        ai_types = ["dialogue", "memory", "intent", "intent_execution", "reply_judge", "vision"]
         for ai_type in ai_types:
             try:
                 ai_config = self.config.get_ai_config(ai_type)
@@ -102,11 +152,27 @@ class QvQAIManager:
                 self.logger.error(f"初始化{ai_type} AI失败: {e}")
     
     def get_client(self, ai_type: str) -> Optional[QvQAIClient]:
-        """获取指定AI客户端"""
+        """
+        获取指定AI客户端
+        
+        Args:
+            ai_type: AI类型
+            
+        Returns:
+            Optional[QvQAIClient]: AI客户端实例，不存在则返回None
+        """
         return self.ai_clients.get(ai_type)
     
     def reload_client(self, ai_type: str) -> bool:
-        """重新加载指定AI客户端"""
+        """
+        重新加载指定AI客户端
+        
+        Args:
+            ai_type: AI类型
+            
+        Returns:
+            bool: 是否重新加载成功
+        """
         try:
             ai_config = self.config.get_ai_config(ai_type)
             if ai_config.get("api_key"):
@@ -123,35 +189,146 @@ class QvQAIManager:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None
     ) -> str:
-        """对话AI"""
+        """
+        对话AI
+        
+        Args:
+            messages: 消息列表
+            temperature: 温度参数（可选）
+            max_tokens: 最大tokens数（可选）
+            
+        Returns:
+            str: AI回复
+        """
         client = self.get_client("dialogue")
         if not client:
             raise RuntimeError("对话AI未配置")
         return await client.chat(messages, temperature, max_tokens)
     
     async def memory_process(self, prompt: str) -> str:
-        """记忆处理AI"""
+        """
+        记忆处理AI
+        
+        Args:
+            prompt: 提示文本
+            
+        Returns:
+            str: 处理结果
+        """
         client = self.get_client("memory")
         if not client:
             raise RuntimeError("记忆AI未配置")
         return await client.chat([{"role": "user", "content": prompt}], temperature=0.3)
-    
-    async def query(self, prompt: str) -> str:
-        """查询AI"""
-        client = self.get_client("query")
-        if not client:
-            raise RuntimeError("查询AI未配置")
-        return await client.chat([{"role": "user", "content": prompt}], temperature=0.3)
-    
+
     async def identify_intent(self, user_input: str) -> str:
-        """意图识别"""
+        """
+        意图识别
+        
+        Args:
+            user_input: 用户输入
+            
+        Returns:
+            str: 意图类型
+        """
         client = self.get_client("intent")
         if not client:
             return "dialogue"  # 默认为对话
         return await client.chat([{"role": "user", "content": user_input}], temperature=0.1)
 
+    async def execute_intent(
+        self,
+        user_input: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        执行意图（系统操作）
+        
+        使用intent_execution AI智能识别并执行用户的系统操作指令。
+        
+        Args:
+            user_input: 用户输入
+            context: 上下文信息（可选）
+            
+        Returns:
+            str: 执行结果
+        """
+        client = self.get_client("intent_execution")
+        if not client:
+            return "抱歉，意图执行功能未配置。"
+
+        try:
+            # 构建上下文信息
+            context_info = ""
+            if context:
+                parts = []
+                if context.get("user_nickname"):
+                    parts.append(f"用户昵称: {context['user_nickname']}")
+                if context.get("group_name"):
+                    parts.append(f"群名: {context['group_name']}")
+                if context.get("is_group"):
+                    parts.append(f"场景: 群聊")
+                if parts:
+                    context_info = "\n【上下文信息】\n" + "\n".join(parts)
+
+            prompt = f"""用户指令：{user_input}
+{context_info}
+
+请判断用户想要执行什么操作，并返回操作结果。"""
+            result = await client.chat([{"role": "user", "content": prompt}])
+            self.logger.debug(f"意图执行: {result[:100]}...")
+            return result
+        except Exception as e:
+            self.logger.warning(f"意图执行失败: {e}")
+            return "抱歉，执行该操作时出现错误。"
+
+    async def analyze_image(self, image_url: str, user_text: str = "") -> str:
+        """
+        视觉AI分析图片
+        
+        Args:
+            image_url: 图片URL
+            user_text: 用户文本（可选）
+            
+        Returns:
+            str: 图片描述
+        """
+        client = self.get_client("vision")
+        if not client:
+            # 如果没有配置 vision AI，返回空，让系统使用多模态模式
+            return ""
+
+        try:
+            prompt = "请详细描述这张图片的内容，包括图片中的物体、文字、场景、人物表情等。"
+            if user_text:
+                prompt += f"\n\n用户的描述或问题：{user_text}"
+
+            messages = [
+                {"role": "user", "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                ]}
+            ]
+
+            result = await client.chat(messages, temperature=0.3)
+            self.logger.debug(f"视觉AI分析图片成功: {result[:100]}...")
+            return result
+        except Exception as e:
+            self.logger.warning(f"视觉AI分析图片失败: {e}")
+            return ""
+
     async def should_reply(self, recent_messages: List[Dict[str, str]], current_message: str, bot_name: str = "", reply_keywords: List[str] = None) -> bool:
-        """AI判断是否需要回复（普通群友模式）"""
+        """
+        AI判断是否需要回复（普通群友模式）
+        
+        Args:
+            recent_messages: 最近的消息历史
+            current_message: 当前消息
+            bot_name: 机器人名字
+            reply_keywords: 回复关键词列表
+            
+        Returns:
+            bool: 是否应该回复
+        """
         client = self.get_client("reply_judge")
         if not client:
             # 如果没有配置reply_judge，默认不回复（除非匹配关键词）
@@ -174,10 +351,10 @@ class QvQAIManager:
             prompt = f"""你是一个普通群友，正在群聊中参与互动。根据最近的对话历史，判断是否需要回复这条消息。
 
 【角色定位】
-- 你是一个普通群友，不是机器人助手
-- 除非有明显需要回应的情况，否则保持安静
-- 不需要每条消息都回复
-- 回复要自然、随意，像真人一样
+|- 你是一个普通群友，不是机器人助手
+|- 除非有明显需要回应的情况，否则保持安静
+|- 不需要每条消息都回复
+|- 回复要自然、随意，像真人一样
 
 【最近对话历史】
 {context_str}
@@ -214,7 +391,12 @@ class QvQAIManager:
             return False
 
     async def test_all_connections(self) -> Dict[str, bool]:
-        """测试所有AI连接"""
+        """
+        测试所有AI连接
+        
+        Returns:
+            Dict[str, bool]: 各AI连接状态
+        """
         results = {}
         for ai_type, client in self.ai_clients.items():
             results[ai_type] = await client.test_connection()

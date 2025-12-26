@@ -11,7 +11,20 @@ from .handler import QvQHandler
 
 
 class Main:
-    """QvQChat 智能对话模块主类"""
+    """
+    QvQChat 智能对话模块主类
+    
+    核心功能：
+    - 智能对话：使用多AI协作实现自然对话
+    - 记忆系统：自动提取、保存和查询用户记忆
+    - 意图识别：自动识别用户意图并执行相应操作
+    - 窥屏模式：群聊默默观察，适时回复
+    
+    AI自主判断执行：
+    - 不再依赖 /command 格式
+    - 用户直接用自然语言描述操作
+    - AI智能识别并执行系统操作
+    """
 
     def __init__(self):
         self.sdk = sdk
@@ -28,7 +41,7 @@ class Main:
             self.state, self.logger
         )
 
-        # 消息计数器和时间戳
+        # 消息计数器和时间戳（用于窥屏模式）
         self._message_count = {}
         self._last_reply_time = {}
         self._hourly_reply_count = {}  # 每小时回复计数
@@ -46,8 +59,20 @@ class Main:
         self.logger.info("QvQChat 模块已初始化")
     
     def _check_api_config(self) -> None:
-        """检查API配置"""
-        ai_types = ["dialogue", "memory", "query", "intent", "reply_judge"]
+        """
+        检查API配置
+        
+        验证必需的AI配置，给出友好的提示信息。
+        
+        AI说明：
+        - dialogue: 对话AI（必需）
+        - intent: 意图识别AI（必需）
+        - intent_execution: 意图执行AI（必需，替代命令系统）
+        - memory: 记忆提取AI（可选，自动复用dialogue配置）
+        - reply_judge: 回复判断AI（可选，自动复用dialogue配置）
+        - vision: 视觉AI（可选，自动复用dialogue配置）
+        """
+        ai_types = ["dialogue", "memory", "intent", "intent_execution", "reply_judge", "vision"]
         configured_ais = []
         missing_apis = []
 
@@ -68,55 +93,98 @@ class Main:
                 "请在config.toml中配置[QvQChat.dialogue].api_key"
             )
         elif missing_apis:
-            # reply_judge未配置时可以复用dialogue的配置
-            optional_missing = [ai for ai in missing_apis if ai not in ["dialogue", "reply_judge"]]
-            if optional_missing:
-                self.logger.warning(
-                    f"未配置API密钥的AI: {', '.join(optional_missing)}。"
-                    f"请在config.toml中配置[QvQChat.{ai_type}].api_key"
-                )
-            else:
-                    self.logger.info(
-                    "reply_judge将复用dialogue的配置"
-                )
+            # 未配置的AI会复用dialogue配置
+            self.logger.info(
+                f"以下AI将复用dialogue配置: {', '.join(missing_apis)}"
+            )
 
     @staticmethod
     def should_eager_load() -> bool:
+        """
+        是否应该立即加载
+        
+        Returns:
+            bool: True
+        """
         return True
     
     def _register_intent_handlers(self) -> None:
-        """注册意图处理器"""
+        """
+        注册意图处理器
+        
+        将意图类型映射到对应的处理函数。
+        """
+        # 核心意图：普通对话
         self.intent.register_handler("dialogue", self.handler.handle_dialogue)
+
+        # 记忆相关意图（保留为AI自主判断调用）
         self.intent.register_handler("memory_query", self.handler.handle_memory_query)
         self.intent.register_handler("memory_add", self.handler.handle_memory_add)
         self.intent.register_handler("memory_delete", self.handler.handle_memory_delete)
-        self.intent.register_handler("memory_management", self.handler.handle_memory_management)
-        self.intent.register_handler("system_control", self.handler.handle_system_control)
-        self.intent.register_handler("group_config", self.handler.handle_group_config)
-        self.intent.register_handler("prompt_custom", self.handler.handle_prompt_custom)
-        self.intent.register_handler("style_change", self.handler.handle_style_change)
-        self.intent.register_handler("session_clear", self.handler.handle_session_clear)
-        self.intent.register_handler("export", self.handler.handle_export)
-        self.intent.register_handler("help", self.handler.handle_help)
-    
+
+        # 意图执行：替代传统命令系统，由AI自主判断执行
+        self.intent.register_handler("intent_execution", self._handle_intent_execution)
+
     def _register_event_handlers(self) -> None:
-        """注册事件监听器"""
+        """
+        注册事件监听器
+        
+        注册消息事件处理器以响应用户消息。
+        """
         self.sdk.adapter.on("message")(self._handle_message)
         self.logger.info("已注册消息事件处理器")
     
     def _get_session_key(self, user_id: str, group_id: Optional[str] = None) -> str:
-        """获取会话唯一标识"""
+        """
+        获取会话唯一标识
+        
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+            
+        Returns:
+            str: 会话唯一标识
+        """
         if group_id:
             return f"{group_id}:{user_id}"
         return user_id
 
-    async def _should_reply(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
-        """判断是否应该回复（私聊积极回复，群聊窥屏模式）"""
-        import random
+    async def _handle_intent_execution(self, user_id: str, group_id: Optional[str], params: Dict[str, Any], intent_data: Dict[str, Any]) -> str:
+        """
+        处理意图执行（AI自主判断执行系统操作）
+        
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+            params: 参数字典
+            intent_data: 意图数据
+            
+        Returns:
+            str: 执行结果
+        """
+        # 构建上下文信息
+        context_info = {
+            "user_nickname": params.get("context_info", {}).get("user_nickname", ""),
+            "group_name": params.get("context_info", {}).get("group_name", ""),
+            "is_group": bool(group_id)
+        }
 
-        # 命令总是执行
-        if alt_message.startswith("/"):
-            return True
+        return await self.handler.handle_intent_execution(user_id, group_id, params, intent_data, context_info)
+
+    async def _should_reply(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
+        """
+        判断是否应该回复（私聊积极回复，群聊窥屏模式）
+        
+        Args:
+            data: 消息数据
+            alt_message: 消息文本
+            user_id: 用户ID
+            group_id: 群ID（可选）
+            
+        Returns:
+            bool: 是否应该回复
+        """
+        import random
 
         # 私聊场景：不使用窥屏模式，使用AI智能判断
         if not group_id:
@@ -211,7 +279,18 @@ class Main:
         return False
 
     async def _should_reply_ai(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
-        """AI智能判断是否应该回复（兼容旧逻辑）"""
+        """
+        AI智能判断是否应该回复
+        
+        Args:
+            data: 消息数据
+            alt_message: 消息文本
+            user_id: 用户ID
+            group_id: 群ID（可选）
+            
+        Returns:
+            bool: 是否应该回复
+        """
         # 获取最近的会话历史
         session_history = await self.memory.get_session_history(user_id, group_id)
 
@@ -259,7 +338,15 @@ class Main:
         return should_reply
 
     def _extract_images_from_message(self, data: Dict[str, Any]) -> List[str]:
-        """从消息中提取图片URL"""
+        """
+        从消息中提取图片URL
+        
+        Args:
+            data: 消息数据
+            
+        Returns:
+            List[str]: 图片URL列表
+        """
         image_urls = []
         message_segments = data.get("message", [])
         for segment in message_segments:
@@ -272,7 +359,18 @@ class Main:
         return image_urls
 
     async def _handle_message(self, data: Dict[str, Any]) -> None:
-        """处理消息事件"""
+        """
+        处理消息事件
+        
+        这是消息处理的主入口，负责：
+        1. 识别用户意图
+        2. 判断是否需要回复
+        3. 调用相应的处理器
+        4. 发送回复
+        
+        Args:
+            data: 消息数据字典
+        """
         try:
             # 获取消息内容
             alt_message = data.get("alt_message", "").strip()
@@ -314,19 +412,11 @@ class Main:
                 return
 
             # 识别意图
-            intent_data = await self.intent.identify_intent(alt_message, user_id, group_id)
+            intent_data = await self.intent.identify_intent(alt_message)
             self.logger.debug(
                 f"用户 {user_nickname}({user_id}) 意图: {intent_data['intent']} "
                 f"(置信度: {intent_data['confidence']})"
             )
-
-            # 命令总是执行并回复
-            if intent_data["intent"] in ["system_control", "memory_management", "group_config",
-                                         "prompt_custom", "style_change", "session_clear", "export", "help"]:
-                response = await self.intent.handle_intent(intent_data, user_id, group_id)
-                response = self._remove_markdown(response)
-                await self._send_response(data, response, platform)
-                return
 
             # 检查是否需要回复（AI智能判断）
             should_reply = await self._should_reply(data, alt_message, user_id, group_id)
@@ -378,7 +468,15 @@ class Main:
             self.logger.error(f"处理消息时出错: {e}")
 
     def _remove_markdown(self, text: str) -> str:
-        """移除Markdown格式"""
+        """
+        移除Markdown格式
+        
+        Args:
+            text: 原始文本
+            
+        Returns:
+            str: 移除Markdown后的文本
+        """
         import re
         if not text:
             return text
@@ -410,7 +508,14 @@ class Main:
         response: str,
         platform: Optional[str]
     ) -> None:
-        """发送响应消息（支持多条消息）"""
+        """
+        发送响应消息（支持多条消息）
+        
+        Args:
+            data: 消息数据
+            response: 响应内容
+            platform: 平台类型
+        """
         try:
             if not platform:
                 return
@@ -452,7 +557,15 @@ class Main:
             self.logger.error(f"发送响应失败: {e}")
 
     def _parse_multi_messages(self, text: str) -> list:
-        """解析多条消息（带延迟）"""
+        """
+        解析多条消息（带延迟）
+        
+        Args:
+            text: 包含多条消息格式的文本
+            
+        Returns:
+            list: 消息列表，每条消息包含content和delay
+        """
         import re
 
         # 尝试解析多消息格式：消息1\n\n[间隔:3]\n\n消息2
@@ -464,7 +577,6 @@ class Main:
 
         for i in range(1, len(parts), 2):
             if i + 1 < len(parts):
-                delay = int(parts[i])
                 next_msg = parts[i + 1].strip()
 
                 if current_msg:
@@ -482,7 +594,8 @@ class Main:
             # 设置延迟
             for i in range(len(messages)):
                 if i > 0 and i * 2 - 1 < len(parts):
-                    messages[i]["delay"] = int(parts[i * 2 - 1])
+                    delay = int(parts[i * 2 - 1])
+                    messages[i]["delay"] = delay
 
         # 最多返回3条消息
         return messages[:3]
