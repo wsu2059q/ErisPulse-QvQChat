@@ -33,10 +33,10 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
                      │                │             │
                      ▼                ▼             ▼
               ┌──────────┐    ┌────────────┐ ┌──────────┐
-              │QvQMemory│    │ QvQState    │ │          │
-              │(记忆管理) │    │(状态管理)    │ │          │
-              └──────────┘    └────────────┘ │          │
-                     │                        │          │
+              │QvQMemory│    │ QvQState    │ │ QvQUtils│
+              │(记忆管理) │    │(状态管理)    │ │(公共工具)│
+              └──────────┘    └────────────┘ └──────────┘
+                     │
                      └────────────────────────┴──────────┘
                                  ▲
                                  │
@@ -45,17 +45,18 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
 
 ### 设计原则
 
-1. **单一职责**：每个类只负责一个核心功能
+1. **单一职责**：每个类/模块只负责一个核心功能
 2. **依赖注入**：通过构造函数注入依赖，便于测试
 3. **异步优先**：所有IO操作使用async/await
 4. **模块化**：组件间通过接口通信，低耦合
 5. **可扩展性**：易于添加新的AI类型、意图类型和处理器
+6. **DRY原则**：避免代码重复，公共功能抽取到utils模块
 
 ---
 
 ## 核心组件
 
-### 1. QvQChat/Main.py - 主入口
+### 1. QvQChat/Core.py - 主入口
 
 **职责**：
 - 模块初始化和组件注册
@@ -69,6 +70,7 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
 - `_should_reply()`: 判断是否需要回复（私聊积极/群聊窥屏）
 - `_get_session_key()`: 获取会话唯一标识
 - `_get_reply_count_key()`: 获取回复计数器key
+- `_send_response()`: 发送响应消息（支持多条消息延迟发送）
 
 **核心逻辑**：
 - 群聊使用 `group:{group_id}` 作为会话key（共享历史）
@@ -78,7 +80,7 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
 
 **设计亮点**：
 - 支持多消息延迟发送（模拟真人分句打字）
-- 自动Markdown清理（移除加粗、代码等格式）
+- 使用公共工具函数处理 Markdown 清理和消息解析
 - 图片提取和视觉AI集成
 
 ---
@@ -135,10 +137,9 @@ if ai_type == "memory":
 **支持的AI类型**：
 - `dialogue`: 对话AI（必需）
 - `intent`: 意图识别（必需）
-- `intent_execution`: 意图执行（必需，替代命令系统）
-- `memory`: 记忆提取（可选）
-- `reply_judge`: 回复判断（可选）
-- `vision`: 视觉分析（可选）
+- `memory`: 记忆提取（可选，默认复用dialogue）
+- `reply_judge`: 回复判断（可选，默认复用dialogue）
+- `vision`: 视觉分析（可选，默认复用dialogue）
 
 **设计亮点**：
 - 自动重试和错误处理
@@ -158,7 +159,6 @@ if ai_type == "memory":
 - `dialogue`: 普通对话交流（包括询问记忆）
 - `memory_add`: 用户主动要求记住信息（"记住这件事"）
 - `memory_delete`: 用户主动要求删除记忆（"忘记这件事"）
-- `intent_execution`: 系统操作指令（"切换模型"、"修改配置"等）
 
 **关键方法**：
 - `identify_intent()`: 使用AI识别意图
@@ -167,7 +167,7 @@ if ai_type == "memory":
 
 **识别逻辑**：
 1. 调用 `ai_manager.identify_intent(user_input)`
-2. AI返回意图类型（dialogue/memory_add/memory_delete/intent_execution）
+2. AI返回意图类型（dialogue/memory_add/memory_delete）
 3. 从 `intent_handlers` 字典查找处理器
 4. 调用处理器并返回结果
 
@@ -184,15 +184,14 @@ if ai_type == "memory":
 - 实现各种意图的具体处理逻辑
 - 对话处理（记忆自然融入）
 - 记忆智能提取和保存
-- 系统操作执行
 
 **关键方法**：
 - `handle_dialogue()`: 处理普通对话（记忆自然融入）
 - `handle_memory_add()`: 处理添加记忆（用户主动要求）
 - `handle_memory_delete()`: 处理删除记忆
-- `handle_intent_execution()`: 处理系统操作
 - `_extract_and_save_memory()`: 智能提取和保存记忆
 - `_should_remember_dialogue()`: AI判断是否值得记忆
+- `_build_context_prompt()`: 构建上下文提示信息
 
 **记忆融合机制**（handle_dialogue）：
 ```python
@@ -219,7 +218,7 @@ messages.append({"role": "system", "content": memory_text})
 - 记忆自然融入对话，无需显式查询
 - AI自动判断记忆价值（去重、过滤）
 - 支持图片描述合并（视觉AI分析结果）
-- 支持多消息延迟发送
+- 使用公共工具函数处理 Markdown 清理
 
 ---
 
@@ -331,6 +330,40 @@ messages.append({"role": "system", "content": memory_text})
 
 ---
 
+### 8. QvQChat/utils.py - 公共工具
+
+**职责**：
+- 提供跨模块共享的工具函数
+- 统一处理文本格式化和消息解析
+- 避免代码重复，提高可维护性
+
+**公共函数**：
+- `remove_markdown()`: 移除Markdown格式（加粗、代码、标题等）
+- `parse_multi_messages()`: 解析多条消息（带延迟格式）
+
+**remove_markdown() 功能**：
+- 移除粗体 `**text**` 或 `__text__`
+- 移除斜体 `*text*` 或 `_text_`
+- 移除代码 `` `text` `` 和代码块
+- 移除标题 `# heading`
+- 移除列表标记 `-`、`*`、`1.`
+- 移除链接 `[text](url)`
+- 移除多余的空行
+
+**parse_multi_messages() 功能**：
+- 解析格式：`消息1\n\n[间隔:3]\n\n消息2`
+- 返回消息列表，每条消息包含 `content` 和 `delay`
+- 最多返回3条消息
+- 自动设置延迟时间
+
+**设计亮点**：
+- 单一职责原则：工具函数集中管理
+- DRY原则：避免在多个类中重复实现
+- 易于测试和复用
+- 降低维护成本
+
+---
+
 ## 数据流
 
 ### 1. 消息处理流程
@@ -346,10 +379,10 @@ Core._handle_message()
     ├─→ 检查API配置
     │
     ├─→ [并行] intent.identify_intent()
-    │           └─→ 返回意图类型（dialogue/memory_add等）
+    │           └─→ AI识别意图类型（dialogue/memory_add/memory_delete）
     │
     ├─→ [并行] _should_reply()
-    │           └─→ 返回是否需要回复
+    │           └─→ 返回是否需要回复（群聊窥屏/私聊积极）
     │
     ├─→ memory.add_short_term_memory()  # 保存用户消息到会话历史
     │
@@ -376,8 +409,9 @@ Core._handle_message()
                     │   - 场景提示
                     │   - 会话历史[-15:]
                     │
-                    ├─→ [如果有多图] vision AI 分析
+                    ├─→ [如果有多图] vision AI 分析图片
                     ├─→ dialogue AI 生成回复
+                    ├─→ remove_markdown() 清理格式
                     ├─→ memory.add_short_term_memory()  # 保存AI回复
                     ├─→ handler._extract_and_save_memory()  # 智能提取记忆
                     │   └─→ [AI判断是否值得记忆]
@@ -385,6 +419,12 @@ Core._handle_message()
                     │           └─→ 去重保存
                     │
                     └─→ 返回回复
+                        │
+                        ▼
+                    Core._send_response()
+                        │
+                        ├─→ parse_multi_messages() 解析多消息
+                        └─→ 逐条发送（带延迟）
 ```
 
 ### 2. 记忆提取流程
@@ -475,18 +515,11 @@ temperature = 0.3
 max_tokens = 1000
 
 [QvQChat.intent]
-# 意图识别AI（必需）
+# 意图识别AI（可选，默认复用dialogue）
 api_key = ""  # 空则使用dialogue配置
 model = "gpt-3.5-turbo"
 temperature = 0.1
 max_tokens = 500
-
-[QvQChat.intent_execution]
-# 意图执行AI（必需，替代命令）
-api_key = ""  # 空则使用dialogue配置
-model = "gpt-3.5-turbo"
-temperature = 0.3
-max_tokens = 1000
 
 [QvQChat.vision]
 # 视觉AI（可选）
@@ -694,9 +727,8 @@ preferences = {}
 ### 性能优化
 
 1. **AI 调用优化**
-   - 使用并行调用（asyncio.gather）
-   - 缓存 AI 响应（如合适）
-   - 设置合理的 timeout
+   - 使用并行调用（asyncio.gather）加速意图识别和回复判断
+   - 设置合理的 timeout 避免长时间等待
 
 2. **存储优化**
    - 定期清理过期数据
