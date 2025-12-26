@@ -8,11 +8,12 @@ class QvQCommands:
     负责注册和处理 QvQChat 的所有命令。
     """
 
-    def __init__(self, sdk, memory, config, logger):
+    def __init__(self, sdk, memory, config, logger, main=None):
         self.sdk = sdk
         self.memory = memory
         self.config = config
         self.logger = logger.get_child("QvQCommands")
+        self.main = main  # 保存 Main 实例引用
 
     def register_all(self) -> None:
         """注册所有命令"""
@@ -161,6 +162,71 @@ class QvQCommands:
             result_parts.append(f"- 会话历史：{len(history)}条")
 
             await self._send_reply(event, "\n".join(result_parts))
+
+        # ==================== 活跃模式 ====================
+
+        @command("活跃模式", aliases=["开启活跃", "活跃起来", "取消窥屏"], help="启用活跃模式（格式：活跃模式 10）")
+        async def active_mode_cmd(event):
+            """启用活跃模式"""
+            if not self.main:
+                await self._send_reply(event, "功能不可用")
+                return
+
+            user_id = str(event.get("user_id"))
+            group_id = str(event.get("group_id")) if event.get("detail_type") == "group" else None
+
+            # 获取持续时间参数
+            args = event.get("args", [])
+            duration = 10  # 默认10分钟
+
+            if args:
+                try:
+                    duration = int(args[0])
+                    if duration < 1 or duration > 120:
+                        await self._send_reply(event, "持续时间请在 1-120 分钟之间~")
+                        return
+                except ValueError:
+                    await self._send_reply(event, "请输入有效的分钟数，例如：/活跃模式 10")
+                    return
+
+            result = self.main.enable_active_mode(user_id, duration, group_id)
+            await self._send_reply(event, result)
+
+        @command("关闭活跃", aliases=["结束活跃", "恢复窥屏"], help="关闭活跃模式")
+        async def disable_active_mode_cmd(event):
+            """关闭活跃模式"""
+            if not self.main:
+                await self._send_reply(event, "功能不可用")
+                return
+
+            user_id = str(event.get("user_id"))
+            group_id = str(event.get("group_id")) if event.get("detail_type") == "group" else None
+
+            result = self.main.disable_active_mode(user_id, group_id)
+            await self._send_reply(event, result)
+
+        @command("活跃状态", aliases=["当前模式", "是否活跃"], help="查看当前模式状态")
+        async def active_status_cmd(event):
+            """查看活跃模式状态"""
+            if not self.main:
+                await self._send_reply(event, "功能不可用")
+                return
+
+            user_id = str(event.get("user_id"))
+            group_id = str(event.get("group_id")) if event.get("detail_type") == "group" else None
+
+            result = self.main.get_active_mode_status(user_id, group_id)
+            await self._send_reply(event, result)
+
+        @command("活跃列表", aliases=["查看活跃", "谁在活跃"], help="查看所有处于活跃模式的会话")
+        async def active_list_cmd(event):
+            """查看所有活跃模式的会话"""
+            if not self.main:
+                await self._send_reply(event, "功能不可用")
+                return
+
+            result = self.main.get_all_active_modes()
+            await self._send_reply(event, result)
 
         self.logger.info("已注册所有 QvQChat 命令")
 

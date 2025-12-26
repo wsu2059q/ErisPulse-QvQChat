@@ -43,7 +43,7 @@ class Main:
             self.config, self.memory, self.ai_manager,
             self.state, self.logger
         )
-        self.commands = QvQCommands(self.sdk, self.memory, self.config, self.logger)
+        self.commands = QvQCommands(self.sdk, self.memory, self.config, self.logger, self)
 
         # 消息计数器和时间戳（用于窥屏模式）
         self._message_count = {}
@@ -55,6 +55,10 @@ class Main:
         # key: 会话标识, value: {"image_urls": List[str], "timestamp": float}
         self._image_cache = {}
         self._IMAGE_CACHE_EXPIRE = 60  # 图片缓存过期时间（秒）
+
+        # 活跃模式（临时关闭窥屏模式）
+        # key: 会话标识, value: {"end_time": float, "duration_minutes": int}
+        self._active_mode = {}
 
         # 检查API配置
         self._check_api_config()
@@ -221,16 +225,137 @@ class Main:
         }
         self.logger.debug(f"已缓存 {len(image_urls)} 张图片，过期时间 {self._IMAGE_CACHE_EXPIRE} 秒")
 
+    def enable_active_mode(self, user_id: str, duration_minutes: int = 10, group_id: Optional[str] = None) -> str:
+        """
+        启用活跃模式（临时关闭窥屏模式，积极参与聊天）
+
+        Args:
+            user_id: 用户ID
+            duration_minutes: 持续时间（分钟），默认10分钟
+            group_id: 群ID（可选）
+
+        Returns:
+            str: 状态消息
+        """
+        session_key = self._get_reply_count_key(user_id, group_id)
+        end_time = time.time() + duration_minutes * 60
+
+        self._active_mode[session_key] = {
+            "end_time": end_time,
+            "duration_minutes": duration_minutes
+        }
+
+        # 构建会话描述
+        if group_id:
+            session_desc = f"群聊 {group_id}"
+        else:
+            session_desc = f"私聊 {user_id}"
+
+        self.logger.info(f"✓ {session_desc} 已启用活跃模式，持续 {duration_minutes} 分钟")
+        return f"活跃模式已启用！我会积极参与聊天，{duration_minutes}分钟后自动切回窥屏模式~"
+
+    def disable_active_mode(self, user_id: str, group_id: Optional[str] = None) -> str:
+        """
+        手动关闭活跃模式
+
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            str: 状态消息
+        """
+        session_key = self._get_reply_count_key(user_id, group_id)
+
+        if session_key in self._active_mode:
+            del self._active_mode[session_key]
+
+            # 构建会话描述
+            if group_id:
+                session_desc = f"群聊 {group_id}"
+            else:
+                session_desc = f"私聊 {user_id}"
+
+            self.logger.info(f"✓ {session_desc} 已手动关闭活跃模式，切换回窥屏模式")
+            return "活跃模式已关闭，切换回窥屏模式~"
+        else:
+            return "当前没有启用活跃模式哦"
+
+    def get_active_mode_status(self, user_id: str, group_id: Optional[str] = None) -> str:
+        """
+        获取活跃模式状态
+
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            str: 状态消息
+        """
+        session_key = self._get_reply_count_key(user_id, group_id)
+        active_mode_data = self._active_mode.get(session_key)
+
+        if active_mode_data:
+            current_time = time.time()
+            remaining_seconds = int(active_mode_data["end_time"] - current_time)
+
+            if remaining_seconds > 0:
+                remaining_minutes = remaining_seconds // 60
+                remaining_seconds = remaining_seconds % 60
+                return f"活跃模式生效中~ 还剩 {remaining_minutes}分{remaining_seconds}秒"
+            else:
+                # 已过期，清除缓存
+                del self._active_mode[session_key]
+                return "活跃模式已结束，当前是窥屏模式"
+
+        return "当前是窥屏模式，使用 /活跃模式 命令可以临时切换到活跃模式"
+
+    def get_all_active_modes(self) -> str:
+        """
+        获取所有处于活跃模式的会话
+
+        Returns:
+            str: 所有活跃会话的状态信息
+        """
+        if not self._active_mode:
+            return "当前没有会话处于活跃模式~"
+
+        current_time = time.time()
+        active_sessions = []
+
+        for session_key, data in self._active_mode.items():
+            remaining_seconds = int(data["end_time"] - current_time)
+
+            if remaining_seconds > 0:
+                # 解析会话key
+                if session_key.startswith("group:"):
+                    group_id = session_key[6:]  # 去掉 "group:" 前缀
+                    desc = f"群聊 {group_id}"
+                else:
+                    user_id = session_key[5:] if session_key.startswith("user:") else session_key
+                    desc = f"私聊 {user_id}"
+
+                remaining_minutes = remaining_seconds // 60
+                remaining_seconds = remaining_seconds % 60
+                active_sessions.append(f"• {desc} - 剩余 {remaining_minutes}分{remaining_seconds}秒")
+
+        if not active_sessions:
+            return "当前没有会话处于活跃模式~"
+
+        result = "【活跃模式会话列表】\n" + "\n".join(active_sessions)
+        self.logger.info(f"查询活跃模式，共 {len(active_sessions)} 个会话处于活跃状态")
+        return result
+
     async def _should_reply(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
         """
         判断是否应该回复（私聊积极回复，群聊窥屏模式）
-        
+
         Args:
             data: 消息数据
             alt_message: 消息文本
             user_id: 用户ID
             group_id: 群ID（可选）
-            
+
         Returns:
             bool: 是否应该回复
         """
@@ -239,6 +364,36 @@ class Main:
         # 私聊场景：不使用窥屏模式，使用AI智能判断
         if not group_id:
             return await self._should_reply_ai(data, alt_message, user_id, group_id)
+
+        # 检查是否处于活跃模式
+        session_key = self._get_reply_count_key(user_id, group_id)
+        active_mode_data = self._active_mode.get(session_key)
+
+        if active_mode_data:
+            current_time = time.time()
+            if current_time < active_mode_data["end_time"]:
+                # 活跃模式生效中，使用AI判断（积极参与聊天）
+                remaining_minutes = int((active_mode_data["end_time"] - current_time) / 60)
+
+                # 构建会话描述
+                if group_id:
+                    session_desc = f"群聊 {group_id}"
+                else:
+                    session_desc = f"私聊 {user_id}"
+
+                self.logger.debug(f"活跃模式生效中 [{session_desc}]，剩余 {remaining_minutes} 分钟")
+                return await self._should_reply_ai(data, alt_message, user_id, group_id)
+            else:
+                # 活跃模式已过期，清除缓存
+                del self._active_mode[session_key]
+
+                # 构建会话描述
+                if group_id:
+                    session_desc = f"群聊 {group_id}"
+                else:
+                    session_desc = f"私聊 {user_id}"
+
+                self.logger.info(f"✓ {session_desc} 活跃模式已结束，自动切换回窥屏模式")
 
         # 群聊场景：检查窥屏模式是否启用
         stalker_config = self.config.get("stalker_mode", {})
