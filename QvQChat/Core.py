@@ -631,16 +631,11 @@ class Main:
             )
 
             # 累积消息到短期记忆（无论是否回复）
-            await self.memory.add_short_term_memory(user_id, "user", alt_message, group_id)
+            await self.memory.add_short_term_memory(user_id, "user", alt_message, group_id, user_nickname)
 
-            # 获取会话历史（包含刚添加的用户消息）
-            session_history = await self.memory.get_session_history(user_id, group_id)
-
-            # 窥屏模式下，即使不回复也要提取和保存重要记忆
+            # 窥屏模式下，不回复时直接返回
             if not should_reply and (group_id and self.config.get("stalker_mode", {}).get("enabled", True)):
-                # 不回复时，基于对话历史提取记忆（没有 AI 回复）
-                await self.handler.extract_and_save_memory(user_id, session_history, "", group_id)
-                self.logger.debug("AI判断不需要回复，但已保存记忆")
+                self.logger.debug("AI判断不需要回复")
                 return
 
             # 准备回复时，获取缓存的图片（包括本次消息的图片和之前缓存的图片）

@@ -61,24 +61,23 @@ class QvQHandler:
         elif system_prompt:
             messages.append({"role": "system", "content": system_prompt})
 
-        # 直接获取用户的长时记忆作为上下文（不进行搜索，让AI自己判断）
-        user_memory = await self.memory.get_user_memory(user_id)
-        long_term_memories = user_memory.get("long_term", [])
+        # 准备记忆上下文（在对话之前总结之前的会话历史）
+        memory_context = await self._prepare_memory_context(user_id, session_history, group_id)
+        if memory_context:
+            messages.append({"role": "system", "content": memory_context})
 
-        if long_term_memories:
-            # 将用户的长时记忆作为上下文传递给AI
-            memory_list = [mem["content"] for mem in long_term_memories[-10:]]  # 最近10条
-            memory_text = "【用户长期记忆】\n" + "\n".join([f"- {mem}" for mem in memory_list])
-            messages.append({"role": "system", "content": memory_text})
-        else:
-            # 没有记忆时提示AI
-            messages.append({"role": "system", "content": "当前还没有关于这个用户的长期记忆。随着对话的进行，会自动记住重要信息。"})
-
-        # 添加当前上下文提示
+        # 添加当前上下文提示（包含用户昵称）
+        user_nickname = context_info.get("user_nickname", "")
         if group_id:
-            messages.append({"role": "system", "content": "当前是群聊场景，你是一个普通群友，像真人一样自然参与对话，不需要每条消息都回复。"})
+            scene_prompt = "当前是群聊场景，你是一个普通群友，像真人一样自然参与对话，不需要每条消息都回复。"
+            if user_nickname:
+                scene_prompt += f" 对方的名字是「{user_nickname}」，回复时可以自然地称呼对方。"
+            messages.append({"role": "system", "content": scene_prompt})
         else:
-            messages.append({"role": "system", "content": "当前是私聊场景，你是一个普通群友，可以更自由地表达，但也要保持自然。"})
+            scene_prompt = "当前是私聊场景，你是一个普通群友，可以更自由地表达，但也要保持自然。"
+            if user_nickname:
+                scene_prompt += f" 对方的名字是「{user_nickname}」，回复时可以自然地称呼对方。"
+            messages.append({"role": "system", "content": scene_prompt})
 
         # 使用历史消息（包含刚添加的用户消息，使用更多历史）
         messages.extend(session_history[-15:])
@@ -151,12 +150,6 @@ class QvQHandler:
             # 保存AI回复到会话历史（用户消息已在Core.py中添加）
             await self.memory.add_short_term_memory(user_id, "assistant", response, group_id)
 
-            # 重新获取会话历史（包含刚保存的 AI 回复）
-            updated_session_history = await self.memory.get_session_history(user_id, group_id)
-
-            # 自动提取重要信息到长期记忆（让记忆系统真正起作用）
-            await self._extract_and_save_memory(user_id, updated_session_history, response, group_id)
-
             # 更新状态
             await self.state.increment_interaction(user_id, group_id)
 
@@ -204,7 +197,6 @@ class QvQHandler:
                         response = await self.ai_manager.dialogue(no_image_messages)
                         response = self._remove_markdown(response)
                         await self.memory.add_short_term_memory(user_id, "assistant", response, group_id)
-                        await self._extract_and_save_memory(user_id, session_history, response, group_id)
                         await self.state.increment_interaction(user_id, group_id)
                         return response
                     except Exception as retry_error:
@@ -213,7 +205,186 @@ class QvQHandler:
                 else:
                     self.logger.info("用户只发送了图片且模型不支持视觉，跳过回复")
                     return None
-            return "抱歉，我现在无法回复。请稍后再试。"
+
+        return "抱歉，我现在无法回复。请稍后再试。"
+
+    async def _prepare_memory_context(self, user_id: str, session_history: List[Dict[str, str]], group_id: Optional[str] = None) -> str:
+        """
+        准备记忆上下文（在对话之前总结之前的会话历史和长期记忆）
+
+        Args:
+            user_id: 用户ID
+            session_history: 会话历史
+            group_id: 群ID（可选）
+
+        Returns:
+            str: 记忆上下文文本
+        """
+        # 获取长期记忆
+        user_memory = await self.memory.get_user_memory(user_id)
+        long_term_memories = user_memory.get("long_term", [])
+
+        if not long_term_memories and not session_history:
+            return ""
+
+        # 获取记忆AI客户端
+        memory_client = self.ai_manager.get_client("memory")
+        if not memory_client:
+            # 如果没有记忆AI，简单返回长期记忆
+            if long_term_memories:
+                memory_list = [mem["content"] for mem in long_term_memories[-10:]]
+                return "【用户长期记忆】\n" + "\n".join([f"- {mem}" for mem in memory_list])
+            return ""
+
+        try:
+            # 构建会话历史文本（最近15条）
+            recent_history = session_history[-15:] if len(session_history) > 15 else session_history
+            history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in recent_history])
+
+            # 构建长期记忆文本
+            if long_term_memories:
+                memory_list = [mem["content"] for mem in long_term_memories[-10:]]
+                existing_memory_text = "\n".join([f"- {mem}" for mem in memory_list])
+            else:
+                existing_memory_text = "（暂无长期记忆）"
+
+            prompt = f"""你是一个智能记忆助手，负责总结和提取对话中的重要信息。
+
+【长期记忆（已保存）】
+{existing_memory_text}
+
+【最近对话历史】
+{history_text}
+
+【任务】
+1. 从对话历史中提取值得记住的重要信息
+2. 判断是否需要更新长期记忆
+3. 将重要信息按类别组织：喜好、习惯、信息、关系、状态、计划、其他
+
+【提取标准】（作为朋友，你会记住什么）：
+1. 对方的个人信息：生日、重要日期、工作、学校
+2. 对方的喜好：爱吃的、不爱吃的、兴趣爱好
+3. 对方的习惯：作息时间、运动习惯、特殊习惯
+4. 对方的重要关系：家人、伴侣、好朋友
+5. 对方最近的状态：生病、忙碌、考试、搬家
+6. 对方的目标和计划：要考试、要旅行、要找工作
+
+【你不会记住的】：
+1. 日常闲聊："在吗"、"大家好"、"哈哈哈"
+2. 简单回应："好的"、"嗯"、"收到"、"知道了"
+3. 表情包、纯表情消息
+4. 一次性话题："今天天气不错"、"这菜不错"
+5. 纯粹吐槽、发泄（无具体信息）
+6. 已经说过很多次的事情
+
+【输出格式】：
+如果没有新的重要信息，只返回"无"。
+如果有新的重要信息，按以下格式输出：
+【需要新增的记忆】
+- <类型>：<内容>
+
+【需要更新的记忆】
+- <类型>：<内容>
+
+注意：只输出对话历史中新增或需要更新的信息，不要重复已有的长期记忆。"""
+
+            result = await memory_client.chat(
+                [{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=800
+            )
+
+            result = result.strip()
+
+            # 如果有新的记忆，保存到长期记忆
+            if result and result.lower() != "无":
+                await self._save_summarized_memories(user_id, result, group_id)
+
+            # 构建记忆上下文（长期记忆）
+            if long_term_memories:
+                memory_list = [mem["content"] for mem in long_term_memories[-10:]]
+                memory_text = "【用户长期记忆】\n" + "\n".join([f"- {mem}" for mem in memory_list])
+                return memory_text
+            else:
+                return ""
+
+        except Exception as e:
+            self.logger.warning(f"准备记忆上下文失败: {e}")
+            # 降级：直接返回长期记忆
+            if long_term_memories:
+                memory_list = [mem["content"] for mem in long_term_memories[-10:]]
+                return "【用户长期记忆】\n" + "\n".join([f"- {mem}" for mem in memory_list])
+            return ""
+
+    async def _save_summarized_memories(self, user_id: str, summarized_text: str, group_id: Optional[str] = None) -> None:
+        """
+        保存总结后的记忆
+
+        Args:
+            user_id: 用户ID
+            summarized_text: 总结后的记忆文本
+            group_id: 群ID（可选）
+        """
+        if not summarized_text or summarized_text.lower() == "无":
+            return
+
+        # 解析总结后的记忆
+        lines = summarized_text.split('\n')
+        new_memories = []
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith('-') and '：' in line:
+                new_memories.append(line[1:].strip())
+
+        if not new_memories:
+            return
+
+        # 保存到用户长期记忆
+        user_memory = await self.memory.get_user_memory(user_id)
+        existing_user_memories = [mem['content'].lower() for mem in user_memory.get('long_term', [])]
+
+        saved_count = 0
+        for memory in new_memories:
+            # 去重：检查是否已存在相似记忆
+            is_duplicate = False
+            for existing in existing_user_memories:
+                if memory.lower() in existing or existing in memory.lower():
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                await self.memory.add_long_term_memory(user_id, memory, tags=["auto"])
+                saved_count += 1
+
+        if saved_count > 0:
+            self.logger.info(f"本次对话总结保存 {saved_count} 条用户长期记忆")
+
+        # 如果是群聊，根据记忆模式决定是否保存到群记忆
+        if group_id:
+            group_config = self.config.get_group_config(group_id)
+            memory_mode = group_config.get('memory_mode', 'mixed')
+
+            # 混合模式或 sender_only 模式都保存群记忆
+            if memory_mode in ['mixed', 'sender_only']:
+                group_memory = await self.memory.get_group_memory(group_id)
+                sender_memory = group_memory.get("sender_memory", {}).get(user_id, [])
+                existing_group_memories = [mem['content'].lower() for mem in sender_memory]
+
+                group_saved_count = 0
+                for memory in new_memories:
+                    is_duplicate = False
+                    for existing in existing_group_memories:
+                        if memory.lower() in existing or existing in memory.lower():
+                            is_duplicate = True
+                            break
+
+                    if not is_duplicate:
+                        await self.memory.add_group_memory(group_id, user_id, memory)
+                        group_saved_count += 1
+
+                if group_saved_count > 0:
+                    self.logger.info(f"本次对话总结保存 {group_saved_count} 条群记忆")
 
     async def extract_and_save_memory(self, user_id: str, session_history: List[Dict[str, str]], response: str, group_id: Optional[str] = None) -> None:
         """

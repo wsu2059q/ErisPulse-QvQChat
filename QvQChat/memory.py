@@ -137,7 +137,8 @@ class QvQMemory:
         user_id: str,
         role: str,
         content: str,
-        group_id: Optional[str] = None
+        group_id: Optional[str] = None,
+        user_nickname: Optional[str] = None
     ) -> None:
         """
         添加短期记忆（会话历史）
@@ -147,6 +148,7 @@ class QvQMemory:
             role: 角色（user/assistant）
             content: 内容
             group_id: 群ID（可选）
+            user_nickname: 用户昵称（可选）
         """
         # 群聊使用group_id作为key（所有用户共享会话历史），私聊使用user_id
         memory_key = self._get_session_key(user_id if not group_id else f"group:{group_id}")
@@ -154,7 +156,9 @@ class QvQMemory:
 
         # 对于群聊，在消息中添加发送者信息以区分不同用户
         if group_id and role == "user":
-            content = f"[{user_id}]: {content}"
+            # 优先使用昵称，如果没有则使用ID
+            sender = user_nickname if user_nickname else user_id
+            content = f"[{sender}]: {content}"
 
         session.append({
             "role": role,
