@@ -51,6 +51,11 @@ class Main:
         self._hourly_reply_count = {}  # 每小时回复计数
         self._last_hour_reset = {}  # 每个会话的上次重置时间
 
+        # 图片缓存（用于处理图片和文本分开发送的情况）
+        # key: 会话标识, value: {"image_urls": List[str], "timestamp": float}
+        self._image_cache = {}
+        self._IMAGE_CACHE_EXPIRE = 60  # 图片缓存过期时间（秒）
+
         # 检查API配置
         self._check_api_config()
 
@@ -170,6 +175,51 @@ class Main:
             return f"group:{group_id}"
         # 私聊：使用用户ID
         return f"user:{user_id}"
+
+    def _get_cached_images(self, user_id: str, group_id: Optional[str] = None) -> List[str]:
+        """
+        获取会话缓存的图片URL（自动清理过期缓存）
+
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            List[str]: 图片URL列表
+        """
+        session_key = self._get_reply_count_key(user_id, group_id)
+        current_time = time.time()
+
+        # 清理过期的缓存
+        self._image_cache = {
+            k: v for k, v in self._image_cache.items()
+            if current_time - v["timestamp"] < self._IMAGE_CACHE_EXPIRE
+        }
+
+        # 获取当前会话的图片
+        cached_data = self._image_cache.get(session_key)
+        if cached_data:
+            return cached_data["image_urls"]
+        return []
+
+    def _cache_images(self, user_id: str, image_urls: List[str], group_id: Optional[str] = None) -> None:
+        """
+        缓存图片URL
+
+        Args:
+            user_id: 用户ID
+            image_urls: 图片URL列表
+            group_id: 群ID（可选）
+        """
+        if not image_urls:
+            return
+
+        session_key = self._get_reply_count_key(user_id, group_id)
+        self._image_cache[session_key] = {
+            "image_urls": image_urls,
+            "timestamp": time.time()
+        }
+        self.logger.debug(f"已缓存 {len(image_urls)} 张图片，过期时间 {self._IMAGE_CACHE_EXPIRE} 秒")
 
     async def _should_reply(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
         """
@@ -361,13 +411,13 @@ class Main:
     async def _handle_message(self, data: Dict[str, Any]) -> None:
         """
         处理消息事件
-        
+
         这是消息处理的主入口，负责：
         1. 识别用户意图
         2. 判断是否需要回复
         3. 调用相应的处理器
         4. 发送回复
-        
+
         Args:
             data: 消息数据字典
         """
@@ -378,19 +428,23 @@ class Main:
             # 检查是否包含图片
             image_urls = self._extract_images_from_message(data)
 
-            # 如果只有图片没有文字，使用默认文字
-            if not alt_message and image_urls:
-                alt_message = "[图片]"
-
-            if not alt_message:
-                return
-
             # 获取会话信息
             detail_type = data.get("detail_type", "private")
             user_id = str(data.get("user_id", ""))
             group_id = str(data.get("group_id", "")) if detail_type == "group" else None
 
             if not user_id:
+                return
+
+            # 如果有图片，缓存起来（等待可能的文本消息）
+            if image_urls:
+                self._cache_images(user_id, image_urls, group_id)
+
+            # 如果只有图片没有文字，使用默认文字
+            if not alt_message and image_urls:
+                alt_message = "[图片]"
+
+            if not alt_message:
                 return
 
             # 获取平台信息
@@ -434,6 +488,10 @@ class Main:
                 self.logger.debug("AI判断不需要回复，但已保存记忆")
                 return
 
+            # 准备回复时，获取缓存的图片（包括本次消息的图片和之前缓存的图片）
+            cached_image_urls = self._get_cached_images(user_id, group_id)
+            all_image_urls = list(set(image_urls + cached_image_urls))  # 去重
+
             # 构建上下文信息
             context_info = {
                 "user_nickname": user_nickname,
@@ -446,7 +504,7 @@ class Main:
             }
 
             # 处理意图并回复（传递图片URL和上下文信息）
-            intent_data["params"]["image_urls"] = image_urls
+            intent_data["params"]["image_urls"] = all_image_urls
             intent_data["params"]["context_info"] = context_info
             response = await self.intent.handle_intent(intent_data, user_id, group_id)
 
@@ -463,6 +521,11 @@ class Main:
             # 记录回复时间
             session_key = self._get_reply_count_key(user_id, group_id)
             self._last_reply_time[session_key] = time.time()
+
+            # 清除已使用的图片缓存
+            if session_key in self._image_cache:
+                del self._image_cache[session_key]
+                self.logger.debug("已清除已使用的图片缓存")
 
         except Exception as e:
             self.logger.error(f"处理消息时出错: {e}")
