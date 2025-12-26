@@ -1,4 +1,3 @@
-import asyncio
 from typing import Dict, List, Any, Optional
 from openai import AsyncOpenAI, APIError, RateLimitError, APITimeoutError
 
@@ -91,7 +90,7 @@ class QvQAIManager:
     
     def _init_ai_clients(self):
         """初始化所有AI客户端"""
-        ai_types = ["dialogue", "memory", "query", "intent", "vision", "reply_judge"]
+        ai_types = ["dialogue", "memory", "query", "intent", "reply_judge"]
         for ai_type in ai_types:
             try:
                 ai_config = self.config.get_ai_config(ai_type)
@@ -151,61 +150,68 @@ class QvQAIManager:
             return "dialogue"  # 默认为对话
         return await client.chat([{"role": "user", "content": user_input}], temperature=0.1)
 
-    async def describe_image(self, image_url: str, prompt: str = "简要描述这张图片") -> str:
-        """图片描述（视觉AI）"""
-        client = self.get_client("vision")
-        if not client:
-            raise RuntimeError("视觉AI未配置")
-        messages = [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": image_url}}
-            ]
-        }]
-        return await client.chat(messages, temperature=0.3, max_tokens=300)
-
-    async def should_reply(self, recent_messages: List[Dict[str, str]], current_message: str, bot_name: str = "") -> bool:
-        """智能判断是否需要回复"""
+    async def should_reply(self, recent_messages: List[Dict[str, str]], current_message: str, bot_name: str = "", reply_keywords: List[str] = None) -> bool:
+        """AI判断是否需要回复（普通群友模式）"""
         client = self.get_client("reply_judge")
         if not client:
-            # 如果没有配置reply_judge，使用简单判断
-            # 问题、@、请求、情绪强烈
-            question_indicators = ["吗", "呢", "？", "?", "吗？", "？", "怎么", "什么", "为什么"]
-            for indicator in question_indicators:
-                if indicator in current_message:
-                    return True
-            # 简短回应不回复
-            if len(current_message) < 3:
-                return False
-            # 随机回复
-            import random
-            return random.random() < 0.3
+            # 如果没有配置reply_judge，默认不回复（除非匹配关键词）
+            if reply_keywords:
+                for keyword in reply_keywords:
+                    if keyword in current_message:
+                        return True
+            return False
 
         try:
             # 构建对话上下文
             context = []
-            for msg in recent_messages[-5:]:  # 最近5条消息
+            for msg in recent_messages[-8:]:  # 最近8条消息
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
                 context.append(f"{role}: {content}")
 
             context_str = "\n".join(context)
 
-            prompt = f"""以下是最近的对话历史：
+            prompt = f"""你是一个普通群友，正在群聊中参与互动。根据最近的对话历史，判断是否需要回复这条消息。
+
+【角色定位】
+- 你是一个普通群友，不是机器人助手
+- 除非有明显需要回应的情况，否则保持安静
+- 不需要每条消息都回复
+- 回复要自然、随意，像真人一样
+
+【最近对话历史】
 {context_str}
 
-用户的最新消息：{current_message}
-机器人名字：{bot_name}
+【用户最新消息】
+{current_message}
+{f"【有人提到了你（{bot_name}）】" if bot_name and bot_name in current_message else ""}
 
-判断是否需要AI回复（true/false）："""
+【回复判断标准】（满足以下条件才回复）：
+1. 用户在向你提问（直接或间接）
+2. 用户提到你的名字，需要回应
+3. 对话正在讨论你感兴趣或了解的话题
+4. 适当的幽默回应可以活跃气氛
+5. 之前提到的事情有更新或结论
 
-            result = await client.chat([{"role": "user", "content": prompt}], temperature=0.1, max_tokens=10)
-            return "true" in result.lower()
+【不回复的情况】：
+1. 普通打招呼（"在吗"、"大家好"）
+2. 表情符号、纯表情回复
+3. 简单的"好的"、"嗯"、"收到"
+4. 与你无关的话题讨论
+5. 连续短时间内多次回复会显得不自然
+
+【输出格式】
+只回答"回复"或"不回复"，不要解释。
+
+是否需要回复："""
+
+            result = await client.chat([{"role": "user", "content": prompt}], temperature=0.2, max_tokens=10)
+            should = "回复" in result
+            self.logger.debug(f"AI回复判断: {should} (判断结果: {result.strip()})")
+            return should
         except Exception as e:
             self.logger.warning(f"回复判断失败: {e}，使用默认判断")
-            # 默认策略：有问号或超过5字就回复
-            return "？" in current_message or "?" in current_message or len(current_message) >= 5
+            return False
 
     async def test_all_connections(self) -> Dict[str, bool]:
         """测试所有AI连接"""

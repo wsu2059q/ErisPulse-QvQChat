@@ -1,5 +1,3 @@
-import asyncio
-import random
 import time
 from typing import Dict, List, Optional, Any
 from ErisPulse import sdk
@@ -47,7 +45,7 @@ class Main:
     
     def _check_api_config(self) -> None:
         """检查API配置"""
-        ai_types = ["dialogue", "memory", "query", "intent", "vision", "reply_judge"]
+        ai_types = ["dialogue", "memory", "query", "intent", "reply_judge"]
         configured_ais = []
         missing_apis = []
 
@@ -68,18 +66,18 @@ class Main:
                 "请在config.toml中配置[QvQChat.dialogue].api_key"
             )
         elif missing_apis:
-            # vision和reply_judge未配置时可以复用dialogue的配置
-            optional_missing = [ai for ai in missing_apis if ai not in ["dialogue", "vision", "reply_judge"]]
+            # reply_judge未配置时可以复用dialogue的配置
+            optional_missing = [ai for ai in missing_apis if ai not in ["dialogue", "reply_judge"]]
             if optional_missing:
                 self.logger.warning(
                     f"未配置API密钥的AI: {', '.join(optional_missing)}。"
                     f"请在config.toml中配置[QvQChat.{ai_type}].api_key"
                 )
             else:
-                self.logger.info(
-                    "vision和reply_judge将复用dialogue的配置"
+                    self.logger.info(
+                    "reply_judge将复用dialogue的配置"
                 )
-    
+
     @staticmethod
     def should_eager_load() -> bool:
         return True
@@ -89,6 +87,7 @@ class Main:
         self.intent.register_handler("dialogue", self.handler.handle_dialogue)
         self.intent.register_handler("memory_query", self.handler.handle_memory_query)
         self.intent.register_handler("memory_add", self.handler.handle_memory_add)
+        self.intent.register_handler("memory_delete", self.handler.handle_memory_delete)
         self.intent.register_handler("memory_management", self.handler.handle_memory_management)
         self.intent.register_handler("system_control", self.handler.handle_system_control)
         self.intent.register_handler("group_config", self.handler.handle_group_config)
@@ -110,54 +109,52 @@ class Main:
         return user_id
 
     async def _should_reply(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
-        """智能判断是否应该回复"""
-        strategy = self.config.get("reply_strategy", {})
-
-        # 命令总是回复
-        if strategy.get("ignore_commands", True) and alt_message.startswith("/"):
+        """AI智能判断是否应该回复（完全由AI决策）"""
+        # 命令总是执行（但不是必须回复，除非是查询类命令）
+        if alt_message.startswith("/"):
+            # 命令由意图处理器处理，这里只返回True让后续逻辑继续
             return True
 
-        # 被@时回复（检查配置中的bot_ids）
-        if strategy.get("reply_on_mention", False):
-            message_segments = data.get("message", [])
-            bot_ids = self.config.get("bot_ids", [])
-            for segment in message_segments:
-                if segment.get("type") == "mention":
-                    mention_user = str(segment.get("data", {}).get("user_id", ""))
-                    if str(mention_user) in [str(bid) for bid in bot_ids]:
-                        return True
-
-        # 关键词触发
-        keywords = strategy.get("reply_on_keyword", [])
-        if keywords:
-            for keyword in keywords:
-                if keyword.lower() in alt_message.lower():
-                    return True
-
-        # 检查是否被昵称呼叫（检查配置中的bot_nicknames）
-        bot_nicknames = self.config.get("bot_nicknames", [])
-        if bot_nicknames:
-            for nickname in bot_nicknames:
-                if nickname in alt_message:
-                    return True
-
-        # 获取最近的会话历史，用于AI判断
+        # 获取最近的会话历史
         session_history = await self.memory.get_session_history(user_id, group_id)
 
-        # 获取机器人名字（默认为self的昵称，如果配置了bot_nicknames则使用第一个）
+        # 检查是否被@（将此信息传给AI判断）
+        message_segments = data.get("message", [])
+        bot_ids = self.config.get("bot_ids", [])
+        is_mentioned = False
+        for segment in message_segments:
+            if segment.get("type") == "mention":
+                mention_user = str(segment.get("data", {}).get("user_id", ""))
+                if str(mention_user) in [str(bid) for bid in bot_ids]:
+                    is_mentioned = True
+                    break
+
+        # 如果被@了，在消息中添加标记让AI知道
+        enhanced_message = alt_message
+        if is_mentioned:
+            bot_nicknames = self.config.get("bot_nicknames", [])
+            bot_name = bot_nicknames[0] if bot_nicknames else ""
+            if bot_name and bot_name not in alt_message:
+                enhanced_message = f"(@{bot_name}) {alt_message}"
+
+        # 获取机器人名字
         bot_name = str(data.get("self", {}).get("user_nickname", ""))
+        bot_nicknames = self.config.get("bot_nicknames", [])
         if bot_nicknames:
             bot_name = bot_nicknames[0]
 
+        # 获取回复关键词配置
+        reply_keywords = self.config.get("reply_strategy", {}).get("reply_on_keyword", [])
+
         # 使用AI智能判断
-        should_reply = await self.ai_manager.should_reply(session_history, alt_message, bot_name)
+        should_reply = await self.ai_manager.should_reply(session_history, enhanced_message, bot_name, reply_keywords)
         self.logger.debug(f"AI判断是否需要回复: {should_reply}")
 
         # 检查回复间隔，避免刷屏
         if should_reply:
             session_key = self._get_session_key(user_id, group_id)
             last_reply = self._last_reply_time.get(session_key, 0)
-            min_interval = strategy.get("min_reply_interval", 5)
+            min_interval = self.config.get("min_reply_interval", 10)  # 默认10秒
             if time.time() - last_reply < min_interval:
                 self.logger.debug(f"回复间隔不足 {min_interval} 秒，跳过回复")
                 return False
@@ -215,22 +212,8 @@ class Main:
                 await self._send_response(data, "AI服务未配置，请联系管理员配置API密钥。", platform)
                 return
 
-            # 如果有图片，先使用视觉AI描述
-            image_description = ""
-            if image_urls and self.ai_manager.get_client("vision"):
-                try:
-                    image_description = await self.ai_manager.describe_image(image_urls[0])
-                    self.logger.debug(f"图片描述: {image_description}")
-                except Exception as e:
-                    self.logger.warning(f"视觉AI处理失败: {e}")
-
-            # 构建增强的消息输入（包含图片描述）
-            enhanced_input = alt_message
-            if image_description:
-                enhanced_input = f"{alt_message}（图片内容：{image_description}）"
-
             # 识别意图
-            intent_data = await self.intent.identify_intent(enhanced_input, user_id, group_id)
+            intent_data = await self.intent.identify_intent(alt_message, user_id, group_id)
             self.logger.debug(
                 f"用户 {user_nickname}({user_id}) 意图: {intent_data['intent']} "
                 f"(置信度: {intent_data['confidence']})"
@@ -248,15 +231,20 @@ class Main:
             should_reply = await self._should_reply(data, alt_message, user_id, group_id)
 
             # 累积消息到短期记忆（无论是否回复）
-            await self.memory.add_short_term_memory(user_id, "user", enhanced_input, group_id)
+            await self.memory.add_short_term_memory(user_id, "user", alt_message, group_id)
 
             # 根据策略决定是否回复
             if not should_reply:
-                self.logger.debug(f"AI判断不需要回复")
+                self.logger.debug("AI判断不需要回复")
                 return
 
-            # 处理意图并回复
+            # 处理意图并回复（传递图片URL）
+            intent_data["params"]["image_urls"] = image_urls
             response = await self.intent.handle_intent(intent_data, user_id, group_id)
+
+            # 如果返回None，表示不需要回复
+            if response is None:
+                return
 
             # 移除Markdown格式
             response = self._remove_markdown(response)

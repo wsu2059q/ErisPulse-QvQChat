@@ -2,11 +2,14 @@
 # 复制此文件为 config.toml 并填入你的API密钥
 
 [QvQChat]
-# 清除会话历史的命令
-clear_command = "/qvc clear"
+# 命令前缀（自定义，例如：/qvc 或 /ai）
+command_prefix = "/qvc"
 
 # 最大会话历史长度
 max_history_length = 20
+
+# 最小回复间隔（秒），避免频繁回复（普通群友模式）
+min_reply_interval = 10
 
 # 记忆清理间隔（秒）
 memory_cleanup_interval = 86400
@@ -36,9 +39,6 @@ reply_on_keyword = ["小B", "机器人", "AI", "帮忙"]
 # 概率回复（0-1，0.1=10%概率）
 reply_probability = 0.1
 
-# 累积N条消息后回复（建议5-10条）
-message_threshold = 5
-
 # 最小回复间隔（秒），避免刷屏（建议5秒）
 min_reply_interval = 5
 
@@ -55,8 +55,8 @@ base_url = "https://api.openai.com/v1"
 # API密钥 - 请填入你的OpenAI API密钥
 api_key = "sk-your-api-key-here"
 
-# 使用的模型
-model = "gpt-4"
+# 使用的模型（建议使用支持视觉的模型，如gpt-4o）
+model = "gpt-4o"
 
 # 温度参数（0-2，越高越随机）
 temperature = 0.7
@@ -64,7 +64,7 @@ temperature = 0.7
 # 最大回复tokens数（简短回复建议300-500）
 max_tokens = 500
 
-# 系统提示词（简短回复，无Markdown）
+# 系统提示词（简短回复，无Markdown，支持图片理解）
 system_prompt = """你是【Amer】，一只二次元猫娘，兼具聪慧、傲娇与温柔特质。
 - Amer固有特征:
   - 浅棕色毛发
@@ -78,29 +78,8 @@ system_prompt = """你是【Amer】，一只二次元猫娘，兼具聪慧、傲
   3. 简短精炼，通常1-2句话，不超过100字
   4. 不要使用Markdown格式
   5. 直接回答，不啰嗦
+  6. 如果有图片，根据图片内容自然回复，不要专门说明"这是一张图片"
 - 对话智能：利用记忆和上下文，理解对话流程，智能把握回复时机"""
-
-# ============================================
-# 视觉AI配置 - 可选配置（图片识别）
-# ============================================
-[QvQChat.vision]
-# OpenAI API基础URL
-base_url = "https://api.openai.com/v1"
-
-# API密钥（如不配置则使用dialogue的配置）
-api_key = "sk-your-api-key-here"
-
-# 使用的模型（建议支持视觉的模型）
-model = "gpt-4-vision-preview"
-
-# 温度参数
-temperature = 0.3
-
-# 最大回复tokens数
-max_tokens = 300
-
-# 系统提示词
-system_prompt = "你是一个视觉描述助手。用简洁的语言描述图片内容，不超过50字。"
 
 # ============================================
 # 回复判断AI配置 - 智能判断是否需要回复
@@ -136,7 +115,7 @@ system_prompt = """你是一个对话分析助手。分析用户的最新消息�
 输出格式：只回复"true"或"false"，不要其他内容。"""
 
 # ============================================
-# 记忆AI配置 - 可选配置
+# 记忆AI配置 - 智能记忆提取（推荐配置）
 # ============================================
 [QvQChat.memory]
 base_url = "https://api.openai.com/v1"
@@ -144,7 +123,7 @@ api_key = "sk-your-api-key-here"
 model = "gpt-3.5-turbo"
 temperature = 0.3
 max_tokens = 1000
-system_prompt = "你是一个记忆整理助手，负责总结、压缩和整理对话记忆。提取关键信息，删除冗余内容。"
+system_prompt = "你是一个智能记忆提取助手，负责从对话中提取值得长期记忆的关键信息。"
 
 # ============================================
 # 查询AI配置 - 可选配置
@@ -186,6 +165,6 @@ system_prompt = """你是一个意图识别助手。请识别用户的意图，�
 # 1. 至少需要配置 [QvQChat.dialogue] 的 api_key
 # 2. 其他AI的api_key可以与dialogue相同，也可以使用不同的密钥
 # 3. 如果不想使用某个AI，可以将对应的api_key留空或注释掉
-# 4. vision AI如果不配置，会自动使用dialogue的配置（但需要模型支持视觉功能）
+# 4. dialogue AI应使用支持视觉的模型（如gpt-4o），才能理解图片内容
 # 5. 默认回复已设置为简短模式，无需Markdown格式
 # 6. users 和 groups 配置会在运行时自动生成，无需手动配置

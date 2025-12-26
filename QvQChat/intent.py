@@ -1,6 +1,5 @@
 import re
-from typing import Dict, List, Optional, Callable
-from ErisPulse import sdk
+from typing import Dict, Optional, Callable
 
 
 class QvQIntent:
@@ -10,28 +9,41 @@ class QvQIntent:
         self.ai_manager = ai_manager
         self.config = config_manager
         self.logger = logger.get_child("QvQIntent")
-        
+
         # 意图处理器映射
         self.intent_handlers: Dict[str, Callable] = {}
-        
-        # 命令模式匹配
-        self.command_patterns = {
-            r"^/qvc\s+config$": "system_control",
-            r"^/qvc\s+model\s+(\w+)$": "system_control",
-            r"^/qvc\s+memory\s+(\w+)(?:\s+(.+))?$": "memory_management",
-            r"^/qvc\s+group\s+(\w+)(?:\s+(.+))?$": "group_config",
-            r"^/qvc\s+prompt\s+(.+)$": "prompt_custom",
-            r"^/qvc\s+style\s+(.+)$": "style_change",
-            r"^/qvc\s+clear$": "session_clear",
-            r"^/qvc\s+export$": "export",
-            r"^/qvc\s+help$": "help",
-        }
-        
+
         # 查询关键词
         self.query_keywords = [
             "记得", "记录", "忘记", "说过", "提到",
             "history", "记忆", "历史", "之前", "刚才"
         ]
+
+        # 命令模式匹配（动态生成）
+        self._build_command_patterns()
+
+    def _build_command_patterns(self) -> None:
+        """构建命令模式（支持动态命令前缀）"""
+        prefix = self.config.get_command_prefix()
+        # 转义前缀中的特殊字符
+        escaped_prefix = re.escape(prefix)
+
+        self.command_patterns = {
+            rf"^{escaped_prefix}\s+config$": "system_control",
+            rf"^{escaped_prefix}\s+model\s+(\w+)$": "system_control",
+            rf"^{escaped_prefix}\s+memory\s+(\w+)(?:\s+(.+))?$": "memory_management",
+            rf"^{escaped_prefix}\s+group\s+(\w+)(?:\s+(.+))?$": "group_config",
+            rf"^{escaped_prefix}\s+prompt\s+(.+)$": "prompt_custom",
+            rf"^{escaped_prefix}\s+style\s+(.+)$": "style_change",
+            rf"^{escaped_prefix}\s+clear$": "session_clear",
+            rf"^{escaped_prefix}\s+export$": "export",
+            rf"^{escaped_prefix}\s+help$": "help",
+        }
+        self.logger.info(f"命令模式已构建，前缀: {prefix}")
+
+    def rebuild_patterns(self) -> None:
+        """重新构建命令模式（配置更新后调用）"""
+        self._build_command_patterns()
     
     def register_handler(self, intent_type: str, handler: Callable) -> None:
         """注册意图处理器"""
@@ -103,35 +115,36 @@ class QvQIntent:
     
     def get_help_text(self) -> str:
         """获取帮助文本"""
-        return """QvQChat 智能助手命令列表：
+        prefix = self.config.get_command_prefix()
+        return f"""命令列表：
 
 基础命令：
-/qvc clear       - 清除当前会话历史
-/qvc help        - 显示帮助信息
+{prefix} clear       - 清除当前会话历史
+{prefix} help        - 显示帮助信息
 
 记忆管理：
-/qvc memory list      - 查看记忆摘要
-/qvc memory search <关键词>  - 搜索记忆
-/qvc memory compress  - 压缩整理记忆
-/qvc memory delete <索引>   - 删除指定记忆
+{prefix} memory list      - 查看记忆摘要
+{prefix} memory search <关键词>  - 搜索记忆
+{prefix} memory compress  - 压缩整理记忆
+{prefix} memory delete <索引>   - 删除指定记忆
 
 系统控制：
-/qvc config           - 查看当前配置
-/qvc model <类型>     - 切换AI模型（dialogue/memory/query）
-/qvc export           - 导出记忆
+{prefix} config           - 查看当前配置
+{prefix} model <类型>     - 切换AI模型（dialogue/memory/query）
+{prefix} export           - 导出记忆
 
 群聊配置（仅在群聊中可用）：
-/qvc group info       - 查看群配置
-/qvc group prompt <内容>   - 设置群提示词
-/qvc group style <风格>   - 设置对话风格
+{prefix} group info       - 查看群配置
+{prefix} group prompt <内容>   - 设置群提示词
+{prefix} group style <风格>   - 设置对话风格
 
 个性化：
-/qvc prompt <内容>    - 自定义个人提示词
-/qvc style <风格>      - 设置对话风格（友好/专业/幽默等）
+{prefix} prompt <内容>    - 自定义个人提示词
+{prefix} style <风格>      - 设置对话风格（友好/专业/幽默等）
 
 示例：
-/qvc memory search 我昨天说过什么
-/qvc group prompt 你是一个专业的技术顾问
-/qvc style 幽默
-/qvc model dialogue
+{prefix} memory search 我昨天说过什么
+{prefix} group prompt 你是一个专业的技术顾问
+{prefix} style 幽默
+{prefix} model dialogue
 """

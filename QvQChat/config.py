@@ -23,7 +23,7 @@ class QvQConfig:
         """获取默认配置"""
         return {
             # 基础配置
-            "clear_command": "/qvc clear",
+            "command_prefix": "/qvc",  # 命令前缀
             "max_history_length": 20,
             "memory_cleanup_interval": 86400,
             "enable_vector_search": False,
@@ -40,7 +40,6 @@ class QvQConfig:
                 "reply_on_mention": True,  # 被@时回复
                 "reply_on_keyword": [],  # 关键词触发列表
                 "reply_probability": 0.1,  # 概率回复（0-1）
-                "message_threshold": 5,  # 累积N条消息后回复
                 "min_reply_interval": 5,  # 最小回复间隔（秒）
                 "ignore_commands": True,  # 忽略命令（以/开头）
             },
@@ -49,26 +48,17 @@ class QvQConfig:
             "dialogue": {
                 "base_url": "https://api.openai.com/v1",
                 "api_key": "",
-                "model": "gpt-4",
+                "model": "gpt-4o",  # 使用支持视觉的模型
                 "temperature": 0.7,
                 "max_tokens": 500,
-                "system_prompt": """你是一个智能AI助手。
+                "system_prompt": """你是一个智能AI助手，支持图片理解。
 回复要求：
 1. 简短精炼，通常1-2句话，不超过100字
 2. 不要使用Markdown格式（如**加粗**、`代码`、-列表、#标题等）
 3. 自然口语化，直接回答
 4. 利用记忆和上下文，理解对话流程，智能把握回复时机
-5. 群聊场景注意氛围，适当参与互动；私聊场景可以更自由表达"""
-            },
-
-            # 视觉AI配置
-            "vision": {
-                "base_url": "https://api.openai.com/v1",
-                "api_key": "",
-                "model": "gpt-4-vision-preview",
-                "temperature": 0.3,
-                "max_tokens": 300,
-                "system_prompt": "你是一个视觉描述助手。用简洁的语言描述图片内容，不超过50字。"
+5. 群聊场景注意氛围，适当参与互动；私聊场景可以更自由表达
+6. 如果有图片，根据图片内容自然回复，不要专门说明"这是一张图片\""""
             },
 
             # 回复判断AI配置（智能判断是否需要回复）
@@ -78,18 +68,28 @@ class QvQConfig:
                 "model": "gpt-3.5-turbo",
                 "temperature": 0.1,
                 "max_tokens": 100,
-                "system_prompt": """你是一个对话分析助手。分析用户的最新消息，判断是否需要AI回复。
+                "system_prompt": """你是一个对话分析助手。仔细分析对话上下文，严格判断用户的最新消息是否需要AI回复。
 
-判断标准：
-1. 明确的问题、请求、指令 - 需要回复
-2. @机器人或叫机器人名字 - 需要回复
-3. 对话中断后重新开始 - 需要回复
-4. 情绪强烈的表达 - 需要回复
-5. 纯表情或简单的打招呼 - 可以不回复
-6. 对话中的简短回应（如"嗯"、"好"） - 可以不回复
-7. 只是消息分享，没有互动意图 - 可以不回复
+严格判断标准（满足任一条件才回复）：
+1. 【必须】消息中明确提问（包含"吗"、"呢"、"什么"、"怎么"、"为什么"、"？"、"?"等问句特征）
+2. 【必须】用户直接@机器人或呼唤机器人名字
+3. 【必须】用户明确发出指令或请求（如"帮我"、"请"、"能否"）
+4. 【必须】对话长时间中断后用户主动开口（超过10条消息沉默后）
 
-输出格式：只回复"true"或"false"，不要其他内容。"""
+【绝对不回复的情况】：
+1. 纯表情符号或简单的打招呼（如"哈哈"、"233"、"[图片]"）
+2. 对话中的简短确认回应（如"嗯"、"好"、"知道了"、"OK"、"收到"）
+3. 用户只是分享消息、发表状态，无互动意图
+4. 对话中的插话、随意的附和
+5. 普通的日常聊天，没有明确的互动需求
+6. 用户已经连续发了很多消息，机器人刚回复过（避免刷屏）
+
+重要提示：
+- 宁可错过回复，也不要乱回复
+- 默认应该是false（不回复），只有确信需要互动时才true
+- 结合对话上下文判断，不要只看单条消息
+
+输出格式：只回复"true"或"false"，不要包含其他内容。"""
             },
             
             # 记忆AI配置
@@ -119,19 +119,27 @@ class QvQConfig:
                 "model": "gpt-3.5-turbo",
                 "temperature": 0.1,
                 "max_tokens": 500,
-                "system_prompt": """你是一个意图识别助手。请识别用户的意图，从以下选项中选择最合适的一个：
+                "system_prompt": """你是一个意图识别助手。识别用户意图时，请仔细分析消息内容和上下文。
 
-1. dialogue - 普通对话
-2. memory_query - 查询历史记忆
-3. memory_add - 添加新记忆
-4. memory_delete - 删除记忆
-5. system_control - 系统控制（切换模型、配置等）
-6. group_config - 群聊配置
-7. prompt_custom - 自定义提示词
-8. style_change - 改变对话风格
-9. export - 导出记忆
+意图分类（选择最匹配的）：
+1. dialogue - 普通对话交流（提问、聊天、日常交流）
+2. memory_query - 明确要求查询历史记忆（如"我记得我昨天说过"、"查一下我之前说的"）
+3. memory_add - 明确要求记住某些信息（如"记住这件事"、"记下来"、"这是重要信息"）
+4. memory_delete - 明确要求删除记忆（如"忘记这件事"、"删掉这段记忆"）
+5. system_control - 系统控制指令（如"切换模型"、"修改配置"、"设置风格"、"重启系统"）
+6. group_config - 群聊配置相关（如"群设置"、"群提示词"、"改变群设定"）
+7. prompt_custom - 自定义提示词（如"把提示词改成..."、"换个提示词"）
+8. style_change - 改变对话风格（如"变专业点"、"幽默一点"、"换个风格"）
+9. export - 导出记忆（如"导出我的记忆"、"备份记忆"）
 
-只返回意图类型，不要包含其他内容。"""
+重要提示（避免误判）：
+- 【严格】只有明确提及"记忆"、"查询"、"记住"、"忘记"、"删除"等关键词时才归类为memory相关意图
+- 【严格】不要把普通对话误识别为记忆相关意图
+- 【严格】不要把"我昨天"、"记得"等口语化表达误判为记忆查询，除非明确要求"查一下"
+- 【默认】所有普通交流、提问、闲聊都归类为dialogue
+- 【默认】没有明确指令的情况下，归类为dialogue
+
+只返回意图类型名称（如dialogue），不要包含其他内容。"""
             },
             
             # 用户个性化配置（运行时生成）
@@ -165,17 +173,8 @@ class QvQConfig:
     
     def get_ai_config(self, ai_type: str) -> Dict[str, Any]:
         """获取指定AI的配置"""
-        # vision AI如果未配置，则使用dialogue的配置
-        if ai_type == "vision":
-            vision_config = self.get("vision", {})
-            if not vision_config.get("api_key"):
-                dialogue_config = self.get("dialogue", {})
-                vision_config = dialogue_config.copy()
-                vision_config["model"] = vision_config.get("model", "gpt-4-vision-preview")
-                vision_config["max_tokens"] = 300
-            return vision_config
         # reply_judge AI如果未配置，则使用dialogue的配置
-        elif ai_type == "reply_judge":
+        if ai_type == "reply_judge":
             judge_config = self.get("reply_judge", {})
             if not judge_config.get("api_key"):
                 dialogue_config = self.get("dialogue", {})
@@ -241,6 +240,6 @@ class QvQConfig:
         
         return base_config
     
-    def save(self) -> None:
-        """保存配置"""
-        sdk.env.setConfig("QvQChat", self.config)
+    def get_command_prefix(self) -> str:
+        """获取命令前缀"""
+        return self.get("command_prefix", "/qvc")

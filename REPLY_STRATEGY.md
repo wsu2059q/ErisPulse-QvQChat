@@ -2,16 +2,18 @@
 
 ## 说明
 
-QvQChat 采用**AI智能回复策略**，不会每条消息都回复，而是主动积累记忆，利用专门的AI分析对话上下文，智能判断是否需要回复。
+QvQChat 采用**多AI协同的智能回复和记忆策略**，不会每条消息都回复，而是主动积累记忆，利用专门的AI分析对话上下文，智能判断是否需要回复以及什么值得记住。
 
 ## 工作原理
 
 ### 核心特性
-- ✅ 所有消息都会被记录到短期记忆和长期记忆（无论是否回复）
+- ✅ 所有消息都会被记录到短期记忆（无论是否回复）
+- ✅ **多AI协同智能记忆**：自动判断什么值得记住，无需用户手动指定
 - ✅ 使用AI分析对话历史，理解对话流程
 - ✅ 智能判断回复时机，不是简单的规则匹配
 - ✅ 回复更加连贯自然，不会前言不搭后语
 - ✅ 不会频繁刷屏，干扰正常聊天
+- ✅ **记忆去重机制**：自动检测并避免重复记忆
 
 ### AI智能判断标准
 
@@ -47,7 +49,6 @@ bot_ids = ["123456789"]  # ID列表
 auto_reply = false  # AI智能判断
 reply_on_mention = true
 reply_on_keyword = []
-message_threshold = 5
 min_reply_interval = 5
 ignore_commands = true
 ```
@@ -58,7 +59,6 @@ ignore_commands = true
 auto_reply = false
 reply_on_mention = true
 reply_on_keyword = ["小B", "机器人", "AI"]
-message_threshold = 3
 min_reply_interval = 3
 ```
 
@@ -68,7 +68,6 @@ min_reply_interval = 3
 auto_reply = false
 reply_on_mention = true
 reply_on_keyword = []
-message_threshold = 10
 min_reply_interval = 10
 ```
 
@@ -78,7 +77,6 @@ min_reply_interval = 10
 auto_reply = false
 reply_on_mention = true
 reply_on_keyword = []
-message_threshold = 999
 ```
 
 ## 配置项说明
@@ -90,14 +88,12 @@ message_threshold = 999
 | auto_reply | bool | false | 是否自动回复（建议false，让AI判断）|
 | reply_on_mention | bool | true | 被@时是否回复 |
 | reply_on_keyword | list | [] | 关键词触发列表 |
-| message_threshold | int | 5 | 备用阈值（AI未配置时使用） |
 | min_reply_interval | int | 5 | 最小回复间隔（秒） |
 | ignore_commands | bool | true | 是否忽略命令判断（命令总是回复） |
 
 ## AI智能判断 vs 传统策略
 
 ### 传统策略（已废弃）
-- ❌ 简单计数：累积N条消息后回复
 - ❌ 固定概率：按配置的概率随机回复
 - ❌ 不理解对话：无法区分是否需要互动
 
@@ -112,7 +108,6 @@ message_threshold = 999
 1. 添加 `bot_nicknames` 和 `bot_ids` 配置（确保能被识别）
 2. 添加 `reply_on_keyword` 列表
 3. 减小 `min_reply_interval`（如改为3秒）
-4. 如果回复判断AI不可用，降低 `message_threshold`
 
 ## 如何让机器人更安静
 
@@ -123,16 +118,94 @@ message_threshold = 999
 
 ## 记忆机制
 
+### 智能记忆提取流程
+
+QvQChat 实现了**多AI协同的智能记忆机制**：
+
+```
+用户消息
+    ↓
+短期记忆（所有消息都会记录）
+    ↓
+dialogue AI 回复
+    ↓
+[多AI协同判断] 是否值得记忆？
+    ├─ dialogue AI 分析对话价值
+    ├─ 评估是否影响后续对话
+    └─ 判断是否为重要信息
+    ↓
+memory AI 提取关键信息
+    ├─ 严格遵守提取标准
+    ├─ 过滤无关信息
+    └─ 去重检查
+    ↓
+长期记忆（值得的信息才会保存）
+```
+
+### 多AI协同记忆标准
+
+#### 第一步：对话价值判断（dialogue AI）
+判断本次对话是否值得长期记忆：
+- ✅ 用户表达了明确的个人偏好、习惯、需求
+- ✅ 用户提到了重要的时间节点、计划、任务
+- ✅ 对话涉及用户的重要关系、家庭、工作
+- ✅ AI的回复需要依赖这些信息
+- ❌ 纯闲聊、打招呼、简单的确认
+- ❌ AI只是回答常识性问题
+- ❌ 用户只是分享心情、吐槽，无实质内容
+- ❌ 一次性话题讨论
+
+#### 第二步：关键信息提取（memory AI）
+严格提取标准：
+- ✅ **个人相关信息**：个人偏好、喜好、习惯；重要日期（生日、纪念日、截止日期）；正在进行的任务、计划、目标；身体状况、情绪状态
+- ✅ **重要关系信息**：重要人际关系；正在关注或关心的人；家庭情况
+- ❌ **绝对不提取**：日常闲聊、问候、简单的"好的"、"嗯"；表情符号、纯表情消息；临时性、一次性的话题；AI已经回复过且解决的问题；纯粹的情感发泄、吐槽（无实质信息）；天气、时间等通用信息；用户对AI的评价（除非影响后续对话）
+
+#### 第三步：去重机制
+- 自动检测现有记忆
+- 避免重复保存相似信息
+- 保持记忆精简
+
+### 记忆效果示例
+
+#### 场景1：用户提到重要信息
+```
+用户: "我每天早上7点起床跑步"
+AI回复: "好的，记住你的习惯了！"
+
+✅ 自动记忆: 习惯：每天早上7点起床跑步
+```
+
+#### 场景2：日常闲聊
+```
+用户: "今天天气不错"
+AI回复: "是啊，确实是个好天气！"
+
+❌ 不会记忆（无重要信息）
+```
+
+#### 场景3：重复信息
+```
+用户: "我每天早上7点起床跑步"
+AI回复: "我知道呀，你说过这个习惯啦！"
+
+❌ 不会重复记忆（已经存在）
+```
+
+### 记忆使用
+
 - 所有消息都会被积累到短期记忆（无论是否回复）
-- 短期记忆定期压缩到长期记忆
-- 长期记忆会用于上下文注入
-- 历史对话会保留用于多轮交流
+- 短期记忆用于多轮对话的上下文
+- 长期记忆（经过AI智能提取）会注入到对话中
+- 记忆帮助AI提供更个性化的回复
 
 这样即使机器人不回复，也在持续学习和积累上下文。
 
-## 回复判断AI配置
+## AI配置说明
 
-reply_judge AI 是智能判断的核心，建议单独配置：
+### 回复判断AI（reply_judge）
+
+回复判断AI是智能回复的核心，建议单独配置：
 
 ```toml
 [QvQChat.reply_judge]
@@ -147,6 +220,29 @@ max_tokens = 100
 - 如果未配置 `reply_judge`，会自动复用 `dialogue` 的配置
 - `temperature=0.1` 保证判断的一致性
 - `max_tokens=100` 足够输出 true/false
+
+### 智能记忆AI（memory）⭐
+
+memory AI是智能记忆提取的核心，**必须配置才能启用自动记忆**：
+
+```toml
+[QvQChat.memory]
+base_url = "https://api.openai.com/v1"
+api_key = "sk-your-api-key"
+model = "gpt-3.5-turbo"
+temperature = 0.3
+max_tokens = 1000
+system_prompt = "你是一个智能记忆提取助手"
+```
+
+**说明**：
+- ✅ **必须配置**：未配置则不会自动记忆
+- 建议使用较便宜的模型（如gpt-3.5-turbo）
+- `temperature=0.3` 保证提取的准确性
+- AI会严格遵守记忆标准，避免记录无关信息
+- 内置去重机制，避免重复记忆
+
+**注意**：未配置memory AI时，用户仍可手动通过命令记忆（如`/qvc memory add 记住这件事`），但推荐配置以启用智能自动记忆。
 
 ## 常见问题
 

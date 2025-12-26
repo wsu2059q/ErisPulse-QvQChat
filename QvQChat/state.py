@@ -95,7 +95,7 @@ class QvQState:
                 start = datetime.fromisoformat(start_time)
                 duration = (datetime.now() - start).total_seconds()
                 return duration
-            except:
+            except Exception:
                 pass
         
         return None
