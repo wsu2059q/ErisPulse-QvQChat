@@ -31,6 +31,8 @@ class Main:
         # 消息计数器和时间戳
         self._message_count = {}
         self._last_reply_time = {}
+        self._hourly_reply_count = {}  # 每小时回复计数
+        self._last_hour_reset = {}  # 每个会话的上次重置时间
 
         # 检查API配置
         self._check_api_config()
@@ -109,12 +111,107 @@ class Main:
         return user_id
 
     async def _should_reply(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
-        """AI智能判断是否应该回复（完全由AI决策）"""
-        # 命令总是执行（但不是必须回复，除非是查询类命令）
+        """判断是否应该回复（私聊积极回复，群聊窥屏模式）"""
+        import random
+
+        # 命令总是执行
         if alt_message.startswith("/"):
-            # 命令由意图处理器处理，这里只返回True让后续逻辑继续
             return True
 
+        # 私聊场景：不使用窥屏模式，使用AI智能判断
+        if not group_id:
+            return await self._should_reply_ai(data, alt_message, user_id, group_id)
+
+        # 群聊场景：检查窥屏模式是否启用
+        stalker_config = self.config.get("stalker_mode", {})
+        if not stalker_config.get("enabled", True):
+            # 如果未启用窥屏模式，使用AI判断
+            return await self._should_reply_ai(data, alt_message, user_id, group_id)
+
+        session_key = self._get_session_key(user_id, group_id)
+        current_time = time.time()
+
+        # 重置每小时计数器（每个会话独立）
+        last_reset = self._last_hour_reset.get(session_key, 0)
+        if current_time - last_reset > 3600:  # 1小时
+            self._hourly_reply_count[session_key] = 0
+            self._last_hour_reset[session_key] = current_time
+            self.logger.debug(f"会话 {session_key} 每小时计数器已重置")
+
+        # 检查每小时回复限制
+        hourly_count = self._hourly_reply_count.get(session_key, 0)
+        max_per_hour = stalker_config.get("max_replies_per_hour", 8)
+        if hourly_count >= max_per_hour:
+            self.logger.debug(f"每小时回复次数已达上限 ({max_per_hour})，跳过回复")
+            return False
+
+        # 检查是否被@
+        message_segments = data.get("message", [])
+        bot_ids = self.config.get("bot_ids", [])
+        bot_nicknames = self.config.get("bot_nicknames", [])
+        is_mentioned = False
+
+        # 检查@
+        for segment in message_segments:
+            if segment.get("type") == "mention":
+                mention_user = str(segment.get("data", {}).get("user_id", ""))
+                if str(mention_user) in [str(bid) for bid in bot_ids]:
+                    is_mentioned = True
+                    break
+
+        # 检查是否叫名字
+        bot_name = bot_nicknames[0] if bot_nicknames else ""
+        if not is_mentioned and bot_name and bot_name in alt_message:
+            is_mentioned = True
+
+        # 被@时按较高概率回复
+        if is_mentioned:
+            mention_prob = stalker_config.get("mention_probability", 0.8)
+            if random.random() < mention_prob:
+                self._hourly_reply_count[session_key] = hourly_count + 1
+                return True
+            else:
+                self.logger.debug("被@但未通过概率检查，不回复")
+                return False
+
+        # 检查关键词匹配
+        reply_keywords = self.config.get("reply_strategy", {}).get("reply_on_keyword", [])
+        keyword_matched = any(kw in alt_message for kw in reply_keywords)
+        if keyword_matched:
+            keyword_prob = stalker_config.get("keyword_probability", 0.5)
+            if random.random() < keyword_prob:
+                self._hourly_reply_count[session_key] = hourly_count + 1
+                return True
+
+        # 检查是否是提问
+        is_question = any(marker in alt_message for marker in ["？", "?", "吗", "呢", "什么", "怎么", "为什么"])
+        if is_question:
+            # 提问时使用概率回复
+            question_prob = stalker_config.get("question_probability", 0.4)
+            if random.random() < question_prob:
+                self._hourly_reply_count[session_key] = hourly_count + 1
+                return True
+
+        # 检查消息间隔（从较高值开始，允许第一次就回复）
+        min_messages = stalker_config.get("min_messages_between_replies", 15)
+        last_msg_count = self._message_count.get(session_key, min_messages)  # 初始化为 min_messages，允许第一次回复
+        if last_msg_count < min_messages:
+            self._message_count[session_key] = last_msg_count + 1
+            self.logger.debug(f"消息间隔不足 ({last_msg_count}/{min_messages})，继续沉默")
+            return False
+
+        # 默认低概率回复（窥屏模式的核心）
+        default_prob = stalker_config.get("default_probability", 0.03)
+        self._message_count[session_key] = 0  # 重置计数器
+
+        if random.random() < default_prob:
+            self._hourly_reply_count[session_key] = hourly_count + 1
+            return True
+
+        return False
+
+    async def _should_reply_ai(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
+        """AI智能判断是否应该回复（兼容旧逻辑）"""
         # 获取最近的会话历史
         session_history = await self.memory.get_session_history(user_id, group_id)
 
@@ -206,6 +303,10 @@ class Main:
             # 获取用户昵称
             user_nickname = data.get("user_nickname", user_id)
 
+            # 获取机器人昵称
+            bot_nicknames = self.config.get("bot_nicknames", [])
+            bot_nickname = bot_nicknames[0] if bot_nicknames else ""
+
             # 检查API配置
             if not self.ai_manager.get_client("dialogue"):
                 self.logger.warning("对话AI未配置，请检查API密钥")
@@ -233,13 +334,30 @@ class Main:
             # 累积消息到短期记忆（无论是否回复）
             await self.memory.add_short_term_memory(user_id, "user", alt_message, group_id)
 
-            # 根据策略决定是否回复
-            if not should_reply:
-                self.logger.debug("AI判断不需要回复")
+            # 获取会话历史（包含刚添加的用户消息）
+            session_history = await self.memory.get_session_history(user_id, group_id)
+
+            # 窥屏模式下，即使不回复也要提取和保存重要记忆
+            if not should_reply and (group_id and self.config.get("stalker_mode", {}).get("enabled", True)):
+                # 不回复时，基于对话历史提取记忆（没有 AI 回复）
+                await self.handler.extract_and_save_memory(user_id, session_history, "", group_id)
+                self.logger.debug("AI判断不需要回复，但已保存记忆")
                 return
 
-            # 处理意图并回复（传递图片URL）
+            # 构建上下文信息
+            context_info = {
+                "user_nickname": user_nickname,
+                "user_id": user_id,
+                "group_name": data.get("group_name", ""),
+                "group_id": group_id,
+                "bot_nickname": bot_nickname,
+                "platform": platform,
+                "is_group": detail_type == "group"
+            }
+
+            # 处理意图并回复（传递图片URL和上下文信息）
             intent_data["params"]["image_urls"] = image_urls
+            intent_data["params"]["context_info"] = context_info
             response = await self.intent.handle_intent(intent_data, user_id, group_id)
 
             # 如果返回None，表示不需要回复
@@ -292,31 +410,79 @@ class Main:
         response: str,
         platform: Optional[str]
     ) -> None:
-        """发送响应消息"""
+        """发送响应消息（支持多条消息）"""
         try:
             if not platform:
                 return
-            
+
             adapter = getattr(self.sdk.adapter, platform)
             if not adapter:
                 self.logger.warning(f"未找到适配器: {platform}")
                 return
-            
+
             detail_type = data.get("detail_type", "private")
-            
+
             if detail_type == "private":
                 target_type = "user"
                 target_id = data.get("user_id")
             else:
                 target_type = "group"
                 target_id = data.get("group_id")
-            
+
             if not target_id:
                 return
-            
-            # 发送消息
-            await adapter.Send.To(target_type, target_id).Text(response.strip())
-            self.logger.info(f"已发送响应到 {platform} - {detail_type} - {target_id}")
-            
+
+            # 解析多条消息
+            messages = self._parse_multi_messages(response)
+
+            # 逐条发送
+            for i, msg_info in enumerate(messages):
+                msg_content = msg_info["content"]
+                delay = msg_info["delay"]
+
+                if i > 0 and delay > 0:
+                    import asyncio
+                    await asyncio.sleep(delay)
+
+                # 发送消息
+                await adapter.Send.To(target_type, target_id).Text(msg_content.strip())
+                self.logger.info(f"已发送响应到 {platform} - {detail_type} - {target_id} (消息 {i+1}/{len(messages)})")
+
         except Exception as e:
             self.logger.error(f"发送响应失败: {e}")
+
+    def _parse_multi_messages(self, text: str) -> list:
+        """解析多条消息（带延迟）"""
+        import re
+
+        # 尝试解析多消息格式：消息1\n\n[间隔:3]\n\n消息2
+        pattern = r'\[间隔:(\d+)\]'
+        parts = re.split(pattern, text)
+
+        messages = []
+        current_msg = parts[0].strip()
+
+        for i in range(1, len(parts), 2):
+            if i + 1 < len(parts):
+                delay = int(parts[i])
+                next_msg = parts[i + 1].strip()
+
+                if current_msg:
+                    messages.append({"content": current_msg, "delay": 0})
+                current_msg = next_msg
+
+        if current_msg:
+            messages.append({"content": current_msg, "delay": 0})
+
+        # 如果没有找到间隔标记，返回单条消息
+        if len(messages) <= 1:
+            if len(messages) == 0:
+                return [{"content": text.strip(), "delay": 0}]
+        else:
+            # 设置延迟
+            for i in range(len(messages)):
+                if i > 0 and i * 2 - 1 < len(parts):
+                    messages[i]["delay"] = int(parts[i * 2 - 1])
+
+        # 最多返回3条消息
+        return messages[:3]

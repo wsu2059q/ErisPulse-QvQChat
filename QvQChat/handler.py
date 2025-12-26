@@ -21,9 +21,7 @@ class QvQHandler:
         """处理普通对话"""
         user_input = intent_data["raw_input"]
         image_urls = params.get("image_urls", [])  # 获取图片URL列表
-
-        # 构建对话消息
-        system_prompt = self.config.get_effective_system_prompt(user_id, group_id)
+        context_info = params.get("context_info", {})  # 获取上下文信息
 
         # 获取会话历史（已包含当前用户消息，因为Core.py已添加）
         session_history = await self.memory.get_session_history(user_id, group_id)
@@ -33,15 +31,37 @@ class QvQHandler:
 
         # 构建消息列表
         messages = []
-        if system_prompt:
+        system_prompt = self.config.get_effective_system_prompt(user_id, group_id)
+
+        # 添加上下文信息到系统提示
+        context_prompt = self._build_context_prompt(context_info, group_id is not None)
+        if context_prompt:
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "system", "content": context_prompt})
+            else:
+                messages.append({"role": "system", "content": context_prompt})
+        elif system_prompt:
             messages.append({"role": "system", "content": system_prompt})
 
         # 添加相关记忆作为上下文
         if search_results:
-            memory_context = "【重要记忆】\n" + "\n".join([
-                f"- {r['content']}" for r in search_results[:5]
-            ])
-            messages.append({"role": "system", "content": memory_context})
+            # 分类记忆：用户个人记忆和群聊记忆
+            user_memories = [r for r in search_results if r['source'] == 'long_term']
+            group_memories = [r for r in search_results if r['source'] in ['group_sender', 'group_context']]
+
+            memory_context_parts = []
+            if user_memories:
+                memory_context_parts.append("【用户个人记忆】")
+                memory_context_parts.extend([f"- {r['content']}" for r in user_memories[:3]])
+
+            if group_memories:
+                memory_context_parts.append("【群聊记忆】")
+                memory_context_parts.extend([f"- {r['content']}" for r in group_memories[:3]])
+
+            if memory_context_parts:
+                memory_context = "\n".join(memory_context_parts)
+                messages.append({"role": "system", "content": memory_context})
         else:
             # 如果没有找到相关记忆，提示AI不需要依赖记忆
             messages.append({"role": "system", "content": "当前没有找到相关的历史记忆，直接根据对话内容回复。"})
@@ -85,8 +105,11 @@ class QvQHandler:
             # 保存AI回复到会话历史（用户消息已在Core.py中添加）
             await self.memory.add_short_term_memory(user_id, "assistant", response, group_id)
 
+            # 重新获取会话历史（包含刚保存的 AI 回复）
+            updated_session_history = await self.memory.get_session_history(user_id, group_id)
+
             # 自动提取重要信息到长期记忆（让记忆系统真正起作用）
-            await self._extract_and_save_memory(user_id, session_history, response, group_id)
+            await self._extract_and_save_memory(user_id, updated_session_history, response, group_id)
 
             # 更新状态
             await self.state.increment_interaction(user_id, group_id)
@@ -146,6 +169,10 @@ class QvQHandler:
                     return None
             return "抱歉，我现在无法回复。请稍后再试。"
 
+    async def extract_and_save_memory(self, user_id: str, session_history: List[Dict[str, str]], response: str, group_id: Optional[str] = None) -> None:
+        """公共方法：智能提取重要信息并保存到长期记忆（多AI协同）"""
+        await self._extract_and_save_memory(user_id, session_history, response, group_id)
+
     async def _extract_and_save_memory(self, user_id: str, session_history: List[Dict[str, str]], response: str, group_id: Optional[str] = None) -> None:
         """智能提取重要信息并保存到长期记忆（多AI协同）"""
         try:
@@ -155,8 +182,11 @@ class QvQHandler:
             # 构建对话文本
             dialogue_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in recent_dialogues])
 
+            # 如果没有 AI 回复（窥屏模式可能不回复），只判断对话内容
+            ai_response = response if response and response.strip() else "（未回复）"
+
             # 第一步：多AI协同判断是否值得记录
-            should_remember = await self._should_remember_dialogue(dialogue_text, response)
+            should_remember = await self._should_remember_dialogue(dialogue_text, ai_response)
             if not should_remember:
                 self.logger.debug("AI判断本次对话不值得记录到长期记忆")
                 return
@@ -284,36 +314,154 @@ class QvQHandler:
             return False
 
     async def _save_filtered_memories(self, user_id: str, important_info: str, group_id: Optional[str] = None) -> None:
-        """保存记忆（带去重机制）"""
-        # 获取用户现有记忆
-        user_memory = await self.memory.get_user_memory(user_id)
-        existing_memories = [mem['content'].lower() for mem in user_memory.get('long_term', [])]
-
+        """保存记忆（带去重机制，支持群聊混合模式）"""
         # 分割新信息
         new_memories = []
         for line in important_info.split('\n'):
             line = line.strip()
             if line:
-                # 去重：检查是否已存在相似记忆
-                is_duplicate = False
-                for existing in existing_memories:
-                    # 如果新记忆包含在现有记忆中，或者现有记忆包含在新记忆中
-                    if line.lower() in existing or existing in line.lower():
-                        is_duplicate = True
-                        break
+                new_memories.append(line)
 
-                if not is_duplicate:
-                    new_memories.append(line)
+        if not new_memories:
+            return
 
-        # 保存新记忆
+        # 保存到用户长期记忆（个人记忆）- 始终保存
+        user_memory = await self.memory.get_user_memory(user_id)
+        existing_user_memories = [mem['content'].lower() for mem in user_memory.get('long_term', [])]
+
+        saved_count = 0
         for memory in new_memories:
-            await self.memory.add_long_term_memory(user_id, memory, tags=["auto"])
-            self.logger.info(f"✓ 自动保存到长期记忆: {memory}")
+            # 去重：检查是否已存在相似记忆
+            is_duplicate = False
+            for existing in existing_user_memories:
+                if memory.lower() in existing or existing in memory.lower():
+                    is_duplicate = True
+                    break
 
-        if new_memories:
-            self.logger.info(f"本次对话共保存 {len(new_memories)} 条新记忆")
+            if not is_duplicate:
+                await self.memory.add_long_term_memory(user_id, memory, tags=["auto"])
+                saved_count += 1
+
+        if saved_count > 0:
+            self.logger.info(f"本次对话共保存 {saved_count} 条用户长期记忆")
+
+        # 如果是群聊，根据记忆模式决定是否保存到群记忆
+        if group_id:
+            group_config = self.config.get_group_config(group_id)
+            memory_mode = group_config.get('memory_mode', 'mixed')
+
+            # 混合模式或 sender_only 模式都保存群记忆
+            # 区别是：混合模式会保存群共享上下文，sender_only 只保存 sender_memory
+            if memory_mode in ['mixed', 'sender_only']:
+                # 检查群记忆是否已有重复
+                group_memory = await self.memory.get_group_memory(group_id)
+                sender_memory = group_memory.get("sender_memory", {}).get(user_id, [])
+                existing_group_memories = [mem['content'].lower() for mem in sender_memory]
+
+                group_saved_count = 0
+                for memory in new_memories:
+                    # 去重检查
+                    is_duplicate = False
+                    for existing in existing_group_memories:
+                        if memory.lower() in existing or existing in memory.lower():
+                            is_duplicate = True
+                            break
+
+                    if not is_duplicate:
+                        await self.memory.add_group_memory(group_id, user_id, memory)
+                        group_saved_count += 1
+
+                if group_saved_count > 0:
+                    self.logger.info(f"本次对话共保存 {group_saved_count} 条群记忆")
+
+            # 仅混合模式保存群共享上下文
+            if memory_mode == 'mixed':
+                # 保存一些重要的共享上下文（如群规则、重要事件）
+                # 简单判断：如果包含"群"、"规则"、"注意"等关键词，保存为共享上下文
+                for memory in new_memories:
+                    if any(keyword in memory for keyword in ["群", "规则", "注意", "禁止", "活动", "约定"]):
+                        await self.memory.add_group_memory(group_id, user_id, memory, is_context=True)
+                        self.logger.info(f"✓ 自动保存到群共享上下文: {memory}")
+                        break  # 只保存一条
+
+    def _build_context_prompt(self, context_info: Dict[str, Any], is_group: bool) -> str:
+        """构建上下文提示"""
+        prompt_lines = []
+
+        # 场景信息
+        if is_group:
+            prompt_lines.append("【当前场景】群聊")
+            group_name = context_info.get("group_name", "")
+            group_id = context_info.get("group_id", "")
+            if group_name:
+                prompt_lines.append(f"【群名】{group_name}")
+            if group_id:
+                prompt_lines.append(f"【群ID】{group_id}")
         else:
-            self.logger.debug("所有信息均已存在，无需重复保存")
+            prompt_lines.append("【当前场景】私聊")
+
+        # 发送者信息
+        user_nickname = context_info.get("user_nickname", "")
+        user_id = context_info.get("user_id", "")
+        if user_nickname:
+            prompt_lines.append(f"【发送者】{user_nickname} (ID: {user_id})")
+        elif user_id:
+            prompt_lines.append(f"【发送者ID】{user_id}")
+
+        # 机器人信息
+        bot_nickname = context_info.get("bot_nickname", "")
+        if bot_nickname:
+            prompt_lines.append(f"【你的名字】{bot_nickname}")
+
+        # 平台信息
+        platform = context_info.get("platform", "")
+        if platform:
+            prompt_lines.append(f"【平台】{platform}")
+
+        # 当前时间
+        import datetime
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        prompt_lines.append(f"【时间】{current_time}")
+
+        return "\n".join(prompt_lines) if prompt_lines else ""
+
+    def _parse_multi_messages(self, text: str) -> list:
+        """解析多条消息（带延迟）"""
+        import re
+
+        # 尝试解析多消息格式：消息1\n\n[间隔:3]\n\n消息2
+        pattern = r'\[间隔:(\d+)\]'
+        parts = re.split(pattern, text)
+
+        messages = []
+        current_msg = parts[0].strip()
+
+        for i in range(1, len(parts), 2):
+            if i + 1 < len(parts):
+                delay = int(parts[i])
+                next_msg = parts[i + 1].strip()
+
+                if current_msg:
+                    messages.append({"content": current_msg, "delay": 0})
+                current_msg = next_msg
+
+        if current_msg:
+            messages.append({"content": current_msg, "delay": 0})
+
+        # 如果没有找到间隔标记，返回单条消息
+        if len(messages) <= 1:
+            # 第一条消息可能有延迟（如果第一部分就是 [间隔:3] 开头）
+            # 但这种格式不太可能，直接返回整个文本
+            if len(messages) == 0:
+                return [{"content": text.strip(), "delay": 0}]
+        else:
+            # 设置延迟（第一条延迟为0，后续按标记设置）
+            for i in range(len(messages)):
+                if i > 0 and i * 2 - 1 < len(parts):
+                    messages[i]["delay"] = int(parts[i * 2 - 1])
+
+        # 最多返回3条消息
+        return messages[:3]
 
     def _remove_markdown(self, text: str) -> str:
         """移除Markdown格式"""
@@ -528,17 +676,18 @@ class QvQHandler:
         """处理群配置命令"""
         if not group_id:
             return "此命令仅在群聊中可用"
-        
+
         groups = params.get("groups", [])
         if not groups:
             group_config = self.config.get_group_config(group_id)
-            return f"群配置:\n提示词: {group_config.get('system_prompt', '未设置')}\n记忆模式: {group_config.get('memory_mode', 'sender_only')}"
-        
+            current_mode = group_config.get('memory_mode', 'mixed')
+            return f"群配置:\n提示词: {group_config.get('system_prompt', '未设置')}\n记忆模式: {current_mode} ({self.config.get_memory_mode_description(current_mode)})"
+
         action = groups[0].lower()
-        
+
         if action == "info":
             return await self.handle_group_config(user_id, group_id, {}, intent_data)
-        
+
         elif action == "prompt":
             if len(groups) < 2:
                 return "请提供提示词内容"
@@ -547,7 +696,19 @@ class QvQHandler:
             group_config["system_prompt"] = prompt
             self.config.set_group_config(group_id, group_config)
             return "群提示词已更新"
-        
+
+        elif action == "memory":
+            if len(groups) < 2:
+                return "请指定记忆模式: mixed (混合模式) 或 sender_only (仅发送者模式)"
+            mode = groups[1].lower()
+            if mode not in ["mixed", "sender_only"]:
+                return "无效的记忆模式，请选择: mixed 或 sender_only"
+            group_config = self.config.get_group_config(group_id)
+            group_config["memory_mode"] = mode
+            self.config.set_group_config(group_id, group_config)
+            mode_desc = self.config.get_memory_mode_description(mode)
+            return f"群记忆模式已设置为: {mode} ({mode_desc})"
+
         elif action == "style":
             if len(groups) < 2:
                 return "请提供风格"
@@ -556,7 +717,7 @@ class QvQHandler:
             group_config["style"] = style
             self.config.set_group_config(group_id, group_config)
             return f"群对话风格已设置为: {style}"
-        
+
         else:
             return f"未知的群配置操作: {action}"
     
@@ -662,6 +823,7 @@ class QvQHandler:
 群聊配置：
 {prefix} group info       - 查看群配置
 {prefix} group prompt <内容>   - 设置群提示词
+{prefix} group memory <模式>   - 设置群记忆模式 (mixed/sender_only)
 {prefix} group style <风格>   - 设置对话风格
 
 个性化：
