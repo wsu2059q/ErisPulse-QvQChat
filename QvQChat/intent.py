@@ -11,7 +11,6 @@ class QvQIntent:
     - dialogue: 普通对话交流（记忆自然融入对话）
     - memory_add: 记住某些信息（用户主动要求记住）
     - memory_delete: 删除记忆（用户主动要求删除）
-    - intent_execution: 系统操作指令（配置管理、会话管理等）
     """
 
     def __init__(self, ai_manager, config_manager, logger):
@@ -21,16 +20,6 @@ class QvQIntent:
 
         # 意图处理器映射
         self.intent_handlers: Dict[str, Callable] = {}
-
-        # 系统操作关键词（规则匹配作为后备）
-        self.system_keywords = [
-            "清除会话", "清空会话", "清空对话历史", "清除对话",
-            "清除记忆", "清空记忆", "删除记忆",
-            "导出记忆", "备份记忆", "导出",
-            "切换模型", "改模型", "换模型",
-            "设置风格", "改风格", "换风格", "修改提示词",
-            "群提示词", "群设定", "群配置", "群模式"
-        ]
     
     def register_handler(self, intent_type: str, handler: Callable) -> None:
         """
@@ -46,7 +35,7 @@ class QvQIntent:
         """
         识别用户意图
 
-        使用AI进行意图识别，结合规则匹配提高准确性。
+        使用AI进行意图识别。
 
         Args:
             user_input: 用户输入
@@ -59,23 +48,11 @@ class QvQIntent:
         confidence = 0.1
         extracted_params = {}
 
-        # 1. 检查系统操作关键词（规则匹配）
-        for keyword in self.system_keywords:
-            if keyword in user_input:
-                intent = "intent_execution"
-                confidence = 0.9
-                extracted_params["command"] = keyword
-                self.logger.debug(f"规则匹配识别为 intent_execution: {keyword}")
-                break
-
-        # 2. 如果不是系统操作，使用AI识别
-        if intent == "dialogue" and self.ai_manager.get_client("intent"):
+        # 使用AI识别
+        if self.ai_manager.get_client("intent"):
             try:
                 ai_intent = await self.ai_manager.identify_intent(user_input)
-                if ai_intent and ai_intent.strip() in [
-                    "dialogue", "memory_add", "memory_delete",
-                    "intent_execution"
-                ]:
+                if ai_intent and ai_intent.strip() in ["dialogue", "memory_add", "memory_delete"]:
                     intent = ai_intent.strip()
                     confidence = 0.9
             except Exception as e:

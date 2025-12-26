@@ -1,4 +1,5 @@
 from typing import Dict, List, Any, Optional
+from .utils import remove_markdown
 
 
 class QvQHandler:
@@ -82,15 +83,6 @@ class QvQHandler:
         # 使用历史消息（包含刚添加的用户消息，使用更多历史）
         messages.extend(session_history[-15:])
 
-        # 添加当前上下文提示
-        if group_id:
-            messages.append({"role": "system", "content": "当前是群聊场景，你是一个普通群友，像真人一样自然参与对话，不需要每条消息都回复。"})
-        else:
-            messages.append({"role": "system", "content": "当前是私聊场景，你是一个普通群友，可以更自由地表达，但也要保持自然。"})
-
-        # 使用历史消息（包含刚添加的用户消息，使用更多历史）
-        messages.extend(session_history[-15:])
-
         # 调用对话AI
         try:
             # 如果有图片，先尝试使用视觉AI分析图片内容
@@ -154,7 +146,7 @@ class QvQHandler:
             response = await self.ai_manager.dialogue(messages)
 
             # 移除Markdown格式
-            response = self._remove_markdown(response)
+            response = remove_markdown(response)
 
             # 保存AI回复到会话历史（用户消息已在Core.py中添加）
             await self.memory.add_short_term_memory(user_id, "assistant", response, group_id)
@@ -520,86 +512,6 @@ class QvQHandler:
 
         return "\n".join(prompt_lines) if prompt_lines else ""
 
-    def _parse_multi_messages(self, text: str) -> list:
-        """
-        解析多条消息（带延迟）
-        
-        Args:
-            text: 包含多条消息格式的文本
-            
-        Returns:
-            list: 消息列表，每条消息包含content和delay
-        """
-        import re
-
-        # 尝试解析多消息格式：消息1\n\n[间隔:3]\n\n消息2
-        pattern = r'\[间隔:(\d+)\]'
-        parts = re.split(pattern, text)
-
-        messages = []
-        current_msg = parts[0].strip()
-
-        for i in range(1, len(parts), 2):
-            if i + 1 < len(parts):
-                next_msg = parts[i + 1].strip()
-
-                if current_msg:
-                    messages.append({"content": current_msg, "delay": 0})
-                current_msg = next_msg
-
-        if current_msg:
-            messages.append({"content": current_msg, "delay": 0})
-
-        # 如果没有找到间隔标记，返回单条消息
-        if len(messages) <= 1:
-            # 第一条消息可能有延迟（如果第一部分就是 [间隔:3] 开头）
-            # 但这种格式不太可能，直接返回整个文本
-            if len(messages) == 0:
-                return [{"content": text.strip(), "delay": 0}]
-        else:
-            # 设置延迟（第一条延迟为0，后续按标记设置）
-            for i in range(len(messages)):
-                if i > 0 and i * 2 - 1 < len(parts):
-                    messages[i]["delay"] = int(parts[i * 2 - 1])
-
-        # 最多返回3条消息
-        return messages[:3]
-
-    def _remove_markdown(self, text: str) -> str:
-        """
-        移除Markdown格式
-        
-        Args:
-            text: 原始文本
-            
-        Returns:
-            str: 移除Markdown后的文本
-        """
-        import re
-        if not text:
-            return text
-        # 移除粗体 **text** 或 __text__
-        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-        text = re.sub(r'__(.*?)__', r'\1', text)
-        # 移除斜体 *text* 或 _text_
-        text = re.sub(r'\*(?!\*)(.*?)\*(?!\*)', r'\1', text)
-        text = re.sub(r'_(?!_)(.*?)_(?!_)', r'\1', text)
-        # 移除代码 `code`
-        text = re.sub(r'`(.*?)`', r'\1', text)
-        # 移除代码块 ```code```
-        text = re.sub(r'```[\s\S]*?```', '', text)
-        # 移除标题 # heading
-        text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
-        # 移除列表标记 - 或 *
-        text = re.sub(r'^[\s]*[-*]\s+', '', text, flags=re.MULTILINE)
-        # 移除有序列表 1.
-        text = re.sub(r'^[\s]*\d+\.\s+', '', text, flags=re.MULTILINE)
-        # 移除链接 [text](url)
-        text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-        # 移除多余的空行
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        return text.strip()
-    
     async def handle_memory_add(
         self,
         user_id: str,
@@ -676,36 +588,3 @@ class QvQHandler:
                     pass
             return "请提供要删除的记忆索引（如：删除第1条记忆）"
 
-    async def handle_intent_execution(
-        self,
-        _user_id: str,  # type: ignore[unused-argument]
-        _params: Dict[str, Any],  # type: ignore[unused-argument]
-        intent_data: Dict[str, Any],
-        context_info: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """
-        使用意图执行模型处理系统操作（替代传统命令）
-
-        Args:
-            _user_id: 用户ID（未使用，保留用于兼容性）
-            _params: 参数字典（未使用，保留用于兼容性）
-            intent_data: 意图数据
-            context_info: 上下文信息（可选）
-
-        Returns:
-            str: 执行结果
-        """
-        try:
-            user_input = intent_data["raw_input"]
-
-            # 使用AI判断应该执行什么操作并返回结构化结果
-            # AI会直接返回自然语言回复给用户
-            execution_result = await self.ai_manager.execute_intent(user_input, context_info)
-            self.logger.debug(f"AI意图执行结果: {execution_result}")
-
-            # AI会直接返回自然语言回复，无需额外处理
-            return execution_result
-
-        except Exception as e:
-            self.logger.error(f"意图执行失败: {e}")
-            return "抱歉，执行操作时出现错误。"

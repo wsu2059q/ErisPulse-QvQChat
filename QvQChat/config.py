@@ -11,7 +11,7 @@ class QvQConfig:
     
     配置简化说明：
     - 只需配置dialogue的API密钥
-    - 其他AI（intent、memory、query等）默认使用dialogue配置
+    - 其他AI（intent、memory等）默认使用dialogue配置
     - 如需使用不同的API密钥，可单独配置
     """
 
@@ -166,16 +166,6 @@ class QvQConfig:
                 "max_tokens": 300,
                 "system_prompt": "你是一个图片分析助手。请详细描述图片的内容，包括图片中的物体、文字、场景、人物表情等。如果有多张图片，请分别描述每张图片。"
             },
-
-            # 查询AI配置
-            "query": {
-                "base_url": "https://api.openai.com/v1",
-                "api_key": "",
-                "model": "gpt-3.5-turbo",
-                "temperature": 0.3,
-                "max_tokens": 1000,
-                "system_prompt": "你是一个记忆查询助手，负责从记忆中检索相关信息。"
-            },
             
             # 意图识别AI配置
             "intent": {
@@ -196,9 +186,6 @@ class QvQConfig:
 
 3. memory_delete - 用户主动要求删除记忆
    - 例如："忘记这件事"、"删掉这条记忆"
-
-4. intent_execution - 系统操作指令
-   - 例如："切换模型"、"修改配置"、"设置风格"、"改变群设定"、"清除会话"、"导出记忆"等
 
 重要判断规则：
 - 【默认】所有普通交流、提问、闲聊都归类为dialogue（包括询问记忆）
@@ -278,7 +265,7 @@ class QvQConfig:
         - 根据AI类型调整temperature和max_tokens参数
         
         Args:
-            ai_type: AI类型（dialogue、memory、query、intent等）
+            ai_type: AI类型（dialogue、memory、intent等）
             
         Returns:
             Dict[str, Any]: AI配置字典
@@ -299,9 +286,6 @@ class QvQConfig:
             elif ai_type == "intent":
                 ai_config["temperature"] = 0.1
                 ai_config["max_tokens"] = 500
-            elif ai_type == "intent_execution":
-                ai_config["temperature"] = 0.3
-                ai_config["max_tokens"] = 1000
             elif ai_type == "memory":
                 ai_config["temperature"] = 0.3
                 ai_config["max_tokens"] = 1000

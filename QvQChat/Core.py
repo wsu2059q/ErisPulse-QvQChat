@@ -9,6 +9,8 @@ from .ai_client import QvQAIManager
 from .intent import QvQIntent
 from .state import QvQState
 from .handler import QvQHandler
+from .commands import QvQCommands
+from .utils import remove_markdown, parse_multi_messages
 
 
 class Main:
@@ -41,6 +43,7 @@ class Main:
             self.config, self.memory, self.ai_manager,
             self.state, self.logger
         )
+        self.commands = QvQCommands(self.sdk, self.memory, self.config, self.logger)
 
         # 消息计数器和时间戳（用于窥屏模式）
         self._message_count = {}
@@ -53,6 +56,9 @@ class Main:
 
         # 注册意图处理器
         self._register_intent_handlers()
+
+        # 注册命令系统
+        self.commands.register_all()
 
         # 注册消息事件监听
         self._register_event_handlers()
@@ -122,9 +128,6 @@ class Main:
         self.intent.register_handler("memory_add", self.handler.handle_memory_add)
         self.intent.register_handler("memory_delete", self.handler.handle_memory_delete)
 
-        # 意图执行：替代传统命令系统，由AI自主判断执行
-        self.intent.register_handler("intent_execution", self._handle_intent_execution)
-
     def _register_event_handlers(self) -> None:
         """
         注册事件监听器
@@ -167,28 +170,6 @@ class Main:
             return f"group:{group_id}"
         # 私聊：使用用户ID
         return f"user:{user_id}"
-
-    async def _handle_intent_execution(self, user_id: str, group_id: Optional[str], params: Dict[str, Any], intent_data: Dict[str, Any]) -> str:
-        """
-        处理意图执行（AI自主判断执行系统操作）
-        
-        Args:
-            user_id: 用户ID
-            group_id: 群ID（可选）
-            params: 参数字典
-            intent_data: 意图数据
-            
-        Returns:
-            str: 执行结果
-        """
-        # 构建上下文信息
-        context_info = {
-            "user_nickname": params.get("context_info", {}).get("user_nickname", ""),
-            "group_name": params.get("context_info", {}).get("group_name", ""),
-            "is_group": bool(group_id)
-        }
-
-        return await self.handler.handle_intent_execution(user_id, group_id, params, intent_data, context_info)
 
     async def _should_reply(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
         """
@@ -474,7 +455,7 @@ class Main:
                 return
 
             # 移除Markdown格式
-            response = self._remove_markdown(response)
+            response = remove_markdown(response)
 
             # 发送响应
             await self._send_response(data, response, platform)
@@ -486,41 +467,6 @@ class Main:
         except Exception as e:
             self.logger.error(f"处理消息时出错: {e}")
 
-    def _remove_markdown(self, text: str) -> str:
-        """
-        移除Markdown格式
-        
-        Args:
-            text: 原始文本
-            
-        Returns:
-            str: 移除Markdown后的文本
-        """
-        import re
-        if not text:
-            return text
-        # 移除粗体 **text** 或 __text__
-        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-        text = re.sub(r'__(.*?)__', r'\1', text)
-        # 移除斜体 *text* 或 _text_
-        text = re.sub(r'\*(?!\*)(.*?)\*(?!\*)', r'\1', text)
-        text = re.sub(r'_(?!_)(.*?)_(?!_)', r'\1', text)
-        # 移除代码 `code`
-        text = re.sub(r'`(.*?)`', r'\1', text)
-        # 移除代码块 ```code```
-        text = re.sub(r'```[\s\S]*?```', '', text)
-        # 移除标题 # heading
-        text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
-        # 移除列表标记 - 或 *
-        text = re.sub(r'^[\s]*[-*]\s+', '', text, flags=re.MULTILINE)
-        # 移除有序列表 1.
-        text = re.sub(r'^[\s]*\d+\.\s+', '', text, flags=re.MULTILINE)
-        # 移除链接 [text](url)
-        text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-        # 移除多余的空行
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        return text.strip()
-    
     async def _send_response(
         self,
         data: Dict[str, Any],
@@ -557,7 +503,7 @@ class Main:
                 return
 
             # 解析多条消息
-            messages = self._parse_multi_messages(response)
+            messages = parse_multi_messages(response)
 
             # 逐条发送
             for i, msg_info in enumerate(messages):
@@ -574,47 +520,3 @@ class Main:
 
         except Exception as e:
             self.logger.error(f"发送响应失败: {e}")
-
-    def _parse_multi_messages(self, text: str) -> list:
-        """
-        解析多条消息（带延迟）
-        
-        Args:
-            text: 包含多条消息格式的文本
-            
-        Returns:
-            list: 消息列表，每条消息包含content和delay
-        """
-        import re
-
-        # 尝试解析多消息格式：消息1\n\n[间隔:3]\n\n消息2
-        pattern = r'\[间隔:(\d+)\]'
-        parts = re.split(pattern, text)
-
-        messages = []
-        current_msg = parts[0].strip()
-
-        for i in range(1, len(parts), 2):
-            if i + 1 < len(parts):
-                next_msg = parts[i + 1].strip()
-
-                if current_msg:
-                    messages.append({"content": current_msg, "delay": 0})
-                current_msg = next_msg
-
-        if current_msg:
-            messages.append({"content": current_msg, "delay": 0})
-
-        # 如果没有找到间隔标记，返回单条消息
-        if len(messages) <= 1:
-            if len(messages) == 0:
-                return [{"content": text.strip(), "delay": 0}]
-        else:
-            # 设置延迟
-            for i in range(len(messages)):
-                if i > 0 and i * 2 - 1 < len(parts):
-                    delay = int(parts[i * 2 - 1])
-                    messages[i]["delay"] = delay
-
-        # 最多返回3条消息
-        return messages[:3]

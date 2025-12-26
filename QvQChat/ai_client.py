@@ -117,7 +117,7 @@ class QvQAIManager:
     多AI管理器
     
     管理多个AI客户端，提供统一的调用接口。
-    支持的AI类型：dialogue、memory、query、intent、intent_execution、reply_judge、vision
+    支持的AI类型：dialogue、memory、intent、reply_judge、vision
     """
     
     def __init__(self, config_manager, logger):
@@ -135,12 +135,11 @@ class QvQAIManager:
         AI类型说明：
         - dialogue: 对话AI（必需）
         - intent: 意图识别AI（必需）
-        - intent_execution: 意图执行AI（必需，替代命令系统）
         - memory: 记忆提取AI（可选）
         - reply_judge: 回复判断AI（可选）
         - vision: 视觉AI（可选）
         """
-        ai_types = ["dialogue", "memory", "intent", "intent_execution", "reply_judge", "vision"]
+        ai_types = ["dialogue", "memory", "intent", "reply_judge", "vision"]
         for ai_type in ai_types:
             try:
                 ai_config = self.config.get_ai_config(ai_type)
@@ -234,52 +233,6 @@ class QvQAIManager:
         if not client:
             return "dialogue"  # 默认为对话
         return await client.chat([{"role": "user", "content": user_input}], temperature=0.1)
-
-    async def execute_intent(
-        self,
-        user_input: str,
-        context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """
-        执行意图（系统操作）
-        
-        使用intent_execution AI智能识别并执行用户的系统操作指令。
-        
-        Args:
-            user_input: 用户输入
-            context: 上下文信息（可选）
-            
-        Returns:
-            str: 执行结果
-        """
-        client = self.get_client("intent_execution")
-        if not client:
-            return "抱歉，意图执行功能未配置。"
-
-        try:
-            # 构建上下文信息
-            context_info = ""
-            if context:
-                parts = []
-                if context.get("user_nickname"):
-                    parts.append(f"用户昵称: {context['user_nickname']}")
-                if context.get("group_name"):
-                    parts.append(f"群名: {context['group_name']}")
-                if context.get("is_group"):
-                    parts.append(f"场景: 群聊")
-                if parts:
-                    context_info = "\n【上下文信息】\n" + "\n".join(parts)
-
-            prompt = f"""用户指令：{user_input}
-{context_info}
-
-请判断用户想要执行什么操作，并返回操作结果。"""
-            result = await client.chat([{"role": "user", "content": prompt}])
-            self.logger.debug(f"意图执行: {result[:100]}...")
-            return result
-        except Exception as e:
-            self.logger.warning(f"意图执行失败: {e}")
-            return "抱歉，执行该操作时出现错误。"
 
     async def analyze_image(self, image_url: str, user_text: str = "") -> str:
         """
