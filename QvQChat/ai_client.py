@@ -271,7 +271,7 @@ class QvQAIManager:
 
     async def should_reply(self, recent_messages: List[Dict[str, str]], current_message: str, bot_name: str = "", reply_keywords: List[str] = None) -> bool:
         """
-        AI判断是否需要回复（普通群友模式）
+        AI判断是否需要回复
         
         Args:
             recent_messages: 最近的消息历史
@@ -301,7 +301,7 @@ class QvQAIManager:
 
             context_str = "\n".join(context)
 
-            prompt = f"""你是一个普通群友，正在群聊中参与互动。根据最近的对话历史，判断是否需要回复这条消息。
+            prompt = f"""你正在群聊中参与互动。根据最近的对话历史，判断是否需要回复这条消息。
 
 【角色定位】
 |- 你是一个普通群友，不是机器人助手
@@ -323,8 +323,8 @@ class QvQAIManager:
 4. 适当的幽默回应可以活跃气氛
 5. 之前提到的事情有更新或结论
 
-【不回复的情况】：
-1. 普通打招呼（"在吗"、"大家好"）
+【不回复的情况]：
+1. 普通打招呼（如:"在吗"、"大家好"）
 2. 表情符号、纯表情回复
 3. 简单的"好的"、"嗯"、"收到"
 4. 与你无关的话题讨论

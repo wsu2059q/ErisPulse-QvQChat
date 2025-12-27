@@ -10,7 +10,7 @@ from .intent import QvQIntent
 from .state import QvQState
 from .handler import QvQHandler
 from .commands import QvQCommands
-from .utils import remove_markdown, parse_multi_messages, record_voice, parse_speak_tags
+from .utils import parse_multi_messages, record_voice, parse_speak_tags
 
 
 class Main:
@@ -670,9 +670,6 @@ class Main:
             if response is None:
                 return
 
-            # 移除Markdown格式
-            response = remove_markdown(response)
-
             # 发送响应
             await self._send_response(data, response, platform)
 
@@ -740,22 +737,27 @@ class Main:
                     import asyncio
                     await asyncio.sleep(delay)
 
-                # 解析 <speak> 标签
+                # 解析 <|voice> 标签
                 speak_result = parse_speak_tags(msg_content)
 
-                if speak_result["has_speak"]:
-                    # 有 <speak> 标签，将文本和语音分开发送
+                if speak_result["has_voice"]:
+                    # 有 <|voice> 标签，将文本和语音分开发送
                     # 检查平台是否支持语音
                     support_voice = platform in self.config.get("voice.platforms", ["qq", "onebot11"])
 
-                    # 发送 <speak> 标签外的文本
+                    # 发送标签外的文本
                     if speak_result["text"]:
                         await adapter.Send.To(target_type, target_id).Text(speak_result["text"])
                         self.logger.info(f"已发送文本响应到 {platform} - {detail_type} - {target_id} (消息 {i+1}/{len(messages)})")
 
-                    # 发送 <speak> 标签内的语音
+                    # 发送语音
                     if speak_result["voice_content"] and support_voice:
-                        voice_file = await record_voice(speak_result["voice_content"], self.config.config, self.logger)
+                        voice_file = await record_voice(
+                            speak_result["voice_style"],
+                            speak_result["voice_content"],
+                            self.config.config,
+                            self.logger
+                        )
                         if voice_file:
                             try:
                                 from pathlib import Path

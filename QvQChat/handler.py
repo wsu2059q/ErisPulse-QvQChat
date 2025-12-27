@@ -1,5 +1,4 @@
 from typing import Dict, List, Any, Optional
-from .utils import remove_markdown
 
 
 class QvQHandler:
@@ -79,9 +78,9 @@ class QvQHandler:
 【多消息回复格式】
 如果你想说多句话，用这种格式：
 第一句话
-[间隔:3]
+<|wait time="1"|>
 第二句话
-[间隔:2]
+<|wait time="2"|>
 第三句话
 
 数字表示秒数，最多3条消息，每条间隔1-5秒。"""
@@ -89,15 +88,12 @@ class QvQHandler:
         if support_voice:
             voice_hint = """
 【语音输出功能】
-- 如果你想发送语音，请在回复中包含 `<speak>` 标签包裹的语音内容
-- 文本和语音可以同时发送：文本在标签外，语音内容在标签内
-- 语音内容使用 `<speak>` 标签包裹，如：`<speak>你好</speak>`
-- 使用 `<|endofprompt|>` 标签控制语音生成的特性（方言、语气等）
-- 示例格式：`这是文本消息<speak>用撒娇的语气说这句话<|endofprompt|>主人你怎么现在才来找我玩喵~</speak>`
-- `<|endofprompt|>` 标签分割了语音特性和实际语音内容，标签前的部分是特性描述，标签后的部分是实际语音内容。
-- 支持的特性：
-  1. 说话风格：指定语气（如"用撒娇的语气"、"用开心的语气"）
-  2. 方言控制：指定方言（如"用粤语说"、"用四川话"）"""
+- 如果你想发送语音，用这种格式：
+<|voice style="开心的语气"|>
+语音内容
+<|/voice|>
+- `style` 标签控制语音生成的特性（方言、语气等,可以使用自然语言描述）
+"""
 
         if group_id:
             scene_prompt = "当前是群聊场景，你是一个普通群友，像真人一样自然参与对话，不需要每条消息都回复。"
@@ -114,7 +110,6 @@ class QvQHandler:
             scene_prompt += multi_message_hint
             messages.append({"role": "system", "content": scene_prompt})
 
-        # 使用历史消息（包含刚添加的用户消息，使用更多历史）
         messages.extend(session_history[-15:])
 
         # 调用对话AI
@@ -123,7 +118,7 @@ class QvQHandler:
             if image_urls:
                 use_multimodal = True
                 image_descriptions = []
-
+                
                 # 尝试使用视觉AI分析图片
                 for url in image_urls[:3]:  # 最多3张图片
                     description = await self.ai_manager.analyze_image(url, user_input if len(image_urls) == 1 else "")
@@ -179,9 +174,6 @@ class QvQHandler:
 
             response = await self.ai_manager.dialogue(messages)
 
-            # 移除Markdown格式
-            response = remove_markdown(response)
-
             # 保存AI回复到会话历史（用户消息已在Core.py中添加）
             await self.memory.add_short_term_memory(user_id, "assistant", response, group_id)
 
@@ -230,7 +222,6 @@ class QvQHandler:
                                 no_image_messages.append(msg)
 
                         response = await self.ai_manager.dialogue(no_image_messages)
-                        response = self._remove_markdown(response)
                         await self.memory.add_short_term_memory(user_id, "assistant", response, group_id)
                         await self.state.increment_interaction(user_id, group_id)
                         return response

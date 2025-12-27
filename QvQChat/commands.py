@@ -73,34 +73,6 @@ class QvQCommands:
                 result = "\n".join(result_parts)
             await self._send_reply(event, result)
 
-        @command("删除记忆", aliases=["忘记记忆", "删除"], help="删除指定记忆（格式：删除记忆 1）")
-        async def delete_memory_cmd(event):
-            """删除指定记忆"""
-            user_id = str(event.get("user_id"))
-
-            # 获取索引参数
-            args = event.get("args", [])
-            if not args:
-                result = self._get_memory_list(user_id, "请选择要删除的记忆编号。")
-                await self._send_reply(event, result)
-                return
-
-            try:
-                index = int(args[0]) - 1  # 用户输入从1开始，列表从0开始
-                user_memory = await self.memory.get_user_memory(user_id)
-                long_term = user_memory.get("long_term", [])
-
-                if 0 <= index < len(long_term):
-                    deleted = long_term.pop(index)
-                    user_memory["long_term"] = long_term
-                    await self.memory.set_user_memory(user_id, user_memory)
-                    await self._send_reply(event, f"已删除记忆：{deleted.get('content', '')}")
-                else:
-                    await self._send_reply(event, f"无效的编号（共{len(long_term)}条记忆）")
-            except (ValueError, IndexError):
-                result = self._get_memory_list(user_id, "请输入有效的记忆编号。")
-                await self._send_reply(event, result)
-
         @command("清除记忆", aliases=["清空记忆", "删除所有记忆"], help="清除所有长期记忆")
         async def clear_memory_cmd(event):
             """清除长期记忆"""
@@ -109,9 +81,7 @@ class QvQCommands:
             user_memory["long_term"] = []
             await self.memory.set_user_memory(user_id, user_memory)
             await self._send_reply(event, "记忆已清除（长期记忆已清空）")
-
-        # ==================== 群配置 ====================
-
+        
         @command("群配置", aliases=["群设定", "群模式", "群提示词"], help="查看群配置")
         async def group_config_cmd(event):
             """查看群配置"""
@@ -125,14 +95,10 @@ class QvQCommands:
             result = f"【群配置】\n- 记忆模式：{mode_desc}\n- 群提示词：{group_config.get('system_prompt', '（使用默认）') or '（使用默认）'}"
             await self._send_reply(event, result)
 
-        # ==================== 系统信息 ====================
-
         @command("状态", aliases=["机器人状态", "系统状态"], help="查看系统状态")
         async def status_cmd(event):
-            """查看系统状态"""
             from .ai_client import QvQAIManager
             ai_manager = QvQAIManager(self.config, self.logger)
-
             result_parts = ["【系统状态】\n"]
 
             # AI配置状态
@@ -163,11 +129,8 @@ class QvQCommands:
 
             await self._send_reply(event, "\n".join(result_parts))
 
-        # ==================== 活跃模式 ====================
-
         @command("活跃模式", aliases=["开启活跃", "活跃起来", "取消窥屏"], help="启用活跃模式（格式：活跃模式 10）")
         async def active_mode_cmd(event):
-            """启用活跃模式"""
             if not self.main:
                 await self._send_reply(event, "功能不可用")
                 return
@@ -194,7 +157,6 @@ class QvQCommands:
 
         @command("关闭活跃", aliases=["结束活跃", "恢复窥屏"], help="关闭活跃模式")
         async def disable_active_mode_cmd(event):
-            """关闭活跃模式"""
             if not self.main:
                 await self._send_reply(event, "功能不可用")
                 return
@@ -207,7 +169,6 @@ class QvQCommands:
 
         @command("活跃状态", aliases=["当前模式", "是否活跃"], help="查看当前模式状态")
         async def active_status_cmd(event):
-            """查看活跃模式状态"""
             if not self.main:
                 await self._send_reply(event, "功能不可用")
                 return
@@ -217,19 +178,7 @@ class QvQCommands:
 
             result = self.main.get_active_mode_status(user_id, group_id)
             await self._send_reply(event, result)
-
-        @command("活跃列表", aliases=["查看活跃", "谁在活跃"], help="查看所有处于活跃模式的会话")
-        async def active_list_cmd(event):
-            """查看所有活跃模式的会话"""
-            if not self.main:
-                await self._send_reply(event, "功能不可用")
-                return
-
-            result = self.main.get_all_active_modes()
-            await self._send_reply(event, result)
-
-        self.logger.info("已注册所有 QvQChat 命令")
-
+            
     async def _send_reply(self, event: Dict[str, Any], message: str) -> None:
         """
         发送回复消息

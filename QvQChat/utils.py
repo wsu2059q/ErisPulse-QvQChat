@@ -9,42 +9,6 @@ import aiohttp
 from datetime import datetime
 from pathlib import Path
 
-
-def remove_markdown(text: str) -> str:
-    """
-    移除Markdown格式
-
-    Args:
-        text: 原始文本
-
-    Returns:
-        str: 移除Markdown后的文本
-    """
-    if not text:
-        return text
-    # 移除粗体 **text** 或 __text__
-    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    text = re.sub(r'__(.*?)__', r'\1', text)
-    # 移除斜体 *text* 或 _text_
-    text = re.sub(r'\*(?!\*)(.*?)\*(?!\*)', r'\1', text)
-    text = re.sub(r'_(?!_)(.*?)_(?!_)', r'\1', text)
-    # 移除代码 `code`
-    text = re.sub(r'`(.*?)`', r'\1', text)
-    # 移除代码块 ```code```
-    text = re.sub(r'```[\s\S]*?```', '', text)
-    # 移除标题 # heading
-    text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
-    # 移除列表标记 - 或 *
-    text = re.sub(r'^[\s]*[-*]\s+', '', text, flags=re.MULTILINE)
-    # 移除有序列表 1.
-    text = re.sub(r'^[\s]*\d+\.\s+', '', text, flags=re.MULTILINE)
-    # 移除链接 [text](url)
-    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-    # 移除多余的空行
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    return text.strip()
-
-
 def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     """
     解析多条消息（带延迟）
@@ -55,8 +19,8 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     Returns:
         List[Dict[str, Any]]: 消息列表，每条消息包含content和delay
     """
-    # 尝试解析多消息格式：消息1\n\n[间隔:3]\n\n消息2
-    pattern = r'\[间隔:(\d+)\]'
+    # 尝试解析多消息格式：消息1\n\n<|wait time="1"|>\n\n消息2
+    pattern = r'<\|wait\s+time="(\d+)"\|>'
     parts = re.split(pattern, text)
 
     messages = []
@@ -90,49 +54,53 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
 
 def parse_speak_tags(text: str) -> Dict[str, Any]:
     """
-    解析 <speak> 标签，提取文本内容和语音内容
+    解析 <|voice style="..."> 标签，提取文本内容和语音内容
 
     Args:
-        text: 可能包含 <speak> 标签的文本
+        text: 可能包含 <|voice> 标签的文本
 
     Returns:
-        Dict[str, Any]: 包含 text 和 voice_content 的字典
-            - text: <speak> 标签外的文本内容
-            - voice_content: <speak> 标签内的语音内容（包含 <|endofprompt|> 标签）
-            - has_speak: 是否包含 <speak> 标签
+        Dict[str, Any]: 包含 text, voice_style, voice_content 和 has_voice 的字典
+            - text: 标签外的文本内容
+            - voice_style: 语音风格描述（从 style 属性提取）
+            - voice_content: 语音内容（正文）
+            - has_voice: 是否包含语音标签
     """
     result = {
         "text": text,
+        "voice_style": None,
         "voice_content": None,
-        "has_speak": False
+        "has_voice": False
     }
 
-    # 查找 <speak> 标签
-    speak_pattern = r'<speak>(.*?)</speak>'
-    matches = re.findall(speak_pattern, text, re.DOTALL)
+    # 查找 <|voice style="..."> 标签
+    voice_pattern = r'<\|voice\s+style="([^"]*)"\|>(.*?)<\|/voice\|>'
+    matches = re.findall(voice_pattern, text, re.DOTALL)
 
     if matches:
-        result["has_speak"] = True
-        # 提取最后一个 <speak> 标签的内容作为语音内容
-        result["voice_content"] = matches[-1].strip()
+        result["has_voice"] = True
+        # 提取最后一个语音标签的内容
+        voice_style, voice_content = matches[-1]
+        result["voice_style"] = voice_style.strip()
+        result["voice_content"] = voice_content.strip()
 
-        # 移除所有 <speak> 标签，保留标签外的文本
-        text_without_speak = re.sub(speak_pattern, '', text, flags=re.DOTALL)
-        result["text"] = text_without_speak.strip()
+        # 移除所有语音标签，保留标签外的文本
+        text_without_voice = re.sub(voice_pattern, '', text, flags=re.DOTALL)
+        result["text"] = text_without_voice.strip()
 
     return result
 
 
-async def record_voice(text: str, config: Dict[str, Any], logger) -> Optional[str]:
+async def record_voice(voice_style: str, voice_content: str, config: Dict[str, Any], logger) -> Optional[str]:
     """
     生成语音（使用SiliconFlow API）
 
-    支持通过 <|endofprompt|> 标签控制语音生成特性：
-    - 标签前是语音特性描述（如方言、语气等）
-    - 标签后是实际要朗读的文本
+    语音最终格式：风格描述<|endofprompt|>语音正文
+    例如：用撒娇的语气说这句话<|endofprompt|>主人你怎么现在才来找我玩喵~
 
     Args:
-        text: 要转换为语音的文本（可包含 <|endofprompt|> 标签）
+        voice_style: 语音风格描述（方言、语气等）
+        voice_content: 语音正文内容
         config: 配置字典（包含语音API配置）
         logger: 日志记录器
 
@@ -158,17 +126,13 @@ async def record_voice(text: str, config: Dict[str, Any], logger) -> Optional[st
             "Content-Type": "application/json"
         }
 
-        # 处理 <|endofprompt|> 标签
-        voice_text = text
-        logger.debug(f"原始文本: {voice_text}")
-        voice_prompt = ""
+        # 构建最终语音文本：风格<|endofprompt|>正文
+        if voice_style:
+            voice_text = f"{voice_style}<|endofprompt|>{voice_content}"
+        else:
+            voice_text = voice_content
 
-        if "<|endofprompt|>" in text:
-            parts = text.split("<|endofprompt|>", 1)
-            if len(parts) == 2:
-                voice_prompt = parts[0].strip()
-                voice_text = parts[1].strip()
-                logger.debug(f"语音特性: {voice_prompt}, 语音文本: {voice_text}")
+        logger.debug(f"语音风格: {voice_style}, 语音正文: {voice_content}")
 
         data = {
             "model": voice_config.get("model", "FunAudioLLM/CosyVoice2-0.5B"),
@@ -179,13 +143,6 @@ async def record_voice(text: str, config: Dict[str, Any], logger) -> Optional[st
             "gain": voice_config.get("gain", 0.0),
             "sample_rate": voice_config.get("sample_rate", 44100)
         }
-
-        # 如果有语音特性提示，可以在这里添加到请求参数中
-        # 例如，某些TTS服务支持 prompt 或 instruction 参数
-        if voice_prompt:
-            # 如果API支持prompt参数，可以添加
-            # data["prompt"] = voice_prompt
-            logger.debug(f"应用语音特性: {voice_prompt}")
 
         async with aiohttp.ClientSession() as session:
             async with session.post(api_url, headers=headers, json=data) as response:
