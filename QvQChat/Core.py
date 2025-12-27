@@ -355,7 +355,12 @@ class Main:
 
     async def _should_reply(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
         """
-        判断是否应该回复（私聊积极回复，群聊窥屏模式）
+        判断是否应该回复
+
+        判断逻辑：
+        1. 私聊场景 → AI智能判断
+        2. 群聊活跃模式 → AI智能判断
+        3. 群聊窥屏模式 → 概率判断（只在达到最小消息间隔后）
 
         Args:
             data: 消息数据
@@ -368,7 +373,7 @@ class Main:
         """
         import random
 
-        # 私聊场景：不使用窥屏模式，使用AI智能判断
+        # 私聊场景：使用AI智能判断
         if not group_id:
             return await self._should_reply_ai(data, alt_message, user_id, group_id)
 
@@ -381,34 +386,19 @@ class Main:
             if current_time < active_mode_data["end_time"]:
                 # 活跃模式生效中，使用AI判断（积极参与聊天）
                 remaining_minutes = int((active_mode_data["end_time"] - current_time) / 60)
-
-                # 构建会话描述
-                if group_id:
-                    session_desc = f"群聊 {group_id}"
-                else:
-                    session_desc = f"私聊 {user_id}"
-
-                self.logger.debug(f"活跃模式生效中 [{session_desc}]，剩余 {remaining_minutes} 分钟")
+                self.logger.debug(f"活跃模式生效中，剩余 {remaining_minutes} 分钟")
                 return await self._should_reply_ai(data, alt_message, user_id, group_id)
             else:
                 # 活跃模式已过期，清除缓存
                 del self._active_mode[session_key]
-
-                # 构建会话描述
-                if group_id:
-                    session_desc = f"群聊 {group_id}"
-                else:
-                    session_desc = f"私聊 {user_id}"
-
-                self.logger.info(f"✓ {session_desc} 活跃模式已结束，自动切换回窥屏模式")
+                self.logger.info("活跃模式已结束，自动切换回窥屏模式")
 
         # 群聊场景：检查窥屏模式是否启用
         stalker_config = self.config.get("stalker_mode", {})
         if not stalker_config.get("enabled", True):
             # 如果未启用窥屏模式，使用AI判断
             return await self._should_reply_ai(data, alt_message, user_id, group_id)
-
-        session_key = self._get_reply_count_key(user_id, group_id)
+        
         current_time = time.time()
 
         # 重置每小时计数器（每个会话独立）
@@ -424,6 +414,18 @@ class Main:
         if hourly_count >= max_per_hour:
             self.logger.debug(f"每小时回复次数已达上限 ({max_per_hour})，跳过回复")
             return False
+
+        # 检查消息间隔（必须达到最小间隔后才开始判断）
+        min_messages = stalker_config.get("min_messages_between_replies", 15)
+        last_msg_count = self._message_count.get(session_key, min_messages)
+        
+        if last_msg_count < min_messages:
+            self._message_count[session_key] = last_msg_count + 1
+            self.logger.debug(f"消息间隔不足 ({last_msg_count}/{min_messages})，继续沉默")
+            return False
+
+        # 达到最小间隔，开始概率判断
+        self._message_count[session_key] = 0  # 重置计数器
 
         # 检查是否被@
         message_segments = data.get("message", [])
@@ -463,27 +465,8 @@ class Main:
                 self._hourly_reply_count[session_key] = hourly_count + 1
                 return True
 
-        # 检查是否是提问
-        is_question = any(marker in alt_message for marker in ["？", "?", "吗", "呢", "什么", "怎么", "为什么"])
-        if is_question:
-            # 提问时使用概率回复
-            question_prob = stalker_config.get("question_probability", 0.4)
-            if random.random() < question_prob:
-                self._hourly_reply_count[session_key] = hourly_count + 1
-                return True
-
-        # 检查消息间隔（从较高值开始，允许第一次就回复）
-        min_messages = stalker_config.get("min_messages_between_replies", 15)
-        last_msg_count = self._message_count.get(session_key, min_messages)  # 初始化为 min_messages，允许第一次回复
-        if last_msg_count < min_messages:
-            self._message_count[session_key] = last_msg_count + 1
-            self.logger.debug(f"消息间隔不足 ({last_msg_count}/{min_messages})，继续沉默")
-            return False
-
         # 默认低概率回复（窥屏模式的核心）
         default_prob = stalker_config.get("default_probability", 0.03)
-        self._message_count[session_key] = 0  # 重置计数器
-
         if random.random() < default_prob:
             self._hourly_reply_count[session_key] = hourly_count + 1
             return True
