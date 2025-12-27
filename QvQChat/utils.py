@@ -56,6 +56,11 @@ def parse_speak_tags(text: str) -> Dict[str, Any]:
     """
     解析 <|voice style="..."> 标签，提取文本内容和语音内容
 
+    支持多条消息和多语音的组合：
+    - 可以有多条消息，每条消息用 <|wait time="N"|> 分隔
+    - 每条消息可以包含多个语音标签，但只有第一个会被处理为语音
+    - 如果一条消息中多个语音标签，只取第一个，其他的保留为文本
+
     Args:
         text: 可能包含 <|voice> 标签的文本
 
@@ -79,14 +84,19 @@ def parse_speak_tags(text: str) -> Dict[str, Any]:
 
     if matches:
         result["has_voice"] = True
-        # 提取最后一个语音标签的内容
-        voice_style, voice_content = matches[-1]
+        # 提取第一个语音标签的内容（作为语音）
+        voice_style, voice_content = matches[0]
         result["voice_style"] = voice_style.strip()
         result["voice_content"] = voice_content.strip()
 
-        # 移除所有语音标签，保留标签外的文本
-        text_without_voice = re.sub(voice_pattern, '', text, flags=re.DOTALL)
-        result["text"] = text_without_voice.strip()
+        # 移除第一个语音标签，保留其他语音标签和标签外的文本
+        # 这样可以让多条消息各自包含语音标签
+        first_match = re.search(voice_pattern, text, re.DOTALL)
+        if first_match:
+            text_without_first_voice = text[:first_match.start()] + text[first_match.end():]
+            # 移除多余的空行
+            text_without_first_voice = re.sub(r'\n{3,}', '\n\n', text_without_first_voice).strip()
+            result["text"] = text_without_first_voice
 
     return result
 
