@@ -628,23 +628,23 @@ class Main:
                 await self._send_response(data, "AI服务未配置，请联系管理员配置API密钥。", platform)
                 return
 
-            # 识别意图和判断是否回复（并行执行）
-            identify_task = self.intent.identify_intent(alt_message)
-            should_reply_task = self._should_reply(data, alt_message, user_id, group_id)
-            intent_data, should_reply = await asyncio.gather(identify_task, should_reply_task)
+            # 累积消息到短期记忆（无论是否回复）
+            await self.memory.add_short_term_memory(user_id, "user", alt_message, group_id, user_nickname)
 
+            # 先判断是否需要回复
+            should_reply = await self._should_reply(data, alt_message, user_id, group_id)
+
+            # 窥屏模式下，不回复时直接返回（不进行意图识别，节省AI请求）
+            if not should_reply and (group_id and self.config.get("stalker_mode", {}).get("enabled", True)):
+                self.logger.debug("AI判断不需要回复")
+                return
+
+            # 需要回复时，才进行意图识别
+            intent_data = await self.intent.identify_intent(alt_message)
             self.logger.debug(
                 f"用户 {user_nickname}({user_id}) 意图: {intent_data['intent']} "
                 f"(置信度: {intent_data['confidence']})"
             )
-
-            # 累积消息到短期记忆（无论是否回复）
-            await self.memory.add_short_term_memory(user_id, "user", alt_message, group_id, user_nickname)
-
-            # 窥屏模式下，不回复时直接返回
-            if not should_reply and (group_id and self.config.get("stalker_mode", {}).get("enabled", True)):
-                self.logger.debug("AI判断不需要回复")
-                return
 
             # 准备回复时，获取缓存的图片（包括本次消息的图片和之前缓存的图片）
             cached_image_urls = self._get_cached_images(user_id, group_id)
