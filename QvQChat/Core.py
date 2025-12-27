@@ -415,19 +415,7 @@ class Main:
             self.logger.debug(f"每小时回复次数已达上限 ({max_per_hour})，跳过回复")
             return False
 
-        # 检查消息间隔（必须达到最小间隔后才开始判断）
-        min_messages = stalker_config.get("min_messages_between_replies", 15)
-        last_msg_count = self._message_count.get(session_key, min_messages)
-        
-        if last_msg_count < min_messages:
-            self._message_count[session_key] = last_msg_count + 1
-            self.logger.debug(f"消息间隔不足 ({last_msg_count}/{min_messages})，继续沉默")
-            return False
-
-        # 达到最小间隔，开始概率判断
-        self._message_count[session_key] = 0  # 重置计数器
-
-        # 检查是否被@
+        # 检查是否被@（不受消息间隔限制）
         message_segments = data.get("message", [])
         bot_ids = self.config.get("bot_ids", [])
         bot_nicknames = self.config.get("bot_nicknames", [])
@@ -456,7 +444,7 @@ class Main:
                 self.logger.debug("被@但未通过概率检查，不回复")
                 return False
 
-        # 检查关键词匹配
+        # 检查关键词匹配（不受消息间隔限制）
         reply_keywords = self.config.get("reply_strategy", {}).get("reply_on_keyword", [])
         keyword_matched = any(kw in alt_message for kw in reply_keywords)
         if keyword_matched:
@@ -464,6 +452,18 @@ class Main:
             if random.random() < keyword_prob:
                 self._hourly_reply_count[session_key] = hourly_count + 1
                 return True
+
+        # 检查消息间隔（仅对默认概率回复有效）
+        min_messages = stalker_config.get("min_messages_between_replies", 15)
+        last_msg_count = self._message_count.get(session_key, min_messages)
+
+        if last_msg_count < min_messages:
+            self._message_count[session_key] = last_msg_count + 1
+            self.logger.debug(f"消息间隔不足 ({last_msg_count}/{min_messages})，继续沉默")
+            return False
+
+        # 达到最小间隔，开始默认概率判断
+        self._message_count[session_key] = 0  # 重置计数器
 
         # 默认低概率回复（窥屏模式的核心）
         default_prob = stalker_config.get("default_probability", 0.03)
@@ -729,7 +729,9 @@ class Main:
                     await asyncio.sleep(delay)
 
                 # 解析 <|voice> 标签
+                self.logger.debug(f"解析消息 {i+1}/{len(messages)}: {msg_content[:100] if len(msg_content) > 100 else msg_content}")
                 speak_result = parse_speak_tags(msg_content)
+                self.logger.debug(f"语音解析结果: has_voice={speak_result['has_voice']}, voice_style={speak_result['voice_style']}")
 
                 if speak_result["has_voice"]:
                     # 有 <|voice> 标签，将文本和语音分开发送

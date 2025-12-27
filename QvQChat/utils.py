@@ -78,9 +78,19 @@ def parse_speak_tags(text: str) -> Dict[str, Any]:
         "has_voice": False
     }
 
-    # 查找 <|voice style="..."> 标签
-    voice_pattern = r'<\|voice\s+style="([^"]*)"\|>(.*?)<\|/voice\|>'
-    matches = re.findall(voice_pattern, text, re.DOTALL)
+    # 查找 <|voice style="..."> 标签（宽容匹配，允许空格和换行）
+    # 支持：双引号和单引号，允许标签周围有空格
+    voice_pattern_double = r'<\|\s*voice\s+style\s*=\s*"([^"]*)"\s*\|>(.*?)<\|\s*/voice\s*\|>'
+    voice_pattern_single = r"<\|\s*voice\s+style\s*=\s*'([^']*)'\s*\|>(.*?)<\|\s*/voice\s*\|>"
+
+    # 尝试双引号格式
+    matches = re.findall(voice_pattern_double, text, re.DOTALL)
+    used_pattern = voice_pattern_double
+
+    # 如果没有匹配到，尝试单引号格式
+    if not matches:
+        matches = re.findall(voice_pattern_single, text, re.DOTALL)
+        used_pattern = voice_pattern_single
 
     if matches:
         result["has_voice"] = True
@@ -91,12 +101,20 @@ def parse_speak_tags(text: str) -> Dict[str, Any]:
 
         # 移除第一个语音标签，保留其他语音标签和标签外的文本
         # 这样可以让多条消息各自包含语音标签
-        first_match = re.search(voice_pattern, text, re.DOTALL)
+        first_match = re.search(used_pattern, text, re.DOTALL)
         if first_match:
             text_without_first_voice = text[:first_match.start()] + text[first_match.end():]
             # 移除多余的空行
             text_without_first_voice = re.sub(r'\n{3,}', '\n\n', text_without_first_voice).strip()
             result["text"] = text_without_first_voice
+    else:
+        # 如果没有匹配到语音标签，检查是否包含可能的语音标签标记
+        if '<|voice' in text and '|/voice|>' in text:
+            # 有语音标签的痕迹，但没有匹配到正则表达式
+            # 可能是格式问题，记录警告
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"检测到语音标签但无法解析: {text[:200]}")
 
     return result
 
