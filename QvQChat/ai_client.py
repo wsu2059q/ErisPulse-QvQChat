@@ -336,7 +336,7 @@ class QvQAIManager:
 是否需要回复："""
 
             result = await client.chat([{"role": "user", "content": prompt}], temperature=0.2, max_tokens=10)
-            should = "回复" in result
+            should = "不回复" not in result
             self.logger.debug(f"AI回复判断: {should} (判断结果: {result.strip()})")
             return should
         except Exception as e:
