@@ -343,6 +343,73 @@ class QvQAIManager:
             self.logger.warning(f"回复判断失败: {e}，使用默认判断")
             return False
 
+    async def should_continue_conversation(self, recent_messages: List[Dict[str, str]], bot_name: str = "") -> bool:
+        """
+        分析对话是否应该继续（对话连续性分析）
+        
+        分析AI回复后的3条消息，判断是否包含回复或提到与AI相关的内容。
+        如果有，则可以继续一轮对话，直到没有相关话题。
+        
+        Args:
+            recent_messages: 最近的消息历史（包括AI的回复）
+            bot_name: 机器人名字
+            
+        Returns:
+            bool: 是否应该继续对话
+        """
+        client = self.get_client("reply_judge")
+        if not client:
+            # 如果没有配置reply_judge，默认不继续
+            return False
+
+        try:
+            # 获取最近的消息（最多8条，包括AI的回复）
+            context = []
+            for msg in recent_messages[-8:]:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                context.append(f"{role}: {content}")
+
+            context_str = "\n".join(context)
+
+            prompt = f"""你正在群聊中，刚刚发了一条消息。请分析后续的消息，判断是否需要继续回复。
+
+【角色定位】
+|- 你是一个普通群友，正在参与对话
+|- 避免连续过多回复，显得不自然
+|- 只有当话题真正围绕你时才继续
+
+【最近对话历史】
+{context_str}
+
+{f"【你的名字】{bot_name}" if bot_name else ""}
+
+【判断标准】
+只有满足以下条件时，才继续回复：
+1. 后续消息中有人@你或提到你的名字
+2. 后续消息中有人直接回复你（如"对啊"、"是啊"、"确实"等）
+3. 后续消息中有人针对你提出的问题或观点进行讨论
+4. 话题明确围绕你刚才的内容展开
+
+【不应该继续的情况】
+1. 后续消息只是普通聊天，与你无关
+2. 对话已经转移到其他话题
+3. 有人只是随意的附和，不需要回应
+4. 你已经连续回复了多次
+
+【输出格式】
+只回答"继续"或"停止"，不要解释。
+
+是否继续对话："""
+
+            result = await client.chat([{"role": "user", "content": prompt}], temperature=0.2, max_tokens=10)
+            should_continue = "继续" in result
+            self.logger.debug(f"对话连续性分析: {should_continue} (判断结果: {result.strip()})")
+            return should_continue
+        except Exception as e:
+            self.logger.warning(f"对话连续性分析失败: {e}，默认不继续")
+            return False
+
     async def test_all_connections(self) -> Dict[str, bool]:
         """
         测试所有AI连接

@@ -62,6 +62,14 @@ class QvQConfig:
                 "question_probability": 0.4,  # 提问时回复概率（40%）
                 "min_messages_between_replies": 15,  # 两次回复之间至少间隔多少条消息
                 "max_replies_per_hour": 8,  # 每小时最多回复次数
+                "silence_threshold_minutes": 30,  # 群内沉寂阈值（分钟）
+            },
+
+            # 对话连续性配置（AI回复后的持续监听）
+            "continue_conversation": {
+                "enabled": True,  # 启用对话连续性分析
+                "max_messages": 3,  # 最多监听多少条后续消息
+                "max_duration": 120,  # 监听时长限制（秒）
             },
             
             # 对话AI配置（必需配置，其他AI默认使用此配置）

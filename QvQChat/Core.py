@@ -1,6 +1,8 @@
 import time
+import asyncio
 from typing import Dict, List, Optional, Any
 from ErisPulse import sdk
+
 
 from .config import QvQConfig
 from .memory import QvQMemory
@@ -49,6 +51,10 @@ class Main:
         self._last_reply_time = {}
         self._hourly_reply_count = {}  # 每小时回复计数
         self._last_hour_reset = {}  # 每个会话的上次重置时间
+
+        # 群内沉寂跟踪（用于沉寂后的特殊判断）
+        # key: 会话标识, value: {"last_message_time": float}
+        self._group_silence = {}
 
         # 图片缓存（用于处理图片和文本分开发送的情况）
         # key: 会话标识, value: {"image_urls": List[str], "timestamp": float}
@@ -453,6 +459,21 @@ class Main:
                 self._hourly_reply_count[session_key] = hourly_count + 1
                 return True
 
+        # 检查群内沉寂情况（特殊处理）
+        silence_threshold = stalker_config.get("silence_threshold_minutes", 30)  # 默认30分钟
+        last_message_time = self._group_silence.get(session_key, {}).get("last_message_time", 0)
+
+        # 如果群内沉寂超过阈值，使用AI智能判断（不受消息间隔限制）
+        if current_time - last_message_time > silence_threshold * 60:
+            self.logger.info(f"群内沉寂 {int((current_time - last_message_time) / 60)} 分钟，使用AI判断")
+            should_reply_ai = await self._should_reply_ai(data, alt_message, user_id, group_id)
+            if should_reply_ai:
+                self._hourly_reply_count[session_key] = hourly_count + 1
+                return True
+            else:
+                self.logger.debug("AI判断不需要回复")
+                return False
+
         # 检查消息间隔（仅对默认概率回复有效）
         min_messages = stalker_config.get("min_messages_between_replies", 15)
         last_msg_count = self._message_count.get(session_key, min_messages)
@@ -531,6 +552,114 @@ class Main:
                 return False
 
         return should_reply
+
+    async def _continue_conversation_if_needed(
+        self,
+        user_id: str,
+        group_id: str,
+        _last_ai_response: str,
+        platform: str
+    ) -> None:
+        """
+        AI回复后的持续监听机制
+
+        监听后续3条消息，判断是否应该继续对话。
+        如果有相关内容，则继续一轮对话，直到没有相关话题。
+
+        Args:
+            user_id: 用户ID
+            group_id: 群ID
+            _last_ai_response: 上一次AI回复内容（暂未使用）
+            platform: 平台类型
+        """
+        try:
+            stalker_config = self.config.get("stalker_mode", {})
+
+            # 检查是否启用对话连续性分析
+            if not stalker_config.get("continue_conversation_enabled", True):
+                return
+
+            # 获取配置参数
+            max_messages_to_monitor = stalker_config.get("continue_max_messages", 3)  # 最多监听3条消息
+            max_duration_seconds = stalker_config.get("continue_max_duration", 120)  # 最多2分钟
+            bot_name = self.config.get("bot_nicknames", [""])[0]
+
+            # 获取当前的会话历史（包括刚刚的AI回复）
+            session_history = await self.memory.get_session_history(user_id, group_id)
+            initial_history_length = len(session_history)
+
+            # 开始监听
+            start_time = time.time()
+            messages_monitored = 0
+            consecutive_replies = 0
+            max_consecutive_replies = 2  # 最多连续回复2次
+
+            while messages_monitored < max_messages_to_monitor:
+                # 检查时间限制
+                if time.time() - start_time > max_duration_seconds:
+                    self.logger.debug("对话连续性监听超时")
+                    break
+
+                # 等待一段时间再检查（避免频繁检查）
+                await asyncio.sleep(2)
+
+                # 获取最新的会话历史
+                current_history = await self.memory.get_session_history(user_id, group_id)
+                new_messages = current_history[initial_history_length:]
+
+                if len(new_messages) > messages_monitored:
+                    # 有新消息
+                    messages_monitored += 1
+
+                    # 使用AI分析是否应该继续
+                    should_continue = await self.ai_manager.should_continue_conversation(
+                        current_history[-8:],  # 最近8条消息
+                        bot_name
+                    )
+
+                    if should_continue and consecutive_replies < max_consecutive_replies:
+                        self.logger.info(f"检测到对话延续，准备继续回复（已连续回复{consecutive_replies + 1}次）")
+                        consecutive_replies += 1
+
+                        # 生成继续回复
+                        system_prompt = self.config.get_effective_system_prompt(user_id, group_id)
+                        messages = []
+                        if system_prompt:
+                            messages.append({"role": "system", "content": system_prompt})
+
+                        # 添加会话历史（最近15条）
+                        messages.extend(current_history[-15:])
+
+                        # 调用对话AI
+                        response = await self.ai_manager.dialogue(messages)
+
+                        # 移除Markdown格式
+                        from .utils import remove_markdown
+                        response = remove_markdown(response)
+
+                        # 发送回复
+                        adapter = getattr(self.sdk.adapter, platform)
+                        await adapter.Send.To("group", group_id).Text(response)
+                        self.logger.info(f"已发送延续回复到 {platform} - 群聊 {group_id}")
+
+                        # 保存AI回复到会话历史
+                        await self.memory.add_short_term_memory(user_id, "assistant", response, group_id, bot_name)
+
+                        # 更新初始历史长度
+                        initial_history_length = len(await self.memory.get_session_history(user_id, group_id))
+                    else:
+                        # 不需要继续，停止监听
+                        self.logger.debug("对话已结束，停止延续监听")
+                        break
+                else:
+                    # 没有新消息，继续等待
+                    continue
+
+            if consecutive_replies >= max_consecutive_replies:
+                self.logger.info(f"已达到最大连续回复次数（{max_consecutive_replies}次），停止延续对话")
+
+        except Exception as e:
+            self.logger.error(f"对话连续性监听出错: {e}")
 
     def _extract_images_from_message(self, data: Dict[str, Any]) -> List[str]:
         """
@@ -613,6 +742,11 @@ class Main:
             # 累积消息到短期记忆（无论是否回复）
             await self.memory.add_short_term_memory(user_id, "user", alt_message, group_id, user_nickname)
 
+            # 更新群内沉寂时间
+            if group_id:
+                session_key = self._get_reply_count_key(user_id, group_id)
+                self._group_silence[session_key] = {"last_message_time": time.time()}
+
             # 先判断是否需要回复
             should_reply = await self._should_reply(data, alt_message, user_id, group_id)
 
@@ -620,6 +754,9 @@ class Main:
             if not should_reply and (group_id and self.config.get("stalker_mode", {}).get("enabled", True)):
                 self.logger.debug("AI判断不需要回复")
                 return
+
+            # 判断完应该回复后，进行记忆总结（个人和群记忆）
+            await self.handler.extract_and_save_memory(user_id, await self.memory.get_session_history(user_id, group_id), "", group_id)
 
             # 需要回复时，才进行意图识别
             intent_data = await self.intent.identify_intent(alt_message)
@@ -663,6 +800,10 @@ class Main:
             if session_key in self._image_cache:
                 del self._image_cache[session_key]
                 self.logger.debug("已清除已使用的图片缓存")
+
+            # AI回复后的持续监听（群聊模式）
+            if group_id:
+                await self._continue_conversation_if_needed(user_id, group_id, response, platform)
 
         except Exception as e:
             self.logger.error(f"处理消息时出错: {e}")
