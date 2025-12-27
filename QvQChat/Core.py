@@ -764,17 +764,7 @@ class Main:
                                     # 尝试多种方式发送语音
                                     voice_sent = False
 
-                                    # 方法1: 使用适配器的 Upload 方法
-                                    try:
-                                        uploaded_url = await adapter.Upload.Local(str(voice_path))
-                                        if uploaded_url:
-                                            await adapter.Send.To(target_type, target_id).Voice(uploaded_url)
-                                            self.logger.info(f"已发送语音到 {platform} - {detail_type} - {target_id} (消息 {i+1}/{len(messages)})")
-                                            voice_sent = True
-                                    except Exception as upload_err:
-                                        self.logger.debug(f"Upload方法失败: {upload_err}")
-
-                                    # 方法2: 使用 base64 编码
+                                    # 方法1: 使用 base64 编码
                                     if not voice_sent:
                                         try:
                                             with open(voice_path, 'rb') as f:
@@ -786,7 +776,7 @@ class Main:
                                         except Exception as base64_err:
                                             self.logger.debug(f"base64方式失败: {base64_err}")
 
-                                    # 方法3: 直接发送本地文件路径（最后尝试）
+                                    # 方法2: 直接发送本地文件路径（最后尝试）
                                     if not voice_sent:
                                         try:
                                             await adapter.Send.To(target_type, target_id).Voice(str(voice_path))
