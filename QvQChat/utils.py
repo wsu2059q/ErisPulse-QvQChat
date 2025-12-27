@@ -160,6 +160,7 @@ async def record_voice(text: str, config: Dict[str, Any], logger) -> Optional[st
 
         # 处理 <|endofprompt|> 标签
         voice_text = text
+        logger.debug(f"原始文本: {voice_text}")
         voice_prompt = ""
 
         if "<|endofprompt|>" in text:
