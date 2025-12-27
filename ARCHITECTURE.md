@@ -63,6 +63,7 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
 - 消息事件监听和路由
 - 窥屏模式（stalker mode）控制
 - 回复时机判断
+- 对话连续性监听
 
 **关键方法**：
 - `__init__()`: 初始化所有子模块
@@ -77,11 +78,13 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
 - 私聊使用 `user:{user_id}` 作为会话key（独立历史）
 - 意图识别和回复判断并行执行（asyncio.gather）
 - 窥屏模式：群聊默认3%回复率，被@时80%
+- 对话连续性：AI回复后监听后续3条消息，持续关注
 
 **设计亮点**：
 - 支持多消息延迟发送（模拟真人分句打字）
 - 使用公共工具函数处理 Markdown 清理和消息解析
 - 图片提取和视觉AI集成
+- 对话连续性监听，支持后续补全回应
 
 ---
 
@@ -209,10 +212,39 @@ messages.append({"role": "system", "content": memory_text})
 ```
 
 **智能记忆提取**：
+对话完成后自动触发记忆提取：
 1. 使用 dialogue AI 判断对话是否值得记忆
 2. 使用 memory AI 提取关键信息
 3. 去重检查（避免重复记忆）
 4. 保存到长期记忆
+
+**记忆提取流程**：
+```
+对话完成（用户消息 + AI回复）
+    │
+    ▼
+handler._extract_and_save_memory()
+    │
+    ├─→ 获取最近15条对话
+    ├─→ [第一步] dialogue AI 判断是否值得记忆
+    │       Prompt: "判断这段对话是否值得记住？"
+    │       Return: "值得" / "不值得"
+    │
+    └─→ 如果值得记忆:
+            │
+            ▼
+        memory AI 提取关键信息
+            │
+            ├─→ Prompt: "从对话中提取值得记住的信息..."
+            ├─→ 严格标准（个人偏好、重要日期、任务等）
+            ├─→ 过滤无关信息（闲聊、问候、表情等）
+            │
+            ▼
+        去重检查
+            │
+            ├─→ 对比现有记忆
+            └─→ 只保存不重复的信息
+```
 
 **设计亮点**：
 - 记忆自然融入对话，无需显式查询
@@ -456,7 +488,32 @@ handler._extract_and_save_memory()
             └─→ 只保存不重复的信息
 ```
 
-### 3. 群聊 vs 私聊处理差异
+### 3. 对话连续性监听流程
+
+```
+AI回复发送成功
+    │
+    ▼
+Core._handle_continue_conversation()
+    │
+    ├─→ 记录当前时间戳和回复内容
+    ├─→ 启动监听任务（如启用）
+    │
+    └─→ 监听后续消息：
+            │
+            ├─→ [条件1] 未超过max_messages（默认3条）
+            ├─→ [条件2] 未超过max_duration（默认120秒）
+            ├─→ [条件3] 消息是回复给AI的或与对话相关
+            │
+            └─→ 满足条件则：
+                    │
+                    ├─→ AI判断是否需要补全回应
+                    ├─→ 如需要则生成后续回复
+                    ├─→ 更新监听计数
+                    └─→ 检查是否继续监听
+```
+
+### 4. 群聊 vs 私聊处理差异
 
 | 特性 | 私聊 | 群聊 |
 |------|--------|--------|
@@ -465,6 +522,7 @@ handler._extract_and_save_memory()
 | 回复策略 | 积极回复（AI判断） | 窥屏模式（默认3%回复率） |
 | 回复计数器 | 用户独立 | 群内共享 |
 | 记忆存储 | 只存用户个人记忆 | 用户个人 + 群记忆（混合模式） |
+| 对话连续性 | 启用，监听3条后续消息 | 启用，监听3条后续消息 |
 
 ---
 
@@ -476,7 +534,10 @@ handler._extract_and_save_memory()
 [QvQChat]
 # 基础配置
 max_history_length = 20
-min_reply_interval = 10
+memory_cleanup_interval = 86400
+enable_vector_search = false
+max_memory_tokens = 10000
+memory_compression_threshold = 5
 bot_nicknames = []
 bot_ids = []
 
@@ -489,8 +550,22 @@ keyword_probability = 0.5
 question_probability = 0.4
 min_messages_between_replies = 15
 max_replies_per_hour = 8
+silence_threshold_minutes = 30  # 群内沉寂阈值（分钟）
+
+[QvQChat.continue_conversation]
+# 对话连续性配置（AI回复后的持续监听）
+enabled = true
+max_messages = 3  # 最多监听多少条后续消息
+max_duration = 120  # 监听时长限制（秒）
 
 [QvQChat.dialogue]
+# 对话AI（必需）
+base_url = "https://api.openai.com/v1"
+api_key = "sk-..."
+model = "gpt-4o"
+temperature = 0.7
+max_tokens = 500
+system_prompt = "..."
 # 对话AI（必需）
 base_url = "https://api.openai.com/v1"
 api_key = "sk-..."
