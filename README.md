@@ -46,7 +46,7 @@ model = "gpt-4o"  # 建议使用支持视觉的模型
 ### 第三步：安装
 
 ```bash
-ep install AIChat
+ep install QvQChat
 ```
 
 ### 第四步：配置机器人识别
@@ -391,14 +391,14 @@ AI：已将群记忆模式更改为仅发送者模式。
 
 ```bash
 # 1. Fork 项目
-git clone https://github.com/your-username/ErisPulse-AIChat.git
-cd ErisPulse-AIChat
+git clone https://github.com/your-username/ErisPulse-QvQChat.git
+cd ErisPulse-QvQChat
 
 # 2. 安装依赖
 pip install -e .
 
 # 3. 运行测试
-python -m ErisPulse-AIChat
+python -m ErisPulse-QvQChat
 ```
 
 ### 核心组件
@@ -413,18 +413,5 @@ python -m ErisPulse-AIChat
 | Memory | memory.py | 记忆管理、会话历史 |
 | State | state.py | 状态管理、主题跟踪 |
 
-## 依赖
-
-- Python >= 3.9
-- openai >= 1.0.0
-- ErisPulse SDK
-
-## 许可证
-
-MIT License - 详见 [LICENSE](LICENSE) 文件
-
-## 联系方式
-
-- 作者：wsu2059q
-- 邮箱：wsu2059@qq.com
-- GitHub：https://github.com/wsu2059q/ErisPulse-AIChat
+详细组件设计请查看 [ARCHITECTURE.md](ARCHITECTURE.md)。
+ErisPulse SDK(https://github.com/ErisPulse/ErisPulse)
