@@ -53,6 +53,7 @@ class QvQConfig:
             "max_message_length": 1000,  # 忽略长度超过此值的消息（字符数）
             "rate_limit_tokens": 20000,  # 短时间内允许的最大token数
             "rate_limit_window": 60,  # 时间窗口（秒）
+            "ignore_command_messages": True,  # 忽略以指令前缀开头的消息（防止AI响应指令消息）
 
 
             # 管理员配置

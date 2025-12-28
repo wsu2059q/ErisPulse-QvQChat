@@ -960,6 +960,36 @@ class Main:
             group_name = data.get("group_name", "")
             platform = data.get("self", {}).get("platform", "")
 
+            # 检查是否是指令消息（如果配置启用忽略指令消息）
+            if self.config.get("ignore_command_messages", True):
+                # 获取框架的指令配置
+                """
+                解释：
+                command_prefix: 指令前缀，默认为 "/"
+                case_sensitive: 是否区分大小写，默认为False
+                allow_space_prefix: 是否允许指令前缀存在空格，默认为False
+                                  (true时，" /command"也会被识别为指令；false时，只有"/command"是指令)
+                """
+                command_prefix = sdk.env.getConfig("ErisPulse.event.command.prefix", "/")
+                case_sensitive = sdk.env.getConfig("ErisPulse.event.command.case_sensitive", False)
+                allow_space_prefix = sdk.env.getConfig("ErisPulse.event.command.allow_space_prefix", False)
+
+                # 检查消息是否以指令前缀开头
+                message_to_check = alt_message
+                if allow_space_prefix:
+                    # 允许指令前缀前有空格，去除前导空格后再判断
+                    message_to_check = alt_message.lstrip()
+
+                if not case_sensitive:
+                    prefix_check = message_to_check.lower().startswith(command_prefix.lower())
+                else:
+                    prefix_check = message_to_check.startswith(command_prefix)
+
+                if prefix_check:
+                    # 消息以指令前缀开头，直接返回，不处理
+                    self.logger.debug(f"🚫 忽略指令消息 - {detail_type} - 内容: {alt_message[:50]}")
+                    return
+
             # 记录接收到的消息（debug级别，避免日志过于频繁）
             session_desc = get_session_description(user_id, user_nickname, group_id, group_name)
             message_preview = truncate_message(alt_message, 100)
