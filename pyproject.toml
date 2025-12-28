@@ -8,6 +8,7 @@ license = { file = "LICENSE" }
 authors = [ { name = "wsu2059q", email = "wsu2059@qq.com" } ]
 dependencies = [
     "openai>=1.0.0",
+    "ErisPulse-HelpModule"
 ]
 
 [tool.setuptools]

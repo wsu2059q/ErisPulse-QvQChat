@@ -1,0 +1,47 @@
+# Git 相关
+.git
+.gitignore
+
+# Python 相关
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# 虚拟环境
+venv/
+env/
+ENV/
+.venv
+
+# IDE 相关
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 文档（不需要打包进镜像）
+*.md
+!README.md  # 保留 README
+
+# 测试
+tests/
+.pytest_cache/
+.coverage
+
+# 日志和数据（通过卷挂载）
+logs/
+data/
+*.log
+
+# 配置（通过卷挂载）
+config.toml
+config/
+
+# Docker 相关
+Dockerfile
+docker-compose.yml
+.dockerignore
