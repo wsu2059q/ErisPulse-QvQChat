@@ -11,7 +11,6 @@ from .intent import QvQIntent
 from .state import QvQState
 from .handler import QvQHandler
 from .commands import QvQCommands
-from .utils import parse_multi_messages, record_voice, parse_speak_tags
 
 
 class Main:
@@ -45,6 +44,10 @@ class Main:
             self.state, self.logger
         )
         self.commands = QvQCommands(self.sdk, self.memory, self.config, self.logger, self)
+
+        # 初始化消息发送器
+        from .utils import MessageSender
+        self.message_sender = MessageSender(self.sdk.adapter, self.config.config, self.logger)
 
         # 消息计数器和时间戳（用于窥屏模式）
         self._message_count = {}
@@ -1031,11 +1034,6 @@ class Main:
             if not platform:
                 return
 
-            adapter = getattr(self.sdk.adapter, platform)
-            if not adapter:
-                self.logger.warning(f"未找到适配器: {platform}")
-                return
-
             detail_type = data.get("detail_type", "private")
 
             if detail_type == "private":
@@ -1048,80 +1046,8 @@ class Main:
             if not target_id:
                 return
 
-            # 解析多条消息
-            messages = parse_multi_messages(response)
-
-            # 逐条发送
-            for i, msg_info in enumerate(messages):
-                msg_content = msg_info["content"]
-                delay = msg_info["delay"]
-
-                if i > 0 and delay > 0:
-                    import asyncio
-                    await asyncio.sleep(delay)
-
-                # 解析 <|voice> 标签
-                self.logger.debug(f"解析消息 {i+1}/{len(messages)}: {msg_content[:100] if len(msg_content) > 100 else msg_content}")
-                speak_result = parse_speak_tags(msg_content)
-                self.logger.debug(f"语音解析结果: has_voice={speak_result['has_voice']}, voice_style={speak_result['voice_style']}")
-
-                if speak_result["has_voice"]:
-                    # 有 <|voice> 标签，将文本和语音分开发送
-                    # 检查平台是否支持语音
-                    support_voice = platform in self.config.get("voice.platforms", ["qq", "onebot11"])
-
-                    # 发送标签外的文本
-                    if speak_result["text"]:
-                        await adapter.Send.To(target_type, target_id).Text(speak_result["text"])
-                        self.logger.info(f"已发送文本响应到 {platform} - {detail_type} - {target_id} (消息 {i+1}/{len(messages)})")
-
-                    # 发送语音
-                    if speak_result["voice_content"] and support_voice:
-                        voice_file = await record_voice(
-                            speak_result["voice_style"],
-                            speak_result["voice_content"],
-                            self.config.config,
-                            self.logger
-                        )
-                        if voice_file:
-                            try:
-                                from pathlib import Path
-                                voice_path = Path(voice_file)
-                                if voice_path.exists():
-                                    # 尝试多种方式发送语音
-                                    voice_sent = False
-
-                                    # 方法1: 使用 base64 编码
-                                    if not voice_sent:
-                                        try:
-                                            with open(voice_path, 'rb') as f:
-                                                import base64
-                                                voice_data = base64.b64encode(f.read()).decode('utf-8')
-                                                await adapter.Send.To(target_type, target_id).Voice(f'base64://{voice_data}')
-                                                self.logger.info(f"已发送语音(base64)到 {platform} - {detail_type} - {target_id} (消息 {i+1}/{len(messages)})")
-                                                voice_sent = True
-                                        except Exception as base64_err:
-                                            self.logger.debug(f"base64方式失败: {base64_err}")
-
-                                    # 方法2: 直接发送本地文件路径（最后尝试）
-                                    if not voice_sent:
-                                        try:
-                                            await adapter.Send.To(target_type, target_id).Voice(str(voice_path))
-                                            self.logger.info(f"已发送语音(本地)到 {platform} - {detail_type} - {target_id} (消息 {i+1}/{len(messages)})")
-                                        except Exception as local_err:
-                                            self.logger.warning(f"所有发送方式均失败，跳过语音发送: {local_err}")
-                                else:
-                                    self.logger.warning("语音文件不存在，跳过语音发送")
-                            except Exception as voice_error:
-                                self.logger.warning(f"语音发送失败: {voice_error}")
-                        else:
-                            self.logger.warning("语音生成失败，跳过语音发送")
-                    elif speak_result["voice_content"] and not support_voice:
-                        self.logger.debug(f"平台 {platform} 不支持语音，跳过语音发送")
-                else:
-                    # 发送普通文本消息
-                    await adapter.Send.To(target_type, target_id).Text(msg_content.strip())
-                    self.logger.info(f"已发送响应到 {platform} - {detail_type} - {target_id} (消息 {i+1}/{len(messages)})")
+            # 使用统一的消息发送器
+            await self.message_sender.send(platform, target_type, target_id, response)
 
         except Exception as e:
             self.logger.error(f"发送响应失败: {e}")
