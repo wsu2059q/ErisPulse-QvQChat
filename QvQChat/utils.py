@@ -9,6 +9,49 @@ import aiohttp
 from datetime import datetime
 from pathlib import Path
 
+def get_session_description(
+    user_id: str,
+    user_nickname: str = "",
+    group_id: Optional[str] = None,
+    group_name: str = ""
+) -> str:
+    """
+    获取会话描述字符串（用于日志记录）
+
+    Args:
+        user_id: 用户ID
+        user_nickname: 用户昵称
+        group_id: 群ID（可选）
+        group_name: 群名称（可选）
+
+    Returns:
+        str: 会话描述字符串
+    """
+    user_desc = f"{user_nickname}({user_id})" if user_nickname else user_id
+
+    if group_id:
+        if group_name:
+            return f"群聊 [{group_name}]({group_id}) - 用户 {user_desc}"
+        else:
+            return f"群聊 ({group_id}) - 用户 {user_desc}"
+    else:
+        return f"私聊 - 用户 {user_desc}"
+
+def truncate_message(message: str, max_length: int = 100) -> str:
+    """
+    截断消息字符串用于日志记录
+
+    Args:
+        message: 原始消息
+        max_length: 最大长度
+
+    Returns:
+        str: 截断后的消息
+    """
+    if len(message) <= max_length:
+        return message
+    return message[:max_length] + "..."
+
 def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     """
     解析多条消息（带延迟）

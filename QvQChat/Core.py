@@ -11,6 +11,7 @@ from .intent import QvQIntent
 from .state import QvQState
 from .handler import QvQHandler
 from .commands import QvQCommands
+from .utils import get_session_description, truncate_message
 
 
 class Main:
@@ -945,6 +946,15 @@ class Main:
             detail_type = data.get("detail_type", "private")
             user_id = str(data.get("user_id", ""))
             group_id = str(data.get("group_id", "")) if detail_type == "group" else None
+            user_nickname = data.get("user_nickname", user_id)
+            group_name = data.get("group_name", "")
+            platform = data.get("self", {}).get("platform", "")
+
+            # 记录接收到的消息（包含详细上下文信息）
+            session_desc = get_session_description(user_id, user_nickname, group_id, group_name)
+            message_preview = truncate_message(alt_message, 100)
+            image_info = f" [图片: {len(image_urls)}张]" if image_urls else ""
+            self.logger.info(f"📨 接收消息 - {session_desc} - 平台: {platform} - 内容: {message_preview}{image_info}")
 
             if not user_id:
                 return
@@ -1041,9 +1051,9 @@ class Main:
 
             # 需要回复时，才进行意图识别
             intent_data = await self.intent.identify_intent(alt_message)
-            self.logger.debug(
-                f"用户 {user_nickname}({user_id}) 意图: {intent_data['intent']} "
-                f"(置信度: {intent_data['confidence']})"
+            self.logger.info(
+                f"🧠 意图识别 - {session_desc} - 意图: {intent_data['intent']} "
+                f"(置信度: {intent_data['confidence']:.2f})"
             )
 
             # 准备回复时，获取缓存的图片（包括本次消息的图片和之前缓存的图片）
@@ -1077,7 +1087,10 @@ class Main:
                 return
 
             # 发送响应
+            response_preview = truncate_message(response, 150)
+            self.logger.info(f"💬 准备发送回复 - {session_desc} - 内容: {response_preview}")
             await self._send_response(data, response, platform)
+            self.logger.info(f"✅ 回复已发送 - {session_desc}")
 
             # 记录回复时间
             session_key = self._get_reply_count_key(user_id, group_id)
@@ -1133,15 +1146,27 @@ class Main:
             if detail_type == "private":
                 target_type = "user"
                 target_id = data.get("user_id")
+                target_desc = f"私聊用户 {target_id}"
             else:
                 target_type = "group"
                 target_id = data.get("group_id")
+                target_name = data.get("group_name", "")
+                target_desc = f"群聊 [{target_name}]({target_id})" if target_name else f"群聊 {target_id}"
 
             if not target_id:
                 return
+
+            # 记录发送详情
+            multi_msg_count = response.count("<|wait")
+            voice_count = response.count("<|voice")
+            if multi_msg_count > 0 or voice_count > 0:
+                self.logger.info(f"📤 发送详情 - 目标: {target_desc} - 平台: {platform} - "
+                               f"多消息: {multi_msg_count}条, 语音: {voice_count}条")
+            else:
+                self.logger.debug(f"📤 发送到 - {target_desc} - 平台: {platform}")
 
             # 使用统一的消息发送器
             await self.message_sender.send(platform, target_type, target_id, response)
 
         except Exception as e:
-            self.logger.error(f"发送响应失败: {e}")
+            self.logger.error(f"❌ 发送响应失败: {e}")

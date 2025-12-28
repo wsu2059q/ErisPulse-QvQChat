@@ -48,16 +48,16 @@ class QvQAIClient:
     ) -> str:
         """
         发送聊天请求
-        
+
         Args:
             messages: 消息列表
             temperature: 温度参数（可选）
             max_tokens: 最大tokens数（可选）
             stream: 是否流式输出（默认False）
-            
+
         Returns:
             str: AI回复内容
-            
+
         Raises:
             RuntimeError: 客户端未初始化
             RateLimitError: API速率限制
@@ -67,9 +67,17 @@ class QvQAIClient:
         if not self.client:
             raise RuntimeError("AI客户端未初始化，请检查API密钥配置")
 
+        model = self.config.get("model", "gpt-3.5-turbo")
+        msg_count = len(messages)
+
         try:
+            # 记录API调用
+            self.logger.debug(f"🌐 API请求 - 模型: {model} - 消息数: {msg_count} - "
+                           f"温度: {temperature or self.config.get('temperature', 0.7)} - "
+                           f"最大tokens: {max_tokens or self.config.get('max_tokens', 2000)}")
+
             response = await self.client.chat.completions.create(
-                model=self.config.get("model", "gpt-3.5-turbo"),
+                model=model,
                 messages=messages,
                 temperature=temperature if temperature is not None else self.config.get("temperature", 0.7),
                 max_tokens=max_tokens if max_tokens is not None else self.config.get("max_tokens", 2000),
@@ -79,19 +87,27 @@ class QvQAIClient:
             if stream:
                 return response
             else:
-                return response.choices[0].message.content
+                content = response.choices[0].message.content
+                # 记录API响应
+                tokens_used = getattr(response, 'usage', None)
+                if tokens_used:
+                    self.logger.debug(f"✅ API响应 - 模型: {model} - "
+                                   f"输入tokens: {tokens_used.prompt_tokens}, "
+                                   f"输出tokens: {tokens_used.completion_tokens}, "
+                                   f"总计: {tokens_used.total_tokens}")
+                return content
 
         except RateLimitError as e:
-            self.logger.warning(f"API速率限制: {e}")
+            self.logger.warning(f"⚠️ API速率限制 - 模型: {model} - 错误: {e}")
             raise
         except APITimeoutError as e:
-            self.logger.error(f"API请求超时: {e}")
+            self.logger.error(f"❌ API请求超时 - 模型: {model} - 错误: {e}")
             raise
         except APIError as e:
-            self.logger.error(f"API错误: {e}")
+            self.logger.error(f"❌ API错误 - 模型: {model} - 错误: {e}")
             raise
         except Exception as e:
-            self.logger.error(f"AI请求失败: {e}")
+            self.logger.error(f"❌ AI请求失败 - 模型: {model} - 错误: {e}")
             raise
 
     async def test_connection(self) -> bool:
