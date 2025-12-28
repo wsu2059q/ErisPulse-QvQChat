@@ -14,7 +14,20 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用"普通群友模
 
 ## 快速开始
 
-### 第一步：配置文件
+### 第一步：克隆代码仓库
+
+```bash
+# 使用 HTTPS 克隆
+git clone https://github.com/wsu2059q/ErisPulse-QvQChat.git
+
+# 或使用 SSH 克隆（如果配置了 SSH 密钥）
+git clone git@github.com:wsu2059q/ErisPulse-QvQChat.git
+
+# 进入项目目录
+cd ErisPulse-QvQChat
+```
+
+### 第二步：配置文件
 
 复制 `config.example.toml` 为 `config.toml`，然后进行**最简配置**：
 
@@ -36,7 +49,8 @@ model = "gpt-4o"  # 建议使用支持视觉的模型
 - 对话连续性和记忆管理等
 - 安全防护配置
 
-### 第二步：安装
+### 第三步：安装
+
 **详细教程**：查看 [INSTALL.md](INSTALL.md) 获取完整的 Docker 安装和配置说明。
 > 建议使用 **Docker 安装**（完整环境隔离，推荐生产环境）
 > 或使用 **手动安装**（开发环境，需要自定义）
@@ -52,22 +66,22 @@ cp config.example.toml config.toml
 docker-compose up -d
 ```
 
-
-
 #### 手动安装
 
 > 前提：已安装 Python 3.9+ 和 ErisPulse 框架
 
 ```bash
+# 安装适配器（根据需要）
+epsdk install OneBot11  # QQ 适配器（推荐）
+
 # 安装 QvQChat 模块
-ep install QvQChat
-ep install OneBot11  # 安装 QQ 适配器（可选）
+epsdk install QvQChat
 
 # 启动 ErisPulse
 ep run
 ```
 
-### 第三步：启动
+### 第四步：启动
 
 配置完成后，启动服务即可：
 
