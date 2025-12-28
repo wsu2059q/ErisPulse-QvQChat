@@ -72,6 +72,10 @@ class Main:
         # key: 会话标识, value: bool (True表示启用，False表示禁用)
         self._ai_disabled = {}
 
+        # 速率限制跟踪（防止刷token）
+        # key: 会话标识, value: {"tokens": int, "start_time": float}
+        self._rate_limit_tracking = {}
+
         # 检查API配置
         self._check_api_config()
 
@@ -273,6 +277,88 @@ class Main:
         if cached_data:
             return cached_data["image_urls"]
         return []
+
+    def _check_message_length(self, message: str, user_id: str, group_id: Optional[str] = None) -> bool:
+        """
+        检查消息长度是否超过限制（防止恶意刷屏）
+
+        Args:
+            message: 消息内容
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            bool: 是否允许处理（True=允许，False=拒绝）
+        """
+        max_length = self.config.get("max_message_length", 1000)
+        if len(message) > max_length:
+            session_desc = f"群聊 {group_id}" if group_id else f"私聊 {user_id}"
+            self.logger.warning(
+                f"消息长度超过限制 ({len(message)} > {max_length})，忽略此消息。"
+                f"会话: {session_desc}"
+            )
+            return False
+        return True
+
+    def _check_rate_limit(self, estimated_tokens: int, user_id: str, group_id: Optional[str] = None) -> bool:
+        """
+        检查速率限制（防止刷token）
+
+        Args:
+            estimated_tokens: 估计的token数
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            bool: 是否允许处理（True=允许，False=拒绝）
+        """
+        session_key = self._get_reply_count_key(user_id, group_id)
+        current_time = time.time()
+
+        # 获取速率限制配置
+        max_tokens = self.config.get("rate_limit_tokens", 20000)
+        window_seconds = self.config.get("rate_limit_window", 60)
+
+        # 获取或初始化跟踪数据
+        tracking = self._rate_limit_tracking.get(session_key)
+
+        if not tracking or current_time - tracking["start_time"] > window_seconds:
+            # 时间窗口已过期，重置计数
+            self._rate_limit_tracking[session_key] = {
+                "tokens": estimated_tokens,
+                "start_time": current_time
+            }
+            return True
+
+        # 检查是否超过速率限制
+        if tracking["tokens"] + estimated_tokens > max_tokens:
+            session_desc = f"群聊 {group_id}" if group_id else f"私聊 {user_id}"
+            self.logger.warning(
+                f"超过速率限制 (窗口内已有 {tracking['tokens']} tokens，"
+                f"本次估计 {estimated_tokens} tokens，限制 {max_tokens} tokens/{window_seconds}秒)，"
+                f"忽略此消息。会话: {session_desc}"
+            )
+            return False
+
+        # 更新计数
+        tracking["tokens"] += estimated_tokens
+        return True
+
+    def _estimate_tokens(self, text: str) -> int:
+        """
+        估算文本的token数量（粗略估计：1 token ≈ 1.5 中文字符 或 4 英文字符）
+
+        Args:
+            text: 文本内容
+
+        Returns:
+            int: 估计的token数
+        """
+        # 简单估算：中文字符 * 0.7 + 英文字符 * 0.25
+        chinese_chars = len([c for c in text if '\u4e00' <= c <= '\u9fff'])
+        other_chars = len(text) - chinese_chars
+        estimated_tokens = int(chinese_chars * 0.7 + other_chars * 0.25)
+        return max(estimated_tokens, 1)  # 至少1个token
 
     def _cache_images(self, user_id: str, image_urls: List[str], group_id: Optional[str] = None) -> None:
         """
@@ -867,6 +953,11 @@ class Main:
             if not user_id:
                 return
 
+            # 检查消息长度（防止恶意刷屏）
+            if not self._check_message_length(alt_message, user_id, group_id):
+                # 消息过长，直接返回
+                return
+
             # 检查AI是否启用
             if not self.is_ai_enabled(user_id, group_id):
                 self.logger.debug(f"AI已禁用，会话: {user_id if not group_id else group_id}")
@@ -944,6 +1035,13 @@ class Main:
 
             # 判断完应该回复后，进行记忆总结（个人和群记忆）
             await self.handler.extract_and_save_memory(user_id, await self.memory.get_session_history(user_id, group_id), "", group_id)
+
+            # 需要回复时，进行速率限制检查
+            # 估算这次对话需要的token（包括会话历史）
+            estimated_tokens = self._estimate_tokens(alt_message) * 2  # 粗略估算：输入+输出
+            if not self._check_rate_limit(estimated_tokens, user_id, group_id):
+                # 超过速率限制，不进行回复
+                return
 
             # 需要回复时，才进行意图识别
             intent_data = await self.intent.identify_intent(alt_message)
