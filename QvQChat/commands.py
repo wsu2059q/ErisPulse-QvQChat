@@ -1,4 +1,4 @@
-from typing import Dict, Any, Callable, Awaitable
+from typing import Dict, Any
 
 
 class QvQCommands:

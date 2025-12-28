@@ -26,11 +26,9 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
 
     # 检查是否有未关闭的语音标签
     if voice_blocks and voice_blocks[-1].get("is_unclosed", False):
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning("检测到未关闭的语音标签，合并为单条消息")
+        from ErisPulse.Core import logger
+        logger.warning("未关闭的语音标签")
         return [{"content": text.strip(), "delay": 0}]
-
     # 按照 <|wait time="N"|> 分割消息，但跳过语音标签内部的分隔符
     parts = []
     current_start = 0
@@ -186,9 +184,8 @@ def parse_speak_tags(text: str) -> Dict[str, Any]:
 
         # 检查是否是未关闭的标签
         if first_voice.get("is_unclosed", False):
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"检测到未关闭的语音标签，使用标签后的所有内容作为语音")
+            from ErisPulse.Core import logger
+            logger.warning("检测到未关闭的语音标签，使用标签后的所有内容作为语音")
 
         result["has_voice"] = True
         result["voice_style"] = first_voice["style"]

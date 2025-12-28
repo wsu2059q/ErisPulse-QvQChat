@@ -18,6 +18,33 @@ class QvQHandler:
         self.ai_manager = ai_manager
         self.state = state_manager
         self.logger = logger.get_child("QvQHandler")
+
+    def is_voice_available(self, platform: Optional[str] = None) -> bool:
+        """
+        检查语音功能是否可用
+
+        Args:
+            platform: 平台名称（可选）
+
+        Returns:
+            bool: 语音功能是否可用
+        """
+        # 检查语音配置
+        voice_config = self.config.get("voice", {})
+        if not voice_config.get("enabled", False):
+            return False
+
+        # 检查API密钥
+        api_key = voice_config.get("api_key", "")
+        if not api_key or not api_key.strip():
+            return False
+
+        # 如果提供了平台，检查平台支持
+        if platform:
+            supported_platforms = self.config.get("voice.platforms", ["qq", "onebot11"])
+            return platform in supported_platforms
+
+        return True
     
     async def handle_dialogue(
         self,
@@ -69,8 +96,8 @@ class QvQHandler:
         user_nickname = context_info.get("user_nickname", "")
         platform = context_info.get("platform", "")
 
-        # 检查是否支持语音（QQ平台）
-        support_voice = platform in self.config.get("voice.platforms", ["qq", "onebot11"])
+        # 检查语音功能是否可用（平台支持+API配置）
+        voice_available = self.is_voice_available(platform)
         voice_hint = ""
 
         # 多消息回复格式规则
@@ -83,10 +110,10 @@ class QvQHandler:
 <|wait time="2"|>
 第三句话
 
-数字表示秒数，最多3条消息，每条间隔1-5秒。
-【重要】每条消息都可以独立包含语音标签，支持一次发送多条语音。"""
 
-        if support_voice:
+数字表示秒数，最多3条消息，每条间隔1-5秒。"""
+
+        if voice_available:
             voice_hint = """
 【语音输出功能】
 - 每条消息都可以独立包含语音，支持一次发送多条语音
