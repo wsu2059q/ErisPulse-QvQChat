@@ -21,7 +21,7 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用"普通群友模
 ```toml
 [QvQChat]
 bot_nicknames = ["Amer"]  # 你的机器人昵称
-bot_ids = ["123456789"]    # 你的机器人QQ号
+bot_ids = ["123456789"]    # 你的机器人ID
 
 [QvQChat.dialogue]
 base_url = "https://api.openai.com/v1"  # 或使用中转服务
