@@ -3,6 +3,7 @@ version: '3.8'
 services:
   qvqchat:
     build: .
+    image: erispulse-qvqchat:latest  # 指定镜像名称
     container_name: erispulse-qvqchat
     restart: unless-stopped
 
