@@ -13,53 +13,152 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     """
     解析多条消息（带延迟）
 
+    支持每条消息都可以包含语音标签。
+
     Args:
         text: 包含多条消息格式的文本
 
     Returns:
         List[Dict[str, Any]]: 消息列表，每条消息包含content和delay
     """
-    # 尝试解析多消息格式：消息1\n\n<|wait time="1"|>\n\n消息2
-    pattern = r'<\|wait\s+time="(\d+)"\|>'
-    parts = re.split(pattern, text)
+    # 先解析所有语音标签的位置（使用栈来确保配对正确）
+    voice_blocks = _parse_voice_tags_with_stack(text)
 
+    # 检查是否有未关闭的语音标签
+    if voice_blocks and voice_blocks[-1].get("is_unclosed", False):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("检测到未关闭的语音标签，合并为单条消息")
+        return [{"content": text.strip(), "delay": 0}]
+
+    # 按照 <|wait time="N"|> 分割消息，但跳过语音标签内部的分隔符
+    parts = []
+    current_start = 0
+
+    # 找到所有的 wait 分隔符
+    for match in re.finditer(r'<\|\s*wait\s+time="(\d+)"\s*\|>', text):
+        match_pos = match.start()
+
+        # 检查这个分隔符是否在任何语音标签内部
+        is_inside_voice = False
+        for voice_block in voice_blocks:
+            if voice_block["start"] < match_pos < voice_block["end"]:
+                is_inside_voice = True
+                break
+
+        if not is_inside_voice:
+            # 这是一个有效的分隔符
+            parts.append(text[current_start:match_pos].strip())
+            parts.append(match.group(1))  # 延迟时间
+            current_start = match.end()
+
+    # 添加最后一部分
+    parts.append(text[current_start:].strip())
+
+    # 构建消息列表
     messages = []
-    current_msg = parts[0].strip()
+    current_msg = parts[0] if parts else text
 
     for i in range(1, len(parts), 2):
         if i + 1 < len(parts):
-            next_msg = parts[i + 1].strip()
-
             if current_msg:
                 messages.append({"content": current_msg, "delay": 0})
-            current_msg = next_msg
+            current_msg = parts[i + 1]
 
     if current_msg:
         messages.append({"content": current_msg, "delay": 0})
 
-    # 如果没有找到间隔标记，返回单条消息
+    # 设置延迟时间
+    for i in range(len(messages)):
+        if i > 0 and i * 2 - 1 < len(parts):
+            messages[i]["delay"] = int(parts[i * 2 - 1])
+
+    # 如果没有分隔符，返回单条消息
     if len(messages) <= 1:
-        if len(messages) == 0:
-            return [{"content": text.strip(), "delay": 0}]
-    else:
-        # 设置延迟
-        for i in range(len(messages)):
-            if i > 0 and i * 2 - 1 < len(parts):
-                delay = int(parts[i * 2 - 1])
-                messages[i]["delay"] = delay
+        return [{"content": text.strip(), "delay": 0}]
 
     # 最多返回3条消息
     return messages[:3]
+
+
+def _parse_voice_tags_with_stack(text: str) -> List[Dict[str, Any]]:
+    """
+    使用栈解析所有语音标签，确保配对正确
+
+    Args:
+        text: 包含语音标签的文本
+
+    Returns:
+        List[Dict[str, Any]]: 语音块列表，每个包含 start, end, style, content
+    """
+    voice_blocks = []
+    stack = []  # 存储开启标签的位置和风格
+
+    # 匹配开始标签：<|voice style="...">
+    start_pattern = re.compile(r'<\|\s*voice\s+style\s*=\s*["\']([^"\']*)["\']\s*\|>', re.DOTALL)
+    # 匹配结束标签：</voice>
+    end_pattern = re.compile(r'<\|\s*/\s*voice\s*\|>', re.DOTALL)
+
+    i = 0
+    while i < len(text):
+        # 查找下一个开始标签
+        start_match = start_pattern.search(text, i)
+        # 查找下一个结束标签
+        end_match = end_pattern.search(text, i)
+
+        if not start_match and not end_match:
+            break
+
+        if start_match and (not end_match or start_match.start() < end_match.start()):
+            # 找到开始标签
+            stack.append({
+                "start": start_match.start(),
+                "end": start_match.end(),
+                "style": start_match.group(1).strip(),
+                "content_start": start_match.end()
+            })
+            i = start_match.end()
+        elif end_match:
+            # 找到结束标签
+            if stack:
+                # 与最近的开始标签配对
+                start_block = stack[-1]
+                voice_blocks.append({
+                    "start": start_block["start"],
+                    "end": end_match.end(),
+                    "style": start_block["style"],
+                    "content": text[start_block["content_start"]:end_match.start()].strip()
+                })
+                stack.pop()
+            else:
+                # 没有匹配的开始标签，多余的结束标签
+                voice_blocks.append({
+                    "start": end_match.start(),
+                    "end": end_match.end(),
+                    "style": "",
+                    "content": ""
+                })
+            i = end_match.end()
+
+    # 处理栈中未关闭的标签
+    for block in stack:
+        voice_blocks.append({
+            "start": block["start"],
+            "end": len(text),  # 到文本末尾
+            "style": block["style"],
+            "content": text[block["content_start"]:].strip(),
+            "is_unclosed": True
+        })
+
+    return voice_blocks
 
 
 def parse_speak_tags(text: str) -> Dict[str, Any]:
     """
     解析 <|voice style="..."> 标签，提取文本内容和语音内容
 
-    支持多条消息和多语音的组合：
-    - 可以有多条消息，每条消息用 <|wait time="N"|> 分隔
-    - 每条消息可以包含多个语音标签，但只有第一个会被处理为语音
-    - 如果一条消息中多个语音标签，只取第一个，其他的保留为文本
+    使用栈方法解析，确保正确处理嵌套和多个语音标签。
+    每条消息只能有一个语音标签。
 
     Args:
         text: 可能包含 <|voice> 标签的文本
@@ -78,43 +177,26 @@ def parse_speak_tags(text: str) -> Dict[str, Any]:
         "has_voice": False
     }
 
-    # 查找 <|voice style="..."> 标签（宽容匹配，允许空格和换行）
-    # 支持：双引号和单引号，允许标签周围有空格
-    voice_pattern_double = r'<\|\s*voice\s+style\s*=\s*"([^"]*)"\s*\|>(.*?)<\|\s*/voice\s*\|>'
-    voice_pattern_single = r"<\|\s*voice\s+style\s*=\s*'([^']*)'\s*\|>(.*?)<\|\s*/voice\s*\|>"
+    # 使用栈方法解析语音标签
+    voice_blocks = _parse_voice_tags_with_stack(text)
 
-    # 尝试双引号格式
-    matches = re.findall(voice_pattern_double, text, re.DOTALL)
-    used_pattern = voice_pattern_double
+    if voice_blocks:
+        # 取第一个有效的语音标签
+        first_voice = voice_blocks[0]
 
-    # 如果没有匹配到，尝试单引号格式
-    if not matches:
-        matches = re.findall(voice_pattern_single, text, re.DOTALL)
-        used_pattern = voice_pattern_single
-
-    if matches:
-        result["has_voice"] = True
-        # 提取第一个语音标签的内容（作为语音）
-        voice_style, voice_content = matches[0]
-        result["voice_style"] = voice_style.strip()
-        result["voice_content"] = voice_content.strip()
-
-        # 移除第一个语音标签，保留其他语音标签和标签外的文本
-        # 这样可以让多条消息各自包含语音标签
-        first_match = re.search(used_pattern, text, re.DOTALL)
-        if first_match:
-            text_without_first_voice = text[:first_match.start()] + text[first_match.end():]
-            # 移除多余的空行
-            text_without_first_voice = re.sub(r'\n{3,}', '\n\n', text_without_first_voice).strip()
-            result["text"] = text_without_first_voice
-    else:
-        # 如果没有匹配到语音标签，检查是否包含可能的语音标签标记
-        if '<|voice' in text and '|/voice|>' in text:
-            # 有语音标签的痕迹，但没有匹配到正则表达式
-            # 可能是格式问题，记录警告
+        # 检查是否是未关闭的标签
+        if first_voice.get("is_unclosed", False):
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"检测到语音标签但无法解析: {text[:200]}")
+            logger.warning(f"检测到未关闭的语音标签，使用标签后的所有内容作为语音")
+
+        result["has_voice"] = True
+        result["voice_style"] = first_voice["style"]
+        result["voice_content"] = first_voice["content"]
+
+        # 移除语音标签，保留文本
+        voice_tag = text[first_voice["start"]:first_voice["end"]]
+        result["text"] = text.replace(voice_tag, "", 1).strip()
 
     return result
 
