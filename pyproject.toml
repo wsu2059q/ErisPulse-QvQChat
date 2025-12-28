@@ -1,9 +1,9 @@
 [project]
 name = "ErisPulse-QvQChat"
-version = "2.2.0"
+version = "2.2.1"
 description = "ErisPulse QvQChat 智能对话模块 - 多AI协同智能体"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [ { name = "wsu2059q", email = "wsu2059@qq.com" } ]
 dependencies = [
