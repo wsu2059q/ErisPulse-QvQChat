@@ -34,18 +34,49 @@ model = "gpt-4o"  # 建议使用支持视觉的模型
 - 多AI独立配置
 - 群聊和用户个性化设置
 - 对话连续性和记忆管理等
+- 安全防护配置
 
 ### 第二步：安装
-> 这步建立在你了解ErisPulse框架并且安装的基础上使用 ep cli 进行模块安装。
-> 你可以在最下方的 `相关链接` 中找到ErisPulse框架的仓库
+
+> 建议使用 **Docker 安装**（完整环境隔离，推荐生产环境）
+> 或使用 **手动安装**（开发环境，需要自定义）
+
+#### Docker 安装（推荐）
+
+**快速开始**：
+```bash
+# 1. 准备配置文件
+cp config.example.toml config.toml
+
+# 2. 启动容器
+docker-compose up -d
+```
+
+**详细教程**：查看 [INSTALL.md](INSTALL.md) 获取完整的 Docker 安装和配置说明。
+
+#### 手动安装
+
+> 前提：已安装 Python 3.9+ 和 ErisPulse 框架
 
 ```bash
+# 安装 QvQChat 模块
 ep install QvQChat
+ep install OneBot11  # 安装 QQ 适配器（可选）
+
+# 启动 ErisPulse
+ep run
 ```
+
+**详细教程**：查看 [INSTALL.md](INSTALL.md) 获取完整的手动安装步骤和常见问题。
 
 ### 第三步：启动
 
-配置完成后，启动ErisPulse框架即可自动加载QvQChat模块。
+配置完成后，启动服务即可：
+
+- **Docker**：`docker-compose up -d`
+- **手动**：`ep run`
+
+查看日志确认 QvQChat 模块已正常加载。
 
 ## 功能简介
 

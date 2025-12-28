@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  qvqchat:
+    build: .
+    container_name: erispulse-qvqchat
+    restart: unless-stopped
+
+    # 环境变量（可选）
+    environment:
+      - TZ=Asia/Shanghai  # 时区设置
+      - PYTHONUNBUFFERED=1  # Python 输出无缓冲
+      # 可在此添加其他环境变量
+
+    # 卷挂载
+    volumes:
+      # 配置文件持久化
+      - ./config.toml:/app/config.toml
+      - ./config:/app/config
+
+      # 数据持久化
+      - ./data:/app/data
+
+      # 日志持久化
+      - ./logs:/app/logs
+
+    # 端口映射（根据 ErisPulse 配置调整）
+    # Server 模式适配器需要此端口映射
+    ports:
+      - "8000:8000"  # Web 服务器端口(外部端口:内部端口)
+
+    # 网络配置
+    networks:
+      - qvqchat-network
+
+    # 网络模式配置（三选一，根据实际情况选择）
+
+    # 选项1：默认 bridge 模式（推荐用于访问外部 OneBotv11 服务）
+    # 网络已在上面的 networks 中配置
+
+    # 选项2：host 模式（适用于 OneBotv11 服务在同一宿主机）
+    # 注意：使用 host 模式会禁用端口映射，直接使用宿主机网络
+    # network_mode: "host"
+
+    # 选项3：指定网络名称（适配器在同一 Docker 网络）
+    # networks:
+    #   - external-network
+
+networks:
+  qvqchat-network:
+    driver: bridge
+    # 如果适配器容器也在 Docker 中，可以指定使用同一外部网络
+    # external: true
+    # name: your-external-network
