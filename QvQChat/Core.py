@@ -801,7 +801,6 @@ class Main:
         self,
         user_id: str,
         group_id: str,
-        _last_ai_response: str,
         platform: str
     ) -> None:
         """
@@ -862,14 +861,22 @@ class Main:
                     )
 
                     if should_continue and consecutive_replies < max_consecutive_replies:
+                        session_desc = get_session_description(user_id, "", group_id, "")
                         self.logger.info(f"检测到对话延续，准备继续回复（已连续回复{consecutive_replies + 1}次）")
                         consecutive_replies += 1
 
-                        # 生成继续回复
-                        system_prompt = self.config.get_effective_system_prompt(user_id, group_id)
+                        # 构建完整的系统提示词（包括不要加名字前缀的说明）
+                        base_system_prompt = self.config.get_effective_system_prompt(user_id, group_id)
+
+                        # 添加不要加名字前缀的说明
+                        enhanced_system_prompt = base_system_prompt
+                        if base_system_prompt:
+                            enhanced_system_prompt += "\n\n【重要】回复时直接说内容，不要加「Amer：」或「xxx：」这样的前缀，你的消息会直接发出去，不需要加名字。"
+
+                        # 构建消息列表
                         messages = []
-                        if system_prompt:
-                            messages.append({"role": "system", "content": system_prompt})
+                        if enhanced_system_prompt:
+                            messages.append({"role": "system", "content": enhanced_system_prompt})
 
                         # 添加会话历史（最近15条）
                         messages.extend(current_history[-15:])
@@ -877,10 +884,13 @@ class Main:
                         # 调用对话AI
                         response = await self.ai_manager.dialogue(messages)
 
-                        # 发送回复
-                        adapter = getattr(self.sdk.adapter, platform)
-                        await adapter.Send.To("group", group_id).Text(response)
-                        self.logger.info(f"已发送延续回复到 {platform} - 群聊 {group_id}")
+                        # 记录回复内容
+                        response_preview = truncate_message(response, 150)
+                        self.logger.info(f"🔄 延续回复生成 - {session_desc} - 内容: {response_preview}")
+
+                        # 使用 message_sender 发送（支持语音和间隔标签）
+                        await self.message_sender.send(platform, "group", group_id, response)
+                        self.logger.info(f"✅ 延续回复已发送 - {session_desc}")
 
                         # 保存AI回复到会话历史
                         await self.memory.add_short_term_memory(user_id, "assistant", response, group_id, bot_name)
@@ -950,11 +960,11 @@ class Main:
             group_name = data.get("group_name", "")
             platform = data.get("self", {}).get("platform", "")
 
-            # 记录接收到的消息（包含详细上下文信息）
+            # 记录接收到的消息（debug级别，避免日志过于频繁）
             session_desc = get_session_description(user_id, user_nickname, group_id, group_name)
             message_preview = truncate_message(alt_message, 100)
             image_info = f" [图片: {len(image_urls)}张]" if image_urls else ""
-            self.logger.info(f"📨 接收消息 - {session_desc} - 平台: {platform} - 内容: {message_preview}{image_info}")
+            self.logger.debug(f"📨 接收消息 - {session_desc} - 平台: {platform} - 内容: {message_preview}{image_info}")
 
             if not user_id:
                 return
@@ -1034,9 +1044,12 @@ class Main:
             # 先判断是否需要回复
             should_reply = await self._should_reply(data, alt_message, user_id, group_id)
 
+            # 如果需要回复，输出 info 日志（方便追踪实际处理的对话）
+            if should_reply:
+                self.logger.info(f"💬 开始处理消息 - {session_desc} - 内容: {message_preview}{image_info}")
+
             # 窥屏模式下，不回复时直接返回（不进行意图识别，节省AI请求）
             if not should_reply and (group_id and self.config.get("stalker_mode", {}).get("enabled", True)):
-                self.logger.debug("AI判断不需要回复")
                 return
 
             # 判断完应该回复后，进行记忆总结（个人和群记忆）
@@ -1103,7 +1116,7 @@ class Main:
 
             # AI回复后的持续监听（群聊模式）
             if group_id:
-                await self._continue_conversation_if_needed(user_id, group_id, response, platform)
+                await self._continue_conversation_if_needed(user_id, group_id, platform)
 
         except Exception as e:
             self.logger.error(f"处理消息时出错: {e}")

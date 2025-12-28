@@ -1,4 +1,5 @@
 from typing import Dict, List, Any, Optional
+from .utils import get_session_description, truncate_message
 
 
 class QvQHandler:
@@ -69,8 +70,21 @@ class QvQHandler:
         image_urls = params.get("image_urls", [])  # 获取图片URL列表
         context_info = params.get("context_info", {})  # 获取上下文信息
 
+        # 获取会话描述用于日志
+        session_desc = get_session_description(
+            user_id,
+            context_info.get("user_nickname", ""),
+            group_id,
+            context_info.get("group_name", "")
+        )
+
         # 获取会话历史（已包含当前用户消息，因为Core.py已添加）
         session_history = await self.memory.get_session_history(user_id, group_id)
+
+        # 记录对话处理开始
+        self.logger.info(f"🗣️ 对话处理 - {session_desc} - 输入: {truncate_message(user_input, 80)}")
+        if image_urls:
+            self.logger.info(f"🖼️ 包含图片 - {session_desc} - 数量: {len(image_urls)}张")
 
         # 构建消息列表
         messages = []
@@ -132,6 +146,7 @@ class QvQHandler:
                 scene_prompt += f" 对方的名字是「{user_nickname}」，回复时可以自然地称呼对方。"
             scene_prompt += voice_hint
             scene_prompt += multi_message_hint
+            scene_prompt += "\n\n【重要】回复时直接说内容，不要加「Amer：」或「xxx：」这样的前缀，你的消息会直接发出去，不需要加名字。"
             messages.append({"role": "system", "content": scene_prompt})
         else:
             scene_prompt = "当前是私聊场景，你是一个普通群友，可以更自由地表达，但也要保持自然。"
@@ -139,6 +154,7 @@ class QvQHandler:
                 scene_prompt += f" 对方的名字是「{user_nickname}」，回复时可以自然地称呼对方。"
             scene_prompt += voice_hint
             scene_prompt += multi_message_hint
+            scene_prompt += "\n\n【重要】回复时直接说内容，不要加「Amer：」或「xxx：」这样的前缀，你的消息会直接发出去，不需要加名字。"
             messages.append({"role": "system", "content": scene_prompt})
 
         messages.extend(session_history[-15:])
@@ -149,7 +165,9 @@ class QvQHandler:
             if image_urls:
                 use_multimodal = True
                 image_descriptions = []
-                
+
+                self.logger.info(f"👁️ 视觉AI分析 - {session_desc} - 图片数量: {len(image_urls)}")
+
                 # 尝试使用视觉AI分析图片
                 for url in image_urls[:3]:  # 最多3张图片
                     description = await self.ai_manager.analyze_image(url, user_input if len(image_urls) == 1 else "")
@@ -159,28 +177,28 @@ class QvQHandler:
                 # 如果成功分析了图片，使用视觉分析结果
                 if image_descriptions:
                     image_analysis = "\n".join([f"[图片{i+1}]: {desc}" for i, desc in enumerate(image_descriptions)])
-                    self.logger.info(f"视觉AI分析图片: {len(image_descriptions)}/{len(image_urls)} 张图片")
+                    self.logger.info(f"✅ 视觉AI分析完成 - {session_desc} - 成功: {len(image_descriptions)}/{len(image_urls)}张")
 
-                    # 找到最后一条用户消息（当前用户的消息）
-                    last_user_msg = None
-                    last_user_msg_index = -1
-                    for i, msg in enumerate(messages):
-                        if msg["role"] == "user":
-                            last_user_msg = msg
-                            last_user_msg_index = i
+                # 找到最后一条用户消息（当前用户的消息）
+                last_user_msg = None
+                last_user_msg_index = -1
+                for i, msg in enumerate(messages):
+                    if msg["role"] == "user":
+                        last_user_msg = msg
+                        last_user_msg_index = i
 
-                    if last_user_msg:
-                        # 将用户消息转换为文字+图片描述的格式
-                        combined_content = last_user_msg["content"]
-                        if image_analysis:
-                            combined_content += f"\n\n{image_analysis}"
+                if last_user_msg:
+                    # 将用户消息转换为文字+图片描述的格式
+                    combined_content = last_user_msg["content"]
+                    if image_analysis:
+                        combined_content += f"\n\n{image_analysis}"
 
-                        messages[last_user_msg_index] = {
-                            "role": "user",
-                            "content": combined_content
-                        }
-                        use_multimodal = False
-                        self.logger.debug("使用视觉AI分析结果，图片描述已合并到文本")
+                    messages[last_user_msg_index] = {
+                        "role": "user",
+                        "content": combined_content
+                    }
+                    use_multimodal = False
+                    self.logger.debug("使用视觉AI分析结果，图片描述已合并到文本")
 
             # 如果没有视觉分析结果，使用多模态模式
             if image_urls and use_multimodal:
@@ -203,7 +221,12 @@ class QvQHandler:
                     }
                     self.logger.debug("使用多模态模式，图片直接传递给AI")
 
+            self.logger.info(f"🤖 调用对话AI - {session_desc} - 模型: {self.config.get('dialogue.model', 'unknown')}")
             response = await self.ai_manager.dialogue(messages)
+
+            # 记录AI回复
+            response_preview = truncate_message(response, 150)
+            self.logger.info(f"🤖 AI回复生成 - {session_desc} - 内容: {response_preview}")
 
             # 保存AI回复到会话历史（用户消息已在Core.py中添加）
             await self.memory.add_short_term_memory(user_id, "assistant", response, group_id)
@@ -415,7 +438,8 @@ class QvQHandler:
                 saved_count += 1
 
         if saved_count > 0:
-            self.logger.info(f"本次对话总结保存 {saved_count} 条用户长期记忆")
+            session_desc = get_session_description(user_id, "", group_id, "")
+            self.logger.info(f"💾 记忆保存 - {session_desc} - 用户长期记忆: {saved_count}条")
 
         # 如果是群聊，根据记忆模式决定是否保存到群记忆
         if group_id:
@@ -441,7 +465,8 @@ class QvQHandler:
                         group_saved_count += 1
 
                 if group_saved_count > 0:
-                    self.logger.info(f"本次对话总结保存 {group_saved_count} 条群记忆")
+                    session_desc = get_session_description(user_id, "", group_id, "")
+                    self.logger.info(f"💾 记忆保存 - {session_desc} - 群记忆: {group_saved_count}条")
 
     async def extract_and_save_memory(self, user_id: str, session_history: List[Dict[str, str]], response: str, group_id: Optional[str] = None) -> None:
         """
@@ -734,7 +759,6 @@ class QvQHandler:
             prompt_lines.append(f"【平台】{platform}")
 
         # === 当前时间 ===
-        import datetime
         event_time = context_info.get("time", 0)
         if event_time:
             from datetime import datetime as dt

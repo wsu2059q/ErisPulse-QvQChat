@@ -121,7 +121,7 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     # 最多返回3条消息
     if len(messages) > 3:
         from ErisPulse.Core import logger
-        logger.warning(f"消息超过3条，只发送前3条")
+        logger.warning("消息超过3条，只发送前3条")
         messages = messages[:3]
 
     return messages
