@@ -2,7 +2,7 @@ import time
 import asyncio
 from typing import Dict, List, Optional, Any
 from ErisPulse import sdk
-
+from ErisPulse.Core.Event import message
 
 from .config import QvQConfig
 from .memory import QvQMemory
@@ -150,15 +150,43 @@ class Main:
         self.intent.register_handler("memory_add", self.handler.handle_memory_add)
         self.intent.register_handler("memory_delete", self.handler.handle_memory_delete)
 
+    def _extract_mentions_from_message(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        从消息段中提取@（mention）信息
+
+        Args:
+            data: 消息数据
+
+        Returns:
+            List[Dict[str, Any]]: @信息列表，每个包含 user_id, nickname
+        """
+        mentions = []
+        message_segments = data.get("message", [])
+
+        for segment in message_segments:
+            if segment.get("type") == "mention":
+                mention_data = segment.get("data", {})
+                mention_user_id = mention_data.get("user_id", "")
+
+                # 尝试获取昵称（有的平台会提供）
+                mention_nickname = mention_data.get("nickname", "")
+
+                mentions.append({
+                    "user_id": str(mention_user_id),
+                    "nickname": mention_nickname or f"用户{mention_user_id}"
+                })
+
+        return mentions
+
     def _register_event_handlers(self) -> None:
         """
         注册事件监听器
-        
+
         注册消息事件处理器以响应用户消息。
         """
-        self.sdk.adapter.on("message")(self._handle_message)
+        message.on_message(priority=999)(self._handle_message)
         self.logger.info("已注册消息事件处理器")
-    
+
     def _get_session_key(self, user_id: str, group_id: Optional[str] = None) -> str:
         """
         获取会话唯一标识
@@ -497,13 +525,13 @@ class Main:
     async def _should_reply_ai(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
         """
         AI智能判断是否应该回复
-        
+
         Args:
             data: 消息数据
             alt_message: 消息文本
             user_id: 用户ID
             group_id: 群ID（可选）
-            
+
         Returns:
             bool: 是否应该回复
         """
@@ -513,25 +541,31 @@ class Main:
         # 检查是否被@（将此信息传给AI判断）
         message_segments = data.get("message", [])
         bot_ids = self.config.get("bot_ids", [])
+        bot_nicknames = self.config.get("bot_nicknames", [])
+
         is_mentioned = False
+        mention_info = ""
+
         for segment in message_segments:
             if segment.get("type") == "mention":
                 mention_user = str(segment.get("data", {}).get("user_id", ""))
+                mention_nickname = segment.get("data", {}).get("nickname", "")
+
                 if str(mention_user) in [str(bid) for bid in bot_ids]:
                     is_mentioned = True
+                    # 构建@信息，让AI知道@的是谁
+                    mention_info = f" @{mention_nickname or f'用户{mention_user}'} "
                     break
 
-        # 如果被@了，在消息中添加标记让AI知道
+        # 构建增强的消息（包含@信息）
         enhanced_message = alt_message
-        if is_mentioned:
-            bot_nicknames = self.config.get("bot_nicknames", [])
-            bot_name = bot_nicknames[0] if bot_nicknames else ""
-            if bot_name and bot_name not in alt_message:
-                enhanced_message = f"(@{bot_name}) {alt_message}"
+        if is_mentioned and mention_info:
+            # 将@信息添加到消息开头，让AI清楚知道被@了
+            enhanced_message = f"{mention_info}{alt_message}"
+            self.logger.debug(f"被@机器人，增强消息: {enhanced_message}")
 
         # 获取机器人名字
         bot_name = str(data.get("self", {}).get("user_nickname", ""))
-        bot_nicknames = self.config.get("bot_nicknames", [])
         if bot_nicknames:
             bot_name = bot_nicknames[0]
 
@@ -740,7 +774,31 @@ class Main:
                 return
 
             # 累积消息到短期记忆（无论是否回复）
-            await self.memory.add_short_term_memory(user_id, "user", alt_message, group_id, user_nickname)
+            # 解析消息段，检查是否包含@机器人
+            message_segments = data.get("message", [])
+            bot_ids = self.config.get("bot_ids", [])
+            bot_nicknames = self.config.get("bot_nicknames", [])
+
+            # 构建增强的消息文本（包含@信息）
+            enhanced_message = alt_message
+
+            # 检查是否有@机器人
+            for segment in message_segments:
+                if segment.get("type") == "mention":
+                    mention_user = str(segment.get("data", {}).get("user_id", ""))
+                    mention_nickname = segment.get("data", {}).get("nickname", "")
+
+                    # 检查是否@了机器人
+                    if str(mention_user) in [str(bid) for bid in bot_ids]:
+                        # 将@信息转换为可读文本
+                        mention_text = f"@{mention_nickname or f'用户{mention_user}'}"
+                        # 替换 alt_message 中的@为具体文本
+                        enhanced_message = alt_message.replace("@", mention_text, 1)
+                        self.logger.debug(f"检测到@机器人: {mention_text}")
+                        break
+
+            # 存储增强的消息（包含清晰的@信息）
+            await self.memory.add_short_term_memory(user_id, "user", enhanced_message, group_id, user_nickname)
 
             # 更新群内沉寂时间
             if group_id:
@@ -769,7 +827,10 @@ class Main:
             cached_image_urls = self._get_cached_images(user_id, group_id)
             all_image_urls = list(set(image_urls + cached_image_urls))  # 去重
 
-            # 构建上下文信息
+            # 提取@（mention）信息
+            mentions = self._extract_mentions_from_message(data)
+
+            # 构建上下文信息（参考 event-conversion.md 标准）
             context_info = {
                 "user_nickname": user_nickname,
                 "user_id": user_id,
@@ -777,7 +838,10 @@ class Main:
                 "group_id": group_id,
                 "bot_nickname": bot_nickname,
                 "platform": platform,
-                "is_group": detail_type == "group"
+                "is_group": detail_type == "group",
+                "mentions": mentions,  # @的用户列表
+                "message_segments": data.get("message", []),  # 原始消息段
+                "time": data.get("time", 0)  # 消息时间戳
             }
 
             # 处理意图并回复（传递图片URL和上下文信息）

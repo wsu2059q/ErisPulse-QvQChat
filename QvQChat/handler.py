@@ -666,17 +666,17 @@ class QvQHandler:
     def _build_context_prompt(self, context_info: Dict[str, Any], is_group: bool) -> str:
         """
         构建上下文提示
-        
+
         Args:
             context_info: 上下文信息字典
             is_group: 是否是群聊
-            
+
         Returns:
             str: 上下文提示文本
         """
         prompt_lines = []
 
-        # 场景信息
+        # === 场景信息 ===
         if is_group:
             prompt_lines.append("【当前场景】群聊")
             group_name = context_info.get("group_name", "")
@@ -688,7 +688,7 @@ class QvQHandler:
         else:
             prompt_lines.append("【当前场景】私聊")
 
-        # 发送者信息
+        # === 发送者信息 ===
         user_nickname = context_info.get("user_nickname", "")
         user_id = context_info.get("user_id", "")
         if user_nickname:
@@ -696,20 +696,63 @@ class QvQHandler:
         elif user_id:
             prompt_lines.append(f"【发送者ID】{user_id}")
 
-        # 机器人信息
+        # === 机器人信息 ===
         bot_nickname = context_info.get("bot_nickname", "")
         if bot_nickname:
             prompt_lines.append(f"【你的名字】{bot_nickname}")
 
-        # 平台信息
+        # === 平台信息 ===
         platform = context_info.get("platform", "")
         if platform:
             prompt_lines.append(f"【平台】{platform}")
 
-        # 当前时间
+        # === 当前时间 ===
         import datetime
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-        prompt_lines.append(f"【时间】{current_time}")
+        event_time = context_info.get("time", 0)
+        if event_time:
+            from datetime import datetime as dt
+            # 转换为可读时间（event-conversion.md 使用10位Unix时间戳）
+            event_time_str = dt.fromtimestamp(event_time).strftime("%Y-%m-%d %H:%M:%S")
+            prompt_lines.append(f"【消息时间】{event_time_str}")
+        else:
+            current_time = dt.now().strftime("%Y-%m-%d %H:%M:%S")
+            prompt_lines.append(f"【当前时间】{current_time}")
+
+        # === @（mention）信息 ===
+        mentions = context_info.get("mentions", [])
+        if mentions:
+            prompt_lines.append("【@的用户】")
+            for mention in mentions:
+                mention_id = mention.get("user_id", "")
+                mention_nickname = mention.get("nickname", "")
+                if mention_nickname:
+                    prompt_lines.append(f"- {mention_nickname} (ID: {mention_id})")
+                else:
+                    prompt_lines.append(f"- 用户ID: {mention_id}")
+
+        # === 消息段信息 ===
+        message_segments = context_info.get("message_segments", [])
+        if message_segments:
+            # 统计消息内容类型
+            segment_types = set()
+            for seg in message_segments:
+                seg_type = seg.get("type", "")
+                if seg_type:
+                    segment_types.add(seg_type)
+
+            if segment_types:
+                type_names = {
+                    "text": "文本",
+                    "image": "图片",
+                    "at": "@",
+                    "mention": "@",
+                    "face": "表情",
+                    "record": "语音",
+                    "video": "视频",
+                    "forward": "转发"
+                }
+                type_list = [type_names.get(t, t) for t in segment_types]
+                prompt_lines.append(f"【消息类型】{', '.join(type_list)}")
 
         return "\n".join(prompt_lines) if prompt_lines else ""
 
