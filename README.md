@@ -37,7 +37,7 @@ model = "gpt-4o"  # 建议使用支持视觉的模型
 - 安全防护配置
 
 ### 第二步：安装
-
+**详细教程**：查看 [INSTALL.md](INSTALL.md) 获取完整的 Docker 安装和配置说明。
 > 建议使用 **Docker 安装**（完整环境隔离，推荐生产环境）
 > 或使用 **手动安装**（开发环境，需要自定义）
 
@@ -52,7 +52,7 @@ cp config.example.toml config.toml
 docker-compose up -d
 ```
 
-**详细教程**：查看 [INSTALL.md](INSTALL.md) 获取完整的 Docker 安装和配置说明。
+
 
 #### 手动安装
 
@@ -66,8 +66,6 @@ ep install OneBot11  # 安装 QQ 适配器（可选）
 # 启动 ErisPulse
 ep run
 ```
-
-**详细教程**：查看 [INSTALL.md](INSTALL.md) 获取完整的手动安装步骤和常见问题。
 
 ### 第三步：启动
 
