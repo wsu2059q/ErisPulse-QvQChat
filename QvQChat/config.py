@@ -49,6 +49,11 @@ class QvQConfig:
             "max_memory_tokens": 10000,  # 最大记忆tokens数
             "memory_compression_threshold": 5,  # 记忆压缩阈值
 
+            # 管理员配置
+            "admin": {
+                "admins": [],  # 管理员用户ID列表
+            },
+
             # 机器人识别配置
             "bot_nicknames": [],  # 机器人昵称列表（用于文本匹配）
             "bot_ids": [],  # 机器人ID列表（用于@匹配）
@@ -343,7 +348,8 @@ class QvQConfig:
             "system_prompt": "",
             "model_overrides": {},
             "enable_memory": True,
-            "memory_mode": "mixed"  # mixed: 混合模式（发送者记忆+群公共记忆）, sender_only: 只记忆发送者
+            "memory_mode": "mixed",  # mixed: 混合模式（发送者记忆+群公共记忆）, sender_only: 只记忆发送者
+            "enable_ai": True  # 是否启用AI
         })
         return group_config
 

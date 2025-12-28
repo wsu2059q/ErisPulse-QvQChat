@@ -1,11 +1,20 @@
-from typing import Dict, Any
+from typing import Dict, Any, Callable, Awaitable
 
 
 class QvQCommands:
     """
     QvQChat 命令处理器
-    
+
     负责注册和处理 QvQChat 的所有命令。
+
+    命令组划分：
+    - 会话管理: 会话管理命令
+    - 记忆管理: 记忆管理命令
+    - 配置查看: 配置查看命令
+    - 活跃模式: 活跃模式命令
+    - AI控制: AI启用/禁用命令
+    - 群管理: 群管理命令（仅管理员或群主）
+    - 管理员: 管理员命令（需要管理员权限）
     """
 
     def __init__(self, sdk, memory, config, logger, main=None):
@@ -15,13 +24,49 @@ class QvQCommands:
         self.logger = logger.get_child("QvQCommands")
         self.main = main  # 保存 Main 实例引用
 
+    def _is_admin(self, event: Dict[str, Any]) -> bool:
+        """
+        检查用户是否为管理员
+
+        Args:
+            event: 事件对象
+
+        Returns:
+            bool: 是否为管理员
+        """
+        user_id = str(event.get("user_id"))
+        admins = self.config.get("admin.admins", [])
+        return user_id in admins
+
+    def _is_group_admin(self, event: Dict[str, Any]) -> bool:
+        """
+        检查用户是否为群管理员或系统管理员
+
+        Args:
+            event: 事件对象
+
+        Returns:
+            bool: 是否为群管理员或系统管理员
+        """
+        # 如果是系统管理员，直接通过
+        if self._is_admin(event):
+            return True
+
+        group_id = event.get("group_id")
+        if not group_id:
+            return False
+
+        # TODO: 这里可以通过适配器查询群成员信息判断是否为群管理员
+        # 目前简化处理，仅系统管理员可用
+        return False
+
     def register_all(self) -> None:
         """注册所有命令"""
         from ErisPulse.Core.Event import command
 
-        # ==================== 会话管理 ====================
+        # ==================== 会话管理命令 ====================
 
-        @command("清除会话", aliases=["清空会话", "清空对话历史", "清除对话"], help="清除对话历史")
+        @command("清除会话", aliases=["清空会话", "清空对话历史", "清除对话"], group="会话管理", help="清除对话历史")
         async def clear_session_cmd(event):
             """清除对话历史"""
             user_id = str(event.get("user_id"))
@@ -29,7 +74,7 @@ class QvQCommands:
             await self.memory.clear_session(user_id, group_id)
             await self._send_reply(event, "会话已清除（短期对话历史已清空）")
 
-        @command("查看会话", aliases=["对话历史", "历史记录"], help="查看对话历史")
+        @command("查看会话", aliases=["对话历史", "历史记录"], group="会话管理", help="查看对话历史")
         async def view_history_cmd(event):
             """查看对话历史"""
             user_id = str(event.get("user_id"))
@@ -50,9 +95,9 @@ class QvQCommands:
                 result = "\n".join(result_parts)
             await self._send_reply(event, result)
 
-        # ==================== 记忆管理 ====================
+        # ==================== 记忆管理命令 ====================
 
-        @command("查看记忆", aliases=["我的记忆", "记忆列表"], help="查看长期记忆")
+        @command("查看记忆", aliases=["我的记忆", "记忆列表"], group="记忆管理", help="查看长期记忆")
         async def view_memory_cmd(event):
             """查看长期记忆"""
             user_id = str(event.get("user_id"))
@@ -73,7 +118,7 @@ class QvQCommands:
                 result = "\n".join(result_parts)
             await self._send_reply(event, result)
 
-        @command("清除记忆", aliases=["清空记忆", "删除所有记忆"], help="清除所有长期记忆")
+        @command("清除记忆", aliases=["清空记忆", "删除所有记忆"], group="记忆管理", help="清除所有长期记忆")
         async def clear_memory_cmd(event):
             """清除长期记忆"""
             user_id = str(event.get("user_id"))
@@ -81,8 +126,10 @@ class QvQCommands:
             user_memory["long_term"] = []
             await self.memory.set_user_memory(user_id, user_memory)
             await self._send_reply(event, "记忆已清除（长期记忆已清空）")
-        
-        @command("群配置", aliases=["群设定", "群模式", "群提示词"], help="查看群配置")
+
+        # ==================== 配置查看命令 ====================
+
+        @command("群配置", aliases=["群设定", "群模式", "群提示词"], group="配置查看", help="查看群配置")
         async def group_config_cmd(event):
             """查看群配置"""
             group_id = str(event.get("group_id"))
@@ -95,7 +142,7 @@ class QvQCommands:
             result = f"【群配置】\n- 记忆模式：{mode_desc}\n- 群提示词：{group_config.get('system_prompt', '（使用默认）') or '（使用默认）'}"
             await self._send_reply(event, result)
 
-        @command("状态", aliases=["机器人状态", "系统状态"], help="查看系统状态")
+        @command("状态", aliases=["机器人状态", "系统状态"], group="配置查看", help="查看系统状态")
         async def status_cmd(event):
             from .ai_client import QvQAIManager
             ai_manager = QvQAIManager(self.config, self.logger)
@@ -129,7 +176,9 @@ class QvQCommands:
 
             await self._send_reply(event, "\n".join(result_parts))
 
-        @command("活跃模式", aliases=["开启活跃", "活跃起来", "取消窥屏"], help="启用活跃模式（格式：活跃模式 10）")
+        # ==================== 活跃模式命令 ====================
+
+        @command("活跃模式", aliases=["开启活跃", "活跃起来", "取消窥屏"], group="活跃模式", help="启用活跃模式（格式：活跃模式 10）")
         async def active_mode_cmd(event):
             if not self.main:
                 await self._send_reply(event, "功能不可用")
@@ -155,7 +204,7 @@ class QvQCommands:
             result = self.main.enable_active_mode(user_id, duration, group_id)
             await self._send_reply(event, result)
 
-        @command("关闭活跃", aliases=["结束活跃", "恢复窥屏"], help="关闭活跃模式")
+        @command("关闭活跃", aliases=["结束活跃", "恢复窥屏"], group="活跃模式", help="关闭活跃模式")
         async def disable_active_mode_cmd(event):
             if not self.main:
                 await self._send_reply(event, "功能不可用")
@@ -167,7 +216,7 @@ class QvQCommands:
             result = self.main.disable_active_mode(user_id, group_id)
             await self._send_reply(event, result)
 
-        @command("活跃状态", aliases=["当前模式", "是否活跃"], help="查看当前模式状态")
+        @command("活跃状态", aliases=["当前模式", "是否活跃"], group="活跃模式", help="查看当前模式状态")
         async def active_status_cmd(event):
             if not self.main:
                 await self._send_reply(event, "功能不可用")
@@ -178,7 +227,276 @@ class QvQCommands:
 
             result = self.main.get_active_mode_status(user_id, group_id)
             await self._send_reply(event, result)
-            
+
+        # ==================== 管理员命令 ====================
+
+        @command("admin.add", aliases=["添加管理员"], group="管理员", permission=lambda e: self._is_admin(e), help="添加管理员")
+        async def add_admin_cmd(event):
+            args = event.get("args", [])
+            if not args:
+                await self._send_reply(event, "请提供用户ID，例如：/admin.add 123456789")
+                return
+
+            target_user_id = args[0]
+            admins = self.config.get("admin.admins", [])
+
+            if target_user_id in admins:
+                await self._send_reply(event, f"用户 {target_user_id} 已经是管理员了~")
+                return
+
+            admins.append(target_user_id)
+            self.config.set("admin.admins", admins)
+            await self._send_reply(event, f"已添加管理员：{target_user_id}")
+
+        @command("admin.remove", aliases=["移除管理员"], group="管理员", permission=lambda e: self._is_admin(e), help="移除管理员")
+        async def remove_admin_cmd(event):
+            args = event.get("args", [])
+            if not args:
+                await self._send_reply(event, "请提供用户ID，例如：/admin.remove 123456789")
+                return
+
+            target_user_id = args[0]
+            admins = self.config.get("admin.admins", [])
+
+            if target_user_id not in admins:
+                await self._send_reply(event, f"用户 {target_user_id} 不是管理员~")
+                return
+
+            admins.remove(target_user_id)
+            self.config.set("admin.admins", admins)
+            await self._send_reply(event, f"已移除管理员：{target_user_id}")
+
+        @command("admin.list", aliases=["管理员列表", "查看管理员"], group="管理员", permission=lambda e: self._is_admin(e), help="查看管理员列表")
+        async def list_admin_cmd(event):
+            admins = self.config.get("admin.admins", [])
+
+            if not admins:
+                result = "当前没有设置管理员。"
+            else:
+                result_parts = ["【管理员列表】\n"]
+                for i, admin_id in enumerate(admins, 1):
+                    result_parts.append(f"{i}. {admin_id}")
+                result = "\n".join(result_parts)
+
+            await self._send_reply(event, result)
+
+        @command("admin.reload", aliases=["重载配置", "重新加载配置"], group="管理员", permission=lambda e: self._is_admin(e), help="重新加载配置")
+        async def reload_config_cmd(event):
+            self.config.config = self.config._load_config()
+            await self._send_reply(event, "配置已重新加载")
+
+        @command("admin.clear_all_memory", aliases=["清空所有记忆", "清除全部记忆"], group="管理员", permission=lambda e: self._is_admin(e), help="清除所有用户记忆")
+        async def clear_all_memory_cmd(event):
+            """清除所有用户记忆"""
+            from ErisPulse.Core.Event import command
+
+            # 定义验证函数
+            def validate_confirm(reply_event):
+                text = ""
+                for segment in reply_event.get("message", []):
+                    if segment.get("type") == "text":
+                        text = segment.get("data", {}).get("text", "").strip().lower()
+                        break
+                return text in ["是", "yes", "y", "确认"]
+
+            # 定义回调函数
+            async def handle_confirmation(reply_event):
+                text = ""
+                for segment in reply_event.get("message", []):
+                    if segment.get("type") == "text":
+                        text = segment.get("data", {}).get("text", "").strip().lower()
+                        break
+
+                if text in ["是", "yes", "y", "确认"]:
+                    # 执行清除
+                    from ErisPulse import sdk
+                    await sdk.storage.delete_prefix("qvc:user:")
+                    await self._send_reply(event, "所有用户记忆已清除")
+                else:
+                    await self._send_reply(event, "操作已取消。")
+
+            # 等待用户确认
+            await command.wait_reply(
+                event,
+                prompt="⚠️ 此操作将清除所有用户的长期记忆！\n请输入 '是' 确认，或输入其他内容取消",
+                timeout=30.0,
+                callback=handle_confirmation,
+                validator=validate_confirm
+            )
+        
+        @command("admin.clear_all_sessions", aliases=["清空所有会话", "清除全部会话"], group="管理员", permission=lambda e: self._is_admin(e), help="清除所有用户会话历史")
+        async def clear_all_sessions_cmd(event):
+            """清除所有用户会话历史"""
+            from ErisPulse.Core.Event import command
+
+            # 定义验证函数
+            def validate_confirm(reply_event):
+                text = ""
+                for segment in reply_event.get("message", []):
+                    if segment.get("type") == "text":
+                        text = segment.get("data", {}).get("text", "").strip().lower()
+                        break
+                return text in ["是", "yes", "y", "确认"]
+
+            # 定义回调函数
+            async def handle_confirmation(reply_event):
+                text = ""
+                for segment in reply_event.get("message", []):
+                    if segment.get("type") == "text":
+                        text = segment.get("data", {}).get("text", "").strip().lower()
+                        break
+
+                if text in ["是", "yes", "y", "确认"]:
+                    # 执行清除
+                    from ErisPulse import sdk
+                    await sdk.storage.delete_prefix("qvc:session:")
+                    await self._send_reply(event, "所有用户会话历史已清除")
+                else:
+                    await self._send_reply(event, "操作已取消。")
+
+            # 等待用户确认
+            await command.wait_reply(
+                event,
+                prompt="⚠️ 此操作将清除所有用户的会话历史！\n请输入 '是' 确认，或输入其他内容取消",
+                timeout=30.0,
+                callback=handle_confirmation,
+                validator=validate_confirm
+            )
+
+        @command("admin.clear_all_groups", aliases=["清空所有群聊", "清除全部群"], group="管理员", permission=lambda e: self._is_admin(e), help="清除所有群记忆和上下文")
+        async def clear_all_groups_cmd(event):
+            """清除所有群记忆和上下文"""
+            from ErisPulse.Core.Event import command
+
+            # 定义验证函数
+            def validate_confirm(reply_event):
+                text = ""
+                for segment in reply_event.get("message", []):
+                    if segment.get("type") == "text":
+                        text = segment.get("data", {}).get("text", "").strip().lower()
+                        break
+                return text in ["是", "yes", "y", "确认"]
+
+            # 定义回调函数
+            async def handle_confirmation(reply_event):
+                text = ""
+                for segment in reply_event.get("message", []):
+                    if segment.get("type") == "text":
+                        text = segment.get("data", {}).get("text", "").strip().lower()
+                        break
+
+                if text in ["是", "yes", "y", "确认"]:
+                    # 执行清除
+                    from ErisPulse import sdk
+                    await sdk.storage.delete_prefix("qvc:group:")
+                    await self._send_reply(event, "所有群记忆和上下文已清除")
+                else:
+                    await self._send_reply(event, "操作已取消。")
+
+            # 等待用户确认
+            await command.wait_reply(
+                event,
+                prompt="⚠️ 此操作将清除所有群的记忆和上下文！\n请输入 '是' 确认，或输入其他内容取消",
+                timeout=30.0,
+                callback=handle_confirmation,
+                validator=validate_confirm
+            )
+
+        # ==================== AI控制命令 ====================
+
+        @command("启用AI", aliases=["开启AI", "激活AI"], group="AI控制", help="启用AI回复功能")
+        async def enable_ai_cmd(event):
+            """启用AI回复功能"""
+            if not self.main:
+                await self._send_reply(event, "功能不可用")
+                return
+
+            user_id = str(event.get("user_id"))
+            group_id = str(event.get("group_id")) if event.get("detail_type") == "group" else None
+
+            result = self.main.enable_ai(user_id, group_id)
+            await self._send_reply(event, result)
+
+        @command("禁用AI", aliases=["关闭AI", "停用AI"], group="AI控制", help="禁用AI回复功能（命令仍可用）")
+        async def disable_ai_cmd(event):
+            """禁用AI回复功能"""
+            if not self.main:
+                await self._send_reply(event, "功能不可用")
+                return
+
+            user_id = str(event.get("user_id"))
+            group_id = str(event.get("group_id")) if event.get("detail_type") == "group" else None
+
+            result = self.main.disable_ai(user_id, group_id)
+            await self._send_reply(event, result)
+
+        @command("AI状态", aliases=["查看AI", "AI开关"], group="AI控制", help="查看AI启用状态")
+        async def ai_status_cmd(event):
+            """查看AI启用状态"""
+            if not self.main:
+                await self._send_reply(event, "功能不可用")
+                return
+
+            user_id = str(event.get("user_id"))
+            group_id = str(event.get("group_id")) if event.get("detail_type") == "group" else None
+
+            result = self.main.get_ai_status(user_id, group_id)
+            await self._send_reply(event, result)
+
+        # ==================== 群管理命令 ====================
+
+        @command("清除群上下文", aliases=["清空群上下文", "删除群上下文"], group="群管理", help="清除群公共上下文（仅管理员或群主）")
+        async def clear_group_context_cmd(event):
+            """清除群公共上下文"""
+            if not self.main:
+                await self._send_reply(event, "功能不可用")
+                return
+
+            group_id = str(event.get("group_id"))
+            if not group_id:
+                await self._send_reply(event, "此命令只能在群聊中使用")
+                return
+
+            # 检查权限（管理员或群主）
+            if not self._is_group_admin(event):
+                await self._send_reply(event, "只有管理员或群主可以使用此命令")
+                return
+
+            from ErisPulse import sdk
+            key = f"qvc:group:{group_id}:memory"
+            group_memory = sdk.storage.get(key, {})
+            group_memory["shared_context"] = []
+            sdk.storage.set(key, group_memory)
+
+            await self._send_reply(event, f"群 {group_id} 的公共上下文已清除")
+
+        @command("清除群记忆", aliases=["清空群记忆", "删除群记忆"], group="群管理", help="清除群记忆（仅管理员或群主）")
+        async def clear_group_memory_cmd(event):
+            """清除群记忆"""
+            if not self.main:
+                await self._send_reply(event, "功能不可用")
+                return
+
+            group_id = str(event.get("group_id"))
+            if not group_id:
+                await self._send_reply(event, "此命令只能在群聊中使用")
+                return
+
+            # 检查权限（管理员或群主）
+            if not self._is_group_admin(event):
+                await self._send_reply(event, "只有管理员或群主可以使用此命令")
+                return
+
+            from ErisPulse import sdk
+            key = f"qvc:group:{group_id}:memory"
+            sdk.storage.set(key, {
+                "sender_memory": {},
+                "shared_context": [],
+                "last_updated": None
+            })
+
+            await self._send_reply(event, f"群 {group_id} 的记忆已清除")
+
     async def _send_reply(self, event: Dict[str, Any], message: str) -> None:
         """
         发送回复消息

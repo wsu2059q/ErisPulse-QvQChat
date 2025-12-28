@@ -65,6 +65,10 @@ class Main:
         # key: 会话标识, value: {"end_time": float, "duration_minutes": int}
         self._active_mode = {}
 
+        # AI启用状态（可以临时禁用AI）
+        # key: 会话标识, value: bool (True表示启用，False表示禁用)
+        self._ai_disabled = {}
+
         # 检查API配置
         self._check_api_config()
 
@@ -386,6 +390,102 @@ class Main:
         result = "【活跃模式会话列表】\n" + "\n".join(active_sessions)
         self.logger.info(f"查询活跃模式，共 {len(active_sessions)} 个会话处于活跃状态")
         return result
+
+    def enable_ai(self, user_id: str, group_id: Optional[str] = None) -> str:
+        """
+        启用AI
+
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            str: 状态消息
+        """
+        session_key = self._get_reply_count_key(user_id, group_id)
+
+        # 更新群配置
+        if group_id:
+            group_config = self.config.get_group_config(group_id)
+            group_config["enable_ai"] = True
+            self.config.set_group_config(group_id, group_config)
+            session_desc = f"群聊 {group_id}"
+        else:
+            # 私聊直接从禁用列表中移除
+            if session_key in self._ai_disabled:
+                del self._ai_disabled[session_key]
+            session_desc = f"私聊 {user_id}"
+
+        self.logger.info(f"✓ {session_desc} 已启用AI")
+        return "AI已启用，我会正常回复消息~"
+
+    def disable_ai(self, user_id: str, group_id: Optional[str] = None) -> str:
+        """
+        禁用AI
+
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            str: 状态消息
+        """
+        session_key = self._get_reply_count_key(user_id, group_id)
+
+        # 更新群配置
+        if group_id:
+            group_config = self.config.get_group_config(group_id)
+            group_config["enable_ai"] = False
+            self.config.set_group_config(group_id, group_config)
+            session_desc = f"群聊 {group_id}"
+        else:
+            # 私聊直接添加到禁用列表
+            self._ai_disabled[session_key] = True
+            session_desc = f"私聊 {user_id}"
+
+        self.logger.info(f"✓ {session_desc} 已禁用AI")
+        return "AI已禁用，我不再主动回复（命令仍可用）"
+
+    def is_ai_enabled(self, user_id: str, group_id: Optional[str] = None) -> bool:
+        """
+        检查AI是否启用
+
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            bool: AI是否启用
+        """
+        # 群聊使用配置
+        if group_id:
+            group_config = self.config.get_group_config(group_id)
+            return group_config.get("enable_ai", True)
+
+        # 私聊使用临时禁用列表
+        session_key = self._get_reply_count_key(user_id, group_id)
+        return session_key not in self._ai_disabled
+
+    def get_ai_status(self, user_id: str, group_id: Optional[str] = None) -> str:
+        """
+        获取AI状态
+
+        Args:
+            user_id: 用户ID
+            group_id: 群ID（可选）
+
+        Returns:
+            str: 状态消息
+        """
+        if group_id:
+            group_config = self.config.get_group_config(group_id)
+            enabled = group_config.get("enable_ai", True)
+            status = "已启用" if enabled else "已禁用"
+            return f"群聊 {group_id} 的AI状态：{status}"
+        else:
+            enabled = self.is_ai_enabled(user_id, None)
+            status = "已启用" if enabled else "已禁用"
+            return f"私聊的AI状态：{status}"
 
     async def _should_reply(self, data: Dict[str, Any], alt_message: str, user_id: str, group_id: Optional[str]) -> bool:
         """
@@ -742,6 +842,12 @@ class Main:
             group_id = str(data.get("group_id", "")) if detail_type == "group" else None
 
             if not user_id:
+                return
+
+            # 检查AI是否启用
+            if not self.is_ai_enabled(user_id, group_id):
+                self.logger.debug(f"AI已禁用，会话: {user_id if not group_id else group_id}")
+                # AI禁用时不处理，但仍可响应命令
                 return
 
             # 如果有图片，缓存起来（等待可能的文本消息）
