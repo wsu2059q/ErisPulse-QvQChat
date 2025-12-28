@@ -64,14 +64,18 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
 - 窥屏模式（stalker mode）控制
 - 回复时机判断
 - 对话连续性监听
+- 安全防护（消息长度限制、速率限制）
 
 **关键方法**：
 - `__init__()`: 初始化所有子模块
 - `_handle_message()`: 消息处理主入口
 - `_should_reply()`: 判断是否需要回复（私聊积极/群聊窥屏）
+- `_check_message_length()`: 检查消息长度是否超过限制
+- `_check_rate_limit()`: 检查是否超过速率限制
+- `_estimate_tokens()`: 估算文本的token数量
 - `_get_session_key()`: 获取会话唯一标识
 - `_get_reply_count_key()`: 获取回复计数器key
-- `_send_response()`: 发送响应消息（支持多条消息延迟发送）
+- `_send_response()`: 发送响应消息（通过MessageSender）
 
 **核心逻辑**：
 - 群聊使用 `group:{group_id}` 作为会话key（共享历史）
@@ -79,12 +83,14 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
 - 意图识别和回复判断并行执行（asyncio.gather）
 - 窥屏模式：群聊默认3%回复率，被@时80%
 - 对话连续性：AI回复后监听后续3条消息，持续关注
+- 安全防护：消息长度检查、速率限制检查
 
 **设计亮点**：
 - 支持多消息延迟发送（模拟真人分句打字）
-- 使用公共工具函数处理 Markdown 清理和消息解析
+- 使用 MessageSender 统一处理消息发送（文本、语音、延迟）
 - 图片提取和视觉AI集成
 - 对话连续性监听，支持后续补全回应
+- 多层安全防护，防止恶意刷屏和资源滥用
 
 ---
 
@@ -365,13 +371,19 @@ handler._extract_and_save_memory()
 ### 8. QvQChat/utils.py - 公共工具
 
 **职责**：
-- 提供跨模块共享的工具函数
+- 提供跨模块共享的工具函数和类
 - 统一处理文本格式化和消息解析
+- 封装消息发送逻辑（文本、语音、延迟）
 - 避免代码重复，提高可维护性
 
 **公共函数**：
 - `remove_markdown()`: 移除Markdown格式（加粗、代码、标题等）
-- `parse_multi_messages()`: 解析多条消息（带延迟格式）
+- `parse_multi_messages()`: 解析多条消息（支持新旧格式）
+- `parse_speak_tags()`: 解析语音标签，提取文本和语音内容
+- `record_voice()`: 生成语音（使用SiliconFlow API）
+
+**公共类**：
+- `MessageSender`: 统一的消息发送处理器
 
 **remove_markdown() 功能**：
 - 移除粗体 `**text**` 或 `__text__`
@@ -383,16 +395,30 @@ handler._extract_and_save_memory()
 - 移除多余的空行
 
 **parse_multi_messages() 功能**：
-- 解析格式：`消息1\n\n[间隔:3]\n\n消息2`
+- 解析格式（兼容新旧）：
+  - 新格式：`消息1\n<|wait time="3"|>\n消息2`
+  - 老格式：`消息1\n[间隔:3]\n消息2` 或 `[间隔：3]`
 - 返回消息列表，每条消息包含 `content` 和 `delay`
 - 最多返回3条消息
-- 自动设置延迟时间
+- 支持语音标签，自动跳过语音标签内的分隔符
+
+**MessageSender 类**：
+- `send()`: 统一的消息发送接口
+- `_send_single_message()`: 发送单条消息（可能包含文本和语音）
+- `_send_text_and_voice()`: 发送文本和语音
+- `_send_voice_file()`: 发送语音文件（尝试base64和本地路径）
+
+**支持格式**：
+- `<|wait time="N"|>`：多消息分隔符（N为延迟秒数，1-5秒，最多3条）
+- `[间隔:N]` 或 `[间隔：N]`：兼容老格式的间隔标签
+- `<|voice style="...">...</|voice>`：语音标签（每条消息可包含一个）
 
 **设计亮点**：
 - 单一职责原则：工具函数集中管理
 - DRY原则：避免在多个类中重复实现
 - 易于测试和复用
 - 降低维护成本
+- 消息发送逻辑模块化，便于扩展新平台
 
 ---
 
@@ -410,6 +436,10 @@ Core._handle_message()
     ├─→ 获取用户信息
     ├─→ 检查API配置
     │
+    ├─→ [安全检查] _check_message_length()
+    │           └─→ 消息长度是否超过限制
+    │                   └─→ 超过则直接返回，不处理
+    │
     ├─→ [并行] intent.identify_intent()
     │           └─→ AI识别意图类型（dialogue/memory_add/memory_delete）
     │
@@ -419,6 +449,12 @@ Core._handle_message()
     ├─→ memory.add_short_term_memory()  # 保存用户消息到会话历史
     │
     └─→ 如果需要回复:
+            │
+            ▼
+        [安全检查] _check_rate_limit()
+            │           └─→ 估算token数量
+            │           └─→ 检查是否超过速率限制
+            │                   └─→ 超过则直接返回，不处理
             │
             ▼
         intent.handle_intent()
@@ -455,8 +491,10 @@ Core._handle_message()
                         ▼
                     Core._send_response()
                         │
-                        ├─→ parse_multi_messages() 解析多消息
-                        └─→ 逐条发送（带延迟）
+                        ├─→ MessageSender.send() 统一处理
+                        │   └─→ parse_multi_messages() 解析多消息（支持新旧格式）
+                        │           └─→ 支持文本、语音、延迟
+                        │           └─→ 逐条发送（带延迟）
 ```
 
 ### 2. 记忆提取流程
@@ -541,6 +579,11 @@ memory_compression_threshold = 5
 bot_nicknames = []
 bot_ids = []
 
+# 安全防护配置
+max_message_length = 1000  # 忽略长度超过此值的消息（防止恶意刷屏）
+rate_limit_tokens = 20000  # 短时间内允许的最大token数（防止刷token）
+rate_limit_window = 60     # 时间窗口（秒）
+
 [QvQChat.stalker_mode]
 # 窥屏模式配置
 enabled = true
@@ -566,6 +609,7 @@ model = "gpt-4o"
 temperature = 0.7
 max_tokens = 500
 system_prompt = "..."
+
 # 对话AI（必需）
 base_url = "https://api.openai.com/v1"
 api_key = "sk-..."

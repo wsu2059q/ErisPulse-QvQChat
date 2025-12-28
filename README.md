@@ -84,6 +84,79 @@ AI会根据对话上下文智能判断：
 
 可在 `config.toml` 的 `[QvQChat.stalker_mode]` 部分调整这些参数。
 
+## 安全防护
+
+QvQChat 提供多层防护机制，防止恶意刷屏和资源滥用：
+
+### 1. 消息长度限制
+忽略过长的消息，防止恶意刷屏。
+
+```toml
+[QvQChat]
+max_message_length = 1000  # 忽略长度超过此值的消息（字符数）
+```
+
+### 2. 速率限制
+限制短时间内允许的最大 token 数量，防止刷 API 配额。
+
+```toml
+[QvQChat]
+rate_limit_tokens = 20000   # 时间窗口内允许的最大token数
+rate_limit_window = 60         # 时间窗口（秒）
+```
+
+**工作原理**：
+- 每次回复前，估算需要的 token 数（包括输入和输出）
+- 在时间窗口内（默认60秒），累计 token 数不能超过限制
+- 超过限制时记录日志并跳过处理
+
+### 3. 窥屏模式限制
+群聊默认使用低回复率（3%），并有额外的限制：
+
+- 每小时最多回复 8 次（可配置）
+- 两次回复之间至少间隔 15 条消息（可配置）
+
+## 配置优化
+
+### AI 配置智能合并
+
+只需配置 `dialogue` 的 API 密钥，其他 AI 自动复用：
+
+```toml
+[QvQChat.dialogue]
+base_url = "https://api.siliconflow.cn/v1"
+api_key = "sk-xxx"
+model = "moonshotai/Kimi-K2-Instruct-0905"
+temperature = 0.7
+max_tokens = 500
+
+# memory 使用自己的模型，但复用 dialogue 的 API 密钥
+[QvQChat.memory]
+model = "inclusionAI/Ling-mini-2.0"
+temperature = 0.3
+max_tokens = 1000
+
+# intent 使用自己的模型，但复用 dialogue 的 API 密钥
+[QvQChat.intent]
+model = "tencent/Hunyuan-A13B-Instruct"
+temperature = 0.1
+max_tokens = 500
+
+# vision 也可以有独立的 API 密钥
+[QvQChat.vision]
+base_url = "https://api.siliconflow.cn/v1"
+api_key = "sk-xxx"  # 或留空复用 dialogue 的
+model = "Qwen/Qwen3-VL-8B-Instruct"
+temperature = 0.3
+max_tokens = 300
+```
+
+**配置继承规则**：
+- 优先使用 AI 自己的配置（model、temperature、max_tokens 等）
+- 如果 AI 没有配置 `api_key`，复用 dialogue 的 `api_key`
+- 如果 AI 没有配置 `base_url`，复用 dialogue 的 `base_url`
+- 其他参数使用 AI 自己的配置，没有才使用默认值
+
 ## 使用示例
 
 ### 日常对话
