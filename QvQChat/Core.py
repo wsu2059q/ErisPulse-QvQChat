@@ -86,42 +86,62 @@ class Main:
     def _check_api_config(self) -> None:
         """
         检查API配置
-        
+
         验证必需的AI配置，给出友好的提示信息。
-        
+
         AI说明：
         - dialogue: 对话AI（必需）
         - intent: 意图识别AI（必需）
         - intent_execution: 意图执行AI（必需，替代命令系统）
-        - memory: 记忆提取AI（可选，自动复用dialogue配置）
-        - reply_judge: 回复判断AI（可选，自动复用dialogue配置）
-        - vision: 视觉AI（可选，自动复用dialogue配置）
+        - memory: 记忆提取AI（可选，可复用dialogue的api_key）
+        - reply_judge: 回复判断AI（可选，可复用dialogue的api_key）
+        - vision: 视觉AI（可选，可复用dialogue的api_key）
         - voice: 语音合成AI（可选，需要单独配置）
         """
         ai_types = ["dialogue", "memory", "intent", "intent_execution", "reply_judge", "vision"]
-        configured_ais = []
-        missing_apis = []
+
+        # 检查每个AI是否有独立配置
+        configured_ais = []  # 有独立model配置的AI
+        shared_api_ais = []  # 复用dialogue api_key的AI
+        missing_config_ais = []  # 完全没有配置的AI
 
         for ai_type in ai_types:
-            api_key = self.config.get(f"{ai_type}.api_key", "")
-            if api_key and api_key.strip() and api_key != "your-api-key":
-                configured_ais.append(ai_type)
+            ai_config = self.config.get(ai_type, {})
+
+            # 判断AI是否有配置
+            has_own_model = bool(ai_config.get("model"))
+            has_own_api_key = bool(ai_config.get("api_key") and ai_config.get("api_key").strip() and ai_config.get("api_key") != "your-api-key")
+
+            if ai_type == "dialogue":
+                # dialogue必须有自己的配置
+                if has_own_api_key:
+                    configured_ais.append(ai_type)
+                else:
+                    missing_config_ais.append(ai_type)
             else:
-                missing_apis.append(ai_type)
+                # 其他AI可以复用dialogue的api_key
+                if has_own_model or has_own_api_key:
+                    # 有自己的model或api_key配置
+                    if has_own_api_key:
+                        configured_ais.append(ai_type)
+                    else:
+                        # 只有model配置，api_key会复用dialogue的
+                        shared_api_ais.append(ai_type)
+                else:
+                    # 完全没有配置
+                    missing_config_ais.append(ai_type)
 
+        # 输出配置状态
         if configured_ais:
-            self.logger.info(f"已配置的AI: {', '.join(configured_ais)}")
+            self.logger.info(f"独立配置的AI: {', '.join(configured_ais)}")
+        if shared_api_ais:
+            self.logger.info(f"复用dialogue API密钥的AI: {', '.join(shared_api_ais)}")
 
-        # 只警告dialogue未配置，其他AI可以复用dialogue的配置
-        if "dialogue" in missing_apis:
+        # 只警告dialogue未配置
+        if "dialogue" in missing_config_ais:
             self.logger.error(
                 "对话AI未配置API密钥。QvQChat将无法正常工作。"
                 "请在config.toml中配置[QvQChat.dialogue].api_key"
-            )
-        elif missing_apis:
-            # 未配置的AI会复用dialogue配置
-            self.logger.info(
-                f"以下AI将复用dialogue配置: {', '.join(missing_apis)}"
             )
 
         # 检查语音配置

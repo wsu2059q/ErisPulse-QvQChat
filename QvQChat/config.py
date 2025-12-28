@@ -272,36 +272,43 @@ class QvQConfig:
     def get_ai_config(self, ai_type: str) -> Dict[str, Any]:
         """
         获取指定AI的配置
-        
-        配置简化逻辑：
-        - 如果AI未配置api_key，使用dialogue配置作为基础
-        - 根据AI类型调整temperature和max_tokens参数
-        
+
+        智能配置合并逻辑：
+        - 优先使用AI自身的配置（model、temperature、max_tokens等）
+        - 如果AI未配置api_key，复用dialogue的api_key
+        - 如果AI未配置base_url，复用dialogue的base_url
+        - 其他参数使用AI自身的配置，没有才从dialogue获取
+
         Args:
             ai_type: AI类型（dialogue、memory、intent等）
-            
+
         Returns:
             Dict[str, Any]: AI配置字典
         """
         ai_config = self.get(ai_type, {})
         dialogue_config = self.get("dialogue", {})
 
-        # 如果AI未配置api_key，使用dialogue配置作为基础
+        # 如果AI未配置api_key，从dialogue获取
         if not ai_config.get("api_key") and dialogue_config.get("api_key"):
-            ai_config = dialogue_config.copy()
-            # 为特定AI类型调整参数
-            if ai_type == "reply_judge":
-                ai_config["temperature"] = 0.1
-                ai_config["max_tokens"] = 100
-            elif ai_type == "vision":
-                ai_config["temperature"] = 0.3
-                ai_config["max_tokens"] = 300
-            elif ai_type == "intent":
-                ai_config["temperature"] = 0.1
-                ai_config["max_tokens"] = 500
-            elif ai_type == "memory":
-                ai_config["temperature"] = 0.3
-                ai_config["max_tokens"] = 1000
+            ai_config["api_key"] = dialogue_config["api_key"]
+
+        # 如果AI未配置base_url，从dialogue获取
+        if not ai_config.get("base_url") and dialogue_config.get("base_url"):
+            ai_config["base_url"] = dialogue_config["base_url"]
+
+        # 为特定AI类型设置合理的默认参数（如果未配置）
+        if ai_type == "reply_judge":
+            ai_config.setdefault("temperature", 0.1)
+            ai_config.setdefault("max_tokens", 100)
+        elif ai_type == "vision":
+            ai_config.setdefault("temperature", 0.3)
+            ai_config.setdefault("max_tokens", 300)
+        elif ai_type == "intent":
+            ai_config.setdefault("temperature", 0.1)
+            ai_config.setdefault("max_tokens", 500)
+        elif ai_type == "memory":
+            ai_config.setdefault("temperature", 0.3)
+            ai_config.setdefault("max_tokens", 1000)
 
         return ai_config
     

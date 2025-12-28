@@ -129,9 +129,12 @@ class QvQAIManager:
     def _init_ai_clients(self):
         """
         初始化所有AI客户端
-        
-        未配置API密钥的AI会被跳过，其他AI会复用dialogue配置。
-        
+
+        智能配置合并：
+        - AI可以使用自己的配置（model、api_key等）
+        - 如果AI没有api_key，会自动复用dialogue的api_key
+        - 只要配置中有有效的api_key，就会初始化该AI客户端
+
         AI类型说明：
         - dialogue: 对话AI（必需）
         - intent: 意图识别AI（必需）
@@ -143,10 +146,18 @@ class QvQAIManager:
         for ai_type in ai_types:
             try:
                 ai_config = self.config.get_ai_config(ai_type)
-                if ai_config.get("api_key"):
+
+                # 检查是否有有效的api_key配置
+                # 可能是AI自己的api_key，也可能是复用dialogue的api_key
+                api_key = ai_config.get("api_key", "")
+                if api_key and api_key.strip() and api_key != "your-api-key":
                     self.ai_clients[ai_type] = QvQAIClient(ai_config, self.logger)
                 else:
-                    self.logger.warning(f"{ai_type} AI未配置API密钥")
+                    # 只有dialogue必须有api_key，其他AI可以不配置
+                    if ai_type == "dialogue":
+                        self.logger.error(f"{ai_type} AI必须配置API密钥，否则无法工作")
+                    else:
+                        self.logger.info(f"{ai_type} AI未配置（复用dialogue API密钥）")
             except Exception as e:
                 self.logger.error(f"初始化{ai_type} AI失败: {e}")
     
@@ -165,16 +176,17 @@ class QvQAIManager:
     def reload_client(self, ai_type: str) -> bool:
         """
         重新加载指定AI客户端
-        
+
         Args:
             ai_type: AI类型
-            
+
         Returns:
             bool: 是否重新加载成功
         """
         try:
             ai_config = self.config.get_ai_config(ai_type)
-            if ai_config.get("api_key"):
+            api_key = ai_config.get("api_key", "")
+            if api_key and api_key.strip() and api_key != "your-api-key":
                 self.ai_clients[ai_type] = QvQAIClient(ai_config, self.logger)
                 return True
             return False
