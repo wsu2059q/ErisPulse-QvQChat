@@ -1,6 +1,6 @@
 [project]
 name = "ErisPulse-QvQChat"
-version = "2.1.0"
+version = "2.2.0"
 description = "ErisPulse QvQChat 智能对话模块 - 多AI协同智能体"
 readme = "README.md"
 requires-python = ">=3.9"
