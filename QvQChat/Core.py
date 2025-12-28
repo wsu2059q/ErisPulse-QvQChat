@@ -876,10 +876,6 @@ class Main:
                         # 调用对话AI
                         response = await self.ai_manager.dialogue(messages)
 
-                        # 移除Markdown格式
-                        from .utils import remove_markdown
-                        response = remove_markdown(response)
-
                         # 发送回复
                         adapter = getattr(self.sdk.adapter, platform)
                         await adapter.Send.To("group", group_id).Text(response)
