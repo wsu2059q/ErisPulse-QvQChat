@@ -119,8 +119,8 @@ docker run -d \
 
 | 适配器 | 适用平台 | 模式 | 推荐度 |
 |--------|---------|------|--------|
-| OneBotv11 | QQ (Lagrange、NapCat、go-cqhttp 等) | Client/Server | ⭐⭐⭐⭐⭐ |
-| Yunhu | 云湖企业 | Server | ⭐⭐⭐⭐ |
+| OneBotv11 | QQ (Lagrange、NapCat 等) | Client/Server | ⭐⭐⭐⭐⭐ |
+| Yunhu | 云湖 | Server | ⭐⭐⭐⭐ |
 | Telegram | Telegram | Server | ⭐⭐⭐ |
 
 ##### 3.2 配置 OneBotv11 适配器（QQ）
@@ -194,10 +194,9 @@ yunhu = true      # 启用云湖
 **OneBotv11 服务推荐**：
 - [NapCat](https://github.com/NapNeko/NapCatQQ) - QQ NT 官方协议适配器（推荐）
 - [Lagrange](https://github.com/LagrangeDev/Lagrange.Core) - 高性能 QQ 适配器
-- [go-cqhttp](https://github.com/Mrs4s/go-cqhttp) - 经典的 QQ 适配器
 
 **云湖服务**：
-- 登录 [云湖平台](https://www.yunhu.io/) 获取 webhook token
+- 登录 [云湖平台](https://www.yhchat.com/control) 获取 webhook token
 
 ##### 3.6 网络连接注意事项
 
@@ -592,7 +591,6 @@ OneBotv11 是 QQ 机器人最常用的适配器协议，支持多个实现。
 |------|---------|------|--------|
 | NapCat | OneBot v11 | QQ NT 官方协议，稳定、功能全 | ⭐⭐⭐⭐⭐ |
 | Lagrange | OneBot v11 | 高性能、低延迟 | ⭐⭐⭐⭐ |
-| go-cqhttp | OneBot v11 | 经典实现，社区活跃 | ⭐⭐⭐ |
 
 #### Client 模式配置（推荐）
 
@@ -649,30 +647,15 @@ NapCat 配置文件 `config/onebot_11.json`：
 }
 ```
 
-#### go-cqhttp 配置示例
-
-go-cqhttp 配置文件 `config.yml`：
-
-```yaml
-servers:
-  - ws-reverse:
-      universal: ws://your-server-ip:8000/onebot
-      reconnect-interval: 3000
-
-account:
-  uin: 123456789
-  password: ''
-```
-
 ### 云湖适配器
 
-云湖是企业级即时通讯平台，通过 webhook 接收消息。
+云湖是即时通讯平台，通过 webhook 接收消息。
 
 #### 配置
 
 ```toml
 [Yunhu_Adapter]
-token = "bf711c4677704643b13d9d2489680020"  # 云湖提供的 token
+token = ""  # 云湖提供的 token
 
 [Yunhu_Adapter.server]
 path = "/webhook"  # Webhook 路径
@@ -680,24 +663,14 @@ path = "/webhook"  # Webhook 路径
 
 #### 配置云湖平台
 
-1. 登录 [云湖平台](https://www.yunhu.io/)
-2. 进入"开发" -> "Webhook 配置"
+1. 登录 [云湖平台](https://www.yhchat.com/control)
+2. 选择对应的机器人
 3. 设置 webhook 地址为：`http://your-server-ip:8000/webhook`
-4. 复制生成的 token 到 `config.toml`
+4. 复制机器人 token 到 `config.toml`
 
 ### Telegram 适配器
 
 通过 Telegram Bot API 接收消息。
-
-#### 配置
-
-```toml
-[Telegram_Adapter]
-token = "your-telegram-bot-token"  # Telegram Bot Token
-
-[Telegram_Adapter.server]
-path = "/telegram"  # Webhook 路径
-```
 
 #### 获取 Telegram Bot Token
 
