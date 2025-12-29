@@ -140,9 +140,9 @@ def _parse_voice_tags_with_stack(text: str) -> List[Dict[str, Any]]:
     voice_blocks = []
     stack = []  # 存储开启标签的位置和风格
 
-    # 匹配开始标签：<|voice style="...">
+    # 匹配开始标签：<|voice style="..."|>
     start_pattern = re.compile(r'<\|\s*voice\s+style\s*=\s*["\']([^"\']*)["\']\s*\|>', re.DOTALL)
-    # 匹配结束标签：</voice>
+    # 匹配结束标签：<|/voice|>
     end_pattern = re.compile(r'<\|\s*/\s*voice\s*\|>', re.DOTALL)
 
     i = 0
@@ -201,13 +201,13 @@ def _parse_voice_tags_with_stack(text: str) -> List[Dict[str, Any]]:
 
 def parse_speak_tags(text: str) -> Dict[str, Any]:
     """
-    解析 <|voice style="..."> 标签，提取文本内容和语音内容
+    解析 <|voice style="..."|> 标签，提取文本内容和语音内容
 
     使用栈方法解析，确保正确处理嵌套和多个语音标签。
     每条消息只能有一个语音标签。
 
     Args:
-        text: 可能包含 <|voice> 标签的文本
+        text: 可能包含 <|voice|> 标签的文本
 
     Returns:
         Dict[str, Any]: 包含 text, voice_style, voice_content 和 has_voice 的字典
