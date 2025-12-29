@@ -6,7 +6,6 @@
 - [数据流](#数据流)
 - [配置系统](#配置系统)
 - [命令系统](#命令系统)
-- [贡献指南](#贡献指南)
 
 ---
 
@@ -16,38 +15,38 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    ErisPulse SDK                        │
-│              (事件处理、消息路由、存储)                    │
-└──────────────────────┬──────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   QvQChat Main                       │
-│              (模块入口、事件注册、协调)                    │
+│                   QvQChat 主模块                 │
+│              (模块生命周期、事件注册、协调)                    │
 └────────┬────────────┬────────────┬──────────────┬──────┘
          │            │            │              │
          ▼            ▼            ▼              ▼
 ┌─────────────┐ ┌───────────┐ ┌──────────┐ ┌─────────┐
-│QvQConfig  │ │QvQAIManager│ │QvQIntent│ │QvQHandler│
+│ConfigMgr    │ │AIManager  │ │IntentMgr │ │Handler  │
 │(配置管理)   │ │ (AI客户端)  │ │(意图识别)│ │(意图处理)│
 └─────────────┘ └─────┬─────┘ └─────┬────┘ └────┬────┘
                      │                │             │
                      ▼                ▼             ▼
               ┌──────────┐    ┌────────────┐ ┌──────────┐
-              │QvQMemory│    │ QvQState    │ │ QvQUtils│
+              │MemoryMgr │    │StateMgr    │ │Utils     │
               │(记忆管理) │    │(状态管理)    │ │(公共工具)│
               └──────────┘    └────────────┘ └──────────┘
                      │                │
                      ▼                ▼
               ┌──────────┐    ┌────────────┐
-              │QvQCommands│  │MessageSender│
-              │(命令系统) │  │(消息发送)    │
+              │Commands  │  │SessionMgr  │
+              │(命令系统) │  │(会话管理)   │
               └──────────┘    └────────────┘
+                     │                │
+                     ▼                ▼
+              ┌─────────────────────────────┐
+              │ActiveModeMgr + ReplyJudge  │
+              │(活跃模式 + 回复判断)       │
+              └─────────────────────────────┘
                      │
                      └────────────────────────┴──────────┘
                                  ▲
                                  │
-                        ErisPulse SDK Storage
+                        底层框架存储服务
 ```
 
 ### 设计原则
@@ -65,62 +64,108 @@ QvQChat 是一个基于多AI协同的智能对话模块，采用模块化设计�
 
 ## 核心组件
 
-### 1. QvQChat/Core.py - 主入口
+### 1. Core.py - 主模块
 
 **职责**：
-- 模块初始化和组件注册
+- 模块生命周期管理（`on_load`/`on_unload`）
 - 消息事件监听和路由
-- 窥屏模式（stalker mode）控制
-- 回复时机判断（私聊积极/群聊窥屏/活跃模式）
 - 对话连续性监听
-- 安全防护（消息长度限制、速率限制）
-- 活跃模式管理（临时关闭窥屏模式）
-- AI启用/禁用控制
-- 图片缓存机制
+- 协调各管理器完成消息处理
 
 **关键方法**：
-- `__init__()`: 初始化所有子模块
+- `should_eager_load()`: 是否需要立即加载
+- `on_load()`: 模块加载时初始化
+  - 初始化管理器
+  - 注册意图处理器
+  - 注册命令系统
+  - 注册消息事件监听
+- `on_unload()`: 模块卸载时清理资源
 - `_handle_message()`: 消息处理主入口
-- `_should_reply()`: 判断是否需要回复（私聊积极/群聊窥屏/活跃模式）
-- `_check_message_length()`: 检查消息长度是否超过限制
-- `_check_rate_limit()`: 检查是否超过速率限制
-- `_estimate_tokens()`: 估算文本的token数量
-- `_get_session_key()`: 获取会话唯一标识
-- `_get_reply_count_key()`: 获取回复计数器key
-- `_send_response()`: 发送响应消息（通过MessageSender）
-- `enable_active_mode()`: 启用活跃模式
-- `disable_active_mode()`: 关闭活跃模式
-- `enable_ai()` / `disable_ai()`: AI启用/禁用控制
 - `_continue_conversation_if_needed()`: 对话连续性监听
 
 **核心逻辑**：
 - 群聊使用 `group:{group_id}` 作为会话key（共享历史）
 - 私聊使用 `user:{user_id}` 作为会话key（独立历史）
 - 意图识别和回复判断并行执行（asyncio.gather）
-- 窥屏模式：群聊默认3%回复率，被@时80%
-- 活跃模式：临时关闭窥屏模式，积极参与聊天
 - 对话连续性：AI回复后监听后续3条消息，持续关注
-- 群沉寂检测：沉寂超过阈值后使用AI智能判断
-- 安全防护：消息长度检查、速率限制检查
-
-**设计亮点**：
-- 支持多消息延迟发送（模拟真人分句打字）
-- 使用 MessageSender 统一处理消息发送（文本、语音、延迟）
-- 图片提取和视觉AI集成
-- 对话连续性监听，支持后续补全回应
-- 多层安全防护，防止恶意刷屏和资源滥用
-- 活跃模式支持，可临时切换回复策略
-- AI启用/禁用控制，命令始终可用
 
 ---
 
-### 2. QvQChat/config.py - 配置管理
+### 2. session_manager.py - 会话管理器
+
+**职责**：
+- 会话历史管理
+- 消息计数和回复时间跟踪
+- 图片缓存机制（等待可能的文本消息）
+- 群沉寂检测
+
+**关键方法**：
+- `get_session_key()`: 获取会话唯一标识
+- `add_message_to_history()`: 添加消息到会话历史
+- `get_session_history()`: 获取会话历史
+- `increment_reply_count()`: 增加回复计数
+- `get_reply_count()`: 获取当前回复计数
+- `should_limit_replies()`: 判断是否需要限制回复
+- `record_reply_time()`: 记录回复时间
+- `time_since_last_reply()`: 计算距离上次回复的时间
+- `update_message_count()`: 更新消息计数
+- `should_reply_based_on_interval()`: 基于消息间隔判断是否回复
+- `cache_image()`: 缓存图片
+- `get_cached_image()`: 获取缓存的图片
+- `clear_image_cache()`: 清除图片缓存
+- `track_group_silence()`: 跟踪群沉寂状态
+- `is_group_silent()`: 判断群是否处于沉寂状态
+- `reset_silence_tracker()`: 重置沉寂跟踪器
+
+---
+
+### 3. active_mode_manager.py - 活跃模式管理器
+
+**职责**：
+- 活跃模式启用/禁用管理
+- 活跃模式状态查询
+- 活跃模式过期检测
+
+**关键方法**：
+- `enable_active_mode()`: 启用活跃模式
+- `disable_active_mode()`: 禁用活跃模式
+- `is_active_mode()`: 判断是否处于活跃模式
+- `get_active_mode_info()`: 获取活跃模式信息
+
+---
+
+### 4. reply_judge.py - 回复判断器
+
+**职责**：
+- 速率限制检查
+- 消息长度检查
+- 窥屏模式回复概率判断
+- AI智能回复判断
+
+**关键方法**：
+- `should_reply()`: 判断是否需要回复（综合判断）
+- `check_message_length()`: 检查消息长度是否超过限制
+- `check_rate_limit()`: 检查是否超过速率限制
+- `estimate_tokens()`: 估算文本的token数量
+- `check_stalker_mode_reply()`: 窥屏模式回复判断
+- `check_active_mode_reply()`: 活跃模式回复判断
+- `is_ai_enabled()`: 判断AI是否启用
+
+**窥屏模式回复策略**：
+- 被@时：高概率回复（80%）
+- 匹配关键词时：中概率回复（50%）
+- 群沉寂时：AI智能判断
+- 其他情况：低概率回复（3%）
+
+---
+
+### 5. config.py - 配置管理
 
 **职责**：
 - 加载和管理所有配置项
 - 提供配置继承机制（未配置的AI复用dialogue配置）
 - 群级和用户级配置管理
-- 配置持久化（通过SDK Storage）
+- 配置持久化
 
 **关键方法**：
 - `get_ai_config()`: 获取AI配置，支持配置继承
@@ -137,14 +182,9 @@ if ai_type == "memory":
     ai_config["max_tokens"] = 1000  # 增加输出
 ```
 
-**设计亮点**：
-- 只需配置 dialogue 的 API 密钥，其他AI自动复用
-- 支持群级系统提示词覆盖
-- 支持用户级个性化配置
-
 ---
 
-### 3. QvQChat/ai_client.py - AI客户端管理
+### 6. ai_client.py - AI客户端管理
 
 **职责**：
 - 管理多个OpenAI客户端（dialogue、memory、intent、vision等）
@@ -170,14 +210,9 @@ if ai_type == "memory":
 - `reply_judge`: 回复判断（可选，默认复用dialogue）
 - `vision`: 视觉分析（可选，默认复用dialogue）
 
-**设计亮点**：
-- 自动重试和错误处理
-- 支持流式输出（虽未使用）
-- 统一的异常处理（RateLimitError、APITimeoutError、APIError）
-
 ---
 
-### 4. QvQChat/intent.py - 意图识别
+### 7. intent.py - 意图识别
 
 **职责**：
 - 识别用户输入的意图类型
@@ -194,20 +229,9 @@ if ai_type == "memory":
 - `register_handler()`: 注册意图处理器
 - `handle_intent()`: 路由到对应处理器
 
-**识别逻辑**：
-1. 调用 `ai_manager.identify_intent(user_input)`
-2. AI返回意图类型（dialogue/memory_add/memory_delete）
-3. 从 `intent_handlers` 字典查找处理器
-4. 调用处理器并返回结果
-
-**设计亮点**：
-- 不再区分 memory_query，询问记忆作为普通对话处理
-- 记忆自然融入对话，无需显式查询
-- 支持处理器动态注册
-
 ---
 
-### 5. QvQChat/handler.py - 意图处理器
+### 8. handler.py - 意图处理器
 
 **职责**：
 - 实现各种意图的具体处理逻辑
@@ -237,14 +261,7 @@ messages.append({"role": "system", "content": memory_text})
 # AI：是的，我记得你的生日是X月X日
 ```
 
-**智能记忆提取**：
-对话完成后自动触发记忆提取：
-1. 使用 dialogue AI 判断对话是否值得记忆
-2. 使用 memory AI 提取关键信息
-3. 去重检查（避免重复记忆）
-4. 保存到长期记忆
-
-**记忆提取流程**：
+**智能记忆提取流程**：
 ```
 对话完成（用户消息 + AI回复）
     │
@@ -272,14 +289,9 @@ handler._extract_and_save_memory()
             └─→ 只保存不重复的信息
 ```
 
-**设计亮点**：
-- 记忆自然融入对话，无需显式查询
-- AI自动判断记忆价值（去重、过滤）
-- 支持图片描述合并（视觉AI分析结果）
-
 ---
 
-### 6. QvQChat/memory.py - 记忆管理
+### 9. memory.py - 记忆管理
 
 **职责**：
 - 短期记忆管理（会话历史）
@@ -300,7 +312,7 @@ handler._extract_and_save_memory()
 - `get_group_memory()` / `set_group_memory()`: 群记忆管理
 - `add_short_term_memory()`: 添加短期记忆（会话历史）
 - `get_session_history()`: 获取会话历史
-- `search_memory()`: 搜索记忆（简化版，不再用于对话）
+- `search_memory()`: 搜索记忆
 - `add_long_term_memory()`: 添加长期记忆
 - `add_group_memory()`: 添加群记忆
 
@@ -343,15 +355,9 @@ handler._extract_and_save_memory()
 }
 ```
 
-**设计亮点**：
-- 群聊会话历史共享（AI能看到所有对话）
-- 群记忆支持两种模式（sender_only / mixed）
-- 自动记忆压缩（超限时保留最近50条）
-- 支持记忆导出
-
 ---
 
-### 7. QvQChat/state.py - 状态管理
+### 10. state.py - 状态管理
 
 **职责**：
 - 管理对话状态（主题、交互计数等）
@@ -380,21 +386,15 @@ handler._extract_and_save_memory()
 - `update_mood()`: 更新情绪状态
 - `should_change_topic()`: 判断是否应该切换主题
 
-**设计亮点**：
-- 支持主题切换检测（超过5分钟自动切换）
-- 自动记录最后交互时间
-- 关键词去重和限制（最多10个）
-
 ---
 
-### 8. QvQChat/utils.py - 公共工具
+### 11. utils.py - 公共工具
 
 **职责**：
 - 提供跨模块共享的工具函数和类
 - 统一处理文本格式化和消息解析
 - 封装消息发送逻辑（文本、语音、延迟）
 - 语音合成（SiliconFlow API）
-- 避免代码重复，提高可维护性
 
 **公共函数**：
 - `get_session_description()`: 获取会话描述字符串（用于日志）
@@ -420,28 +420,14 @@ handler._extract_and_save_memory()
 - `_send_text_and_voice()`: 发送文本和语音
 - `_send_voice_file()`: 发送语音文件（尝试base64和本地路径）
 
-**语音合成功能**：
-- 使用 SiliconFlow API 生成语音
-- 支持自然语言描述语音风格（方言、语气等）
-- 语音最终格式：`风格描述<|endofprompt|>语音正文`
-- 支持多语音、多消息组合发送
-
 **支持格式**：
 - `<|wait time="N"|>`：多消息分隔符（N为延迟秒数，1-5秒，最多3条）
 - `[间隔:N]` 或 `[间隔：N]`：兼容老格式的间隔标签
 - `<|voice style="...">...</|voice>`：语音标签（每条消息可包含一个）
 
-**设计亮点**：
-- 单一职责原则：工具函数集中管理
-- DRY原则：避免在多个类中重复实现
-- 易于测试和复用
-- 降低维护成本
-- 消息发送逻辑模块化，便于扩展新平台
-- 支持多种语音风格描述，灵活性强
-
 ---
 
-### 9. QvQChat/commands.py - 命令系统
+### 12. commands.py - 命令系统
 
 **职责**：
 - 注册和管理 QvQChat 的所有命令
@@ -464,13 +450,6 @@ handler._extract_and_save_memory()
 - `register_all()`: 注册所有命令
 - `_send_reply()`: 发送回复消息
 
-**设计亮点**：
-- 命令系统与AI处理分离
-- 丰富的命令别名，便于记忆
-- 权限控制完善
-- 危险操作需要用户确认
-- 支持等待用户回复（wait_reply）
-
 ---
 
 ## 数据流
@@ -487,57 +466,62 @@ Core._handle_message()
     ├─→ 获取用户信息
     ├─→ 检查API配置
     │
-    ├─→ [安全检查1] _check_message_length()
+    ├─→ [安全检查1] ReplyJudge.check_message_length()
     │           └─→ 消息长度是否超过限制
     │                   └─→ 超过则直接返回，不处理
     │
-    ├─→ [安全检查2] is_ai_enabled()
+    ├─→ [安全检查2] ReplyJudge.is_ai_enabled()
     │           └─→ AI是否启用（AI禁用时不处理，命令仍可用）
     │
-    ├─→ [图片处理] 缓存图片（等待可能的文本消息）
+    ├─→ [图片处理] SessionMgr.cache_image()（等待可能的文本消息）
     │
-    ├─→ 保存用户消息到会话历史
+    ├─→ SessionMgr.add_message_to_history()
     │
-    ├─→ [回复判断] _should_reply()
+    ├─→ [回复判断] ReplyJudge.should_reply()
     │           │
     │           ├─→ 私聊场景：AI智能判断
     │           │
     │           ├─→ 群聊场景：
     │           │       │
-    │           │       ├─→ 活跃模式：AI智能判断
+    │           │       ├─→ ActiveModeMgr.is_active_mode()
+    │           │       │       ├─→ 是：AI智能判断
+    │           │       │       └─→ 否：窥屏模式
     │           │       │
-    │           │       ├─→ 窥屏模式：
-    │           │       │       ├─→ 被@时：高概率回复（80%）
-    │           │       │       ├─→ 匹配关键词：中概率回复（50%）
-    │           │       │       ├─→ 群沉寂：AI智能判断
-    │           │       │       └─→ 消息间隔：低概率回复（3%）
-    │           │       │
-    │           │       └─→ 检查每小时回复限制
+    │           │       └─→ ReplyJudge.check_stalker_mode_reply()
+    │           │               ├─→ 被@时：高概率回复（80%）
+    │           │               ├─→ 匹配关键词：中概率回复（50%）
+    │           │               ├─→ SessionMgr.is_group_silent()
+    │           │               │       └─→ 群沉寂：AI智能判断
+    │           │               └─→ SessionMgr.should_reply_based_on_interval()
+    │           │                       └─→ 消息间隔：低概率回复（3%）
+    │           │
+    │           └─→ SessionMgr.should_limit_replies()
+    │                   └─→ 检查每小时回复限制
     │
     ├─→ [窥屏优化] 不回复时直接返回（不进行意图识别，节省AI请求）
     │
     └─→ 如果需要回复:
             │
-            ├─→ [安全检查3] _check_rate_limit()
+            ├─→ [安全检查3] ReplyJudge.check_rate_limit()
             │           └─→ 估算token数量
             │           └─→ 检查是否超过速率限制
             │                   └─→ 超过则直接返回，不处理
             │
-            ├─→ 意图识别 intent.identify_intent()
+            ├─→ IntentMgr.identify_intent()
             │           └─→ AI识别意图类型（dialogue/memory_add/memory_delete）
             │
             ├─→ 构建上下文信息（包含@、用户昵称、群信息等）
             │
             ▼
-        intent.handle_intent()
+        IntentMgr.handle_intent()
             │
             └─→ 例如：dialogue
                     │
                     ▼
-                handler.handle_dialogue()
+                Handler.handle_dialogue()
                     │
-                    ├─→ 获取会话历史（含刚保存的用户消息）
-                    ├─→ 准备记忆上下文（长期记忆）
+                    ├─→ SessionMgr.get_session_history()
+                    ├─→ MemoryMgr 获取长期记忆
                     │
                     ├─→ 构建messages列表：
                     │   - 系统提示词
@@ -546,30 +530,28 @@ Core._handle_message()
                     │   - 场景提示（私聊/群聊、语音功能、多消息格式）
                     │   - 会话历史[-15:]
                     │
-                    ├─→ [如果有多图] vision AI 分析图片
-                    ├─→ dialogue AI 生成回复
-                    ├─→ memory.add_short_term_memory()  # 保存AI回复
-                    ├─→ handler._extract_and_save_memory()  # 智能提取记忆
+                    ├─→ [如果有多图] AIManager.analyze_image()
+                    ├─→ AIManager.dialogue() 生成回复
+                    ├─→ SessionMgr.add_message_to_history()  # 保存AI回复
+                    ├─→ Handler._extract_and_save_memory()  # 智能提取记忆
                     │   └─→ [AI判断是否值得记忆]
-                    │       └─→ [memory AI 提取关键信息]
-                    │           └─→ 去重保存（用户记忆+群记忆）
+                    │       └─→ [AIManager.memory_process() 提取关键信息]
+                    │           └─→ MemoryMgr 去重保存（用户记忆+群记忆）
                     │
                     └─→ 返回回复
                         │
                         ▼
-                    Core._send_response()
-                        │
-                        ├─→ MessageSender.send() 统一处理
+                    Utils.MessageSender.send() 统一处理
                         │   └─→ parse_multi_messages() 解析多消息
                         │           └─→ 支持文本、语音、延迟
                         │           └─→ 逐条发送（带延迟）
                         │
                         ▼
-                    记录回复时间 + 清除图片缓存
+                    SessionMgr.record_reply_time() + SessionMgr.clear_image_cache()
                         │
                         ▼
                     [群聊] 对话连续性监听
-                        └─→ _continue_conversation_if_needed()
+                        └─→ Core._continue_conversation_if_needed()
                                 └─→ 监听后续3条消息，判断是否继续
 ```
 
@@ -579,24 +561,24 @@ Core._handle_message()
 对话完成（用户消息 + AI回复）
     │
     ▼
-handler._extract_and_save_memory()
+Handler._extract_and_save_memory()
     │
     ├─→ 获取最近15条对话
-    ├─→ [第一步] dialogue AI 判断是否值得记忆
+    ├─→ [第一步] AIManager.dialogue() 判断是否值得记忆
     │       Prompt: "判断这段对话是否值得记住？"
     │       Return: "值得" / "不值得"
     │
     └─→ 如果值得记忆:
             │
             ▼
-        memory AI 提取关键信息
+        AIManager.memory_process() 提取关键信息
             │
             ├─→ Prompt: "从对话中提取值得记住的信息..."
             ├─→ 严格标准（个人偏好、重要日期、任务等）
             ├─→ 过滤无关信息（闲聊、问候、表情等）
             │
             ▼
-        去重检查
+        MemoryMgr 去重检查
             │
             ├─→ 对比现有记忆
             └─→ 只保存不重复的信息
@@ -608,7 +590,7 @@ handler._extract_and_save_memory()
 AI回复发送成功
     │
     ▼
-Core._handle_continue_conversation()
+Core._continue_conversation_if_needed()
     │
     ├─→ 记录当前时间戳和回复内容
     ├─→ 启动监听任务（如启用）
@@ -621,7 +603,7 @@ Core._handle_continue_conversation()
             │
             └─→ 满足条件则：
                     │
-                    ├─→ AI判断是否需要补全回应
+                    ├─→ AIManager.should_reply() 判断是否需要补全回应
                     ├─→ 如需要则生成后续回复
                     ├─→ 更新监听计数
                     └─→ 检查是否继续监听
@@ -649,16 +631,16 @@ Core._handle_continue_conversation()
 用户发送 /活跃模式 命令
     |
     ▼
-Main.enable_active_mode(user_id, duration_minutes, group_id)
+Core.enable_active_mode()
     |
-    ├─→ 设置活跃模式（记录结束时间）
+    ├─→ ActiveModeMgr.enable_active_mode()
     |
     ▼
 后续消息处理：
     |
-    ├─→ _should_reply()
+    ├─→ ReplyJudge.should_reply()
     |       |
-    |       ├─→ 检查是否在活跃模式内
+    |       ├─→ ActiveModeMgr.is_active_mode()
     |       |       ├─→ 是：使用AI智能判断（积极参与聊天）
     |       |       └─→ 否：使用窥屏模式
     |       |
@@ -761,7 +743,7 @@ sample_rate = 44100
 platforms = ["qq", "onebot11"]
 ```
 
-### 运行时配置（自动生成）
+### 自定义`群聊`/`用户`配置
 
 ```toml
 # 群配置
@@ -841,240 +823,3 @@ QvQChat 提供了丰富的命令系统，分为以下命令组：
 | `/admin.clear_all_memory` | 清空所有记忆、清除全部记忆 | 清除所有用户记忆（需确认） |
 | `/admin.clear_all_sessions` | 清空所有会话、清除全部会话 | 清除所有用户会话历史（需确认） |
 | `/admin.clear_all_groups` | 清空所有群聊、清除全部群 | 清除所有群记忆和上下文（需确认） |
-
-### 命令设计原则
-
-1. **命令优先**：即使AI被禁用，命令系统仍然可用
-2. **权限控制**：管理员命令需要权限验证
-3. **用户友好**：提供多种别名，便于记忆
-4. **安全第一**：危险操作需要用户确认
-5. **群主权限**：群管理命令支持群主/管理员权限
-
----
-
-## 贡献指南
-
-欢迎参与 QvQChat 的开发！以下是贡献指南。
-
-### 开发环境设置
-
-1. **Fork 项目**
-   ```bash
-   git clone https://github.com/your-username/ErisPulse-AIChat.git
-   cd ErisPulse-AIChat
-   ```
-
-2. **安装依赖**
-   ```bash
-   pip install -r requirements.txt
-   # 或使用 pip install -e .
-   ```
-
-3. **运行测试**
-   ```bash
-   # 确保配置好 config.toml
-   python -m ErisPulse-AIChat
-   ```
-
-### 代码风格
-
-1. **Python 版本**
-   - 最低支持 Python 3.9
-   - 推荐使用 Python 3.10+
-
-2. **代码格式**
-   - 使用 4 空格缩进
-   - 行长度建议不超过 120 字符
-   - 遵循 PEP 8 规范
-
-3. **文档字符串**
-   - 所有公开方法必须有详细的 docstring
-   - 使用 Google 风格的 docstring
-   ```python
-   def method_name(self, param1: str, param2: int) -> str:
-       """方法的简要描述。
-
-       详细说明（可以多行）。
-
-       Args:
-           param1: 参数1的说明
-           param2: 参数2的说明
-
-       Returns:
-           str: 返回值的说明
-
-       Raises:
-           ValueError: 在什么情况下抛出
-       """
-       pass
-   ```
-
-4. **注释规范**
-   - 代码逻辑复杂处添加中文注释
-   - 注释解释"为什么"而不是"是什么"
-   - 移除无用的注释（如 `# TODO`、`# FIXME`）
-
-### 测试
-
-1. **单元测试**
-   - 为核心逻辑添加单元测试
-   - 测试文件命名：`test_<module_name>.py`
-   - 使用 pytest 框架
-
-2. **集成测试**
-   - 测试 AI 调用（使用 mock）
-   - 测试配置加载和持久化
-   - 测试消息处理流程
-
-3. **手动测试**
-   - 在真实环境中测试
-   - 测试各种场景（私聊、群聊、图片等）
-   - 检查日志输出
-
-### 提交 Pull Request
-
-1. **分支命名**
-   - 功能：`feature/功能名称`
-   - 修复：`fix/问题描述`
-   - 重构：`refactor/重构内容`
-
-2. **Commit 信息**
-   - 格式：`<类型>: <描述>`
-   - 类型：feat, fix, docs, style, refactor, test, chore
-   - 示例：`feat: 添加新的AI类型支持`
-
-3. **PR 描述**
-   - 说明修改的目的
-   - 列出主要变更
-   - 关联相关的 issue
-   - 添加测试截图（如有）
-
-### 文档
-
-1. **更新 README**
-   - 新功能添加使用说明
-   - 更新配置示例
-   - 添加故障排除条目
-
-2. **更新文档**
-   - 架构变更更新本文档
-   - API 变更添加说明
-   - 添加代码示例
-
-### 常见开发任务
-
-1. **添加新的 AI 类型**
-   ```python
-   # 1. 在 ai_client.py 添加客户端方法
-   async def new_ai_method(self, input: str) -> str:
-       client = self.get_client("new_ai_type")
-       if not client:
-           return "新AI未配置"
-       return await client.chat([{"role": "user", "content": input}])
-
-   # 2. 在 config.py 添加默认配置
-   "new_ai_type": {
-       "base_url": "https://api.openai.com/v1",
-       "api_key": "",
-       "model": "gpt-3.5-turbo",
-       "temperature": 0.5,
-       "max_tokens": 1000,
-       "system_prompt": "..."
-   }
-
-   # 3. 在 ai_client._init_ai_clients() 添加初始化
-   ai_types = ["dialogue", "memory", "intent", "new_ai_type", ...]
-   ```
-
-2. **添加新的意图类型**
-   ```python
-   # 1. 在 handler.py 实现处理器
-   async def handle_new_intent(self, user_id, group_id, params, intent_data) -> str:
-       # 处理逻辑
-       return "处理结果"
-
-   # 2. 在 Core._register_intent_handlers() 注册
-   self.intent.register_handler("new_intent", self.handler.handle_new_intent)
-
-   # 3. 在 intent.py 更新识别逻辑
-   # AI 会自动识别新意图类型
-   ```
-
-3. **扩展记忆功能**
-   ```python
-   # 在 memory.py 添加新方法
-   async def new_memory_method(self, user_id: str, data: Any) -> None:
-       # 记忆处理逻辑
-       pass
-
-   # 在 handler.py 调用
-   await self.memory.new_memory_method(user_id, data)
-   ```
-
-### 调试
-
-1. **启用调试日志**
-   ```python
-   import logging
-   logging.basicConfig(level=logging.DEBUG)
-   ```
-
-2. **查看日志**
-   ```bash
-   tail -f logs/qvqchat.log
-   ```
-
-3. **使用 pdb 调试**
-   ```python
-   import pdb; pdb.set_trace()
-   ```
-
-### 性能优化
-
-1. **AI 调用优化**
-   - 使用并行调用（asyncio.gather）加速意图识别和回复判断
-   - 设置合理的 timeout 避免长时间等待
-
-2. **存储优化**
-   - 定期清理过期数据
-   - 压缩大段文本
-   - 使用索引加速搜索
-
-3. **内存优化**
-   - 避免在内存中保存大量历史
-   - 使用生成器处理大数据集
-   - 及时释放不再需要的资源
-
-### 常见问题
-
-**Q: 如何测试 AI 调用而不消耗配额？**
-A: 使用 mock 客户端：
-   ```python
-   from unittest.mock import AsyncMock
-   ai_manager.get_client = AsyncMock(return_value=mock_client)
-   ```
-
-**Q: 如何添加新的平台支持？**
-A: 在 Core._send_response() 添加平台特定的处理逻辑
-
-**Q: 如何修改记忆提取标准？**
-A: 在 handler._extract_and_save_memory() 修改提取 prompt
-
-**Q: 如何添加新的配置项？**
-A: 1. 在 config._get_default_config() 添加默认值
-   2. 在 config.py 添加 getter/setter 方法
-   3. 更新 config.example.toml 和 README.md
-
----
-
-## 许可证
-
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
-
----
-
-## 联系方式
-
-- 作者：wsu2059q
-- 邮箱：wsu2059@qq.com
-- GitHub：https://github.com/wsu2059q/ErisPulse-AIChat

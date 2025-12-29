@@ -56,9 +56,27 @@ class QvQCommands:
         if not group_id:
             return False
 
-        # TODO: 这里可以通过适配器查询群成员信息判断是否为群管理员
-        # 目前简化处理，仅系统管理员可用
-        return False
+        user_id = event.get("user_id")
+        platform = event.get("platform", "")
+
+        # 根据不同平台使用不同策略
+        if platform == "onebot11":
+            # OneBot11: 从原始数据中获取 sender.role
+            raw_event = event.get("onebot11_raw", {})
+            sender = raw_event.get("sender", {})
+            role = sender.get("role", "member")
+            return role in ["admin", "owner"]
+        elif platform == "yunhu":
+            # Yunhu: 从原始数据中获取 sender.senderUserLevel
+            raw_event = event.get("yunhu_raw", {})
+            yunhu_event = raw_event.get("event", {})
+            sender = yunhu_event.get("sender", {})
+            user_level = sender.get("senderUserLevel", "member")
+            # owner: 群主, administrator: 管理员
+            return user_level in ["owner", "administrator"]
+        else:
+            # 其他平台: 目前仅支持系统管理员
+            return False
 
     def register_all(self) -> None:
         """注册所有命令"""

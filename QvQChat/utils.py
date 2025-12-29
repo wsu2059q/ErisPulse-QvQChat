@@ -533,7 +533,7 @@ class MessageSender:
             with open(voice_path, 'rb') as f:
                 import base64
                 voice_data = base64.b64encode(f.read()).decode('utf-8')
-                await adapter.Send.To(target_type, target_id).Voice(f'base64://{voice_data}')
+                await adapter.Send.To(target_type, target_id).Voice(f'base64://{voice_data:.128f}')
                 self.logger.info(
                     f"已发送语音(base64)到 {platform} - {target_type} - {target_id} "
                     f"(消息 {msg_index}/{total_messages})"
