@@ -256,7 +256,6 @@ handler._extract_and_save_memory()
 - 记忆自然融入对话，无需显式查询
 - AI自动判断记忆价值（去重、过滤）
 - 支持图片描述合并（视觉AI分析结果）
-- 使用公共工具函数处理 Markdown 清理
 
 ---
 
@@ -377,22 +376,12 @@ handler._extract_and_save_memory()
 - 避免代码重复，提高可维护性
 
 **公共函数**：
-- `remove_markdown()`: 移除Markdown格式（加粗、代码、标题等）
 - `parse_multi_messages()`: 解析多条消息（支持新旧格式）
 - `parse_speak_tags()`: 解析语音标签，提取文本和语音内容
 - `record_voice()`: 生成语音（使用SiliconFlow API）
 
 **公共类**：
 - `MessageSender`: 统一的消息发送处理器
-
-**remove_markdown() 功能**：
-- 移除粗体 `**text**` 或 `__text__`
-- 移除斜体 `*text*` 或 `_text_`
-- 移除代码 `` `text` `` 和代码块
-- 移除标题 `# heading`
-- 移除列表标记 `-`、`*`、`1.`
-- 移除链接 `[text](url)`
-- 移除多余的空行
 
 **parse_multi_messages() 功能**：
 - 解析格式（兼容新旧）：
@@ -479,7 +468,6 @@ Core._handle_message()
                     │
                     ├─→ [如果有多图] vision AI 分析图片
                     ├─→ dialogue AI 生成回复
-                    ├─→ remove_markdown() 清理格式
                     ├─→ memory.add_short_term_memory()  # 保存AI回复
                     ├─→ handler._extract_and_save_memory()  # 智能提取记忆
                     │   └─→ [AI判断是否值得记忆]
