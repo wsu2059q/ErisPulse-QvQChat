@@ -205,20 +205,24 @@ class QvQCommands:
             user_id = str(event.get("user_id"))
             group_id = str(event.get("group_id")) if event.get("detail_type") == "group" else None
 
-            # 获取持续时间参数
-            args = event.get("args", [])
+            # 获取持续时间参数（从 command.args 中获取）
+            command_data = event.get("command", {})
+            args = command_data.get("args", [])
             duration = 10  # 默认10分钟
+
+            self.logger.debug(f"活跃模式命令参数: args={args}, command_data={command_data}")
 
             if args:
                 try:
                     duration = int(args[0])
-                    if duration < 1 or duration > 120:
-                        await self._send_reply(event, "持续时间请在 1-120 分钟之间~")
+                    if duration < 1 or duration > 60:
+                        await self._send_reply(event, "持续时间请在 1-60 分钟之间~")
                         return
                 except ValueError:
                     await self._send_reply(event, "请输入有效的分钟数，例如：/活跃模式 10")
                     return
 
+            self.logger.info(f"设置活跃模式时长: {duration}分钟")
             result = self.main.enable_active_mode(user_id, duration, group_id)
             await self._send_reply(event, result)
 
@@ -250,7 +254,9 @@ class QvQCommands:
 
         @command("admin.add", aliases=["添加管理员"], group="管理员", permission=lambda e: self._is_admin(e), help="添加管理员")
         async def add_admin_cmd(event):
-            args = event.get("args", [])
+            # 从 command.args 中获取参数
+            command_data = event.get("command", {})
+            args = command_data.get("args", [])
             if not args:
                 await self._send_reply(event, "请提供用户ID，例如：/admin.add 123456789")
                 return
@@ -268,7 +274,9 @@ class QvQCommands:
 
         @command("admin.remove", aliases=["移除管理员"], group="管理员", permission=lambda e: self._is_admin(e), help="移除管理员")
         async def remove_admin_cmd(event):
-            args = event.get("args", [])
+            # 从 command.args 中获取参数
+            command_data = event.get("command", {})
+            args = command_data.get("args", [])
             if not args:
                 await self._send_reply(event, "请提供用户ID，例如：/admin.remove 123456789")
                 return
