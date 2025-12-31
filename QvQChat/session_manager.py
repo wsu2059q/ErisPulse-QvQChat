@@ -87,28 +87,34 @@ class SessionManager:
 
     def get_cached_images(self, user_id: str, group_id: Optional[str] = None) -> List[str]:
         """
-        获取会话缓存的图片URL（自动清理过期缓存）
+        获取会话缓存的图片URL（自动清理过期缓存并检查有效性）
 
         Args:
             user_id: 用户ID
             group_id: 群ID（可选）
 
         Returns:
-            List[str]: 图片URL列表
+            List[str]: 有效的图片URL列表（已过滤过期图片）
         """
         session_key = self.get_reply_count_key(user_id, group_id)
         current_time = time.time()
 
-        # 清理过期的缓存
-        self._image_cache = {
-            k: v for k, v in self._image_cache.items()
-            if current_time - v["timestamp"] < self._IMAGE_CACHE_EXPIRE
-        }
-
         cached_data = self._image_cache.get(session_key)
-        if cached_data:
-            return cached_data["image_urls"]
-        return []
+
+        # 检查缓存是否存在且未过期
+        if not cached_data:
+            return []
+
+        cache_age = current_time - cached_data["timestamp"]
+
+        # 如果已过期，删除缓存并返回空列表
+        if cache_age >= self._IMAGE_CACHE_EXPIRE:
+            del self._image_cache[session_key]
+            self.logger.debug(f"图片缓存已过期（{cache_age:.1f}秒），已清除")
+            return []
+
+        # 未过期，返回图片URL
+        return cached_data["image_urls"]
 
     def clear_cached_images(self, user_id: str, group_id: Optional[str] = None) -> None:
         """

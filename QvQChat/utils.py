@@ -129,38 +129,81 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
 
 def _parse_voice_tags_with_stack(text: str) -> List[Dict[str, Any]]:
     """
-    使用栈解析所有语音标签，确保配对正确
+    使用栈解析所有语音标签
+
+    支持的错误格式：
+    - <|voice style="开心"|>文本<|/voice|> （正确）
+    - <|voice style="开心"|>文本<|/voice （少|）
+    - <|voice style="开心">文本</|voice|> （格式不一致）
+    - <|voice style="开心"|>文本 （未闭合）
 
     Args:
         text: 包含语音标签的文本
 
     Returns:
-        List[Dict[str, Any]]: 语音块列表，每个包含 start, end, style, content
+        List[Dict[str, Any]]: 语音块列表
     """
     voice_blocks = []
     stack = []  # 存储开启标签的位置和风格
 
-    # 匹配开始标签：<|voice style="..."|>
-    start_pattern = re.compile(r'<\|\s*voice\s+style\s*=\s*["\']([^"\']*)["\']\s*\|>', re.DOTALL)
-    # 匹配结束标签：<|/voice|>
-    end_pattern = re.compile(r'<\|\s*/\s*voice\s*\|>', re.DOTALL)
+    # 放宽匹配规则 - 支持多种格式
+    # 格式1: <|voice style="..."|>
+    start_pattern1 = re.compile(r'<\|\s*voice\s+style\s*=\s*"([^"]*)"\s*\|>', re.DOTALL)
+    start_pattern2 = re.compile(r'<\|\s*voice\s+style\s*=\s*"([^"]*)"\s*>', re.DOTALL)
+    start_pattern3 = re.compile(r'<\|\s*voice\s+style\s*=\s*\'([^\']*)\'\s*\|>', re.DOTALL)
+    start_pattern4 = re.compile(r'<\|\s*voice\s+style\s*=\s*\'([^\']*)\'\s*>', re.DOTALL)
+
+    # 格式2: <|/voice|> 或 <|/voice> 或 </|voice|> 或 </|voice>
+    end_pattern1 = re.compile(r'<\|\s*/\s*voice\s*\|>', re.DOTALL)
+    end_pattern2 = re.compile(r'<\|\s*/\s*voice\s*>', re.DOTALL)
+    end_pattern3 = re.compile(r'</\s*voice\s*\|>', re.DOTALL)
+    end_pattern4 = re.compile(r'</\s*voice\s*>', re.DOTALL)
 
     i = 0
     while i < len(text):
-        # 查找下一个开始标签
-        start_match = start_pattern.search(text, i)
-        # 查找下一个结束标签
-        end_match = end_pattern.search(text, i)
+        # 查找下一个开始标签（尝试多种格式）
+        start_match1 = start_pattern1.search(text, i)
+        start_match2 = start_pattern2.search(text, i)
+        start_match3 = start_pattern3.search(text, i)
+        start_match4 = start_pattern4.search(text, i)
+
+        # 选择最早匹配的
+        start_match = min(
+            [m for m in [start_match1, start_match2, start_match3, start_match4] if m],
+            key=lambda m: m.start(),
+            default=None
+        )
+
+        # 查找下一个结束标签（尝试多种格式）
+        end_match1 = end_pattern1.search(text, i)
+        end_match2 = end_pattern2.search(text, i)
+        end_match3 = end_pattern3.search(text, i)
+        end_match4 = end_pattern4.search(text, i)
+
+        # 选择最早匹配的
+        end_match = min(
+            [m for m in [end_match1, end_match2, end_match3, end_match4] if m],
+            key=lambda m: m.start(),
+            default=None
+        )
 
         if not start_match and not end_match:
             break
 
         if start_match and (not end_match or start_match.start() < end_match.start()):
             # 找到开始标签
+            # 确定style值（不同格式）
+            for match in [start_match1, start_match2, start_match3, start_match4]:
+                if match and match.start() == start_match.start():
+                    style = match.group(1).strip()
+                    break
+            else:
+                style = ""
+
             stack.append({
                 "start": start_match.start(),
                 "end": start_match.end(),
-                "style": start_match.group(1).strip(),
+                "style": style,
                 "content_start": start_match.end()
             })
             i = start_match.end()

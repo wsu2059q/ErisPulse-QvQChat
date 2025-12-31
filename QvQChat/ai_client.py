@@ -1,4 +1,5 @@
 from typing import Dict, List, Any, Optional
+import asyncio
 from openai import AsyncOpenAI, APIError, RateLimitError, APITimeoutError
 
 
@@ -44,16 +45,18 @@ class QvQAIClient:
         messages: List[Dict[str, Any]],
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        stream: bool = False
+        stream: bool = False,
+        timeout: float = 30.0
     ) -> str:
         """
-        发送聊天请求
+        发送聊天请求（带超时控制）
 
         Args:
             messages: 消息列表
             temperature: 温度参数（可选）
             max_tokens: 最大tokens数（可选）
             stream: 是否流式输出（默认False）
+            timeout: 请求超时时间（秒），默认30秒
 
         Returns:
             str: AI回复内容
@@ -63,6 +66,7 @@ class QvQAIClient:
             RateLimitError: API速率限制
             APITimeoutError: 请求超时
             APIError: API错误
+            asyncio.TimeoutError: 请求超时（客户端级别）
         """
         if not self.client:
             raise RuntimeError("AI客户端未初始化，请检查API密钥配置")
@@ -74,14 +78,19 @@ class QvQAIClient:
             # 记录API调用
             self.logger.debug(f"🌐 API请求 - 模型: {model} - 消息数: {msg_count} - "
                            f"温度: {temperature or self.config.get('temperature', 0.7)} - "
-                           f"最大tokens: {max_tokens or self.config.get('max_tokens', 2000)}")
+                           f"最大tokens: {max_tokens or self.config.get('max_tokens', 2000)} - "
+                           f"超时: {timeout}秒")
 
-            response = await self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature if temperature is not None else self.config.get("temperature", 0.7),
-                max_tokens=max_tokens if max_tokens is not None else self.config.get("max_tokens", 2000),
-                stream=stream
+            # 使用 asyncio.wait_for 添加超时控制
+            response = await asyncio.wait_for(
+                self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature if temperature is not None else self.config.get("temperature", 0.7),
+                    max_tokens=max_tokens if max_tokens is not None else self.config.get("max_tokens", 2000),
+                    stream=stream
+                ),
+                timeout=timeout
             )
 
             if stream:
@@ -97,6 +106,9 @@ class QvQAIClient:
                                    f"总计: {tokens_used.total_tokens}")
                 return content
 
+        except asyncio.TimeoutError:
+            self.logger.error(f"❌ API请求超时 - 模型: {model} - 超时: {timeout}秒")
+            raise APITimeoutError(f"API请求超时（{timeout}秒）")
         except RateLimitError as e:
             self.logger.warning(f"⚠️ API速率限制 - 模型: {model} - 错误: {e}")
             raise

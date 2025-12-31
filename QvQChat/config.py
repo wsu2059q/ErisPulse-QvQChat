@@ -47,7 +47,7 @@ class QvQConfig:
             "memory_cleanup_interval": 86400,  # 记忆清理间隔（秒）
             "enable_vector_search": False,  # 是否启用向量搜索
             "max_memory_tokens": 10000,  # 最大记忆tokens数
-            "memory_compression_threshold": 5,  # 记忆压缩阈值
+            "memory_compression_threshold": 50,  # 记忆压缩阈值
 
             # 消息限制配置（防止恶意刷屏）
             "max_message_length": 1000,  # 忽略长度超过此值的消息（字符数）

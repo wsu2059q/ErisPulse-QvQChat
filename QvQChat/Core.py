@@ -49,14 +49,14 @@ class Main(BaseModule):
 
         # 初始化各个组件
         self.config = QvQConfig()
-        self.memory = QvQMemory(self.config)
         self.ai_manager = QvQAIManager(self.config, self.logger)
+        self.memory = QvQMemory(self.config, self.ai_manager)
         self.state = QvQState(self.config, self.logger)
         
         # 初始化新的管理器
         self.session_manager = SessionManager(self.config, self.logger)
         self.active_mode_manager = ActiveModeManager(self.session_manager, self.logger)
-        
+
         # 初始化回复判断器（需要 active_mode_manager）
         self.reply_judge = ReplyJudge(self.config, self.ai_manager, self.session_manager, self.logger)
         self.reply_judge.active_mode_manager = self.active_mode_manager
@@ -501,16 +501,18 @@ class Main(BaseModule):
             if not self.reply_judge.check_rate_limit(estimated_tokens, user_id, group_id):
                 return
 
+            # 获取缓存的图片（检查是否过期）
+            cached_image_urls = self.session_manager.get_cached_images(user_id, group_id)
+
+            # 合并当前图片和缓存图片（去重）
+            all_image_urls = list(set(image_urls + cached_image_urls))
+
             # 进行意图识别
             intent_data = await self.intent.identify_intent(alt_message)
             self.logger.info(
                 f"🧠 意图识别 - {session_desc} - 意图: {intent_data['intent']} "
                 f"(置信度: {intent_data['confidence']:.2f})"
             )
-
-            # 准备回复时，获取缓存的图片
-            cached_image_urls = self.session_manager.get_cached_images(user_id, group_id)
-            all_image_urls = list(set(image_urls + cached_image_urls))
 
             # 提取@（mention）信息
             mentions = self._extract_mentions_from_message(data)

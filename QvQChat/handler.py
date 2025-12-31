@@ -134,6 +134,9 @@ class QvQHandler:
 - 语音格式：在消息中用 <|voice style="语气风格"|>语音内容<|/voice|> 标签
 - `style` 控制语音特性（方言、语气等，可用自然语言描述）
 - 【重要】每条语音都必须有完整的开始和结束标签
+- 【标签格式】：
+  - 开始：<|voice style="开心的语气"|> 或 <|voice style='开心的语气'|>
+  - 结束：<|/voice|>
 - 【示例】：
   第一句文本 <|voice style="开心的语气"|>第一句语音<|/voice|>
   <|wait time="1"|>

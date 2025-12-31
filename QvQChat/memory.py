@@ -14,10 +14,11 @@ class QvQMemory:
     - 群记忆：群聊中的共享记忆
     """
     
-    def __init__(self, config_manager):
+    def __init__(self, config_manager, ai_manager=None):
         self.config = config_manager
         self.logger = sdk.logger.get_child("QvQMemory")
         self.storage = sdk.storage
+        self.ai_manager = ai_manager
         self._memory_cache = {}
         self._last_cleanup = {}
     
@@ -225,6 +226,9 @@ class QvQMemory:
             memory["long_term"] = memory["long_term"][-50:]
         
         await self.set_user_memory(user_id, memory)
+        
+        # 检查是否需要压缩记忆
+        await self._check_and_compress_memory(user_id)
     
     async def add_group_memory(
         self,
@@ -318,6 +322,36 @@ class QvQMemory:
                     })
 
         return results[:10]  # 返回最多10条结果
+    
+    async def _check_and_compress_memory(self, user_id: str) -> None:
+        """
+        检查并压缩记忆（如果记忆数量超过阈值）
+
+        Args:
+            user_id: 用户ID
+        """
+        # 检查是否配置了压缩阈值
+        compression_threshold = self.config.get("memory_compression_threshold", 0)
+        if compression_threshold <= 0:
+            return  # 未启用压缩功能
+
+        # 获取当前记忆
+        memory = await self.get_user_memory(user_id)
+        long_term_count = len(memory.get("long_term", []))
+
+        # 如果记忆数量超过阈值，进行压缩
+        if long_term_count >= compression_threshold:
+            # 获取记忆AI客户端
+            if self.ai_manager:
+                ai_client = self.ai_manager.get_client("memory")
+                if ai_client:
+                    self.logger.info(f"记忆数量({long_term_count})达到阈值({compression_threshold})，开始压缩用户 {user_id} 的记忆")
+                    result = await self.compress_memory(user_id, ai_client)
+                    self.logger.info(f"记忆压缩完成: {result}")
+                else:
+                    self.logger.warning("记忆AI未配置，跳过记忆压缩")
+            else:
+                self.logger.warning("AI管理器未初始化，跳过记忆压缩")
     
     async def compress_memory(self, user_id: str, ai_client) -> str:
         """
