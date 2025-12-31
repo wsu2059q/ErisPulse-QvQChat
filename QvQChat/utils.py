@@ -58,6 +58,10 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
 
     支持每条消息都可以包含语音标签。
 
+    智能识别多消息格式：
+    1. 使用 <|wait time="N"|> 分隔符
+    2. 如果 <|/voice|> 标签后有非空文本（且不是语音标签），自动分割
+
     Args:
         text: 包含多条消息格式的文本
 
@@ -73,13 +77,14 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
         logger.warning("未关闭的语音标签，按单条消息处理")
         return [{"content": text.strip(), "delay": 0}]
 
-    # 按照 <|wait time="N"|> 分割消息，但跳过语音标签内部的分隔符
+    # 步骤1: 按照 <|wait time="N"|> 分割消息，但跳过语音标签内部的分隔符
     parts = []
     current_start = 0
 
     # 找到所有的 wait 分隔符（使用更精确的正则）
     wait_pattern = re.compile(r'<\|\s*wait\s+time\s*=\s*"(\d+)"\s*\|>', re.IGNORECASE)
 
+    has_wait_separator = False
     for match in wait_pattern.finditer(text):
         match_pos = match.start()
 
@@ -91,28 +96,59 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
 
         if not is_inside_voice:
             # 这是一个有效的分隔符
+            has_wait_separator = True
             parts.append(text[current_start:match_pos].strip())
             parts.append(match.group(1))  # 延迟时间
             current_start = match.end()
 
     # 添加最后一部分
-    parts.append(text[current_start:].strip())
+    last_part = text[current_start:].strip()
 
-    # 如果没有找到分隔符，返回单条消息
-    if len(parts) == 1:
-        return [{"content": parts[0].strip() if parts else text.strip(), "delay": 0}]
+    # 如果没有找到分隔符，进行智能分割检测
+    if not has_wait_separator:
+        # 检查是否有 <|/voice|> 标签后跟文本的情况
+        voice_end_pattern = re.compile(r'<\|\s*/\s*voice\s*\|>', re.IGNORECASE)
+        # 找所有的语音结束标签
+        for match in voice_end_pattern.finditer(text):
+            voice_end_pos = match.end()
+            # 检查语音标签后面是否有非空文本
+            remaining_text = text[voice_end_pos:].strip()
+            # 确保这不是在另一个语音标签内部
+            is_inside_another_voice = any(
+                voice_block["start"] < voice_end_pos < voice_block["end"]
+                for voice_block in voice_blocks
+            )
+            if remaining_text and not is_inside_another_voice:
+                # 检查后面是否是下一个语音标签的开始
+                next_voice_start = re.search(r'<\|\s*voice\s+', remaining_text, re.IGNORECASE)
+                if not next_voice_start or next_voice_start.start() > 0:
+                    # 找到了需要分割的位置
+                    part1 = text[:voice_end_pos].strip()
+                    part2 = text[voice_end_pos:].strip()
+                    if part2:  # 第二部分非空
+                        return [
+                            {"content": part1, "delay": 0},
+                            {"content": part2, "delay": 1}  # 自动添加1秒延迟
+                        ]
+        # 没有需要分割的情况，返回单条消息
+        return [{"content": last_part, "delay": 0}]
+
+    # 步骤2: 如果有 wait 分隔符，继续原有逻辑
+    if last_part:
+        parts.append(last_part)
 
     # 构建消息列表（每条消息+对应的延迟时间）
     messages = []
 
     # parts 格式: [msg1, delay1, msg2, delay2, msg3, ...]
     # 取出消息内容，延迟时间是下一条消息的等待时间
-    for i in range(0, len(parts) - 1, 2):
-        msg_content = parts[i].strip()
-        if msg_content:  # 只添加非空消息
-            # 获取下一条消息的延迟时间（如果有）
-            delay = int(parts[i + 1]) if i + 1 < len(parts) else 0
-            messages.append({"content": msg_content, "delay": delay})
+    for i in range(0, len(parts), 2):
+        if i + 1 < len(parts):
+            # [msg1, delay1] 这种格式
+            msg_content = parts[i].strip()
+            if msg_content:  # 只添加非空消息
+                delay = int(parts[i + 1])
+                messages.append({"content": msg_content, "delay": delay})
 
     # 如果最后一条消息被遗漏了，添加它
     if len(parts) % 2 == 1 and parts[-1].strip():
