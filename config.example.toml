@@ -56,9 +56,6 @@ mention_probability = 0.8
 # 匹配关键词时回复概率（0-1，0.5=50%）
 keyword_probability = 0.5
 
-# 提问时回复概率（0-1，0.4=40%）
-question_probability = 0.4
-
 # 两次回复之间至少间隔多少条消息
 min_messages_between_replies = 15
 

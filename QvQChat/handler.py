@@ -132,15 +132,24 @@ class QvQHandler:
 【语音输出功能】
 - 每条消息都可以独立包含语音，支持一次发送多条语音
 - 语音格式：在消息中用 <|voice style="语气风格"|>语音内容<|/voice|> 标签
-- `style` 控制语音特性（方言、语气等，可用自然语言描述）
+- `style` 控制语音特性（方言、语气、情绪、语调等，可用自然语言描述任何你想要的效果）
+
 - 【重要】每条语音都必须有完整的开始和结束标签
 - 【标签格式】：
-  - 开始：<|voice style="开心的语气"|> 或 <|voice style='开心的语气'|>
-  - 结束：<|/voice|>
+- 开始：<|voice style="语气风格"|>
+- 结束：<|/voice|>
+
+- 【语音风格示例】：
+- 正常说话：<|voice style="开心的语气"|>你好呀<|/voice|>
+- 方言：<|voice style="用四川话说"|>大家好<|/voice|>
+- 情绪：<|voice style="悲伤的语气"|>呜呜呜<|/voice|>
+- 唱歌：<|voice style="用抒情的调子唱"|>一闪一闪亮晶晶<|/voice|>
+- 唱戏：<|voice style="用唱戏的腔调唱"|>谁说女子不如男<|/voice|>
+- 创意效果：<|voice style="机器人的声音"|>我是机器人<|/voice|>
 - 【示例】：
-  第一句文本 <|voice style="开心的语气"|>第一句语音<|/voice|>
-  <|wait time="1"|>
-  第二句文本 <|voice style="撒娇的语气"|>第二句语音<|/voice|>
+第一句文本 <|voice style="开心的语气"|>第一句语音<|/voice|>
+<|wait time="1"|>
+第二句文本 <|voice style="用抒情的调子唱"|>一闪一闪亮晶晶<|/voice|>
 """
 
         if group_id:

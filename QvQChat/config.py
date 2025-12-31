@@ -71,7 +71,6 @@ class QvQConfig:
                 "default_probability": 0.03,  # 默认回复概率（3%，很低）
                 "mention_probability": 0.8,  # 被@时回复概率（80%）
                 "keyword_probability": 0.5,  # 匹配关键词时回复概率（50%）
-                "question_probability": 0.4,  # 提问时回复概率（40%）
                 "min_messages_between_replies": 15,  # 两次回复之间至少间隔多少条消息
                 "max_replies_per_hour": 8,  # 每小时最多回复次数
                 "silence_threshold_minutes": 30,  # 群内沉寂阈值（分钟）
