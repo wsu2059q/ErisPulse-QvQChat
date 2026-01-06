@@ -68,7 +68,7 @@ docker-compose up -d
 
 #### 手动安装
 
-> 前提：已安装 Python 3.9+ 和 ErisPulse 框架
+> 前提：已安装 Python 3.10+ 和 ErisPulse 框架
 
 ```bash
 # 安装适配器（根据需要）
