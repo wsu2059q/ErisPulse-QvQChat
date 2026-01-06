@@ -570,15 +570,18 @@ class MessageSender:
 
         # 发送语音
         if voice_content and support_voice:
-            voice_file = await record_voice(voice_style, voice_content, self.config, self.logger)
-            if voice_file:
-                voice_path = Path(voice_file)
-                if voice_path.exists():
-                    await self._send_voice_file(adapter, target_type, target_id, voice_file, platform, msg_index, total_messages)
+            if voice_content.strip():
+                voice_file = await record_voice(voice_style, voice_content, self.config, self.logger)
+                if voice_file:
+                    voice_path = Path(voice_file)
+                    if voice_path.exists():
+                        await self._send_voice_file(adapter, target_type, target_id, voice_file, platform, msg_index, total_messages)
+                    else:
+                        self.logger.warning("语音文件不存在，跳过语音发送")
                 else:
-                    self.logger.warning("语音文件不存在，跳过语音发送")
+                    self.logger.warning("语音生成失败，跳过语音发送")
             else:
-                self.logger.warning("语音生成失败，跳过语音发送")
+                self.logger.warning("语音内容为空，跳过语音生成")
         elif voice_content and not support_voice:
             self.logger.debug(f"平台 {platform} 不支持语音，跳过语音发送")
 
