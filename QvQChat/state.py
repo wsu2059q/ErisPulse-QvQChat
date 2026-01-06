@@ -179,4 +179,4 @@ class QvQState:
             bool: 是否应该切换主题
         """
         duration = await self.get_topic_duration(user_id, group_id)
-        return duration and duration > 300  # 5分钟
+        return duration is not None and duration > 300  # 5分钟
