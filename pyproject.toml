@@ -1,18 +1,17 @@
 [project]
 name = "ErisPulse-QvQChat"
-version = "2.3.1"
-description = "ErisPulse QvQChat 智能对话模块 - 多AI协同智能体"
+version = "2.0.0"
+description = "ErisPulse QvQChat 智能对话模块 - 模型池+行为绑定+多智能体+知识库+MCP"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [ { name = "wsu2059q", email = "wsu2059@qq.com" } ]
 dependencies = [
     "openai>=1.0.0",
-    "ErisPulse-HelpModule"
 ]
 
-[tool.setuptools]
-packages = ["QvQChat"]
+[tool.setuptools.packages.find]
+include = ["QvQChat*"]
 
 [project.urls]
 "homepage" = "https://github.com/wsu2059q/ErisPulse-AIChat"
