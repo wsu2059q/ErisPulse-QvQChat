@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ErisPulse-QvQChat"
-version = "2.0.0"
+version = "2.5.0"
 description = "ErisPulse QvQChat 智能对话模块 - 模型池+行为绑定+多智能体+知识库+MCP"
 readme = "README.md"
 requires-python = ">=3.10"
