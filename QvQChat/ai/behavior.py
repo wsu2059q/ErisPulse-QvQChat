@@ -17,47 +17,29 @@ from ErisPulse import sdk
 
 # ==================== 默认提示词 ====================
 
-_PROMPT_DIALOGUE = """你是一个普通群友，和大家一起聊天。
+_PROMPT_DIALOGUE = """【回复格式规则】
+- 你不是AI助手、不是机器人、不是人工智能。永远不说自己是AI/助手/机器人。
+- 每次只输出你自己的回复，1-3句话
+- 口语化、自然、简短
+- 不要用任何格式
+- 禁止输出推理过程、括号解释、元概念
+- 禁止多行「昵称:内容」格式
+- 如果分多条消息，用 <|wait time="N"> 分隔（N=1~5秒，最多3条）"""
 
-回复策略（像真人一样）：
-- 默认保持安静，不要每条消息都回复
-- 只在真正需要回应的时候说话
-- 简短自然，1-2句话，不要太长
-- 不要使用任何格式（不要加粗、代码、列表、标题等）
-- 用口语化的方式，像真人聊天一样
+_PROMPT_REPLY_JUDGE = """判断是否需要回复这条消息。
 
-什么情况才回复：
-1. 别人直接向你提问
-2. 别人@你或叫你的名字
-3. 讨论到你熟悉的话题，可以发表看法
-4. 看到有趣的笑话，可以配合一下
-
-绝对不要回复：
-1. 纯打招呼（"大家好"、"在吗"）
-2. 表情符号或简单的哈哈、233
-3. 没什么实质内容的闲聊
-4. 与你无关的话题
-
-记住：你是一个普通群友，不是助手，不要表现得太积极主动。"""
-
-_PROMPT_REPLY_JUDGE = """你是一个普通群友，判断是否需要回复这条消息。
-
-你的角色：
-- 你是一个普通群友，和大家一起聊天
-- 默认保持安静，只在真正需要的时候回复
-
-必须回复的情况（满足任一）：
-1. 有人直接向你提问
-2. 有人@你或叫你的名字
+必须回复：
+1. 有人直接提问
+2. 有人@你或叫你名字
 3. 话题与你直接相关
 
-绝对不回复的情况：
+不需要回复：
 1. 纯打招呼
-2. 表情符号、"哈哈"、"233"等
-3. 简单的"嗯"、"好"、"OK"
-4. 普通闲聊，没有互动需求
+2. 表情符号、“哈哈”、“233”
+3. 简单的“嗯”、“好”、“OK”
+4. 与你无关的闲聊
 
-只回复"true"或"false"，不要解释。"""
+只回复true或false。"""
 
 _PROMPT_MEMORY = "你是一个智能记忆提取助手，负责从对话中提取值得长期记忆的关键信息。"
 
@@ -77,6 +59,15 @@ _PROMPT_INTENT = """你是一个意图识别助手。识别用户意图时，请
 
 _PROMPT_VISION = "你是一个图片分析助手。请详细描述图片的内容，包括图片中的物体、文字、场景、人物表情等。"
 
+# ==================== 默认场景行为提示词 ====================
+
+_PROMPT_TIME_AWARE = "你会根据当前时间段调整说话风格。现在是%s。"
+
+_PROMPT_MOOD_AWARE = (
+    "你会感知对方消息中的情绪并适当调整回复语气。"
+    "如果对方开心你也轻松愉快，如果对方难过你会安慰。"
+)
+
 
 class BehaviorManager:
     """
@@ -93,7 +84,11 @@ class BehaviorManager:
 
     STORAGE_KEY = "QvQChat.behaviors"
 
-    BUILTIN_BEHAVIORS = ["dialogue", "reply_judge", "memory", "intent", "vision"]
+    # 核心AI行为（需要模型分配）
+    BUILTIN_AI = ["dialogue", "reply_judge", "memory", "intent", "vision"]
+    # 内置场景行为（不需要模型，提供上下文提示）
+    BUILTIN_SCENE = ["time_aware", "mood_aware"]
+    BUILTIN_BEHAVIORS = BUILTIN_AI + BUILTIN_SCENE
 
     def __init__(self, config, model_pool, logger):
         self.config = config
@@ -108,9 +103,68 @@ class BehaviorManager:
         self._behaviors = data.get("behaviors", {})
         if not self._behaviors:
             self._create_defaults()
+        else:
+            # 升级旧版提示词到最新版本
+            self._upgrade_prompts()
 
     def _save(self) -> None:
         self.storage.set(self.STORAGE_KEY, {"behaviors": self._behaviors})
+
+    def _upgrade_prompts(self) -> bool:
+        """升级内置行为到最新代码定义（提示词+类型+能力）"""
+        builtin_defaults = {
+            "dialogue": {
+                "system_prompt": _PROMPT_DIALOGUE,
+                "behavior_type": "ai",
+                "required_capability": "chat",
+            },
+            "reply_judge": {
+                "system_prompt": _PROMPT_REPLY_JUDGE,
+                "behavior_type": "ai",
+                "required_capability": "chat",
+            },
+            "memory": {
+                "system_prompt": _PROMPT_MEMORY,
+                "behavior_type": "ai",
+                "required_capability": "chat",
+            },
+            "intent": {
+                "system_prompt": _PROMPT_INTENT,
+                "behavior_type": "ai",
+                "required_capability": "chat",
+            },
+            "vision": {
+                "system_prompt": _PROMPT_VISION,
+                "behavior_type": "ai",
+                "required_capability": "vision",
+            },
+            "time_aware": {
+                "system_prompt": _PROMPT_TIME_AWARE,
+                "behavior_type": "scene",
+                "required_capability": "",
+            },
+            "mood_aware": {
+                "system_prompt": _PROMPT_MOOD_AWARE,
+                "behavior_type": "scene",
+                "required_capability": "",
+            },
+        }
+        changed = False
+        for bid, defaults in builtin_defaults.items():
+            b = self._behaviors.get(bid)
+            if not b:
+                continue
+            for key, val in defaults.items():
+                if b.get(key) != val:
+                    b[key] = val
+                    changed = True
+            if changed:
+                b["updated_at"] = time.time()
+            if changed:
+                self.logger.info(f"升级内置行为: {bid}")
+        if changed:
+            self._save()
+        return changed
 
     def _create_defaults(self) -> None:
         now = time.time()
@@ -119,6 +173,7 @@ class BehaviorManager:
                 "id": "dialogue",
                 "name": "对话",
                 "description": "核心对话行为，理解用户消息并生成自然回复",
+                "behavior_type": "ai",
                 "required_capability": "chat",
                 "system_prompt": _PROMPT_DIALOGUE,
                 "temperature": 0.7,
@@ -136,6 +191,7 @@ class BehaviorManager:
                 "id": "reply_judge",
                 "name": "回复判断",
                 "description": "判断是否需要回复当前消息",
+                "behavior_type": "ai",
                 "required_capability": "chat",
                 "system_prompt": _PROMPT_REPLY_JUDGE,
                 "temperature": 0.1,
@@ -153,6 +209,7 @@ class BehaviorManager:
                 "id": "memory",
                 "name": "记忆提取",
                 "description": "从对话中智能提取值得长期记忆的关键信息",
+                "behavior_type": "ai",
                 "required_capability": "chat",
                 "system_prompt": _PROMPT_MEMORY,
                 "temperature": 0.3,
@@ -170,6 +227,7 @@ class BehaviorManager:
                 "id": "intent",
                 "name": "意图识别",
                 "description": "识别用户消息的意图类型",
+                "behavior_type": "ai",
                 "required_capability": "chat",
                 "system_prompt": _PROMPT_INTENT,
                 "temperature": 0.1,
@@ -187,6 +245,7 @@ class BehaviorManager:
                 "id": "vision",
                 "name": "图片分析",
                 "description": "分析图片内容，提取文字、物体、场景等信息",
+                "behavior_type": "ai",
                 "required_capability": "vision",
                 "system_prompt": _PROMPT_VISION,
                 "temperature": 0.3,
@@ -201,7 +260,46 @@ class BehaviorManager:
                 "updated_at": now,
             },
         ]
-        for b in defaults:
+        # 场景行为（不需要模型分配）
+        scene_defaults = [
+            {
+                "id": "time_aware",
+                "name": "时间感知",
+                "description": "根据当前时间段自动调整说话风格（清晨慵懒、深夜随意等）",
+                "behavior_type": "scene",
+                "required_capability": "",
+                "system_prompt": _PROMPT_TIME_AWARE,
+                "temperature": None,
+                "max_tokens": None,
+                "models": [],
+                "enabled": True,
+                "is_builtin": True,
+                "trigger_mode": "always",
+                "prediction_interval": 5,
+                "trigger_words": [],
+                "created_at": now,
+                "updated_at": now,
+            },
+            {
+                "id": "mood_aware",
+                "name": "情绪感知",
+                "description": "感知对方消息情绪并适当调整回复语气",
+                "behavior_type": "scene",
+                "required_capability": "",
+                "system_prompt": _PROMPT_MOOD_AWARE,
+                "temperature": None,
+                "max_tokens": None,
+                "models": [],
+                "enabled": True,
+                "is_builtin": True,
+                "trigger_mode": "always",
+                "prediction_interval": 5,
+                "trigger_words": [],
+                "created_at": now,
+                "updated_at": now,
+            },
+        ]
+        for b in defaults + scene_defaults:
             self._behaviors[b["id"]] = b
         self._save()
 
@@ -218,6 +316,7 @@ class BehaviorManager:
             "id": behavior_id,
             "name": data.get("name", "未命名行为"),
             "description": data.get("description", ""),
+            "behavior_type": data.get("behavior_type", "ai"),
             "required_capability": data.get("required_capability", "chat"),
             "system_prompt": data.get("system_prompt", ""),
             "temperature": data.get("temperature"),
@@ -228,6 +327,8 @@ class BehaviorManager:
             "trigger_mode": data.get("trigger_mode", "always"),
             "prediction_interval": data.get("prediction_interval", 5),
             "trigger_words": data.get("trigger_words", []),
+            "response_template": data.get("response_template", ""),
+            "trigger_probability": data.get("trigger_probability", 0),
             "created_at": now,
             "updated_at": now,
         }
@@ -245,6 +346,7 @@ class BehaviorManager:
         for key in (
             "name",
             "description",
+            "behavior_type",
             "required_capability",
             "system_prompt",
             "temperature",
@@ -254,6 +356,8 @@ class BehaviorManager:
             "trigger_mode",
             "prediction_interval",
             "trigger_words",
+            "response_template",
+            "trigger_probability",
         ):
             if key in data:
                 behavior[key] = data[key]
@@ -306,6 +410,9 @@ class BehaviorManager:
         behavior = self._behaviors.get(behavior_id)
         if not behavior or not behavior.get("enabled", True):
             return False
+        # 场景行为不需要模型分配
+        if behavior.get("behavior_type") == "scene":
+            return True
         return len(behavior.get("models", [])) > 0
 
     def get_trigger_mode(self, behavior_id: str) -> str:
@@ -329,15 +436,17 @@ class BehaviorManager:
         if not self.model_pool.list_models():
             return
         changed = False
-        for bid in self.BUILTIN_BEHAVIORS:
+        for bid in self.BUILTIN_AI:
             behavior = self._behaviors.get(bid)
             if not behavior or behavior.get("models"):
+                continue
+            if behavior.get("behavior_type") != "ai":
                 continue
             cap = behavior.get("required_capability", "chat")
             compatible = self.model_pool.get_models_by_capability(cap)
             if compatible:
                 behavior["models"] = [compatible[0]["id"]]
                 changed = True
+                self.logger.info(f"自动分配模型: {bid} -> {compatible[0]['name']}")
         if changed:
             self._save()
-            self.logger.info("已自动为内置行为分配模型")

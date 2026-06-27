@@ -1,11 +1,17 @@
 # QvQChat
-> 暂时存档，v2稳定后正式发布
 
-基于行为系统的多模型 AI 智能对话模块，支持 Dashboard 全功能管理。
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![ErisPulse](https://img.shields.io/badge/ErisPulse-2.5.0+-orange.svg)](https://github.com/ErisPulse/ErisPulse)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/ghcr-erispulse--qvqchat-blue?logo=docker)](https://github.com/wsu2059q/ErisPulse-QvQChat/pkgs/container/erispulse-qvqchat)
+
+基于行为系统的多模型 AI 智能对话模块，驱动于 [ErisPulse](https://github.com/ErisPulse/ErisPulse) 框架，支持 Dashboard 全功能管理。
+
+
 
 ## 核心理念
 
-**模型池 + 行为绑定**：用户添加 AI 模型（带能力标记），配置行为（对话/记忆/意图/自定义），为行为分配模型（多模型冗余备用）。所有配置通过 Dashboard Web 管理面板完成，弱化 config.toml 配置。
+**模型池 + 行为绑定**：用户添加 AI 模型（带能力标记），配置行为（对话/记忆/意图/自定义），为行为分配模型（多模型冗余备用）。所有配置通过 Dashboard Web 管理面板完成。
 
 ## 功能
 
@@ -23,63 +29,23 @@
 
 ## 快速开始
 
-### Docker
+### Docker（推荐）
 
 ```bash
-git clone https://github.com/wsu2059q/ErisPulse-QvQChat.git
-cd ErisPulse-QvQChat
-cp config.example.toml config.toml
-docker-compose pull
-docker-compose up -d
+docker run -d --name qvqchat -p 8000:8000 --restart unless-stopped ghcr.io/wsu2059q/erispulse-qvqchat:latest
 ```
+
+启动后打开 `http://localhost:8000/Dashboard` 即可开始配置。
 
 ### 手动
 
 ```bash
 pip install erispulse
-epsdk install OneBot11
-pip install ErisPulse-QvQChat
+ep install OneBot11, QvQChat
+ep run
 ```
 
-启动后打开 `http://localhost:8000/Dashboard`，在 QvQChat 管理面板中配置 AI 模型和行为。
-
-## 配置方式
-
-**优先使用 Dashboard**：所有 AI 模型、行为、智能体、知识库、工具通过 Web 面板管理，数据持久化存储。
-
-`config.toml` 仅保留基础设置：机器人识别、窥屏模式参数、速率限制等。AI 模型配置（API Key、模型名、提示词等）完全通过 Dashboard 管理。
-
-## 项目结构
-
-```
-QvQChat/
-├── Core.py                  # 主编排器
-├── config.py                # 基础配置
-├── utils.py                 # 工具函数
-├── ai/                      # AI 引擎
-│   ├── engine.py            # 行为执行（故障转移）
-│   ├── client.py            # 模型客户端
-│   ├── model_pool.py        # 模型池
-│   └── behavior.py          # 行为管理
-├── chat/                    # 对话处理
-│   ├── memory.py            # 记忆系统
-│   └── session.py           # 会话+速率+回复判断
-├── agent/                   # 智能体
-│   ├── multi.py             # 多智能体
-│   ├── knowledge.py         # 知识库
-│   └── tools.py             # MCP
-└── dashboard/               # 管理面板
-    ├── manager.py           # 路由+视窗
-    ├── icons.py/styles.py   # 资源
-    ├── html.py              # 页面
-    └── scripts.py           # 逻辑
-```
-
-## 依赖
-
-- Python >= 3.10
-- ErisPulse SDK
-- openai >= 1.0.0
+启动后打开 Dashboard，一切配置（适配器、AI 模型、行为等）均在 Web 面板中完成。
 
 ## 文档
 

@@ -80,9 +80,7 @@ class AIClient:
 
         use_messages = messages
         if system_prompt:
-            use_messages = [{"role": "system", "content": system_prompt}] + [
-                m for m in messages if m.get("role") != "system"
-            ]
+            use_messages = [{"role": "system", "content": system_prompt}] + use_messages
 
         try:
             kwargs: Dict[str, Any] = {
@@ -93,6 +91,13 @@ class AIClient:
             }
             if tools:
                 kwargs["tools"] = tools
+
+            # 输出完整 system 提示词（调试用）
+            sys_msgs = [m for m in use_messages if m.get("role") == "system"]
+            for i, sm in enumerate(sys_msgs):
+                self.logger.debug(
+                    f"--- system[{i}] ({len(sm['content'])}字符) ---\n{sm['content'][:500]}"
+                )
 
             response = await asyncio.wait_for(
                 self.client.chat.completions.create(**kwargs),

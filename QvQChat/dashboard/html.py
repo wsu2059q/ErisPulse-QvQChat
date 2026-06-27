@@ -2,7 +2,10 @@
 
 HTML = """
 <div class="qvc-wrap">
-    <h1 class="page-title">QvQChat 管理面板</h1>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+        <h1 class="page-title" style="margin:0">QvQChat 管理面板</h1>
+        <button class="qvc-btn-sm danger" onclick="qvcResetAll()" style="margin-left:12px">重置全部配置</button>
+    </div>
 
     <!-- 标签栏 -->
     <div class="qvc-tabs">
@@ -36,6 +39,9 @@ HTML = """
     <div class="qvc-panel active" id="qvc-panel-overview">
         <div class="qvc-section-title">运行状态</div>
         <div class="qvc-stat-grid" id="qvc-overview-stats"></div>
+
+        <div class="qvc-section-title">运行统计</div>
+        <div class="qvc-stat-grid" id="qvc-overview-runtime"></div>
 
         <div class="qvc-section-title">AI 子系统状态</div>
         <div id="qvc-overview-ai"></div>

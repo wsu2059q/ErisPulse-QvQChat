@@ -38,6 +38,10 @@ class DashboardManager:
         ("/api/tools/delete", "POST", "_api_delete_tool"),
         ("/api/groups", "GET", "_api_get_groups"),
         ("/api/groups", "POST", "_api_save_group"),
+        ("/api/templates", "GET", "_api_get_templates"),
+        ("/api/reset", "POST", "_api_reset_all"),
+        ("/api/memories", "GET", "_api_get_memories"),
+        ("/api/memories/delete", "POST", "_api_delete_memory"),
     ]
 
     def __init__(self, core):
@@ -182,7 +186,6 @@ class DashboardManager:
     async def _api_status(self, request) -> Dict[str, Any]:
         behavior_status = self.ai_engine.get_behavior_status()
 
-        # 功能开关状态
         features = {
             "stalker_mode": self.config.get("stalker_mode.enabled", True),
             "continue_conversation": self.config.get(
@@ -205,17 +208,18 @@ class DashboardManager:
             "ai_status": behavior_status,
             "features": features,
             "active_groups": len(self.config.list_all_groups()),
+            "runtime": self.core.get_stats(),
+            "debug": self.core.get_status(),
         }
 
     async def _api_get_config(self, request) -> Dict[str, Any]:
-        return {"config": self.config.config}
+        return {"config": sdk.config.getConfig("QvQChat", {})}
 
     async def _api_save_config(self, request) -> Dict[str, Any]:
         body = await self._parse_body(request)
         # JS 发送 { config: {...} } 格式
         if "config" in body and isinstance(body["config"], dict):
-            self.config.config.update(body["config"])
-            sdk.env.setConfig("QvQChat", self.config.config)
+            sdk.config.setConfig("QvQChat", body["config"])
         else:
             # 兼容扁平格式
             for key, value in body.items():
@@ -365,7 +369,6 @@ class DashboardManager:
 
     async def _api_save_group(self, request) -> Dict[str, Any]:
         body = await self._parse_body(request)
-        # JS 发送 { id: group_id, config: {...} }
         group_id = body.get("group_id") or body.get("id", "")
         if not group_id:
             return {"ok": False, "error": "缺少 group_id"}
@@ -373,4 +376,100 @@ class DashboardManager:
         existing = self.config.get_group_config(group_id)
         existing.update(config_data)
         self.config.set_group_config(group_id, existing)
+        return {"ok": True}
+
+    # ----- 重置 -----
+
+    async def _api_reset_all(self, request) -> Dict[str, Any]:
+        """清除所有 QvQChat 数据和存储"""
+        storage = self.sdk.storage
+        config_keys = [
+            "QvQChat.behaviors",
+            "QvQChat.models",
+            "QvQChat.agents",
+            "QvQChat.knowledge_base",
+            "QvQChat.mcp_tools",
+            "QvQChat._group_ids",
+            "QvQChat._group_ids",
+        ]
+        for key in config_keys:
+            try:
+                storage.delete(key)
+            except Exception:
+                pass
+
+        # 清除所有 qvc 前缀的存储
+        try:
+            all_keys = storage.keys() if hasattr(storage, "keys") else []
+            for key in list(all_keys):
+                if key.startswith(("qvc:", "QvQChat")):
+                    try:
+                        storage.delete(key)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # 清除配置
+        try:
+            self.sdk.config.setConfig("QvQChat", {}, immediate=True)
+        except Exception:
+            pass
+
+        self.logger.info("已清除所有 QvQChat 数据")
+        return {"ok": True, "msg": "已清除所有 QvQChat 数据，请重启模块使默认配置生效"}
+
+    # ----- 人格模板 -----
+
+    async def _api_get_templates(self, request) -> Dict[str, Any]:
+        return {"templates": self.multi_agent.get_templates()}
+
+    # ----- 记忆洞察 -----
+
+    async def _api_get_memories(self, request) -> Dict[str, Any]:
+        """获取所有用户的记忆摘要"""
+        from ErisPulse import sdk as _sdk
+
+        storage = _sdk.storage
+        # 扫描所有用户记忆键
+        all_keys = storage.keys() if hasattr(storage, "keys") else []
+        memories = []
+        for key in all_keys:
+            if key.startswith("qvc:user:") and key.endswith(":memory"):
+                user_id = key.split(":")[2]
+                mem = storage.get(key, {})
+                long_term = mem.get("long_term", [])
+                if long_term:
+                    memories.append(
+                        {
+                            "user_id": user_id,
+                            "count": len(long_term),
+                            "latest": [
+                                m.get("content", "")[:80] for m in long_term[-5:]
+                            ],
+                            "updated": mem.get("last_updated", ""),
+                        }
+                    )
+        # 按记忆数量排序
+        memories.sort(key=lambda x: x["count"], reverse=True)
+        return {"memories": memories[:100]}  # 最多100个用户
+
+    async def _api_delete_memory(self, request) -> Dict[str, Any]:
+        """删除指定用户的全部记忆"""
+        body = await self._parse_body(request)
+        user_id = body.get("user_id", "")
+        if not user_id:
+            return {"ok": False, "error": "缺少 user_id"}
+        from ErisPulse import sdk as _sdk
+
+        _sdk.storage.set(
+            f"qvc:user:{user_id}:memory",
+            {
+                "short_term": [],
+                "long_term": [],
+                "semantic": [],
+                "last_updated": "",
+            },
+        )
+        self.logger.info(f"已清除用户记忆: {user_id}")
         return {"ok": True}

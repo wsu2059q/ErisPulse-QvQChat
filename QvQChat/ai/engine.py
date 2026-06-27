@@ -5,7 +5,14 @@ AI 执行引擎
 支持多模型故障转移：行为分配的模型按顺序尝试，失败则切换下一个。
 """
 
+import base64
+import mimetypes
 from typing import Any, Dict, List, Optional
+
+try:
+    import httpx
+except ImportError:
+    httpx = None  # type: ignore[assignment]
 
 from .client import AIClient
 
@@ -167,9 +174,55 @@ class AIEngine:
         )
         return result if isinstance(result, str) else str(result)
 
+    async def _ensure_data_url(self, url: str) -> str:
+        """
+        将图片URL转为 base64 data URL（某些VLM仅接受此格式）
+
+        若已是 data: URL 则直接返回；file:// 本地路径则读取转码；
+        http(s) URL 则尝试下载转码；失败时返回原 URL 作兜底。
+        """
+        if url.startswith("data:"):
+            return url
+
+        # 本地文件路径
+        if url.startswith("file://"):
+            try:
+                path = url[7:]
+                with open(path, "rb") as f:
+                    raw = f.read()
+                mime = mimetypes.guess_type(path)[0] or "image/png"
+                b64 = base64.b64encode(raw).decode()
+                return f"data:{mime};base64,{b64}"
+            except Exception as e:
+                self.logger.debug(f"读取本地图片失败 {url}: {e}")
+                return url
+
+        # HTTP(S) 远程 URL
+        if url.startswith(("http://", "https://")) and httpx is not None:
+            try:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                mime = resp.headers.get("content-type", "image/png")
+                mime = mime.split(";")[0].strip()
+                b64 = base64.b64encode(resp.content).decode()
+                return f"data:{mime};base64,{b64}"
+            except Exception as e:
+                self.logger.debug(f"下载远程图片失败 {url}: {e}")
+                return url
+
+        return url
+
     async def analyze_image(self, image_url: str, user_text: str = "") -> str:
         """图片分析行为"""
         try:
+            # 转为 base64 data URL，确保 VLM 可以访问
+            processed_url = await self._ensure_data_url(image_url)
+            if processed_url != image_url:
+                self.logger.debug(
+                    f"图片URL已转换为data URL (长度: {len(processed_url)})"
+                )
+
             prompt = "请详细描述这张图片的内容。"
             if user_text:
                 prompt += f"\n\n用户的问题：{user_text}"
@@ -178,7 +231,7 @@ class AIEngine:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_url}},
+                        {"type": "image_url", "image_url": {"url": processed_url}},
                     ],
                 }
             ]

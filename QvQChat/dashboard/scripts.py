@@ -128,6 +128,25 @@ async function qvcLoadOverview() {
         });
         document.getElementById('qvc-overview-stats').innerHTML = html;
 
+        // 运行统计
+        var rt = data.runtime || {};
+        var rtCards = [
+            { num: rt.uptime || '-', label: '运行时间' },
+            { num: rt.total_messages || 0, label: '接收消息' },
+            { num: rt.total_replies || 0, label: '发送回复' },
+            { num: rt.reply_rate || '0%', label: '回复率' },
+            { num: (rt.total_tokens_est || 0).toLocaleString(), label: '估算 Token' }
+        ];
+        var rtHtml = '';
+        rtCards.forEach(function(c) {
+            rtHtml += '<div class="qvc-stat-card">';
+            rtHtml += '<div class="qvc-stat-num" style="font-size:20px">' + qvcEsc(c.num) + '</div>';
+            rtHtml += '<div class="qvc-stat-label">' + qvcEsc(c.label) + '</div>';
+            rtHtml += '</div>';
+        });
+        var rtEl = document.getElementById('qvc-overview-runtime');
+        if (rtEl) rtEl.innerHTML = rtHtml;
+
         // AI 子系统状态
         var aiStatus = data.ai_status || {};
         var rows = [
@@ -148,29 +167,57 @@ async function qvcLoadOverview() {
         });
         document.getElementById('qvc-overview-ai').innerHTML = aiHtml;
 
-        // 功能开关
+        // 功能开关（可交互）
         var features = data.features || {};
         var featHtml = '';
         var featMap = [
-            { key: 'stalker_mode', label: '窥屏模式' },
-            { key: 'continue_conversation', label: '对话连续性' },
-            { key: 'knowledge_base', label: '知识库注入' },
-            { key: 'mcp', label: 'MCP 工具调用' },
-            { key: 'multi_agent', label: '多智能体' },
-            { key: 'voice', label: '语音合成' }
+            { key: 'stalker_mode', label: '窥屏模式', path: 'stalker_mode.enabled' },
+            { key: 'continue_conversation', label: '对话连续性', path: 'continue_conversation.enabled' },
+            { key: 'knowledge_base', label: '知识库注入', path: 'knowledge_base.enabled' },
+            { key: 'mcp', label: 'MCP 工具调用', path: 'mcp.enabled' },
+            { key: 'multi_agent', label: '多智能体', path: 'multi_agent.enabled' },
+            { key: 'voice', label: '语音合成', path: 'voice.enabled' }
         ];
         featMap.forEach(function(f) {
             var on = features[f.key];
             var cls = on ? 'qvc-badge-ok' : 'qvc-badge-off';
             var txt = on ? '已启用' : '已关闭';
-            featHtml += '<div class="qvc-list-item">';
+            featHtml += '<div class="qvc-list-item" style="cursor:pointer" onclick="qvcToggleFeature(\'' + f.path + '\', \'' + f.key + '\')">';
             featHtml += '<div class="qvc-list-item-info"><div class="qvc-list-item-title">' + qvcEsc(f.label) + '</div></div>';
-            featHtml += '<span class="qvc-badge ' + cls + '">' + txt + '</span>';
+            featHtml += '<span class="qvc-badge ' + cls + '" id="qvc-feat-' + f.key + '">' + txt + '</span>';
             featHtml += '</div>';
         });
         document.getElementById('qvc-overview-features').innerHTML = featHtml;
     } catch (e) {
         qvcToast('加载概览失败: ' + e.message, 'error');
+    }
+}
+
+async function qvcToggleFeature(path, key) {
+    try {
+        var data = await qvcApi('/api/config', 'GET');
+        var cfg = data.config || {};
+        // 获取当前值
+        var keys = path.split('.');
+        var cur = cfg;
+        for (var i = 0; i < keys.length; i++) {
+            if (cur == null || typeof cur !== 'object') { cur = null; break; }
+            cur = cur[keys[i]];
+        }
+        var newVal = !(cur === true || cur === 'true');
+        // 发送单个键的切换
+        var body = {};
+        body[path] = newVal;
+        await qvcApi('/api/config', 'POST', body);
+        // 更新 UI
+        var el = document.getElementById('qvc-feat-' + key);
+        if (el) {
+            el.className = 'qvc-badge ' + (newVal ? 'qvc-badge-ok' : 'qvc-badge-off');
+            el.textContent = newVal ? '已启用' : '已关闭';
+        }
+        qvcToast((newVal ? '已启用' : '已关闭') + ': ' + key, 'ok');
+    } catch (e) {
+        qvcToast('切换失败: ' + e.message, 'error');
     }
 }
 
@@ -257,6 +304,36 @@ async function qvcLoadBasic() {
         html += '<div class="qvc-form-row">';
         html += qvcNumField('voice.speed', '语速', qvcGetPath(cfg, 'voice.speed', 1.0));
         html += qvcNumField('voice.sample_rate', '采样率', qvcGetPath(cfg, 'voice.sample_rate', 44100));
+        html += '</div>';
+
+        // 个体化设置
+        html += '<div class="qvc-section-title">个体化设置</div>';
+        html += '<div class="qvc-form-row">';
+        html += qvcCheckField('humanize.typing_delay', '打字延迟', qvcGetPath(cfg, 'humanize.typing_delay', true));
+        html += qvcNumField('humanize.random_at_probability', '随机@概率', qvcGetPath(cfg, 'humanize.random_at_probability', 0.15));
+        html += '</div>';
+        html += '<div class="qvc-form-row">';
+        html += qvcNumField('humanize.min_delay', '最小延迟(秒)', qvcGetPath(cfg, 'humanize.min_delay', 0.5));
+        html += qvcNumField('humanize.max_delay', '最大延迟(秒)', qvcGetPath(cfg, 'humanize.max_delay', 5.0));
+        html += '</div>';
+
+        // 夜间模式
+        html += '<div class="qvc-section-title">夜间模式</div>';
+        html += '<div class="qvc-form-row">';
+        html += qvcCheckField('stalker_mode.night_mode.enabled', '启用夜间窥屏', qvcGetPath(cfg, 'stalker_mode.night_mode.enabled', true));
+        html += qvcNumField('stalker_mode.night_mode.begin', '开始(时)', qvcGetPath(cfg, 'stalker_mode.night_mode.begin', 23));
+        html += qvcNumField('stalker_mode.night_mode.end', '结束(时)', qvcGetPath(cfg, 'stalker_mode.night_mode.end', 7));
+        html += '</div>';
+
+        // 回复触发概率
+        html += '<div class="qvc-section-title">回复触发概率</div>';
+        html += '<div class="qvc-form-row">';
+        html += qvcNumField('stalker_mode.question_probability', '提问触发', qvcGetPath(cfg, 'stalker_mode.question_probability', 0.6));
+        html += qvcNumField('stalker_mode.hot_topic_probability', '热度触发', qvcGetPath(cfg, 'stalker_mode.hot_topic_probability', 0.3));
+        html += '</div>';
+        html += '<div class="qvc-form-row">';
+        html += qvcNumField('stalker_mode.sticker_emoji_probability', '表情触发', qvcGetPath(cfg, 'stalker_mode.sticker_emoji_probability', 0.15));
+        html += qvcNumField('stalker_mode.default_probability', '基础概率', qvcGetPath(cfg, 'stalker_mode.default_probability', 0.03));
         html += '</div>';
 
         document.getElementById('qvc-basic-form').innerHTML = html;
@@ -495,7 +572,9 @@ async function qvcBehaviorEdit(behavior) {
         },
         { name: 'prediction_interval', label: '预测间隔（消息数）', type: 'number', value: b.prediction_interval != null ? b.prediction_interval : 5 },
         { name: '_trigger_words', label: '触发词（逗号分隔）', type: 'text', value: triggerWords.join(', ') },
-        { name: 'enabled', label: '启用此行为', type: 'checkbox', value: b.enabled !== false }
+        { name: 'enabled', label: '启用此行为', type: 'checkbox', value: b.enabled !== false },
+        { name: 'response_template', label: '输出模板（可选，支持 {ai_response}/{at_user}）', type: 'textarea', value: b.response_template || '', placeholder: '例: {ai_response}\n[img]https://x.com/sticker.png[/img]' },
+        { name: 'trigger_probability', label: '模板触发概率 (0=从不)', type: 'number', value: b.trigger_probability != null ? b.trigger_probability : 0 }
     ];
 
     // 添加模型选择（checkbox-group）
@@ -521,7 +600,9 @@ async function qvcBehaviorEdit(behavior) {
             prediction_interval: data.prediction_interval,
             trigger_words: (data._trigger_words || '').split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; }),
             enabled: data.enabled,
-            models: data.models || []
+            models: data.models || [],
+            response_template: data.response_template || '',
+            trigger_probability: data.trigger_probability || 0,
         };
         if (b.id) payload.id = b.id;
         try {
@@ -580,9 +661,24 @@ async function qvcLoadAgents() {
     }
 }
 
-function qvcAgentEdit(agent) {
+async function qvcAgentEdit(agent) {
     var a = agent || {};
+
+    // 加载人格模板
+    var templates = {};
+    var templateOptions = [];
+    try {
+        var resp = await qvcApi('/api/templates', 'GET');
+        templates = resp.templates || {};
+        templateOptions = Object.keys(templates).map(function(name) {
+            return { value: name, label: name };
+        });
+    } catch (e) {
+        // 模板加载失败，使用空列表
+    }
+
     var fields = [
+        { name: '_template', label: '人格模板（选择后自动填充提示词）', type: 'select', value: '', options: templateOptions },
         { name: 'name', label: '名称', type: 'text', value: a.name || '' },
         { name: 'description', label: '描述', type: 'text', value: a.description || '' },
         { name: 'system_prompt', label: '系统提示词', type: 'textarea', value: a.system_prompt || '' },
@@ -611,6 +707,18 @@ function qvcAgentEdit(agent) {
             qvcToast('保存失败: ' + e.message, 'error');
         }
     });
+
+    // 模板选择后自动填充提示词
+    var templateSelect = document.querySelector('[data-field="_template"]');
+    if (templateSelect) {
+        templateSelect.addEventListener('change', function() {
+            var name = this.value;
+            if (name && templates[name]) {
+                var promptEl = document.querySelector('[data-field="system_prompt"]');
+                if (promptEl) promptEl.value = templates[name];
+            }
+        });
+    }
 }
 
 async function qvcAgentDelete(id) {
@@ -801,18 +909,23 @@ async function qvcLoadGroups() {
         var groups = data.groups || data || [];
         var el = document.getElementById('qvc-groups-list');
         if (!groups.length) {
-            el.innerHTML = '<div class="qvc-empty">暂无群组数据</div>';
+            el.innerHTML = '<div class="qvc-empty">暂无群组（群组在收到第一条消息后自动注册）</div>';
             return;
         }
         var html = '';
         groups.forEach(function(g) {
+            var cfg = g.config || {};
+            var displayName = cfg.group_name || g.id;
             var badges = '';
-            badges += '<span class="qvc-badge ' + (g.enable_ai !== false ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (g.enable_ai !== false ? 'AI启用' : 'AI关闭') + '</span> ';
+            badges += '<span class="qvc-badge ' + (cfg.enable_ai !== false ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (cfg.enable_ai !== false ? 'AI启用' : 'AI关闭') + '</span> ';
+            badges += '<span class="qvc-badge ' + (cfg.enable_memory !== false ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (cfg.enable_memory !== false ? '记忆' : '无记忆') + '</span> ';
             html += '<div class="qvc-list-item">';
             html += '<div class="qvc-list-item-info">';
-            html += '<div class="qvc-list-item-title">' + qvcEsc(g.name || g.id) + ' ' + badges + '</div>';
-            var memMode = g.memory_mode || 'mixed';
-            html += '<div class="qvc-list-item-desc">记忆模式: ' + qvcEsc(memMode) + '</div>';
+            html += '<div class="qvc-list-item-title">' + qvcEsc(displayName) + ' ' + badges + '</div>';
+            html += '<div class="qvc-list-item-desc">ID: ' + qvcEsc(g.id) + ' / 记忆: ' + qvcEsc(cfg.memory_mode || 'mixed') + '</div>';
+            if (cfg.system_prompt) {
+                html += '<div class="qvc-list-item-desc">提示词: ' + qvcEsc(cfg.system_prompt.substring(0, 60)) + '...</div>';
+            }
             html += '</div>';
             html += '<div class="qvc-list-item-actions">';
             html += '<button class="qvc-btn-sm" onclick=\'qvcGroupEdit(' + JSON.stringify(g) + ')\'>' + '__ICON_EDIT__' + ' 编辑</button>';
@@ -827,21 +940,22 @@ async function qvcLoadGroups() {
 
 function qvcGroupEdit(group) {
     var g = group || {};
+    var cfg = g.config || {};
     var fields = [
-        { name: 'name', label: '群名称', type: 'text', value: g.name || '' },
-        { name: 'system_prompt', label: '群提示词', type: 'textarea', value: g.system_prompt || '' },
+        { name: 'group_name', label: '群名称', type: 'text', value: cfg.group_name || '' },
+        { name: 'system_prompt', label: '群提示词', type: 'textarea', value: cfg.system_prompt || '' },
         {
             name: 'memory_mode',
             label: '记忆模式',
             type: 'select',
-            value: g.memory_mode || 'mixed',
+            value: cfg.memory_mode || 'mixed',
             options: [
                 { label: '混合模式（推荐）', value: 'mixed' },
                 { label: '仅发送者模式', value: 'sender_only' }
             ]
         },
-        { name: 'enable_memory', label: '启用记忆', type: 'checkbox', value: g.enable_memory !== false },
-        { name: 'enable_ai', label: '启用 AI', type: 'checkbox', value: g.enable_ai !== false }
+        { name: 'enable_memory', label: '启用记忆', type: 'checkbox', value: cfg.enable_memory !== false },
+        { name: 'enable_ai', label: '启用 AI', type: 'checkbox', value: cfg.enable_ai !== false }
     ];
     qvcShowModal('编辑群组', fields, async function(data) {
         var payload = { id: g.id, config: data };
@@ -932,6 +1046,19 @@ function qvcModalSave() {
     });
     if (_qvcModalCallback) {
         _qvcModalCallback(data);
+    }
+}
+
+// ==================== 重置 ====================
+async function qvcResetAll() {
+    if (!confirm('确定清除所有 QvQChat 数据？此操作不可恢复！\n\n包括：全部配置、模型、行为、智能体、知识库、MCP工具、记忆、会话历史。\n\n清除后请刷新页面并重启模块。')) return;
+    try {
+        var resp = await qvcApi('/api/reset', 'POST');
+        qvcToast(resp.msg || '已清除所有数据', 'ok');
+        // 重新加载概览
+        setTimeout(function() { location.reload(); }, 2000);
+    } catch (e) {
+        qvcToast('重置失败: ' + e.message, 'error');
     }
 }
 

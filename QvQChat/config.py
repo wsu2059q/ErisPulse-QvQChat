@@ -1,7 +1,7 @@
 """
 配置管理器
 
-只管理基础设置，AI 模型和行为配置由各自的子系统管理。
+使用 sdk.config（而非旧版 sdk.env）管理基础设置。
 """
 
 from typing import Any, Dict, List
@@ -18,10 +18,10 @@ class QvQConfig:
         self.logger = sdk.logger.get_child("QvQConfig")
 
     def _load_config(self) -> Dict[str, Any]:
-        config = sdk.env.getConfig("QvQChat")
+        config = sdk.config.getConfig("QvQChat")
         if not config:
             default = self._get_default_config()
-            sdk.env.setConfig("QvQChat", default)
+            sdk.config.setConfig("QvQChat", default)
             return default
         return config
 
@@ -39,11 +39,13 @@ class QvQConfig:
             "stalker_mode": {
                 "enabled": True,
                 "default_probability": 0.03,
-                "mention_probability": 0.8,
-                "keyword_probability": 0.5,
                 "min_messages_between_replies": 15,
                 "max_replies_per_hour": 8,
                 "silence_threshold_minutes": 30,
+                "question_probability": 0.6,
+                "hot_topic_probability": 0.3,
+                "sticker_emoji_probability": 0.15,
+                "night_mode": {"enabled": True, "begin": 23, "end": 7},
             },
             "continue_conversation": {
                 "enabled": True,
@@ -57,6 +59,14 @@ class QvQConfig:
             },
             "mcp": {"enabled": True, "auto_inject": True},
             "multi_agent": {"enabled": True},
+            "humanize": {
+                "typing_delay": True,
+                "min_delay": 0.5,
+                "max_delay": 5.0,
+                "random_at_probability": 0.15,
+                "multi_msg_enabled": True,
+                "multi_msg_max": 3,
+            },
             "voice": {
                 "enabled": False,
                 "api_url": "https://api.siliconflow.cn/v1/audio/speech",
@@ -73,24 +83,11 @@ class QvQConfig:
         }
 
     def get(self, key: str, default: Any = None) -> Any:
-        keys = key.split(".")
-        value = self.config
-        for k in keys:
-            if isinstance(value, dict):
-                value = value.get(k)
-            else:
-                return default
-        return value if value is not None else default
+        # 直接从 sdk.config 读取最新值（避免内存缓存过期）
+        return sdk.config.getConfig(f"QvQChat.{key}", default)
 
     def set(self, key: str, value: Any) -> None:
-        keys = key.split(".")
-        config = self.config
-        for k in keys[:-1]:
-            if k not in config:
-                config[k] = {}
-            config = config[k]
-        config[keys[-1]] = value
-        sdk.env.setConfig("QvQChat", self.config)
+        sdk.config.setConfig(f"QvQChat.{key}", value)
 
     def get_user_config(self, user_id: str) -> Dict[str, Any]:
         return self.storage.get(
