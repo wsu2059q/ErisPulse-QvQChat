@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ErisPulse-QvQChat"
 version = "2.0.0"
@@ -7,14 +11,16 @@ requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [ { name = "wsu2059q", email = "wsu2059@qq.com" } ]
 dependencies = [
+    "ErisPulse>=2.0.0",
     "openai>=1.0.0",
 ]
 
+[project.urls]
+"homepage" = "https://github.com/wsu2059q/ErisPulse-QvQChat"
+"Issues" = "https://github.com/wsu2059q/ErisPulse-QvQChat/issues"
+
+[project.entry-points."erispulse.module"]
+"QvQChat" = "QvQChat:Main"
+
 [tool.setuptools.packages.find]
 include = ["QvQChat*"]
-
-[project.urls]
-"homepage" = "https://github.com/wsu2059q/ErisPulse-AIChat"
-
-[project.entry-points]
-"erispulse.module" = { "QvQChat" = "QvQChat:Main" }

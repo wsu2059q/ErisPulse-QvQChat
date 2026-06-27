@@ -1,13 +1,13 @@
 services:
   qvqchat:
-    image: erispulse/erispulse-qvqchat:latest
+    image: ghcr.io/wsu2059q/erispulse-qvqchat:latest
     container_name: qvqchat
     restart: unless-stopped
     environment:
       - TZ=Asia/Shanghai
       - PYTHONUNBUFFERED=1
     volumes:
-      - ./config.toml:/app/config/config.toml
+      - ./config:/app/config
       - ./data:/app/data
       - ./logs:/app/logs
     ports:

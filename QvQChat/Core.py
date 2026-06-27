@@ -1,11 +1,15 @@
 """
 QvQChat 主模块
 
-消息处理编排器，整合 AI 引擎、行为系统、记忆、知识库和工具。
-支持预测模式（低token模式）：每N条消息做一次预测词判断，匹配才进入对话。
+消息处理编排器。核心创新：
+- 行为链：行为可触发后续行为（如对话→表情→记忆）
+- 拟人化回复：打字延迟、时间感知、情绪感知
+- 预测模式：低token批量判断
 """
 
 import asyncio
+import random
+import time
 from typing import Any, Dict, List, Optional
 
 from ErisPulse import sdk
@@ -22,6 +26,25 @@ from .config import QvQConfig
 from .dashboard import DashboardManager
 from .utils import MessageSender, get_session_description, truncate_message
 
+# ==================== 拟人化工具 ====================
+
+
+def _calc_typing_delay(text: str, config=None) -> float:
+    """根据回复长度计算拟人化打字延迟（秒）"""
+    if config and not config.get("humanize.typing_delay", True):
+        return 0
+    min_d = config.get("humanize.min_delay", 0.5) if config else 0.5
+    max_d = config.get("humanize.max_delay", 5.0) if config else 5.0
+    length = len(text)
+    if length <= 10:
+        return random.uniform(min_d, min_d + 1.0)
+    elif length <= 30:
+        return random.uniform(min_d + 0.5, min_d + 2.0)
+    elif length <= 80:
+        return random.uniform(max_d - 2.0, max_d)
+    else:
+        return max_d
+
 
 class Main(BaseModule):
     """
@@ -29,8 +52,8 @@ class Main(BaseModule):
 
     子系统：
     - AI 引擎：模型池 + 行为管理 + 执行引擎（故障转移）
-    - 对话处理：记忆系统 + 会话管理（速率限制/活跃模式/回复判断）
-    - 智能体管理：多智能体人格 + 知识库 + MCP工具
+    - 对话处理：记忆 + 会话管理（速率限制/活跃模式/回复判断）
+    - 智能体：多智能体人格 + 知识库 + MCP工具
     - Dashboard：Web 管理面板
     """
 
@@ -47,8 +70,6 @@ class Main(BaseModule):
             self.config, self.model_pool, self.logger
         )
         self.ai_engine = AIEngine(self.model_pool, self.behavior_manager, self.logger)
-
-        # 首次运行自动分配模型
         self.behavior_manager.auto_assign_models()
 
         # 对话处理子系统
@@ -71,7 +92,35 @@ class Main(BaseModule):
         # AI 启用状态
         self._ai_disabled: Dict[str, bool] = {}
 
+        # 运行统计
+        self._stats = {
+            "total_messages": 0,
+            "total_replies": 0,
+            "total_tokens_est": 0,
+            "started_at": time.time(),
+        }
+
         self.logger.info("QvQChat 模块初始化完成")
+
+        # 检查配置引导
+        if not self.model_pool.list_models():
+            self.logger.warning(
+                "尚未配置任何 AI 模型。请在 Dashboard 的「模型管理」中添加模型，"
+                "然后在「行为管理」中为行为分配模型。"
+            )
+        else:
+            unassigned = [
+                b["name"]
+                for b in self.behavior_manager.list_behaviors()
+                if b.get("behavior_type") == "ai"
+                and not b.get("models")
+                and b.get("enabled", True)
+            ]
+            if unassigned:
+                self.logger.warning(
+                    f"以下行为未分配模型: {', '.join(unassigned)}。"
+                    "请在 Dashboard 的「行为管理」中分配。"
+                )
 
     @staticmethod
     def get_load_strategy():
@@ -126,11 +175,27 @@ class Main(BaseModule):
             self._ai_disabled[self.session.get_session_key(user_id, group_id)] = True
         return "AI已禁用"
 
+    # ==================== 运行统计 ====================
+
+    def get_stats(self) -> Dict[str, Any]:
+        uptime = int(time.time() - self._stats["started_at"])
+        hours, rem = divmod(uptime, 3600)
+        mins, secs = divmod(rem, 60)
+        return {
+            **self._stats,
+            "uptime": f"{hours}h{mins}m{secs}s",
+            "reply_rate": (
+                f"{self._stats['total_replies'] / max(self._stats['total_messages'], 1) * 100:.1f}%"
+            ),
+        }
+
     # ==================== 消息处理 ====================
 
     async def _handle_message(self, data: Dict[str, Any]) -> None:
         """消息处理主入口"""
         try:
+            self._stats["total_messages"] += 1
+
             alt_message = data.get("alt_message", "").strip()
             image_urls = self._extract_images(data)
 
@@ -143,7 +208,7 @@ class Main(BaseModule):
 
             # 跳过指令消息
             if self.config.get("ignore_command_messages", True):
-                prefix = sdk.env.getConfig("ErisPulse.event.command.prefix", "/")
+                prefix = sdk.config.getConfig("ErisPulse.event.command.prefix", "/")
                 if alt_message and alt_message.lstrip().startswith(prefix):
                     return
 
@@ -152,10 +217,12 @@ class Main(BaseModule):
 
             # 消息长度检查
             if not self.session.check_message_length(alt_message):
+                self.logger.debug(f"消息过长，跳过: {len(alt_message)}")
                 return
 
             # AI 启用检查
             if not self.is_ai_enabled(user_id, group_id):
+                self.logger.debug(f"AI已禁用: {group_id or user_id}")
                 return
 
             # 图片缓存
@@ -172,9 +239,16 @@ class Main(BaseModule):
                 user_id, "user", alt_message, group_id, user_nickname
             )
 
-            # 更新群沉寂
+            # 更新群沉寂 + 注册群组
             if group_id:
                 self.session.update_group_silence(user_id, group_id)
+                # 确保群组被注册（Dashboard 可见）
+                if group_id not in self.config.list_all_groups():
+                    group_cfg = self.config.get_group_config(group_id)
+                    if group_name:
+                        group_cfg["group_name"] = group_name
+                    self.config.set_group_config(group_id, group_cfg)
+                    self.logger.info(f"发现新群组: {group_name or group_id}")
 
             # 判断是否回复
             should_reply = await self._check_should_reply(
@@ -182,6 +256,7 @@ class Main(BaseModule):
             )
 
             if not should_reply:
+                self.logger.debug("窥屏模式决定不回复")
                 return
 
             session_desc = get_session_description(
@@ -193,7 +268,9 @@ class Main(BaseModule):
 
             # 速率限制
             est_tokens = SessionManager.estimate_tokens(alt_message) * 2
+            self._stats["total_tokens_est"] += est_tokens
             if not self.session.check_rate_limit(est_tokens, user_id, group_id):
+                self.logger.warning("触发速率限制，跳过回复")
                 return
 
             # 获取缓存图片
@@ -215,8 +292,19 @@ class Main(BaseModule):
             if not response:
                 return
 
+            # 拟人化打字延迟
+            delay = _calc_typing_delay(response, self.config)
+            if delay > 0:
+                self.logger.debug(f"打字延迟: {delay:.1f}s")
+                await asyncio.sleep(delay)
+
+            # 群聊随机@对方
+            if group_id and self.config.get("humanize.random_at_probability", 0.15) > 0:
+                response = self._maybe_at_mention(data, response, user_nickname)
+
             # 发送回复
             await self._send_response(data, response, platform)
+            self._stats["total_replies"] += 1
             self.logger.info(
                 f"回复已发送 - {session_desc} - {truncate_message(response, 60)}"
             )
@@ -232,14 +320,15 @@ class Main(BaseModule):
                 user_id, "assistant", response, group_id, bot_name
             )
 
-            # 群聊后续监听
+            # 行为链：群聊后续监听
             if group_id:
                 asyncio.create_task(
                     self._continue_conversation(user_id, group_id, platform)
                 )
 
-            # 回复后异步提取记忆（避免与对话 AI 并发）
-            asyncio.create_task(self._extract_memory_async(user_id, group_id))
+            # 行为链：回复后异步提取记忆（检查行为可用性）
+            if self.ai_engine.is_available("memory"):
+                asyncio.create_task(self._extract_memory_async(user_id, group_id))
 
         except Exception as e:
             self.logger.error(f"处理消息出错: {e}")
@@ -258,7 +347,7 @@ class Main(BaseModule):
         # 检查 @机器人
         is_mentioned = self._is_mentioned(data, bot_ids, bot_nicknames, alt_message)
 
-        # 私聊：始终回复（跳过 AI 判断，省 token + 省时间）
+        # 私聊：始终回复
         if not group_id:
             return True
 
@@ -272,8 +361,26 @@ class Main(BaseModule):
             self.logger.info("活跃模式生效中，直接回复")
             return True
 
-        # 窥屏模式未启用：直接回复
-        if not self.config.get("stalker_mode.enabled", True):
+        # 夜间模式：夜间自动开启窥屏
+        night_cfg = self.config.get("stalker_mode.night_mode", {})
+        if night_cfg.get("enabled", True):
+            from datetime import datetime
+
+            hour = datetime.now().hour
+            begin = night_cfg.get("begin", 23)
+            end = night_cfg.get("end", 7)
+            if begin > end:
+                is_night = hour >= begin or hour < end
+            else:
+                is_night = begin <= hour < end
+            if is_night:
+                self.logger.debug(f"夜间模式({begin}:00-{end}:00)，进入窥屏")
+                # fall through to stalker mode
+            else:
+                # 白天，窥屏关闭时直接回复
+                if not self.config.get("stalker_mode.enabled", True):
+                    return True
+        elif not self.config.get("stalker_mode.enabled", True):
             return True
 
         # 获取对话行为的触发模式
@@ -281,7 +388,6 @@ class Main(BaseModule):
         session_key = self.session.get_session_key(user_id, group_id)
 
         if trigger_mode == "prediction":
-            # 预测模式（低token模式）
             behavior = self.behavior_manager.get_behavior("dialogue")
             interval = behavior.get("prediction_interval", 5) if behavior else 5
             trigger_words = (
@@ -305,7 +411,8 @@ class Main(BaseModule):
             self.logger.info("预测未命中，跳过回复")
             return False
 
-        # 标准模式：窥屏概率 + AI 判断
+        # 标准模式：多层级回复策略
+        self.logger.debug(f"群聊进入回复策略判断 - 会话: {session_key}")
         return await self.session.should_reply(
             self.ai_engine,
             data,
@@ -314,11 +421,10 @@ class Main(BaseModule):
             group_id,
             bot_ids,
             bot_nicknames,
-            True,
         )
 
     async def _run_prediction(self, messages_batch: List[str], bot_name: str) -> str:
-        """执行预测（低token模式的核心）：批量消息 -> 预测词"""
+        """执行预测（低token模式）"""
         try:
             batch_text = "\n".join(f"- {m}" for m in messages_batch[-10:])
             prompt = (
@@ -337,6 +443,77 @@ class Main(BaseModule):
         except Exception as e:
             self.logger.warning(f"预测失败: {e}")
             return "跳过"
+
+    def _apply_behavior_templates(self, response, user_id, group_id, user_nickname):
+        """
+        应用行为的输出模板
+
+        遍历所有已启用的场景/输出行为，概率性应用其 response_template。
+        模板支持占位符：
+        - {ai_response}: AI生成的文本
+        - {at_user}: @{user_nickname}
+        - [img]url[/img]: 发送图片（通过多消息发送器）
+        """
+        result = response
+        for behavior in self.behavior_manager.list_behaviors():
+            if not behavior.get("enabled", True):
+                continue
+            if behavior.get("behavior_type") == "ai":
+                continue  # AI行为不应用模板
+            template = behavior.get("response_template", "")
+            if not template:
+                continue
+            trigger_prob = behavior.get("trigger_probability", 0)
+            if trigger_prob <= 0 or random.random() >= trigger_prob:
+                continue
+
+            # 应用模板
+            bname = behavior.get("name", behavior.get("id", ""))
+            self.logger.info(f"行为[{bname}]输出模板触发")
+            at_text = f"@{user_nickname}" if user_nickname else ""
+            result = template.replace("{ai_response}", response).replace(
+                "{at_user}", at_text
+            )
+            if result:
+                break  # 只应用第一个触发的模板
+        return result
+
+    def _maybe_at_mention(self, data, response, user_nickname):
+        """随机@对方（群聊时增加互动感）"""
+        prob = self.config.get("humanize.random_at_probability", 0.15)
+        if random.random() < prob and user_nickname:
+            if f"@{user_nickname}" not in response:
+                return f"@{user_nickname} {response}"
+        return response
+
+    def get_status(self) -> Dict[str, Any]:
+        """获取模块完整状态（供调试）"""
+        active_agents = self.multi_agent.list_agents()
+        default_agent = self.multi_agent.get_agent("default")
+        bindings = self.multi_agent.list_bindings()
+        return {
+            "config_loaded": bool(self.config.config),
+            "models": self.model_pool.get_stats(),
+            "behaviors": self.behavior_manager.get_stats(),
+            "behavior_status": self.ai_engine.get_behavior_status(),
+            "agents": {
+                "total": len(active_agents),
+                "default_prompt": default_agent.get("system_prompt", "")[:80]
+                if default_agent
+                else "",
+            },
+            "agent_bindings": len(bindings),
+            "knowledge": self.knowledge_base.get_stats(),
+            "tools": self.mcp_manager.get_stats(),
+            "groups": len(self.config.list_all_groups()),
+            "features": {
+                "multi_agent": self.config.get("multi_agent.enabled", True),
+                "knowledge_base": self.config.get("knowledge_base.enabled", True),
+                "mcp": self.config.get("mcp.enabled", True),
+                "voice": self.config.get("voice.enabled", False),
+                "stalker": self.config.get("stalker_mode.enabled", True),
+            },
+        }
 
     def _is_mentioned(
         self,
@@ -357,6 +534,60 @@ class Main(BaseModule):
                 return True
         return False
 
+    # AI 可能输出的"不回复"标记（需要过滤）
+    _SKIP_MARKERS = [
+        "保持安静",
+        "不回复",
+        "没提到我",
+        "没有问到",
+        "(沉默)",
+        "（沉默）",
+        "[不回复]",
+        "【不回复】",
+        "(保持安静)",
+        "（保持安静）",
+        "[沉默]",
+        "【沉默】",
+        "(跳过)",
+        "（跳过）",
+        "(不回复)",
+        "（不回复）",
+        "不参与",
+        "不需要回复",
+        "SKIP",
+        "skip",
+        "NOREPLY",
+        "noreply",
+    ]
+    # 正则：带括号的不回复推理
+    _SKIP_REGEX = [
+        r"（[^）]*不[^）]*回复[^）]*）",
+        r"\([^)]*不[^)]*回复[^)]*\)",
+        r"\[[^\]]*:\s*$",
+        # 多行「昵称:内容」格式（AI在输出聊天记录）
+        r"^[^:\n]{1,10}:\s.*\n[^:\n]{1,10}:\s",
+    ]
+
+    def _is_skip_response(self, text: str) -> bool:
+        """检测AI是否输出了无效回复"""
+        stripped = text.strip()
+        if len(stripped) <= 60:
+            for marker in self._SKIP_MARKERS:
+                if marker in stripped:
+                    return True
+        import re
+
+        for pattern in self._SKIP_REGEX:
+            if re.search(pattern, stripped):
+                return True
+        # 多行，每行都是"名字: 内容"格式（AI在输出聊天记录）
+        lines = [l for l in stripped.split("\n") if l.strip()]
+        if len(lines) >= 2:
+            chat_count = sum(1 for l in lines if re.match(r"^[^:\n]{1,15}\s*:\s*", l))
+            if chat_count >= len(lines) * 0.6:
+                return True
+        return False
+
     async def _generate_response(
         self,
         user_id: str,
@@ -370,7 +601,6 @@ class Main(BaseModule):
     ) -> Optional[str]:
         """生成AI回复"""
         try:
-            session_key = self.session.get_session_key(user_id, group_id)
             history = await self.memory.get_session_history(user_id, group_id)
 
             # 构建系统提示词
@@ -387,39 +617,59 @@ class Main(BaseModule):
             if memory_ctx:
                 messages.append({"role": "system", "content": memory_ctx})
 
-            # 场景提示
-            scene = self._build_scene_prompt(user_nickname, group_id is not None)
+            # 场景提示（含时间感知 + 情绪感知）
+            scene = self._build_scene_prompt(
+                user_nickname, group_id is not None, user_input, platform
+            )
             if scene:
                 messages.append({"role": "system", "content": scene})
 
             # 添加历史
             messages.extend(history[-15:])
 
-            # 图片处理
+            # 图片处理（检查视觉行为可用性）
             if image_urls:
-                await self._inject_images(messages, image_urls, user_input)
+                if self.ai_engine.is_available("vision"):
+                    await self._inject_images(messages, image_urls, user_input)
+                else:
+                    self.logger.debug("视觉行为不可用，跳过图片分析")
 
-            # MCP 工具
+            # MCP 工具（检查配置 + 对话工具支持）
             tools = None
             if self.config.get("mcp.enabled", True) and self.config.get(
                 "mcp.auto_inject", True
             ):
-                tools = self.mcp_manager.get_openai_tools_schema()
+                mcp_tools = self.mcp_manager.get_openai_tools_schema()
+                if mcp_tools:
+                    tools = mcp_tools
 
             # 调用对话行为
+            if not self.ai_engine.is_available("dialogue"):
+                self.logger.warning("对话行为不可用，请配置模型")
+                return None
             self.logger.info(f"调用对话行为 - 消息数: {len(messages)}")
             response = await self.ai_engine.dialogue(messages, tools=tools)
 
-            if response and isinstance(response, str):
-                self.logger.info(
-                    f"对话行为完成 - 回复: {truncate_message(response, 80)}"
-                )
+            if not response or not isinstance(response, str):
+                return None
+            response = response.strip()
 
-            return response if isinstance(response, str) else None
+            # 过滤无效回复
+            if self._is_skip_response(response):
+                self.logger.info(f"回复无效，不发送: {truncate_message(response, 40)}")
+                return None
+
+            # 行为输出模板
+            response = self._apply_behavior_templates(
+                response, user_id, group_id, user_nickname
+            )
+
+            self.logger.info(f"对话行为完成 - 回复: {truncate_message(response, 80)}")
+            return response
 
         except Exception as e:
             self.logger.error(f"生成回复失败: {e}")
-            return "抱歉，我现在无法回复。请稍后再试。"
+            return None
 
     def _build_system_prompt(
         self,
@@ -430,17 +680,24 @@ class Main(BaseModule):
         group_name: str,
     ) -> str:
         """构建系统提示词（多智能体 + 知识库 + 行为提示词）"""
-        # 行为基础提示词
-        prompt = self.behavior_manager.get_behavior_prompt("dialogue")
-        source = "行为[dialogue]"
+        rules = (
+            self.behavior_manager.get_behavior_prompt("dialogue")
+            or "【回复格式规则】\n口语化、简短、不要用任何格式。"
+        )
 
-        # 多智能体覆盖
+        # 多智能体：人格 + 行为规则
         if self.config.get("multi_agent.enabled", True):
             session_key = self.session.get_session_key(user_id, group_id)
             agent_prompt = self.multi_agent.get_effective_prompt(session_key)
             if agent_prompt:
-                prompt = agent_prompt
-                source = "多智能体"
+                prompt = agent_prompt + "\n\n" + rules
+                source = "多智能体+行为"
+            else:
+                prompt = "你是一个真实的普通人，不是AI助手。\n\n" + rules
+                source = "行为[默认]"
+        else:
+            prompt = "你是一个真实的普通人，不是AI助手。\n\n" + rules
+            source = "行为[默认]"
 
         # 群配置覆盖
         if group_id:
@@ -467,7 +724,7 @@ class Main(BaseModule):
                 prompt = (prompt + "\n\n" + kb_ctx) if prompt else kb_ctx
                 kb_note = " +知识库"
 
-        self.logger.debug(f"提示词来源: {source}{kb_note}")
+        self.logger.info(f"提示词来源: {source}{kb_note} (共{len(prompt)}字符)")
         return prompt
 
     async def _build_memory_context(
@@ -481,35 +738,113 @@ class Main(BaseModule):
                 return ""
 
             memories = [m["content"] for m in long_term[-10:]]
-            ctx = "用户记忆:\n" + "\n".join(f"- {m}" for m in memories)
+            ctx = "你记得关于对方的事情:\n" + "\n".join(f"- {m}" for m in memories)
 
             if group_id:
                 group_memory = await self.memory.get_group_memory(group_id)
-                group_context = group_memory.get("context", [])
-                if group_context:
-                    ctx += "\n\n群组记忆:\n" + "\n".join(
-                        f"- {m['content']}" for m in group_context[-5:]
+                sender_mem = group_memory.get("sender_memory", {}).get(user_id, [])
+                if sender_mem:
+                    ctx += "\n\n你记得这个人说过的:\n" + "\n".join(
+                        f"- {m['content']}" for m in sender_mem[-5:]
                     )
 
             return ctx
         except Exception:
             return ""
 
-    def _build_scene_prompt(self, user_nickname: str, is_group: bool) -> str:
-        """构建场景提示"""
+    def _build_scene_prompt(
+        self, user_nickname: str, is_group: bool, user_input: str, platform: str
+    ) -> str:
+        """
+        构建场景提示
+
+        完全由行为系统驱动：遍历所有已启用的场景行为，
+        收集它们的提示词作为上下文。
+        用户可以自由开关时间感知、情绪感知等。
+        """
+        parts = []
+
+        # 场景上下文（不含身份声明-身份由智能体/行为提示词决定）
         if is_group:
-            prompt = "当前是群聊场景，你是一个普通群友，自然参与对话。"
+            parts.append("当前在群聊中。")
         else:
-            prompt = "当前是私聊场景，可以更自由地表达。"
+            parts.append("当前在私聊中。")
+
         if user_nickname:
-            prompt += f" 对方的名字是「{user_nickname}」。"
-        prompt += "\n回复时直接说内容，不要加名字前缀。"
-        return prompt
+            parts.append(f"对方: {user_nickname}")
+
+        # 语音感知（如果语音功能启用 且 平台支持语音）
+        if self.config.get("voice.enabled", False) and self._platform_supports_voice(
+            platform
+        ):
+            parts.append(
+                "你已经启用了语音功能，这是真实的可用功能。"
+                '在回复中用 <|voice style="语气"|>文本<|/voice|> 格式就能发送语音。'
+                "style 可以用自然语言描述任何效果（欢快、撒娇、四川话等）。"
+            )
+
+        # 遍历所有已启用的场景行为
+        for behavior in self.behavior_manager.list_behaviors():
+            if not behavior.get("enabled", True):
+                continue
+            if behavior.get("behavior_type") != "scene":
+                continue
+
+            bid = behavior.get("id", "")
+            prompt = behavior.get("system_prompt", "")
+            if not prompt:
+                continue
+
+            # 特殊处理：时间感知行为需要填充当前时段
+            if bid == "time_aware":
+                time_desc = self._get_time_description()
+                parts.append(prompt % time_desc if "%s" in prompt else prompt)
+            else:
+                parts.append(prompt)
+
+        active_behaviors = [
+            b["id"]
+            for b in self.behavior_manager.list_behaviors()
+            if b.get("behavior_type") == "scene" and b.get("enabled", True)
+        ]
+        self.logger.info(
+            f"场景行为: {active_behaviors or '无'} | 语音: {'开' if self.config.get('voice.enabled', False) else '关'}"
+        )
+        return "\n".join(parts)
+
+    @staticmethod
+    def _platform_supports_voice(platform: str) -> bool:
+        """检查平台是否支持语音发送"""
+        try:
+            return "Voice" in sdk.adapter.list_sends(platform)
+        except Exception:
+            return False
+
+    @staticmethod
+    def _get_time_description() -> str:
+        """获取当前时段描述"""
+        from datetime import datetime
+
+        hour = datetime.now().hour
+        if 5 <= hour < 8:
+            return "清晨，你刚醒还有点迷糊"
+        elif 8 <= hour < 11:
+            return "上午，你精力充沛"
+        elif 11 <= hour < 13:
+            return "中午，你可能在吃饭"
+        elif 13 <= hour < 17:
+            return "下午，你有点困但还行"
+        elif 17 <= hour < 20:
+            return "傍晚，你心情不错比较放松"
+        elif 20 <= hour < 24:
+            return "晚上，你比较活跃"
+        else:
+            return "深夜，你有点困了但还在熬夜"
 
     async def _inject_images(
         self, messages: List[Dict[str, Any]], image_urls: List[str], user_input: str
     ) -> None:
-        """将图片注入消息（视觉分析或多模态）"""
+        """将图片注入消息"""
         try:
             descriptions = []
             for url in image_urls[:3]:
@@ -520,7 +855,6 @@ class Main(BaseModule):
                     descriptions.append(desc)
 
             if descriptions:
-                # 将图片描述注入最后一条用户消息
                 for i in range(len(messages) - 1, -1, -1):
                     if messages[i].get("role") == "user":
                         content = messages[i].get("content", "")
@@ -530,23 +864,16 @@ class Main(BaseModule):
                             )
                         break
             else:
-                # 多模态模式
-                for i in range(len(messages) - 1, -1, -1):
-                    if messages[i].get("role") == "user":
-                        content = messages[i].get("content", "")
-                        if isinstance(content, str):
-                            messages[i]["content"] = [
-                                {"type": "text", "text": content},
-                                *[
-                                    {"type": "image_url", "image_url": {"url": u}}
-                                    for u in image_urls[:3]
-                                ],
-                            ]
-                        break
+                # 视觉分析全部失败时不注入 multimodal 内容
+                # 对话模型多数是纯文本模型，无法处理 image_url 格式
+                self.logger.debug(
+                    f"视觉分析全部失败({len(image_urls)}张图片)，保持纯文本消息"
+                )
         except Exception as e:
             self.logger.warning(f"图片处理失败: {e}")
 
-    # 记忆提取并发控制
+    # ==================== 行为链：记忆提取 ====================
+
     _memory_locks: Dict[str, bool] = {}
 
     async def _extract_memory_async(
@@ -555,7 +882,6 @@ class Main(BaseModule):
         """异步提取记忆（带并发控制 + 超时）"""
         session_key = self.session.get_session_key(user_id, group_id)
 
-        # 防止同一会话并发提取
         if Main._memory_locks.get(session_key):
             self.logger.debug(f"记忆提取跳过（上次仍在执行）: {session_key}")
             return
@@ -569,8 +895,13 @@ class Main(BaseModule):
             recent = history[-15:]
             dialogue_text = "\n".join(f"{m['role']}: {m['content']}" for m in recent)
 
-            # 调用记忆提取行为（带超时）
-            prompt = f"从以下对话中提取值得长期记忆的关键信息（如果没有值得记忆的就回复'无'）:\n\n{dialogue_text}"
+            prompt = (
+                "从以下对话中提取值得长期记忆的关键信息"
+                "（个人信息、偏好、重要事件、关系等）。\n"
+                "如果没有值得记忆的就回复'无'。\n"
+                "每条记忆一行，用 - 开头。\n\n"
+                f"{dialogue_text}"
+            )
 
             result = await asyncio.wait_for(
                 self.ai_engine.memory_process(prompt),
@@ -604,6 +935,8 @@ class Main(BaseModule):
         finally:
             Main._memory_locks[session_key] = False
 
+    # ==================== 行为链：对话延续 ====================
+
     async def _continue_conversation(
         self, user_id: str, group_id: str, platform: str
     ) -> None:
@@ -633,16 +966,19 @@ class Main(BaseModule):
                 if len(current) <= initial_len:
                     continue
 
+                if not self.ai_engine.is_available("reply_judge"):
+                    break
                 should = await self.ai_engine.should_continue(current[-8:], bot_name)
                 if not should or consecutive >= max_consecutive:
                     break
 
                 consecutive += 1
-                messages = current[-15:]
-
-                response = await self.ai_engine.dialogue(messages)
+                response = await self.ai_engine.dialogue(current[-15:])
                 if not isinstance(response, str):
                     break
+
+                # 拟人化延迟
+                await asyncio.sleep(_calc_typing_delay(response, self.config))
 
                 await self.message_sender.send(platform, "group", group_id, response)
                 await self.memory.add_short_term_memory(
@@ -654,6 +990,8 @@ class Main(BaseModule):
 
         except Exception as e:
             self.logger.debug(f"持续监听结束: {e}")
+
+    # ==================== 工具方法 ====================
 
     async def _send_response(
         self, data: Dict[str, Any], response: str, platform: str

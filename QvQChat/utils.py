@@ -3,17 +3,20 @@ QvQChat 公共工具模块
 
 提供跨模块共享的工具函数。
 """
+
 import re
-from typing import List, Dict, Any, Optional
-import aiohttp
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from ErisPulse import sdk
+
 
 def get_session_description(
     user_id: str,
     user_nickname: str = "",
     group_id: Optional[str] = None,
-    group_name: str = ""
+    group_name: str = "",
 ) -> str:
     """
     获取会话描述字符串（用于日志记录）
@@ -37,6 +40,7 @@ def get_session_description(
     else:
         return f"私聊 - 用户 {user_desc}"
 
+
 def truncate_message(message: str, max_length: int = 100) -> str:
     """
     截断消息字符串用于日志记录
@@ -51,6 +55,7 @@ def truncate_message(message: str, max_length: int = 100) -> str:
     if len(message) <= max_length:
         return message
     return message[:max_length] + "..."
+
 
 def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     """
@@ -74,6 +79,7 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     # 检查是否有未关闭的语音标签
     if voice_blocks and voice_blocks[-1].get("is_unclosed", False):
         from ErisPulse.Core import logger
+
         logger.warning("未关闭的语音标签，按单条消息处理")
         return [{"content": text.strip(), "delay": 0}]
 
@@ -82,7 +88,9 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     current_start = 0
 
     # 找到所有的 wait 分隔符（使用更精确的正则）
-    wait_pattern = re.compile(r'<\|\s*wait\s+time\s*=\s*"(\d+)"\s*\|>', re.IGNORECASE)
+    wait_pattern = re.compile(
+        r'<\|\s*wait\s+time\s*=\s*["\'](\d+)["\']\s*\|?>', re.IGNORECASE
+    )
 
     has_wait_separator = False
     for match in wait_pattern.finditer(text):
@@ -107,7 +115,7 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     # 如果没有找到分隔符，进行智能分割检测
     if not has_wait_separator:
         # 检查是否有 <|/voice|> 标签后跟文本的情况
-        voice_end_pattern = re.compile(r'<\|\s*/\s*voice\s*\|>', re.IGNORECASE)
+        voice_end_pattern = re.compile(r"<\|\s*/\s*voice\s*\|>", re.IGNORECASE)
         # 找所有的语音结束标签
         for match in voice_end_pattern.finditer(text):
             voice_end_pos = match.end()
@@ -120,7 +128,9 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
             )
             if remaining_text and not is_inside_another_voice:
                 # 检查后面是否是下一个语音标签的开始
-                next_voice_start = re.search(r'<\|\s*voice\s+', remaining_text, re.IGNORECASE)
+                next_voice_start = re.search(
+                    r"<\|\s*voice\s+", remaining_text, re.IGNORECASE
+                )
                 if not next_voice_start or next_voice_start.start() > 0:
                     # 找到了需要分割的位置
                     part1 = text[:voice_end_pos].strip()
@@ -128,7 +138,7 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
                     if part2:  # 第二部分非空
                         return [
                             {"content": part1, "delay": 0},
-                            {"content": part2, "delay": 1}  # 自动添加1秒延迟
+                            {"content": part2, "delay": 1},  # 自动添加1秒延迟
                         ]
         # 没有需要分割的情况，返回单条消息
         return [{"content": last_part, "delay": 0}]
@@ -157,6 +167,7 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     # 最多返回3条消息
     if len(messages) > 3:
         from ErisPulse.Core import logger
+
         logger.warning("消息超过3条，只发送前3条")
         messages = messages[:3]
 
@@ -186,14 +197,18 @@ def _parse_voice_tags_with_stack(text: str) -> List[Dict[str, Any]]:
     # 格式1: <|voice style="..."|>
     start_pattern1 = re.compile(r'<\|\s*voice\s+style\s*=\s*"([^"]*)"\s*\|>', re.DOTALL)
     start_pattern2 = re.compile(r'<\|\s*voice\s+style\s*=\s*"([^"]*)"\s*>', re.DOTALL)
-    start_pattern3 = re.compile(r'<\|\s*voice\s+style\s*=\s*\'([^\']*)\'\s*\|>', re.DOTALL)
-    start_pattern4 = re.compile(r'<\|\s*voice\s+style\s*=\s*\'([^\']*)\'\s*>', re.DOTALL)
+    start_pattern3 = re.compile(
+        r"<\|\s*voice\s+style\s*=\s*\'([^\']*)\'\s*\|>", re.DOTALL
+    )
+    start_pattern4 = re.compile(
+        r"<\|\s*voice\s+style\s*=\s*\'([^\']*)\'\s*>", re.DOTALL
+    )
 
     # 格式2: <|/voice|> 或 <|/voice> 或 </|voice|> 或 </|voice>
-    end_pattern1 = re.compile(r'<\|\s*/\s*voice\s*\|>', re.DOTALL)
-    end_pattern2 = re.compile(r'<\|\s*/\s*voice\s*>', re.DOTALL)
-    end_pattern3 = re.compile(r'</\s*voice\s*\|>', re.DOTALL)
-    end_pattern4 = re.compile(r'</\s*voice\s*>', re.DOTALL)
+    end_pattern1 = re.compile(r"<\|\s*/\s*voice\s*\|>", re.DOTALL)
+    end_pattern2 = re.compile(r"<\|\s*/\s*voice\s*>", re.DOTALL)
+    end_pattern3 = re.compile(r"</\s*voice\s*\|>", re.DOTALL)
+    end_pattern4 = re.compile(r"</\s*voice\s*>", re.DOTALL)
 
     i = 0
     while i < len(text):
@@ -207,7 +222,7 @@ def _parse_voice_tags_with_stack(text: str) -> List[Dict[str, Any]]:
         start_match = min(
             [m for m in [start_match1, start_match2, start_match3, start_match4] if m],
             key=lambda m: m.start(),
-            default=None
+            default=None,
         )
 
         # 查找下一个结束标签（尝试多种格式）
@@ -220,7 +235,7 @@ def _parse_voice_tags_with_stack(text: str) -> List[Dict[str, Any]]:
         end_match = min(
             [m for m in [end_match1, end_match2, end_match3, end_match4] if m],
             key=lambda m: m.start(),
-            default=None
+            default=None,
         )
 
         if not start_match and not end_match:
@@ -236,44 +251,54 @@ def _parse_voice_tags_with_stack(text: str) -> List[Dict[str, Any]]:
             else:
                 style = ""
 
-            stack.append({
-                "start": start_match.start(),
-                "end": start_match.end(),
-                "style": style,
-                "content_start": start_match.end()
-            })
+            stack.append(
+                {
+                    "start": start_match.start(),
+                    "end": start_match.end(),
+                    "style": style,
+                    "content_start": start_match.end(),
+                }
+            )
             i = start_match.end()
         elif end_match:
             # 找到结束标签
             if stack:
                 # 与最近的开始标签配对
                 start_block = stack[-1]
-                voice_blocks.append({
-                    "start": start_block["start"],
-                    "end": end_match.end(),
-                    "style": start_block["style"],
-                    "content": text[start_block["content_start"]:end_match.start()].strip()
-                })
+                voice_blocks.append(
+                    {
+                        "start": start_block["start"],
+                        "end": end_match.end(),
+                        "style": start_block["style"],
+                        "content": text[
+                            start_block["content_start"] : end_match.start()
+                        ].strip(),
+                    }
+                )
                 stack.pop()
             else:
                 # 没有匹配的开始标签，多余的结束标签
-                voice_blocks.append({
-                    "start": end_match.start(),
-                    "end": end_match.end(),
-                    "style": "",
-                    "content": ""
-                })
+                voice_blocks.append(
+                    {
+                        "start": end_match.start(),
+                        "end": end_match.end(),
+                        "style": "",
+                        "content": "",
+                    }
+                )
             i = end_match.end()
 
     # 处理栈中未关闭的标签
     for block in stack:
-        voice_blocks.append({
-            "start": block["start"],
-            "end": len(text),  # 到文本末尾
-            "style": block["style"],
-            "content": text[block["content_start"]:].strip(),
-            "is_unclosed": True
-        })
+        voice_blocks.append(
+            {
+                "start": block["start"],
+                "end": len(text),  # 到文本末尾
+                "style": block["style"],
+                "content": text[block["content_start"] :].strip(),
+                "is_unclosed": True,
+            }
+        )
 
     return voice_blocks
 
@@ -299,7 +324,7 @@ def parse_speak_tags(text: str) -> Dict[str, Any]:
         "text": text,
         "voice_style": None,
         "voice_content": None,
-        "has_voice": False
+        "has_voice": False,
     }
 
     # 使用栈方法解析语音标签
@@ -312,6 +337,7 @@ def parse_speak_tags(text: str) -> Dict[str, Any]:
         # 检查是否是未关闭的标签
         if first_voice.get("is_unclosed", False):
             from ErisPulse.Core import logger
+
             logger.warning("检测到未关闭的语音标签，使用标签后的所有内容作为语音")
 
         result["has_voice"] = True
@@ -319,13 +345,15 @@ def parse_speak_tags(text: str) -> Dict[str, Any]:
         result["voice_content"] = first_voice["content"]
 
         # 移除语音标签，保留文本
-        voice_tag = text[first_voice["start"]:first_voice["end"]]
+        voice_tag = text[first_voice["start"] : first_voice["end"]]
         result["text"] = text.replace(voice_tag, "", 1).strip()
 
     return result
 
 
-async def record_voice(voice_style: str, voice_content: str, config: Dict[str, Any], logger) -> Optional[str]:
+async def record_voice(
+    voice_style: str, voice_content: str, config: Dict[str, Any], logger
+) -> Optional[str]:
     """
     生成语音（使用SiliconFlow API）
 
@@ -348,7 +376,9 @@ async def record_voice(voice_style: str, voice_content: str, config: Dict[str, A
             logger.debug("语音功能未启用")
             return None
 
-        api_url = voice_config.get("api_url", "https://api.siliconflow.cn/v1/audio/speech")
+        api_url = voice_config.get(
+            "api_url", "https://api.siliconflow.cn/v1/audio/speech"
+        )
         api_key = voice_config.get("api_key", "")
 
         if not api_key:
@@ -357,7 +387,7 @@ async def record_voice(voice_style: str, voice_content: str, config: Dict[str, A
 
         headers = {
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         # 构建最终语音文本：风格<|endofprompt|>正文
@@ -371,28 +401,31 @@ async def record_voice(voice_style: str, voice_content: str, config: Dict[str, A
         data = {
             "model": voice_config.get("model", "FunAudioLLM/CosyVoice2-0.5B"),
             "input": voice_text,
-            "voice": voice_config.get("voice", "speech:amer:nu5h6ye36m:ahldwvelhofwpcqcxoky"),
+            "voice": voice_config.get(
+                "voice", "speech:amer:nu5h6ye36m:ahldwvelhofwpcqcxoky"
+            ),
             "response_format": "mp3",
             "speed": voice_config.get("speed", 1.0),
             "gain": voice_config.get("gain", 0.0),
-            "sample_rate": voice_config.get("sample_rate", 44100)
+            "sample_rate": voice_config.get("sample_rate", 44100),
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(api_url, headers=headers, json=data) as response:
-                response.raise_for_status()
-                file_name = f"voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
+        # 使用 sdk.client 发送请求
+        resp = await sdk.client.post(api_url, json=data, headers=headers, timeout=30)
 
-                # 获取临时文件夹
-                import tempfile
-                temp_folder = tempfile.gettempdir()
-                speech_file_path = Path(temp_folder) / file_name
+        # 获取临时文件夹
+        import tempfile
 
-                with open(speech_file_path, "wb") as f:
-                    f.write(await response.read())
+        temp_folder = tempfile.gettempdir()
+        file_name = f"voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
+        speech_file_path = Path(temp_folder) / file_name
 
-                logger.info(f"语音生成成功: {speech_file_path}")
-                return str(speech_file_path)
+        # 写入文件
+        with open(speech_file_path, "wb") as f:
+            f.write(resp.body if hasattr(resp, "body") else await resp.read())
+
+        logger.info(f"语音生成成功: {speech_file_path}")
+        return str(speech_file_path)
 
     except Exception as e:
         logger.error(f"语音生成失败: {e}")
@@ -434,11 +467,7 @@ class MessageSender:
         self.logger = logger
 
     async def send(
-        self,
-        platform: str,
-        target_type: str,
-        target_id: str,
-        response: str
+        self, platform: str, target_type: str, target_id: str, response: str
     ) -> None:
         """
         发送响应消息（支持多消息和多语音组合）
@@ -474,10 +503,17 @@ class MessageSender:
             # 延迟发送（除第一条消息外）
             if i > 0 and delay > 0:
                 import asyncio
+
                 await asyncio.sleep(delay)
 
             await self._send_single_message(
-                adapter, target_type, target_id, msg_content, platform, i + 1, len(messages)
+                adapter,
+                target_type,
+                target_id,
+                msg_content,
+                platform,
+                i + 1,
+                len(messages),
             )
 
     async def _send_single_message(
@@ -488,7 +524,7 @@ class MessageSender:
         message: str,
         platform: str,
         msg_index: int,
-        total_messages: int
+        total_messages: int,
     ) -> None:
         """
         发送单条消息（可能包含文本和语音）
@@ -506,20 +542,25 @@ class MessageSender:
             # 解析语音标签
             speak_result = parse_speak_tags(message)
 
-            # 检查平台是否支持语音
-            support_voice = platform in self.config.get("voice.platforms", ["qq", "onebot11"])
+            # 检查平台是否支持语音（通过适配器 Send 方法动态判断）
+            try:
+                support_voice = "Voice" in sdk.adapter.list_sends(platform)
+            except Exception:
+                support_voice = False
 
             if speak_result["has_voice"]:
                 # 有语音标签，发送文本和语音
                 await self._send_text_and_voice(
-                    adapter, target_type, target_id,
+                    adapter,
+                    target_type,
+                    target_id,
                     speak_result["text"],
                     speak_result["voice_style"],
                     speak_result["voice_content"],
                     support_voice,
                     platform,
                     msg_index,
-                    total_messages
+                    total_messages,
                 )
             else:
                 # 只发送文本
@@ -543,7 +584,7 @@ class MessageSender:
         support_voice: bool,
         platform: str,
         msg_index: int,
-        total_messages: int
+        total_messages: int,
     ) -> None:
         """
         发送文本和语音
@@ -571,11 +612,21 @@ class MessageSender:
         # 发送语音
         if voice_content and support_voice:
             if voice_content.strip():
-                voice_file = await record_voice(voice_style, voice_content, self.config, self.logger)
+                voice_file = await record_voice(
+                    voice_style, voice_content, self.config, self.logger
+                )
                 if voice_file:
                     voice_path = Path(voice_file)
                     if voice_path.exists():
-                        await self._send_voice_file(adapter, target_type, target_id, voice_file, platform, msg_index, total_messages)
+                        await self._send_voice_file(
+                            adapter,
+                            target_type,
+                            target_id,
+                            voice_file,
+                            platform,
+                            msg_index,
+                            total_messages,
+                        )
                     else:
                         self.logger.warning("语音文件不存在，跳过语音发送")
                 else:
@@ -593,7 +644,7 @@ class MessageSender:
         voice_file: str,
         platform: str,
         msg_index: int,
-        total_messages: int
+        total_messages: int,
     ) -> None:
         """
         发送语音文件（尝试多种方式）
@@ -610,28 +661,27 @@ class MessageSender:
         voice_path = Path(voice_file)
         voice_sent = False
 
-        # 方法1: 使用 base64 编码
+        # 方法1: 发送二进制数据
         try:
-            with open(voice_path, 'rb') as f:
-                import base64
-                voice_data = base64.b64encode(f.read()).decode('utf-8')
-                await adapter.Send.To(target_type, target_id).Voice(f'base64://{voice_data:.128f}')
-                self.logger.info(
-                    f"已发送语音(base64)到 {platform} - {target_type} - {target_id} "
-                    f"(消息 {msg_index}/{total_messages})"
-                )
-                voice_sent = True
-        except Exception as base64_err:
-            self.logger.debug(f"base64方式失败: {base64_err}")
+            with open(voice_path, "rb") as f:
+                voice_bytes = f.read()
+            await adapter.Send.To(target_type, target_id).Voice(voice_bytes)
+            self.logger.info(
+                f"已发送语音到 {platform} - {target_type} - {target_id} "
+                f"(消息 {msg_index}/{total_messages})"
+            )
+            voice_sent = True
+        except Exception as bin_err:
+            self.logger.debug(f"二进制发送失败: {bin_err}")
 
-        # 方法2: 直接发送本地文件路径（最后尝试）
+        # 方法2: 发送本地文件路径
         if not voice_sent:
             try:
                 await adapter.Send.To(target_type, target_id).Voice(str(voice_path))
                 self.logger.info(
-                    f"已发送语音(本地)到 {platform} - {target_type} - {target_id} "
+                    f"已发送语音(文件)到 {platform} - {target_type} - {target_id} "
                     f"(消息 {msg_index}/{total_messages})"
                 )
                 voice_sent = True
-            except Exception as local_err:
-                self.logger.warning(f"所有发送方式均失败，跳过语音发送: {local_err}")
+            except Exception as file_err:
+                self.logger.warning(f"所有发送方式均失败: {file_err}")
