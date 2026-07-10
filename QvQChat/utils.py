@@ -115,9 +115,9 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     parts = []
     current_start = 0
 
-    # 找到所有的 wait 分隔符（使用更精确的正则）
+    # 找到所有的 wait 分隔符
     wait_pattern = re.compile(
-        r'<\|\s*wait\s+time\s*=\s*["\'](\d+)["\']\s*\|?>', re.IGNORECASE
+        r'<\|\s*wait\s+time\s*=\s*["\']?(\d+)["\']?\s*\|?>', re.IGNORECASE
     )
 
     has_wait_separator = False
@@ -175,18 +175,22 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     if last_part:
         parts.append(last_part)
 
-    # 构建消息列表（每条消息+对应的延迟时间）
+    # 构建消息列表
     messages = []
-
-    # parts 格式: [msg1, delay1, msg2, delay2, msg3, ...]
-    # 取出消息内容，延迟时间是下一条消息的等待时间
+    prev_delay = 0
     for i in range(0, len(parts), 2):
+        msg_content = parts[i].strip()
+        if not msg_content:
+            # 空内容说明 wait 在开头，延时留给下一条
+            if i + 1 < len(parts):
+                prev_delay = int(parts[i + 1])
+            continue
         if i + 1 < len(parts):
-            # [msg1, delay1] 这种格式
-            msg_content = parts[i].strip()
-            if msg_content:  # 只添加非空消息
-                delay = int(parts[i + 1])
-                messages.append({"content": msg_content, "delay": delay})
+            delay = int(parts[i + 1])
+        else:
+            delay = prev_delay
+        prev_delay = 0
+        messages.append({"content": msg_content, "delay": delay})
 
     # 如果最后一条消息被遗漏了，添加它
     if len(parts) % 2 == 1 and parts[-1].strip():
