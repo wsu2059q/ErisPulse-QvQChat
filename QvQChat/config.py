@@ -32,7 +32,6 @@ class QvQConfig:
             "max_message_length": 1000,
             "rate_limit_tokens": 20000,
             "rate_limit_window": 60,
-            "ignore_command_messages": True,
             "bot_nicknames": [],
             "bot_ids": [],
             "admin": {"admins": []},
@@ -58,6 +57,7 @@ class QvQConfig:
                 "auto_search": True,
             },
             "mcp": {"enabled": True, "auto_inject": True},
+            "stickers": {"enabled": True},
             "multi_agent": {"enabled": True},
             "humanize": {
                 "typing_delay": True,

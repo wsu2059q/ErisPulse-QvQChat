@@ -2,15 +2,20 @@
 MCP 工具管理器
 
 管理 AI 函数调用工具定义（Model Context Protocol 风格）。
-支持通过 HTTP 端点调用外部工具，并将工具能力注入到对话 AI 中。
+支持两种工具来源：
+1. 手动定义的 HTTP 端点工具
+2. stdio MCP 服务器自动发现的工具（兼容 Claude Desktop / Cursor 配置格式）
 """
 
+import asyncio
 import json
 import time
 import uuid
 from typing import Any, Dict, List, Optional
 
 from ErisPulse import sdk
+
+from .mcp_client import MCPServerClient
 
 
 class MCPManager:
@@ -28,13 +33,17 @@ class MCPManager:
     """
 
     STORAGE_KEY = "QvQChat.mcp_tools"
+    SERVERS_STORAGE_KEY = "QvQChat.mcp_servers"
 
     def __init__(self, config, logger):
         self.config = config
         self.logger = logger.get_child("MCPManager")
         self.storage = sdk.storage
         self._tools: Dict[str, Dict[str, Any]] = {}
+        self._servers: Dict[str, Dict[str, Any]] = {}
+        self._server_clients: Dict[str, MCPServerClient] = {}
         self._load()
+        self._load_servers()
 
     def _load(self) -> None:
         """从存储加载工具数据"""
@@ -44,6 +53,15 @@ class MCPManager:
     def _save(self) -> None:
         """保存工具数据到存储"""
         self.storage.set(self.STORAGE_KEY, {"tools": self._tools})
+
+    def _load_servers(self) -> None:
+        """从存储加载 MCP 服务器配置"""
+        data = self.storage.get(self.SERVERS_STORAGE_KEY, {})
+        self._servers = data.get("servers", {})
+
+    def _save_servers(self) -> None:
+        """保存 MCP 服务器配置到存储"""
+        self.storage.set(self.SERVERS_STORAGE_KEY, {"servers": self._servers})
 
     def list_tools(self) -> List[Dict[str, Any]]:
         """列出所有工具"""
@@ -136,12 +154,14 @@ class MCPManager:
         """
         获取 OpenAI function calling 格式的工具定义
 
-        只返回已启用且有名称的工具。
+        合并手动定义的 HTTP 工具和 MCP 服务器发现的工具。
+        只返回已启用的工具。
 
         Returns:
             OpenAI tools 格式的列表
         """
         tools = []
+        # 手动定义的 HTTP 工具
         for tool in self._tools.values():
             if not tool.get("enabled", True):
                 continue
@@ -162,6 +182,28 @@ class MCPManager:
                     },
                 }
             )
+        # MCP 服务器发现的工具
+        for server_name, client in self._server_clients.items():
+            if not client.is_connected:
+                continue
+            for mcp_tool in client.tools:
+                tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": mcp_tool.get("name", ""),
+                            "description": mcp_tool.get("description", ""),
+                            "parameters": mcp_tool.get(
+                                "inputSchema",
+                                {
+                                    "type": "object",
+                                    "properties": {},
+                                    "required": [],
+                                },
+                            ),
+                        },
+                    }
+                )
         return tools
 
     def get_tool_by_name(self, name: str) -> Optional[Dict[str, Any]]:
@@ -175,8 +217,8 @@ class MCPManager:
         """
         调用工具
 
-        如果工具配置了 HTTP 端点，则请求该端点获取结果。
-        否则返回提示信息。
+        优先检查手动定义的 HTTP 端点工具，
+        其次检查已连接的 MCP 服务器工具。
 
         Args:
             tool_name: 工具名称
@@ -185,10 +227,26 @@ class MCPManager:
         Returns:
             工具调用结果（字符串）
         """
+        # 先检查手动定义的 HTTP 工具
         tool = self.get_tool_by_name(tool_name)
-        if not tool:
-            return f"工具 '{tool_name}' 不存在"
+        if tool:
+            return await self._call_http_tool(tool, tool_name, arguments)
 
+        # 再检查 MCP 服务器工具
+        for server_name, client in self._server_clients.items():
+            if not client.is_connected:
+                continue
+            for mcp_tool in client.tools:
+                if mcp_tool.get("name") == tool_name:
+                    self.logger.info(f"通过 MCP 服务器 [{server_name}] 调用工具: {tool_name}")
+                    return await client.call_tool(tool_name, arguments)
+
+        return f"工具 '{tool_name}' 不存在"
+
+    async def _call_http_tool(
+        self, tool: Dict[str, Any], tool_name: str, arguments: Dict[str, Any]
+    ) -> str:
+        """调用 HTTP 端点工具"""
         endpoint = tool.get("endpoint", "")
         if not endpoint:
             return f"工具 '{tool_name}' 未配置调用端点，参数: {json.dumps(arguments, ensure_ascii=False)}"
@@ -228,9 +286,129 @@ class MCPManager:
         total = len(self._tools)
         enabled = sum(1 for t in self._tools.values() if t.get("enabled", True))
         with_endpoint = sum(1 for t in self._tools.values() if t.get("endpoint"))
+        connected_servers = sum(
+            1 for c in self._server_clients.values() if c.is_connected
+        )
+        server_tools = sum(
+            len(c.tools)
+            for c in self._server_clients.values()
+            if c.is_connected
+        )
         return {
             "total": total,
             "enabled": enabled,
             "disabled": total - enabled,
             "with_endpoint": with_endpoint,
+            "servers_configured": len(self._servers),
+            "servers_connected": connected_servers,
+            "server_tools": server_tools,
         }
+
+    # ==================== MCP 服务器管理 ====================
+
+    def list_servers(self) -> List[Dict[str, Any]]:
+        """列出所有 MCP 服务器配置"""
+        result = []
+        for name, cfg in self._servers.items():
+            client = self._server_clients.get(name)
+            result.append({
+                "name": name,
+                "url": cfg.get("url", ""),
+                "headers": cfg.get("headers", {}),
+                "enabled": cfg.get("enabled", True),
+                "connected": client.is_connected if client else False,
+                "tool_count": len(client.tools) if client and client.is_connected else 0,
+            })
+        return result
+
+    def get_server(self, name: str) -> Optional[Dict[str, Any]]:
+        """获取指定 MCP 服务器配置"""
+        return self._servers.get(name)
+
+    def add_server(self, name: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        添加/更新 MCP 服务器配置
+
+        配置格式（Streamable HTTP）：
+            {
+                "url": "https://mcp.erisdev.com/",
+                "headers": {"Authorization": "Bearer xxx"}
+            }
+        """
+        self._servers[name] = {
+            "url": data.get("url", ""),
+            "headers": data.get("headers", {}),
+            "enabled": data.get("enabled", True),
+        }
+        self._save_servers()
+        self.logger.info(f"添加 MCP 服务器配置: {name}")
+        return self._servers[name]
+
+    def update_server(self, name: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """更新 MCP 服务器配置"""
+        if name not in self._servers:
+            return None
+        for key in ("url", "headers", "enabled"):
+            if key in data:
+                self._servers[name][key] = data[key]
+        self._save_servers()
+        return self._servers[name]
+
+    def delete_server(self, name: str) -> bool:
+        """删除 MCP 服务器配置并断开连接"""
+        if name not in self._servers:
+            return False
+        del self._servers[name]
+        self._save_servers()
+        # 断开连接
+        client = self._server_clients.pop(name, None)
+        if client:
+            asyncio.create_task(client.disconnect())
+        self.logger.info(f"删除 MCP 服务器: {name}")
+        return True
+
+    async def connect_all_servers(self) -> None:
+        """连接所有已启用的 MCP 服务器"""
+        for name, cfg in self._servers.items():
+            if not cfg.get("enabled", True):
+                continue
+            if name in self._server_clients and self._server_clients[name].is_connected:
+                continue
+            await self.connect_server(name)
+
+    async def connect_server(self, name: str) -> bool:
+        """连接指定的 MCP 服务器"""
+        cfg = self._servers.get(name)
+        if not cfg:
+            return False
+
+        # 已连接则先断开
+        old = self._server_clients.pop(name, None)
+        if old:
+            await old.disconnect()
+
+        client = MCPServerClient(
+            name=name,
+            url=cfg.get("url", ""),
+            headers=cfg.get("headers", {}),
+            logger=self.logger,
+        )
+        success = await client.connect()
+        if success:
+            self._server_clients[name] = client
+        return success
+
+    async def disconnect_all_servers(self) -> None:
+        """断开所有 MCP 服务器连接"""
+        tasks = [c.disconnect() for c in self._server_clients.values()]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._server_clients.clear()
+
+    async def refresh_server_tools(self, name: str) -> int:
+        """刷新指定服务器的工具列表，返回工具数量"""
+        client = self._server_clients.get(name)
+        if not client or not client.is_connected:
+            return 0
+        await client._refresh_tools()
+        return len(client.tools)

@@ -57,6 +57,34 @@ def truncate_message(message: str, max_length: int = 100) -> str:
     return message[:max_length] + "..."
 
 
+def _extract_media_tags(text: str) -> tuple:
+    """
+    从文本中提取图片/表情标签，返回 (URL列表, 清理后的文本)
+
+    支持的标签：
+    - [img]url[/img]：图片
+    - [sticker]file[/sticker]：表情/贴图（当作图片处理）
+
+    Args:
+        text: 原始文本
+
+    Returns:
+        tuple: (媒体URL列表, 移除标签后的纯文本)
+    """
+    urls = []
+    # 匹配 [img]...[/img] 和 [sticker]...[/sticker]
+    pattern = re.compile(
+        r'\[(?:img|sticker)\](.*?)\[/(?:img|sticker)\]',
+        re.IGNORECASE | re.DOTALL,
+    )
+    for match in pattern.finditer(text):
+        url = match.group(1).strip()
+        if url:
+            urls.append(url)
+    cleaned = pattern.sub('', text).strip()
+    return urls, cleaned
+
+
 def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
     """
     解析多条消息（带延迟）
@@ -527,7 +555,12 @@ class MessageSender:
         total_messages: int,
     ) -> None:
         """
-        发送单条消息（可能包含文本和语音）
+        发送单条消息（可能包含文本、语音、图片）
+
+        支持的标签：
+        - <|voice style="...">...</|voice>：语音标签
+        - [img]url[/img]：图片标签（先发图片，剩余文本再走语音/文本逻辑）
+        - [sticker]file[/sticker]：表情/贴图标签（仅发图片，不含文本）
 
         Args:
             adapter: 适配器对象
@@ -539,6 +572,18 @@ class MessageSender:
             total_messages: 总消息数
         """
         try:
+            # 解析图片/表情标签
+            media_urls, message = _extract_media_tags(message)
+            if media_urls:
+                await self._send_images(
+                    adapter, target_type, target_id, media_urls, platform,
+                    msg_index, total_messages,
+                )
+
+            # 纯表情/贴图（无剩余文本）则跳过后续
+            if not message.strip():
+                return
+
             # 解析语音标签
             speak_result = parse_speak_tags(message)
 
@@ -572,6 +617,56 @@ class MessageSender:
 
         except Exception as e:
             self.logger.error(f"发送消息失败: {e}")
+
+    async def _send_images(
+        self,
+        adapter,
+        target_type: str,
+        target_id: str,
+        urls: List[str],
+        platform: str,
+        msg_index: int,
+        total_messages: int,
+    ) -> None:
+        """发送图片/表情包
+
+        统一转为 bytes 发送（避免跨容器路径不通的问题）：
+        - HTTP(S) URL：下载为 bytes
+        - 本地文件路径：读取为 bytes
+        - base64:// 前缀：直接透传
+        """
+        import os
+
+        try:
+            send_methods = sdk.adapter.list_sends(platform)
+        except Exception:
+            send_methods = []
+
+        if "Image" not in send_methods:
+            self.logger.debug(f"平台 {platform} 不支持 Image，跳过")
+            return
+
+        for url in urls:
+            try:
+                if url.startswith("base64://"):
+                    await adapter.Send.To(target_type, target_id).Image(url)
+                elif url.startswith(("http://", "https://")):
+                    resp = await sdk.client.get(url, timeout=30)
+                    img_bytes = resp.content if hasattr(resp, "content") else resp.read()
+                    await adapter.Send.To(target_type, target_id).Image(img_bytes)
+                elif os.path.exists(url):
+                    with open(url, "rb") as f:
+                        img_bytes = f.read()
+                    await adapter.Send.To(target_type, target_id).Image(img_bytes)
+                else:
+                    self.logger.warning(f"图片不存在: {url}")
+                    continue
+                self.logger.info(
+                    f"已发送图片到 {platform} - {target_type} - {target_id} "
+                    f"(消息 {msg_index}/{total_messages})"
+                )
+            except Exception as e:
+                self.logger.warning(f"发送图片失败: {e}")
 
     async def _send_text_and_voice(
         self,

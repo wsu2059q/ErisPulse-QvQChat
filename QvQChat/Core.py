@@ -22,6 +22,7 @@ from .agent.tools import MCPManager
 from .ai import AIEngine, BehaviorManager, ModelPool
 from .chat.memory import QvQMemory
 from .chat.session import SessionManager
+from .chat.sticker import StickerManager
 from .config import QvQConfig
 from .dashboard import DashboardManager
 from .utils import MessageSender, get_session_description, truncate_message
@@ -75,6 +76,7 @@ class Main(BaseModule):
         # 对话处理子系统
         self.memory = QvQMemory(self.config, self.ai_engine)
         self.session = SessionManager(self.config, self.logger)
+        self.sticker_manager = StickerManager(self.config, self.logger)
 
         # 智能体管理子系统
         self.multi_agent = MultiAgentManager(self.config, self.logger)
@@ -132,6 +134,9 @@ class Main(BaseModule):
         try:
             self._register_event_handlers()
             self.dashboard.register()
+            # 异步连接 MCP 服务器（不阻塞模块加载）
+            if self.config.get("mcp.enabled", True):
+                asyncio.create_task(self._connect_mcp_servers())
             self.logger.info("QvQChat 模块已加载")
             return True
         except Exception as e:
@@ -140,6 +145,7 @@ class Main(BaseModule):
 
     async def on_unload(self, event: Dict[str, Any]) -> bool:
         try:
+            await self.mcp_manager.disconnect_all_servers()
             self.dashboard.unregister()
             self.logger.info("QvQChat 模块已卸载")
             return True
@@ -149,6 +155,13 @@ class Main(BaseModule):
 
     def _register_event_handlers(self) -> None:
         message.on_message(priority=999)(self._handle_message)
+
+    async def _connect_mcp_servers(self) -> None:
+        """异步连接所有已配置的 MCP 服务器"""
+        try:
+            await self.mcp_manager.connect_all_servers()
+        except Exception as e:
+            self.logger.warning(f"连接 MCP 服务器失败: {e}")
 
     # ==================== AI 控制 ====================
 
@@ -206,12 +219,6 @@ class Main(BaseModule):
             group_name = data.get("group_name", "")
             platform = data.get("self", {}).get("platform", "")
 
-            # 跳过指令消息
-            if self.config.get("ignore_command_messages", True):
-                prefix = sdk.config.getConfig("ErisPulse.event.command.prefix", "/")
-                if alt_message and alt_message.lstrip().startswith(prefix):
-                    return
-
             if not user_id or not platform:
                 return
 
@@ -266,6 +273,23 @@ class Main(BaseModule):
                 f"开始回复 - {session_desc} - {truncate_message(alt_message, 80)}"
             )
 
+            # 独立输出行为检查（表情包/图片等，不消耗 AI）
+            output_result = self._check_output_behaviors(
+                alt_message, user_id, group_id, user_nickname
+            )
+            if output_result:
+                # 独立输出行为命中，直接发送（跳过 AI 调用）
+                delay = _calc_typing_delay(output_result, self.config)
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                await self._send_response(data, output_result, platform)
+                self._stats["total_replies"] += 1
+                self.logger.info(
+                    f"输出行为触发 - {session_desc} - {truncate_message(output_result, 60)}"
+                )
+                self.session.update_last_reply_time(user_id, group_id)
+                return
+
             # 速率限制
             est_tokens = SessionManager.estimate_tokens(alt_message) * 2
             self._stats["total_tokens_est"] += est_tokens
@@ -290,6 +314,9 @@ class Main(BaseModule):
             )
 
             if not response:
+                # 表情包可能已发送（_handle_tool_calls 中），仅跳过后续文本流程
+                self.session.update_last_reply_time(user_id, group_id)
+                self._stats["total_replies"] += 1
                 return
 
             # 拟人化打字延迟
@@ -344,8 +371,8 @@ class Main(BaseModule):
         bot_ids = self.config.get("bot_ids", [])
         bot_nicknames = self.config.get("bot_nicknames", [])
 
-        # 检查 @机器人
-        is_mentioned = self._is_mentioned(data, bot_ids, bot_nicknames, alt_message)
+        # 检查 @机器人（优先使用事件 self.user_id）
+        is_mentioned = self._is_mentioned(data, bot_nicknames, alt_message)
 
         # 私聊：始终回复
         if not group_id:
@@ -444,6 +471,45 @@ class Main(BaseModule):
             self.logger.warning(f"预测失败: {e}")
             return "跳过"
 
+    def _check_output_behaviors(
+        self, alt_message: str, user_id: str, group_id: Optional[str], user_nickname: str
+    ) -> Optional[str]:
+        """
+        检查独立输出行为（表情包/图片等）
+
+        遍历 behavior_type == "output" 的行为，按触发概率/触发词检查。
+        命中时返回模板内容（含 [img]/[sticker] 标签），不消耗 AI 调用。
+
+        Returns:
+            Optional[str]: 触发的输出内容，未触发返回 None
+        """
+        for behavior in self.behavior_manager.list_behaviors():
+            if not behavior.get("enabled", True):
+                continue
+            if behavior.get("behavior_type") != "output":
+                continue
+            template = behavior.get("response_template", "")
+            if not template:
+                continue
+
+            # 触发词检查（如果配置了）
+            trigger_words = behavior.get("trigger_words", [])
+            if trigger_words:
+                if not any(tw in alt_message for tw in trigger_words):
+                    continue
+
+            # 概率检查
+            trigger_prob = behavior.get("trigger_probability", 0)
+            if trigger_prob <= 0 or random.random() >= trigger_prob:
+                continue
+
+            bname = behavior.get("name", behavior.get("id", ""))
+            self.logger.info(f"输出行为[{bname}]触发")
+            at_text = f"@{user_nickname}" if user_nickname else ""
+            result = template.replace("{at_user}", at_text)
+            return result
+        return None
+
     def _apply_behavior_templates(self, response, user_id, group_id, user_nickname):
         """
         应用行为的输出模板
@@ -458,8 +524,11 @@ class Main(BaseModule):
         for behavior in self.behavior_manager.list_behaviors():
             if not behavior.get("enabled", True):
                 continue
-            if behavior.get("behavior_type") == "ai":
+            btype = behavior.get("behavior_type", "")
+            if btype == "ai":
                 continue  # AI行为不应用模板
+            if btype == "output":
+                continue  # 独立输出行为已单独处理
             template = behavior.get("response_template", "")
             if not template:
                 continue
@@ -518,16 +587,22 @@ class Main(BaseModule):
     def _is_mentioned(
         self,
         data: Dict[str, Any],
-        bot_ids: List[str],
         bot_nicknames: List[str],
         message: str,
     ) -> bool:
-        """检查是否被@或叫名字"""
+        """检查是否被@或叫名字
+
+        优先使用事件中的 self.user_id 判断 mention 段是否指向自己，
+        而非依赖配置中手动维护的 bot_ids。
+        """
+        self_user_id = str(data.get("self", {}).get("user_id", ""))
+        bot_ids = self.config.get("bot_ids", [])
+        all_bot_ids = {self_user_id} | {str(b) for b in bot_ids if b}
+
         for seg in data.get("message", []):
             if seg.get("type") == "mention":
-                if str(seg.get("data", {}).get("user_id", "")) in [
-                    str(b) for b in bot_ids
-                ]:
+                mentioned_id = str(seg.get("data", {}).get("user_id", ""))
+                if mentioned_id and mentioned_id in all_bot_ids:
                     return True
         for nick in bot_nicknames:
             if nick and nick in message:
@@ -641,7 +716,13 @@ class Main(BaseModule):
             ):
                 mcp_tools = self.mcp_manager.get_openai_tools_schema()
                 if mcp_tools:
-                    tools = mcp_tools
+                    tools = list(mcp_tools)
+
+            # 表情包工具（AI 可自主选择发送表情包）
+            sticker_tool = self.sticker_manager.get_openai_tool_schema()
+            if sticker_tool:
+                tools = tools or []
+                tools.append(sticker_tool)
 
             # 调用对话行为
             if not self.ai_engine.is_available("dialogue"):
@@ -649,6 +730,12 @@ class Main(BaseModule):
                 return None
             self.logger.info(f"调用对话行为 - 消息数: {len(messages)}")
             response = await self.ai_engine.dialogue(messages, tools=tools)
+
+            # 处理 tool_calls（表情包等）
+            if response and not isinstance(response, str):
+                response = await self._handle_tool_calls(
+                    response, user_id, group_id, user_nickname, platform, data
+                )
 
             if not response or not isinstance(response, str):
                 return None
@@ -670,6 +757,136 @@ class Main(BaseModule):
         except Exception as e:
             self.logger.error(f"生成回复失败: {e}")
             return None
+
+    async def _handle_tool_calls(
+        self,
+        message,
+        user_id: str,
+        group_id: Optional[str],
+        user_nickname: str,
+        platform: str,
+        data: Dict[str, Any],
+    ) -> Optional[str]:
+        """
+        处理 AI 返回的 tool_calls
+
+        支持：
+        - send_sticker: 查找并发送表情包图片
+        - MCP 工具: 调用 HTTP/stdio 工具并反馈结果
+
+        Returns:
+            最终文本回复（可能为空字符串表示已发送纯表情包）
+        """
+        import json
+
+        tool_calls = getattr(message, "tool_calls", None) or []
+        text_content = getattr(message, "content", None) or ""
+        sticker_images = []
+
+        for tc in tool_calls:
+            func = getattr(tc, "function", None)
+            if not func:
+                continue
+            tool_name = func.name
+            try:
+                arguments = json.loads(func.arguments)
+            except Exception:
+                arguments = {}
+
+            if tool_name == "send_sticker":
+                sticker_name = arguments.get("sticker_name", "")
+                self.logger.info(f"AI 请求发送表情包: {sticker_name}")
+                # 模糊匹配名称
+                matched = self._find_sticker(sticker_name)
+                if matched:
+                    sticker_images.append(matched["file"])
+                    self.logger.info(f"表情包匹配: {matched['name']}")
+                else:
+                    self.logger.debug(f"未找到表情包: {sticker_name}")
+            else:
+                # MCP 工具调用
+                try:
+                    result = await self.mcp_manager.call_tool(tool_name, arguments)
+                    self.logger.debug(f"工具 {tool_name} 返回: {truncate_message(result, 100)}")
+                except Exception as e:
+                    self.logger.warning(f"工具 {tool_name} 调用失败: {e}")
+
+        # 发送表情包图片
+        for img_path in sticker_images:
+            try:
+                await self._send_image(data, platform, img_path)
+            except Exception as e:
+                self.logger.warning(f"发送表情包失败: {e}")
+
+        return text_content.strip() if text_content else ""
+
+    def _find_sticker(self, name: str) -> Optional[dict]:
+        """模糊匹配表情包名称"""
+        name = name.strip().lower()
+        if not name:
+            return None
+        # 精确匹配
+        for s in self.sticker_manager.list_stickers():
+            if s.get("name", "").lower() == name:
+                return s
+        # 包含匹配
+        for s in self.sticker_manager.list_stickers():
+            if name in s.get("name", "").lower():
+                return s
+            if name in s.get("description", "").lower():
+                return s
+        return None
+
+    async def _send_image(self, data: Dict[str, Any], platform: str, image_path: str) -> None:
+        """发送单张图片
+
+        统一转为 bytes 发送（避免跨容器路径不通的问题）：
+        - HTTP(S) URL：下载为 bytes
+        - 本地文件路径：读取为 bytes
+        - base64:// 前缀：直接透传（适配器已支持）
+        """
+        detail_type = data.get("detail_type", "private")
+        target_type = "group" if detail_type == "group" else "user"
+        target_id = str(data.get("group_id", "")) if target_type == "group" else str(data.get("user_id", ""))
+        if not target_id:
+            return
+        adapter = getattr(self.sdk.adapter, platform, None)
+        if not adapter:
+            return
+        try:
+            send_methods = self.sdk.adapter.list_sends(platform)
+        except Exception:
+            send_methods = []
+        if "Image" not in send_methods:
+            self.logger.debug(f"平台 {platform} 不支持 Image")
+            return
+
+        try:
+            if image_path.startswith("base64://"):
+                # 已是适配器格式，直接透传
+                await adapter.Send.To(target_type, target_id).Image(image_path)
+            elif image_path.startswith(("http://", "https://")):
+                # HTTP URL → 下载为 bytes
+                resp = await self.sdk.client.get(image_path, timeout=30)
+                img_bytes = resp.content if hasattr(resp, "content") else resp.read()
+                self.logger.info(f"图片下载完成: {len(img_bytes)} bytes from {image_path}")
+                await adapter.Send.To(target_type, target_id).Image(img_bytes)
+            else:
+                # 本地文件路径 → 读取为 bytes（不依赖适配器读文件）
+                import os
+                if not os.path.exists(image_path):
+                    self.logger.warning(f"图片文件不存在: {image_path}")
+                    return
+                with open(image_path, "rb") as f:
+                    img_bytes = f.read()
+                if not img_bytes:
+                    self.logger.warning(f"图片文件为空: {image_path}")
+                    return
+                self.logger.info(f"图片读取完成: {len(img_bytes)} bytes from {image_path}")
+                await adapter.Send.To(target_type, target_id).Image(img_bytes)
+            self.logger.info(f"已发送图片: {image_path}")
+        except Exception as e:
+            self.logger.warning(f"发送图片失败: {image_path} - {e}")
 
     def _build_system_prompt(
         self,
@@ -723,6 +940,15 @@ class Main(BaseModule):
             if kb_ctx:
                 prompt = (prompt + "\n\n" + kb_ctx) if prompt else kb_ctx
                 kb_note = " +知识库"
+
+        # 表情包目录注入
+        sticker_catalog = self.sticker_manager.build_sticker_catalog_text()
+        if sticker_catalog:
+            prompt += (
+                "\n\n【可用表情包】你可以调用 send_sticker 发送表情包。"
+                "在合适时机使用，不要过度。\n"
+                + sticker_catalog
+            )
 
         self.logger.info(f"提示词来源: {source}{kb_note} (共{len(prompt)}字符)")
         return prompt
@@ -940,7 +1166,11 @@ class Main(BaseModule):
     async def _continue_conversation(
         self, user_id: str, group_id: str, platform: str
     ) -> None:
-        """AI回复后的持续监听"""
+        """AI回复后的持续监听
+
+        在群聊中，机器人回复后继续监听新消息，
+        如果话题仍在继续，可能会再次回复。
+        """
         try:
             cfg = self.config.get("continue_conversation", {})
             if not cfg.get("enabled", True):
@@ -954,39 +1184,64 @@ class Main(BaseModule):
             history = await self.memory.get_session_history(user_id, group_id)
             initial_len = len(history)
             start_time = asyncio.get_event_loop().time()
-            consecutive = 0
-            max_consecutive = 2
 
-            for _ in range(max_msgs):
-                if asyncio.get_event_loop().time() - start_time > max_duration:
+            for round_idx in range(max_msgs):
+                elapsed = asyncio.get_event_loop().time() - start_time
+                if elapsed > max_duration:
                     break
-                await asyncio.sleep(2)
+
+                # 轮询等待新消息（500ms 间隔，更流畅）
+                waited = 0
+                while waited < 10:
+                    await asyncio.sleep(0.5)
+                    waited += 0.5
+                    elapsed = asyncio.get_event_loop().time() - start_time
+                    if elapsed > max_duration:
+                        return
+                    current = await self.memory.get_session_history(user_id, group_id)
+                    if len(current) > initial_len:
+                        break
+                else:
+                    # 10秒内无新消息，结束监听
+                    self.logger.debug("持续监听：无新消息，结束")
+                    return
 
                 current = await self.memory.get_session_history(user_id, group_id)
                 if len(current) <= initial_len:
                     continue
 
+                # AI 判断是否继续
                 if not self.ai_engine.is_available("reply_judge"):
-                    break
+                    return
                 should = await self.ai_engine.should_continue(current[-8:], bot_name)
-                if not should or consecutive >= max_consecutive:
-                    break
+                if not should:
+                    self.logger.debug("持续监听：AI 判断不需要继续")
+                    return
 
-                consecutive += 1
-                response = await self.ai_engine.dialogue(current[-15:])
-                if not isinstance(response, str):
-                    break
+                # 构建完整上下文回复（带系统提示词、场景等）
+                latest_msg = current[-1].get("content", "") if current else ""
+                response = await self._generate_response(
+                    user_id, group_id, latest_msg, [],
+                    current[-1].get("nickname", "") if current else "",
+                    "", platform, {"detail_type": "group", "group_id": group_id},
+                )
+                if not response or not isinstance(response, str):
+                    return
 
                 # 拟人化延迟
-                await asyncio.sleep(_calc_typing_delay(response, self.config))
+                delay = _calc_typing_delay(response, self.config)
+                if delay > 0:
+                    await asyncio.sleep(delay)
 
                 await self.message_sender.send(platform, "group", group_id, response)
                 await self.memory.add_short_term_memory(
                     user_id, "assistant", response, group_id, bot_name
                 )
+                self._stats["total_replies"] += 1
                 initial_len = len(
                     await self.memory.get_session_history(user_id, group_id)
                 )
+                self.logger.info(f"持续监听第{round_idx + 1}轮回复已发送")
 
         except Exception as e:
             self.logger.debug(f"持续监听结束: {e}")

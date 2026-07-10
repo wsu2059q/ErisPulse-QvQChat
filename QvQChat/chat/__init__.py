@@ -2,5 +2,6 @@
 
 from .memory import QvQMemory
 from .session import SessionManager
+from .sticker import StickerManager
 
-__all__ = ["QvQMemory", "SessionManager"]
+__all__ = ["QvQMemory", "SessionManager", "StickerManager"]

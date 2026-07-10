@@ -5,6 +5,8 @@ Dashboard 管理器
 """
 
 import copy
+import io
+import os
 from typing import Any, Dict
 
 from ErisPulse import sdk
@@ -36,6 +38,18 @@ class DashboardManager:
         ("/api/tools", "GET", "_api_get_tools"),
         ("/api/tools", "POST", "_api_save_tool"),
         ("/api/tools/delete", "POST", "_api_delete_tool"),
+        ("/api/mcp-servers", "GET", "_api_get_mcp_servers"),
+        ("/api/mcp-servers", "POST", "_api_save_mcp_server"),
+        ("/api/mcp-servers/delete", "POST", "_api_delete_mcp_server"),
+        ("/api/mcp-servers/connect", "POST", "_api_connect_mcp_server"),
+        ("/api/stickers", "GET", "_api_get_stickers"),
+        ("/api/stickers", "POST", "_api_save_sticker"),
+        ("/api/stickers/delete", "POST", "_api_delete_sticker"),
+        ("/api/stickers/upload", "POST", "_api_upload_sticker"),
+        ("/stickers/img/{sticker_id}", "GET", "_api_sticker_image"),
+        ("/api/stickers/autofill", "POST", "_api_sticker_autofill"),
+        ("/api/export", "POST", "_api_export"),
+        ("/api/import", "POST", "_api_import"),
         ("/api/groups", "GET", "_api_get_groups"),
         ("/api/groups", "POST", "_api_save_group"),
         ("/api/templates", "GET", "_api_get_templates"),
@@ -76,6 +90,10 @@ class DashboardManager:
     @property
     def mcp_manager(self):
         return self.core.mcp_manager
+
+    @property
+    def sticker_manager(self):
+        return self.core.sticker_manager
 
     # ==================== 注册/注销 ====================
 
@@ -204,6 +222,7 @@ class DashboardManager:
                 "agents": {"total": len(self.multi_agent.list_agents())},
                 "knowledge": self.knowledge_base.get_stats(),
                 "tools": self.mcp_manager.get_stats(),
+                "stickers": self.sticker_manager.get_stats(),
             },
             "ai_status": behavior_status,
             "features": features,
@@ -359,6 +378,325 @@ class DashboardManager:
         body = await self._parse_body(request)
         return {"ok": self.mcp_manager.delete_tool(body.get("id", ""))}
 
+    # ----- MCP 服务器 -----
+
+    async def _api_get_mcp_servers(self, request) -> Dict[str, Any]:
+        return {"servers": self.mcp_manager.list_servers()}
+
+    async def _api_save_mcp_server(self, request) -> Dict[str, Any]:
+        body = await self._parse_body(request)
+        name = body.get("name", "").strip()
+        if not name:
+            return {"ok": False, "error": "缺少服务器名称"}
+        existing = self.mcp_manager.get_server(name)
+        if existing:
+            result = self.mcp_manager.update_server(name, body)
+        else:
+            result = self.mcp_manager.add_server(name, body)
+        return {"ok": result is not None, "server": result}
+
+    async def _api_delete_mcp_server(self, request) -> Dict[str, Any]:
+        body = await self._parse_body(request)
+        name = body.get("name", "")
+        return {"ok": self.mcp_manager.delete_server(name)}
+
+    async def _api_connect_mcp_server(self, request) -> Dict[str, Any]:
+        body = await self._parse_body(request)
+        name = body.get("name", "")
+        if body.get("connect_all"):
+            await self.mcp_manager.connect_all_servers()
+            return {"ok": True, "servers": self.mcp_manager.list_servers()}
+        success = await self.mcp_manager.connect_server(name)
+        return {"ok": success, "servers": self.mcp_manager.list_servers()}
+
+    # ----- 表情包 -----
+
+    async def _api_get_stickers(self, request) -> Dict[str, Any]:
+        return {"stickers": self.sticker_manager.list_stickers()}
+
+    async def _api_save_sticker(self, request) -> Dict[str, Any]:
+        """通过 URL 添加或更新表情包元数据"""
+        body = await self._parse_body(request)
+        sticker_id = body.get("id", "")
+        if sticker_id:
+            result = self.sticker_manager.update_sticker(sticker_id, body)
+            return {"ok": result is not None, "sticker": result}
+        # 新增（URL 方式）
+        url = body.get("url", "")
+        name = body.get("name", "").strip()
+        if not name:
+            return {"ok": False, "error": "缺少名称"}
+        if not url:
+            return {"ok": False, "error": "缺少图片 URL"}
+        result = self.sticker_manager.add_sticker_by_url(
+            name, body.get("description", ""), url
+        )
+        return {"ok": True, "sticker": result}
+
+    async def _api_upload_sticker(self, request) -> Dict[str, Any]:
+        """上传表情包图片（multipart/form-data）"""
+        try:
+            form = await request.form()
+        except Exception:
+            return {"ok": False, "error": "无法解析表单数据"}
+
+        name = form.get("name", "")
+        description = form.get("description", "")
+        upload_file = form.get("file")
+
+        if not name:
+            return {"ok": False, "error": "缺少表情包名称"}
+        if not upload_file:
+            return {"ok": False, "error": "缺少图片文件"}
+
+        try:
+            file_data = await upload_file.read()
+            filename = getattr(upload_file, "filename", "sticker.png")
+            result = self.sticker_manager.add_sticker(
+                name, description, file_data, filename
+            )
+            return {"ok": True, "sticker": result}
+        except Exception as e:
+            return {"ok": False, "error": f"上传失败: {e}"}
+
+    async def _api_delete_sticker(self, request) -> Dict[str, Any]:
+        body = await self._parse_body(request)
+        return {"ok": self.sticker_manager.delete_sticker(body.get("id", ""))}
+
+    async def _api_sticker_image(self, request) -> Any:
+        """返回表情包图片（供 Dashboard 预览）"""
+        import os
+        import mimetypes
+
+        sticker_id = request.path_params.get("sticker_id", "")
+        sticker = self.sticker_manager.get_sticker(sticker_id)
+        if not sticker:
+            return {"error": "Not found"}
+
+        # URL 引用的表情包直接返回 URL
+        if sticker.get("is_url"):
+            return {"url": sticker["file"]}
+
+        filepath = sticker.get("file", "")
+        if not filepath or not os.path.exists(filepath):
+            return {"error": "File not found"}
+
+        # 尝试使用 FastAPI 的 FileResponse（底层引擎为 FastAPI）
+        try:
+            from fastapi.responses import FileResponse
+            mime = mimetypes.guess_type(filepath)[0] or "image/png"
+            return FileResponse(filepath, media_type=mime)
+        except ImportError:
+            # 兜底：读取文件返回 base64
+            import base64
+            mime = mimetypes.guess_type(filepath)[0] or "image/png"
+            with open(filepath, "rb") as f:
+                data = f.read()
+            b64 = base64.b64encode(data).decode()
+            return {"data_url": f"data:{mime};base64,{b64}"}
+
+    async def _api_sticker_autofill(self, request) -> Dict[str, Any]:
+        """用视觉模型自动填充表情包描述"""
+        body = await self._parse_body(request)
+        sticker_id = body.get("id", "")
+        sticker = self.sticker_manager.get_sticker(sticker_id)
+        if not sticker:
+            return {"ok": False, "error": "表情包不存在"}
+
+        if not self.ai_engine.is_available("vision"):
+            return {"ok": False, "error": "视觉行为不可用，请先配置支持视觉的模型"}
+
+        filepath = sticker.get("file", "")
+        if sticker.get("is_url"):
+            image_ref = filepath
+        elif filepath and os.path.exists(filepath):
+            image_ref = filepath
+        else:
+            return {"ok": False, "error": "图片文件不存在"}
+
+        try:
+            desc = await self.ai_engine.analyze_image(
+                image_ref,
+                "请用一句话描述这个表情包的内容、情绪和使用场景，用于让 AI 知道什么时候该发送它。",
+            )
+            desc = desc.strip() if desc else ""
+            if desc:
+                # 如果没有名称，也从描述中生成一个简短名称
+                name = sticker.get("name", "")
+                if not name or name.startswith("sticker_"):
+                    # 从描述提取前几个字作为名称
+                    name = desc[:8] if len(desc) > 8 else desc
+                self.sticker_manager.update_sticker(sticker_id, {
+                    "name": name,
+                    "description": desc,
+                })
+            return {"ok": True, "description": desc}
+        except Exception as e:
+            return {"ok": False, "error": f"视觉分析失败: {e}"}
+
+    # ----- 导出/导入 -----
+
+    async def _api_export(self, request) -> Any:
+        """导出配置数据包
+
+        支持两种模式：
+        - desensitize: 脱敏导出（API Key 等敏感信息打码）
+        - migrate: 迁移导出（全部原始数据）
+        """
+        import io
+        import json
+        import time
+        import zipfile
+
+        body = await self._parse_body(request)
+        mode = body.get("mode", "desensitize")  # desensitize | migrate
+
+        storage = self.sdk.storage
+
+        # 收集所有数据
+        data_keys = [
+            "QvQChat.behaviors",
+            "QvQChat.models",
+            "QvQChat.agents",
+            "QvQChat.knowledge_base",
+            "QvQChat.mcp_tools",
+            "QvQChat.mcp_servers",
+            "QvQChat.stickers",
+            "QvQChat._group_ids",
+        ]
+
+        export_data = {
+            "_meta": {
+                "version": "2.1.0",
+                "exported_at": time.time(),
+                "mode": mode,
+            },
+            "config": sdk.config.getConfig("QvQChat", {}),
+            "storage": {},
+        }
+
+        for key in data_keys:
+            try:
+                export_data["storage"][key] = storage.get(key, None)
+            except Exception:
+                pass
+
+        # 收集群组配置
+        groups = {}
+        for gid in self.config.list_all_groups():
+            groups[gid] = self.config.get_group_config(gid)
+        export_data["storage"]["QvQChat.groups"] = groups
+
+        # 脱敏处理
+        if mode == "desensitize":
+            export_data["config"] = self._desensitize(export_data["config"])
+            # 模型配置中的 api_key
+            models_data = export_data["storage"].get("QvQChat.models", {})
+            if models_data and isinstance(models_data, dict):
+                for mid, m in models_data.get("models", {}).items():
+                    if isinstance(m, dict) and m.get("api_key"):
+                        m["api_key"] = ""
+
+        # 构建 zip
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("qvqchat_export.json", json.dumps(export_data, ensure_ascii=False, indent=2))
+
+            # 迁移模式打包表情包图片
+            stickers = export_data["storage"].get("QvQChat.stickers", {})
+            if stickers:
+                for sid, s in stickers.get("stickers", {}).items():
+                    if s.get("is_url"):
+                        continue
+                    fpath = s.get("file", "")
+                    if fpath and os.path.exists(fpath):
+                        arcname = f"stickers/{s.get('filename', sid)}"
+                        zf.write(fpath, arcname)
+
+        buf.seek(0)
+        filename = f"qvqchat_export_{mode}_{int(time.time())}.zip"
+
+        try:
+            from fastapi.responses import StreamingResponse
+            return StreamingResponse(
+                buf,
+                media_type="application/zip",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        except ImportError:
+            import base64
+            return {
+                "filename": filename,
+                "data": base64.b64encode(buf.read()).decode(),
+            }
+
+    async def _api_import(self, request) -> Dict[str, Any]:
+        """导入配置数据包"""
+        import json
+        import os
+        import zipfile
+
+        try:
+            form = await request.form()
+        except Exception:
+            return {"ok": False, "error": "无法解析表单数据"}
+
+        upload_file = form.get("file")
+        if not upload_file:
+            return {"ok": False, "error": "缺少文件"}
+
+        try:
+            file_data = await upload_file.read()
+            buf = io.BytesIO(file_data)
+
+            with zipfile.ZipFile(buf, "r") as zf:
+                names = zf.namelist()
+                if "qvqchat_export.json" not in names:
+                    return {"ok": False, "error": "无效的导出文件（缺少 qvqchat_export.json）"}
+
+                export_data = json.loads(zf.read("qvqchat_export.json"))
+
+                # 恢复配置
+                if export_data.get("config"):
+                    sdk.config.setConfig("QvQChat", export_data["config"])
+
+                # 恢复存储数据
+                storage = self.sdk.storage
+                for key, value in export_data.get("storage", {}).items():
+                    if value is not None:
+                        storage.set(key, value)
+
+                # 恢复表情包图片
+                sticker_dir = self.sticker_manager.sticker_dir
+                os.makedirs(sticker_dir, exist_ok=True)
+                for name in names:
+                    if name.startswith("stickers/") and not name.endswith("/"):
+                        filename = os.path.basename(name)
+                        dest = os.path.join(sticker_dir, filename)
+                        with open(dest, "wb") as f:
+                            f.write(zf.read(name))
+
+            return {"ok": True, "msg": "导入成功，请重启模块使配置生效"}
+        except Exception as e:
+            return {"ok": False, "error": f"导入失败: {e}"}
+
+    def _desensitize(self, obj):
+        """递归脱敏配置数据"""
+        import copy
+        if isinstance(obj, dict):
+            result = copy.deepcopy(obj)
+            for key in list(result.keys()):
+                lk = key.lower()
+                if lk in ("api_key", "apikey", "token", "secret", "password"):
+                    if result[key]:
+                        result[key] = "***"
+                elif isinstance(result[key], (dict, list)):
+                    result[key] = self._desensitize(result[key])
+            return result
+        elif isinstance(obj, list):
+            return [self._desensitize(item) for item in obj]
+        return obj
+
     # ----- 群组 -----
 
     async def _api_get_groups(self, request) -> Dict[str, Any]:
@@ -389,7 +727,8 @@ class DashboardManager:
             "QvQChat.agents",
             "QvQChat.knowledge_base",
             "QvQChat.mcp_tools",
-            "QvQChat._group_ids",
+            "QvQChat.mcp_servers",
+            "QvQChat.stickers",
             "QvQChat._group_ids",
         ]
         for key in config_keys:

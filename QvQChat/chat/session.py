@@ -424,7 +424,9 @@ class SessionManager:
         memory = QvQMemory(self.config, None)
         history = await memory.get_session_history(user_id, group_id)
 
-        # 检查@
+        # 检查@（优先使用事件 self.user_id）
+        self_user_id = str(data.get("self", {}).get("user_id", ""))
+        all_bot_ids = {self_user_id} | {str(b) for b in bot_ids if b}
         segments = data.get("message", [])
         is_mentioned = False
         mention_info = ""
@@ -432,7 +434,7 @@ class SessionManager:
             if seg.get("type") == "mention":
                 uid = str(seg.get("data", {}).get("user_id", ""))
                 nick = seg.get("data", {}).get("nickname", "")
-                if uid in [str(b) for b in bot_ids]:
+                if uid and uid in all_bot_ids:
                     is_mentioned = True
                     mention_info = f" @{nick or uid} "
                     break
