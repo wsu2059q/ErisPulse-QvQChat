@@ -314,9 +314,15 @@ class Main(BaseModule):
             )
 
             if not response:
-                # 表情包可能已发送（_handle_tool_calls 中），仅跳过后续文本流程
-                self.session.update_last_reply_time(user_id, group_id)
+                return
+            
+            import re
+            is_sticker_only = bool(re.match(r'^\[.+\]$', response))
+
+            if is_sticker_only:
                 self._stats["total_replies"] += 1
+                self.session.update_last_reply_time(user_id, group_id)
+                self.logger.info(f"表情包已发送: {response}")
                 return
 
             # 拟人化打字延迟
@@ -727,6 +733,16 @@ class Main(BaseModule):
                     if sticker_tool:
                         tools = tools or []
                         tools.append(sticker_tool)
+                        # 仅当工具注入时才告诉 AI 有表情包
+                        catalog = self.sticker_manager.build_sticker_catalog_text()
+                        if catalog:
+                            messages.insert(0, {
+                                "role": "system",
+                                "content": (
+                                    "【可用表情包】你可以用 send_sticker 和文字配合使用。\n"
+                                    + catalog
+                                ),
+                            })
 
             # 调用对话行为
             if not self.ai_engine.is_available("dialogue"):
@@ -786,21 +802,9 @@ class Main(BaseModule):
         tool_calls = getattr(message, "tool_calls", None) or []
         text_content = getattr(message, "content", None) or ""
 
-        # 先检查 AI 是否有文字输出
-        has_text = bool(text_content and text_content.strip())
-
-        # 没文字也没工具调用 → 空回复
-        if not tool_calls and not has_text:
+        # 无工具调用也无文字 → 空回复
+        if not tool_calls and not text_content.strip():
             return ""
-
-        # 有表情包调用但没文字 → 不发任何东西
-        send_stickers = bool(tool_calls and any(
-            getattr(tc, "function", None) and getattr(tc.function, "name", "") == "send_sticker"
-            for tc in tool_calls
-        ))
-        if send_stickers and not has_text:
-            self.logger.info("AI 只发表情包不说话，忽略此次")
-            return None
 
         # 处理工具调用并发送表情包图片
         sticker_images = []
@@ -841,12 +845,13 @@ class Main(BaseModule):
             except Exception as e:
                 self.logger.warning(f"发送表情包失败: {e}")
 
-        # 拼装回复
+        # 拼装回复（用于记忆/日志）
+        text = text_content.strip()
         if sent_sticker_names:
             sticker_part = "[" + ", ".join(sent_sticker_names) + "]"
-            return text_content.strip() + " " + sticker_part
+            return (text + " " + sticker_part) if text else sticker_part
 
-        return text_content.strip() if has_text else ""
+        return text
 
     def _find_sticker(self, name: str) -> Optional[dict]:
         """模糊匹配表情包名称"""
@@ -968,15 +973,6 @@ class Main(BaseModule):
             if kb_ctx:
                 prompt = (prompt + "\n\n" + kb_ctx) if prompt else kb_ctx
                 kb_note = " +知识库"
-
-        # 表情包目录注入
-        sticker_catalog = self.sticker_manager.build_sticker_catalog_text()
-        if sticker_catalog:
-            prompt += (
-                "\n\n【可用表情包】你可以调用 send_sticker 发送表情包。"
-                "在合适时机使用，不要过度。\n"
-                + sticker_catalog
-            )
 
         self.logger.info(f"提示词来源: {source}{kb_note} (共{len(prompt)}字符)")
         return prompt
