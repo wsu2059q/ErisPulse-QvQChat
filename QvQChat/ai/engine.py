@@ -143,17 +143,20 @@ class AIEngine:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> str:
-        """对话行为"""
+    ) -> Any:
+        """对话行为
+
+        当 AI 返回 tool_calls 时，返回原始 message 对象（含 tool_calls 属性），
+        由调用方处理。否则返回字符串。
+        """
         kwargs = {}
         if temperature is not None:
             kwargs["temperature"] = temperature
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
-        result = await self.execute_behavior(
+        return await self.execute_behavior(
             "dialogue", messages, tools=tools, **kwargs
         )
-        return result if isinstance(result, str) else str(result)
 
     async def identify_intent(self, user_input: str) -> str:
         """意图识别行为"""

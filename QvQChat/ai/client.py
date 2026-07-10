@@ -78,9 +78,30 @@ class AIClient:
             else self.config.get("max_tokens", 2000)
         )
 
-        use_messages = messages
+        use_messages = list(messages)
         if system_prompt:
-            use_messages = [{"role": "system", "content": system_prompt}] + use_messages
+            use_messages.insert(0, {"role": "system", "content": system_prompt})
+
+        # 合并连续的 system 消息为单条（部分 API 如 SiliconFlow 仅允许一条）
+        merged: List[Dict[str, Any]] = []
+        system_parts: List[str] = []
+        for msg in use_messages:
+            if msg.get("role") == "system":
+                content = msg.get("content", "")
+                if content:
+                    system_parts.append(content)
+            else:
+                if system_parts:
+                    merged.append({
+                        "role": "system",
+                        "content": "\n\n".join(system_parts),
+                    })
+                    system_parts = []
+                merged.append(msg)
+        # 末尾的 system（异常情况，但兜底处理）
+        if system_parts:
+            merged.append({"role": "system", "content": "\n\n".join(system_parts)})
+        use_messages = merged
 
         try:
             kwargs: Dict[str, Any] = {

@@ -414,4 +414,67 @@ STYLES = r"""
     color: #fff;
     background: var(--accent);
 }
+
+/* ==================== 表情包网格 ==================== */
+.qvc-sticker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.qvc-sticker-card {
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-c);
+}
+
+.qvc-sticker-thumb {
+    width: 100%;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: var(--bg2, #f5f5f5);
+}
+
+.qvc-sticker-thumb img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.qvc-sticker-thumb.qvc-sticker-noimg {
+    color: var(--tx-s);
+    font-size: 12px;
+}
+
+.qvc-sticker-name {
+    font-weight: 600;
+    font-size: 13px;
+    padding: 6px 8px 2px;
+    color: var(--tx-c);
+}
+
+.qvc-sticker-desc {
+    font-size: 11px;
+    color: var(--tx-s);
+    padding: 0 8px 6px;
+    line-height: 1.4;
+}
+
+.qvc-sticker-actions {
+    display: flex;
+    gap: 4px;
+    padding: 4px 8px 8px;
+}
+
+.qvc-sticker-actions .qvc-btn-sm {
+    flex: 1;
+    justify-content: center;
+    padding: 4px;
+}
 """

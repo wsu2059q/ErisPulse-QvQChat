@@ -4,7 +4,12 @@ HTML = """
 <div class="qvc-wrap">
     <div style="display:flex;justify-content:space-between;align-items:center">
         <h1 class="page-title" style="margin:0">QvQChat 管理面板</h1>
-        <button class="qvc-btn-sm danger" onclick="qvcResetAll()" style="margin-left:12px">重置全部配置</button>
+        <div style="display:flex;gap:8px">
+            <button class="qvc-btn-sm" onclick="qvcExport('desensitize')">脱敏导出</button>
+            <button class="qvc-btn-sm" onclick="qvcExport('migrate')">迁移导出</button>
+            <button class="qvc-btn-sm" onclick="qvcImport()">导入</button>
+            <button class="qvc-btn-sm danger" onclick="qvcResetAll()">重置全部</button>
+        </div>
     </div>
 
     <!-- 标签栏 -->
@@ -29,6 +34,9 @@ HTML = """
         </div>
         <div class="qvc-tab" data-tab="tools" onclick="qvcTab('tools')">
             __ICON_TOOL__ <span>MCP工具</span>
+        </div>
+        <div class="qvc-tab" data-tab="stickers" onclick="qvcTab('stickers')">
+            __ICON_BOOK__ <span>表情包</span>
         </div>
         <div class="qvc-tab" data-tab="groups" onclick="qvcTab('groups')">
             __ICON_GROUP__ <span>群组管理</span>
@@ -112,6 +120,18 @@ HTML = """
 
     <!-- MCP 工具面板 -->
     <div class="qvc-panel" id="qvc-panel-tools">
+        <div class="qvc-section-title">MCP 服务器（stdio）</div>
+        <div style="margin-bottom:12px;text-align:right">
+            <button class="qvc-btn-sm primary" onclick="qvcMcpServerEdit(null)">
+                __ICON_PLUS__ 添加 MCP 服务器
+            </button>
+            <button class="qvc-btn-sm" onclick="qvcMcpConnectAll()">连接全部</button>
+        </div>
+        <div id="qvc-mcp-servers-list">
+            <div class="qvc-empty">正在加载...</div>
+        </div>
+
+        <div class="qvc-section-title" style="margin-top:20px">手动工具定义（HTTP 端点）</div>
         <div style="margin-bottom:12px;text-align:right">
             <button class="qvc-btn-sm primary" onclick="qvcToolEdit(null)">
                 __ICON_PLUS__ 添加工具
@@ -125,6 +145,19 @@ HTML = """
     <!-- 群组管理面板 -->
     <div class="qvc-panel" id="qvc-panel-groups">
         <div id="qvc-groups-list">
+            <div class="qvc-empty">正在加载...</div>
+        </div>
+    </div>
+
+    <!-- 表情包面板 -->
+    <div class="qvc-panel" id="qvc-panel-stickers">
+        <div style="margin-bottom:12px;text-align:right">
+            <button class="qvc-btn-sm primary" onclick="qvcStickerUpload()">
+                __ICON_PLUS__ 上传表情包
+            </button>
+            <button class="qvc-btn-sm" onclick="qvcStickerAddUrl()">通过 URL 添加</button>
+        </div>
+        <div id="qvc-stickers-list" class="qvc-sticker-grid">
             <div class="qvc-empty">正在加载...</div>
         </div>
     </div>

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ErisPulse-QvQChat"
-version = "2.0.0"
-description = "ErisPulse QvQChat 智能对话模块 - 模型池+行为绑定+多智能体+知识库+MCP"
+version = "2.6.0"
+description = "ErisPulse QvQChat 智能对话模块 - 模型池+行为绑定+多智能体+知识库+MCP+表情包"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
@@ -13,6 +13,12 @@ authors = [ { name = "wsu2059q", email = "wsu2059@qq.com" } ]
 dependencies = [
     "ErisPulse>=2.0.0",
     "openai>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.0",
+    "twine>=4.0",
 ]
 
 [project.urls]
@@ -24,3 +30,17 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 include = ["QvQChat*"]
+
+[tool.setuptools.package-data]
+QvQChat = ["py.typed"]
+
+# uv 配置
+[tool.uv]
+dev-dependencies = [
+    "build>=1.0",
+    "twine>=4.0",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
