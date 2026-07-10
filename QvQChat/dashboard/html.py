@@ -38,6 +38,9 @@ HTML = """
         <div class="qvc-tab" data-tab="stickers" onclick="qvcTab('stickers')">
             __ICON_BOOK__ <span>表情包</span>
         </div>
+        <div class="qvc-tab" data-tab="memories" onclick="qvcTab('memories')">
+            __ICON_GROUP__ <span>记忆管理</span>
+        </div>
         <div class="qvc-tab" data-tab="groups" onclick="qvcTab('groups')">
             __ICON_GROUP__ <span>群组管理</span>
         </div>
@@ -151,13 +154,28 @@ HTML = """
 
     <!-- 表情包面板 -->
     <div class="qvc-panel" id="qvc-panel-stickers">
-        <div style="margin-bottom:12px;text-align:right">
-            <button class="qvc-btn-sm primary" onclick="qvcStickerUpload()">
-                __ICON_PLUS__ 上传表情包
-            </button>
-            <button class="qvc-btn-sm" onclick="qvcStickerAddUrl()">通过 URL 添加</button>
+        <div style="margin-bottom:12px">
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+                <button class="qvc-btn-sm primary" onclick="qvcStickerUpload()">__ICON_PLUS__ 上传表情包</button>
+                <button class="qvc-btn-sm" onclick="qvcStickerUploadBatch()">批量上传</button>
+                <button class="qvc-btn-sm" onclick="qvcStickerAddUrl()">通过 URL 添加</button>
+            </div>
+            <div style="display:flex;gap:8px">
+                <button class="qvc-btn-sm" onclick="qvcAiBatchSelect()">AI 批量分析</button>
+                <span style="font-size:12px;color:var(--tx-s);line-height:28px">选中多个表情包，一键生成名称和描述</span>
+            </div>
         </div>
         <div id="qvc-stickers-list" class="qvc-sticker-grid">
+            <div class="qvc-empty">正在加载...</div>
+        </div>
+    </div>
+
+    <!-- 记忆管理面板 -->
+    <div class="qvc-panel" id="qvc-panel-memories">
+        <div style="margin-bottom:12px;text-align:right">
+            <button class="qvc-btn-sm danger" onclick="qvcClearAllMemories()">清空全部记忆</button>
+        </div>
+        <div id="qvc-memories-list">
             <div class="qvc-empty">正在加载...</div>
         </div>
     </div>
@@ -173,7 +191,7 @@ HTML = """
         <div class="qvc-modal-body" id="qvc-modal-body"></div>
         <div class="qvc-modal-footer">
             <button class="qvc-btn-sm" onclick="qvcHideModal()">取消</button>
-            <button class="qvc-btn-sm primary" onclick="qvcModalSave()">__ICON_SAVE__ 保存</button>
+            <button class="qvc-btn-sm primary" onclick="qvcModalSave()">__ICON_SAVE__ 确定</button>
         </div>
     </div>
 </div>

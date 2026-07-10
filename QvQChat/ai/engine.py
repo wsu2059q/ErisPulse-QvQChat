@@ -7,6 +7,7 @@ AI 执行引擎
 
 import base64
 import mimetypes
+import os
 from typing import Any, Dict, List, Optional
 
 try:
@@ -187,13 +188,25 @@ class AIEngine:
         if url.startswith("data:"):
             return url
 
-        # 本地文件路径
+        # 本地文件路径（file:// 前缀）
         if url.startswith("file://"):
             try:
                 path = url[7:]
                 with open(path, "rb") as f:
                     raw = f.read()
                 mime = mimetypes.guess_type(path)[0] or "image/png"
+                b64 = base64.b64encode(raw).decode()
+                return f"data:{mime};base64,{b64}"
+            except Exception as e:
+                self.logger.debug(f"读取本地图片失败 {url}: {e}")
+                return url
+
+        # 绝对路径（无协议前缀，但文件存在）
+        if os.path.exists(url):
+            try:
+                with open(url, "rb") as f:
+                    raw = f.read()
+                mime = mimetypes.guess_type(url)[0] or "image/png"
                 b64 = base64.b64encode(raw).decode()
                 return f"data:{mime};base64,{b64}"
             except Exception as e:

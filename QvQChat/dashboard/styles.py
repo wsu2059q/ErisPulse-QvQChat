@@ -429,11 +429,19 @@ STYLES = r"""
     display: flex;
     flex-direction: column;
     background: var(--bg-c);
+    position: relative;
+    min-height: 180px;
+    cursor: default;
+}
+
+.qvc-sticker-card.qvc-select-mode {
+    cursor: pointer;
 }
 
 .qvc-sticker-thumb {
     width: 100%;
-    height: 120px;
+    height: 100px;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -457,6 +465,9 @@ STYLES = r"""
     font-size: 13px;
     padding: 6px 8px 2px;
     color: var(--tx-c);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .qvc-sticker-desc {
@@ -464,6 +475,9 @@ STYLES = r"""
     color: var(--tx-s);
     padding: 0 8px 6px;
     line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .qvc-sticker-actions {
@@ -476,5 +490,24 @@ STYLES = r"""
     flex: 1;
     justify-content: center;
     padding: 4px;
+}
+
+.qvc-sticker-check {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: 2;
+    display: none;
+}
+
+.qvc-select-mode .qvc-sticker-check {
+    display: block;
+}
+
+.qvc-sticker-check input {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent);
 }
 """

@@ -57,7 +57,11 @@ class QvQConfig:
                 "auto_search": True,
             },
             "mcp": {"enabled": True, "auto_inject": True},
-            "stickers": {"enabled": True},
+            "stickers": {
+                "enabled": True,
+                "probability": 0.3,
+                "max_per_session": 2,
+            },
             "multi_agent": {"enabled": True},
             "humanize": {
                 "typing_delay": True,

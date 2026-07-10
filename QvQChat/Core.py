@@ -719,10 +719,14 @@ class Main(BaseModule):
                     tools = list(mcp_tools)
 
             # 表情包工具（AI 可自主选择发送表情包）
-            sticker_tool = self.sticker_manager.get_openai_tool_schema()
-            if sticker_tool:
-                tools = tools or []
-                tools.append(sticker_tool)
+            sticker_cfg = self.config.get("stickers", {})
+            if sticker_cfg.get("enabled", True):
+                prob = sticker_cfg.get("probability", 0.3)
+                if random.random() < prob:
+                    sticker_tool = self.sticker_manager.get_openai_tool_schema()
+                    if sticker_tool:
+                        tools = tools or []
+                        tools.append(sticker_tool)
 
             # 调用对话行为
             if not self.ai_engine.is_available("dialogue"):
@@ -781,8 +785,25 @@ class Main(BaseModule):
 
         tool_calls = getattr(message, "tool_calls", None) or []
         text_content = getattr(message, "content", None) or ""
-        sticker_images = []
 
+        # 先检查 AI 是否有文字输出
+        has_text = bool(text_content and text_content.strip())
+
+        # 没文字也没工具调用 → 空回复
+        if not tool_calls and not has_text:
+            return ""
+
+        # 有表情包调用但没文字 → 不发任何东西
+        send_stickers = bool(tool_calls and any(
+            getattr(tc, "function", None) and getattr(tc.function, "name", "") == "send_sticker"
+            for tc in tool_calls
+        ))
+        if send_stickers and not has_text:
+            self.logger.info("AI 只发表情包不说话，忽略此次")
+            return None
+
+        # 处理工具调用并发送表情包图片
+        sticker_images = []
         for tc in tool_calls:
             func = getattr(tc, "function", None)
             if not func:
@@ -795,8 +816,6 @@ class Main(BaseModule):
 
             if tool_name == "send_sticker":
                 sticker_name = arguments.get("sticker_name", "")
-                self.logger.info(f"AI 请求发送表情包: {sticker_name}")
-                # 模糊匹配名称
                 matched = self._find_sticker(sticker_name)
                 if matched:
                     sticker_images.append(matched["file"])
@@ -804,21 +823,30 @@ class Main(BaseModule):
                 else:
                     self.logger.debug(f"未找到表情包: {sticker_name}")
             else:
-                # MCP 工具调用
                 try:
                     result = await self.mcp_manager.call_tool(tool_name, arguments)
                     self.logger.debug(f"工具 {tool_name} 返回: {truncate_message(result, 100)}")
                 except Exception as e:
                     self.logger.warning(f"工具 {tool_name} 调用失败: {e}")
 
-        # 发送表情包图片
+        # 发送表情包
+        sent_sticker_names = []
         for img_path in sticker_images:
             try:
                 await self._send_image(data, platform, img_path)
+                for s in self.sticker_manager.list_stickers():
+                    if s.get("file") == img_path:
+                        sent_sticker_names.append(s.get("name", ""))
+                        break
             except Exception as e:
                 self.logger.warning(f"发送表情包失败: {e}")
 
-        return text_content.strip() if text_content else ""
+        # 拼装回复
+        if sent_sticker_names:
+            sticker_part = "[" + ", ".join(sent_sticker_names) + "]"
+            return text_content.strip() + " " + sticker_part
+
+        return text_content.strip() if has_text else ""
 
     def _find_sticker(self, name: str) -> Optional[dict]:
         """模糊匹配表情包名称"""
@@ -1251,18 +1279,34 @@ class Main(BaseModule):
     async def _send_response(
         self, data: Dict[str, Any], response: str, platform: str
     ) -> None:
-        """发送回复"""
+        """发送回复（自动处理文本中的 <|send_sticker|> 标签）"""
         try:
             if not platform:
                 return
             detail_type = data.get("detail_type", "private")
-            if detail_type == "private":
-                target_type, target_id = "user", data.get("user_id")
-            else:
+            if detail_type == "group":
                 target_type, target_id = "group", data.get("group_id")
+            else:
+                target_type, target_id = "user", data.get("user_id")
             if not target_id:
                 return
-            await self.message_sender.send(platform, target_type, target_id, response)
+
+            # 解析文本中的 <|send_sticker|>name</send_sticker|> 标签
+            import re
+            sticker_pattern = re.compile(
+                r"<\|\s*send_sticker\s*\|?>\s*(.*?)\s*<\|\s*/\s*send_sticker\s*\|?>",
+                re.IGNORECASE | re.DOTALL,
+            )
+            for match in sticker_pattern.finditer(response):
+                sticker_name = match.group(1).strip()
+                if sticker_name:
+                    matched = self._find_sticker(sticker_name)
+                    if matched:
+                        await self._send_image(data, platform, matched["file"])
+            response = sticker_pattern.sub("", response).strip()
+
+            if response:
+                await self.message_sender.send(platform, target_type, target_id, response)
         except Exception as e:
             self.logger.error(f"发送回复失败: {e}")
 

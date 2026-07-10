@@ -205,11 +205,7 @@ class StickerManager:
             "type": "function",
             "function": {
                 "name": "send_sticker",
-                "description": (
-                    "发送一个表情包/贴纸来丰富你的表达。"
-                    "在合适的时候（搞笑、开心、无奈、卖萌等场景）使用。"
-                    "不要过度使用。"
-                ),
+                "description": "发送表情包表达情绪。可用在任何恰当的时候发送来活跃气氛。别过度使用。",
                 "parameters": {
                     "type": "object",
                     "properties": {
