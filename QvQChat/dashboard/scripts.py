@@ -93,6 +93,7 @@ function qvcTab(name) {
             knowledge: qvcLoadKnowledge,
             tools: qvcLoadTools,
             stickers: qvcLoadStickers,
+            memories: qvcLoadMemories,
             groups: qvcLoadGroups
         };
         if (loaders[name]) loaders[name]();
@@ -308,6 +309,14 @@ async function qvcLoadBasic() {
         html += qvcNumField('voice.sample_rate', '采样率', qvcGetPath(cfg, 'voice.sample_rate', 44100));
         html += '</div>';
 
+        // 表情包
+        html += '<div class="qvc-section-title">表情包</div>';
+        html += qvcCheckField('stickers.enabled', '启用表情包功能', qvcGetPath(cfg, 'stickers.enabled', true));
+        html += '<div class="qvc-form-row">';
+        html += qvcNumField('stickers.probability', '表情包触发概率 (0~1)', qvcGetPath(cfg, 'stickers.probability', 0.3));
+        html += qvcNumField('stickers.max_per_session', '每轮对话最多次数', qvcGetPath(cfg, 'stickers.max_per_session', 2));
+        html += '</div>';
+
         // 个体化设置
         html += '<div class="qvc-section-title">个体化设置</div>';
         html += '<div class="qvc-form-row">';
@@ -478,14 +487,15 @@ function qvcModelEdit(model) {
 }
 
 async function qvcModelDelete(id) {
-    if (!confirm('确定删除此模型？')) return;
-    try {
-        await qvcApi('/api/models/delete', 'POST', { id: id });
-        qvcToast('模型已删除', 'ok');
-        qvcLoadModels();
-    } catch (e) {
-        qvcToast('删除失败: ' + e.message, 'error');
-    }
+    qvcConfirm('确定删除此模型？', async function() {
+        try {
+            await qvcApi('/api/models/delete', 'POST', { id: id });
+            qvcToast('模型已删除', 'ok');
+            qvcLoadModels();
+        } catch (e) {
+            qvcToast('删除失败: ' + e.message, 'error');
+        }
+    });
 }
 
 // ==================== 行为管理 ====================
@@ -631,14 +641,15 @@ async function qvcBehaviorEdit(behavior) {
 }
 
 async function qvcBehaviorDelete(id) {
-    if (!confirm('确定删除此行为？')) return;
-    try {
-        await qvcApi('/api/behaviors/delete', 'POST', { id: id });
-        qvcToast('行为已删除', 'ok');
-        qvcLoadBehaviors();
-    } catch (e) {
-        qvcToast('删除失败: ' + e.message, 'error');
-    }
+    qvcConfirm('确定删除此行为？', async function() {
+        try {
+            await qvcApi('/api/behaviors/delete', 'POST', { id: id });
+            qvcToast('行为已删除', 'ok');
+            qvcLoadBehaviors();
+        } catch (e) {
+            qvcToast('删除失败: ' + e.message, 'error');
+        }
+    });
 }
 
 // ==================== 多智能体 ====================
@@ -736,14 +747,15 @@ async function qvcAgentEdit(agent) {
 }
 
 async function qvcAgentDelete(id) {
-    if (!confirm('确定删除此智能体？')) return;
-    try {
-        await qvcApi('/api/agents/delete', 'POST', { id: id });
-        qvcToast('智能体已删除', 'ok');
-        qvcLoadAgents();
-    } catch (e) {
-        qvcToast('删除失败: ' + e.message, 'error');
-    }
+    qvcConfirm('确定删除此智能体？', async function() {
+        try {
+            await qvcApi('/api/agents/delete', 'POST', { id: id });
+            qvcToast('智能体已删除', 'ok');
+            qvcLoadAgents();
+        } catch (e) {
+            qvcToast('删除失败: ' + e.message, 'error');
+        }
+    });
 }
 
 // ==================== 知识库 ====================
@@ -812,14 +824,15 @@ function qvcKbEdit(entry) {
 }
 
 async function qvcKbDelete(id) {
-    if (!confirm('确定删除此知识条目？')) return;
-    try {
-        await qvcApi('/api/knowledge/delete', 'POST', { id: id });
-        qvcToast('知识条目已删除', 'ok');
-        qvcLoadKnowledge();
-    } catch (e) {
-        qvcToast('删除失败: ' + e.message, 'error');
-    }
+    qvcConfirm('确定删除此知识条目？', async function() {
+        try {
+            await qvcApi('/api/knowledge/delete', 'POST', { id: id });
+            qvcToast('知识条目已删除', 'ok');
+            qvcLoadKnowledge();
+        } catch (e) {
+            qvcToast('删除失败: ' + e.message, 'error');
+        }
+    });
 }
 
 // ==================== MCP 工具 ====================
@@ -938,14 +951,15 @@ function qvcToolEdit(tool) {
 }
 
 async function qvcToolDelete(id) {
-    if (!confirm('确定删除此工具？')) return;
-    try {
-        await qvcApi('/api/tools/delete', 'POST', { id: id });
-        qvcToast('工具已删除', 'ok');
-        qvcLoadTools();
-    } catch (e) {
-        qvcToast('删除失败: ' + e.message, 'error');
-    }
+    qvcConfirm('确定删除此工具？', async function() {
+        try {
+            await qvcApi('/api/tools/delete', 'POST', { id: id });
+            qvcToast('工具已删除', 'ok');
+            qvcLoadTools();
+        } catch (e) {
+            qvcToast('删除失败: ' + e.message, 'error');
+        }
+    });
 }
 
 // ----- MCP 服务器管理 -----
@@ -987,14 +1001,15 @@ function qvcMcpServerEdit(server) {
 }
 
 async function qvcMcpServerDelete(name) {
-    if (!confirm('确定删除 MCP 服务器「' + name + '」？')) return;
-    try {
-        await qvcApi('/api/mcp-servers/delete', 'POST', { name: name });
-        qvcToast('MCP 服务器已删除', 'ok');
-        qvcLoadTools();
-    } catch (e) {
-        qvcToast('删除失败: ' + e.message, 'error');
-    }
+    qvcConfirm('确定删除 MCP 服务器「' + name + '」？', async function() {
+        try {
+            await qvcApi('/api/mcp-servers/delete', 'POST', { name: name });
+            qvcToast('MCP 服务器已删除', 'ok');
+            qvcLoadTools();
+        } catch (e) {
+            qvcToast('删除失败: ' + e.message, 'error');
+        }
+    });
 }
 
 async function qvcMcpConnect(name) {
@@ -1038,8 +1053,9 @@ async function qvcLoadStickers() {
             var imgSrc = s.is_url ? s.file : ('/QvQChat/stickers/img/' + s.id);
             if (!s.is_url && !s.file) imgSrc = '';
             html += '<div class="qvc-sticker-card">';
+            html += '<label class="qvc-sticker-check"><input type="checkbox" class="qvc-sticker-cb" value="' + qvcEsc(s.id) + '"></label>';
             if (imgSrc) {
-                html += '<div class="qvc-sticker-thumb"><img src="' + qvcEsc(imgSrc) + '" loading="lazy"></div>';
+                html += '<div class="qvc-sticker-thumb"><img src="' + qvcEsc(imgSrc) + '"></div>';
             } else {
                 html += '<div class="qvc-sticker-thumb qvc-sticker-noimg">无预览</div>';
             }
@@ -1048,13 +1064,26 @@ async function qvcLoadStickers() {
                 html += '<div class="qvc-sticker-desc">' + qvcEsc(s.description) + '</div>';
             }
             html += '<div class="qvc-sticker-actions">';
-            html += '<button class="qvc-btn-sm" onclick=\'qvcStickerAutofill("' + qvcEsc(s.id) + '")\' title="视觉填充">AI</button>';
             html += '<button class="qvc-btn-sm" onclick=\'qvcStickerEdit(' + JSON.stringify(s) + ')\'>' + '__ICON_EDIT__' + '</button>';
             html += '<button class="qvc-btn-sm danger" onclick=\'qvcStickerDelete("' + qvcEsc(s.id) + '")\'>' + '__ICON_TRASH__' + '</button>';
             html += '</div>';
             html += '</div>';
         });
         el.innerHTML = html;
+        // 如果选择模式开启，恢复事件绑定
+        if (_qvcSelectMode) {
+            var grid = document.getElementById('qvc-stickers-list');
+            if (grid) {
+                grid.classList.add('qvc-select-mode');
+                grid.onclick = function(e) {
+                    var card = e.target.closest('.qvc-sticker-card');
+                    if (!card) return;
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+                    var cb = card.querySelector('.qvc-sticker-cb');
+                    if (cb) cb.checked = !cb.checked;
+                };
+            }
+        }
     } catch (e) {
         qvcToast('加载表情包失败: ' + e.message, 'error');
     }
@@ -1144,14 +1173,15 @@ function qvcStickerEdit(sticker) {
 }
 
 async function qvcStickerDelete(id) {
-    if (!confirm('确定删除此表情包？')) return;
-    try {
-        await qvcApi('/api/stickers/delete', 'POST', { id: id });
-        qvcToast('已删除', 'ok');
-        qvcLoadStickers();
-    } catch (e) {
-        qvcToast('删除失败: ' + e.message, 'error');
-    }
+    qvcConfirm('确定删除此表情包？', async function() {
+        try {
+            await qvcApi('/api/stickers/delete', 'POST', { id: id });
+            qvcToast('已删除', 'ok');
+            qvcLoadStickers();
+        } catch (e) {
+            qvcToast('删除失败: ' + e.message, 'error');
+        }
+    });
 }
 
 async function qvcStickerAutofill(id) {
@@ -1167,6 +1197,138 @@ async function qvcStickerAutofill(id) {
     } catch (e) {
         qvcToast('填充失败: ' + e.message, 'error');
     }
+}
+
+// ==================== 记忆管理 ====================
+async function qvcLoadMemories() {
+    try {
+        var [userMemData, groupMemData] = await Promise.all([
+            qvcApi('/api/memories', 'GET'),
+            qvcApi('/api/memories/group', 'GET')
+        ]);
+        var userMemories = userMemData.memories || [];
+        var groupMemories = groupMemData.memories || [];
+        var el = document.getElementById('qvc-memories-list');
+        if (!userMemories.length && !groupMemories.length) {
+            el.innerHTML = '<div class="qvc-empty">暂无存储的记忆</div>';
+            return;
+        }
+        var html = '';
+        // 用户记忆
+        if (userMemories.length) {
+            html += '<div class="qvc-section-title">用户记忆</div>';
+            userMemories.forEach(function(m) {
+                html += qvcRenderMemoryCard(m, 'user');
+            });
+        }
+        // 群组记忆
+        if (groupMemories.length) {
+            html += '<div class="qvc-section-title" style="margin-top:16px">群组记忆</div>';
+            groupMemories.forEach(function(m) {
+                html += qvcRenderMemoryCard(m, 'group');
+            });
+        }
+        el.innerHTML = html;
+    } catch (e) {
+        document.getElementById('qvc-memories-list').innerHTML = '<div class="qvc-empty">加载失败: ' + qvcEsc(e.message) + '</div>';
+    }
+}
+
+function qvcRenderMemoryCard(m, type) {
+    var id = type === 'user' ? m.user_id : m.group_id;
+    var title = type === 'user' ? '用户: ' + id : '群组: ' + id;
+    var html = '<div class="qvc-list-item" style="flex-wrap:wrap">';
+    html += '<div class="qvc-list-item-info" style="flex:1;min-width:200px">';
+    html += '<div class="qvc-list-item-title">' + qvcEsc(title) + ' <span class="qvc-badge">' + m.count + ' 条记忆</span></div>';
+    if (m.updated) {
+        html += '<div class="qvc-list-item-desc">更新于: ' + qvcEsc(m.updated) + '</div>';
+    }
+    // 最新内容预览（可折叠）
+    if (m.latest && m.latest.length) {
+        html += '<div style="margin-top:4px;font-size:12px;color:#999">最近内容:</div>';
+        html += '<div style="font-size:12px;max-height:80px;overflow-y:auto">';
+        m.latest.forEach(function(c) {
+            html += '<div style="padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.05)">- ' + qvcEsc(c) + '</div>';
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+    html += '<div class="qvc-list-item-actions" style="align-self:flex-start">';
+    html += '<button class="qvc-btn-sm danger" onclick="qvcDeleteMemory(' + JSON.stringify(id) + ', \'' + type + '\')">' + '__ICON_TRASH__' + ' 删除</button>';
+    html += '</div>';
+    html += '</div>';
+    return html;
+}
+
+async function qvcDeleteMemory(id, type) {
+    var label = type === 'user' ? '用户' : '群组';
+    qvcConfirm('确定删除此' + label + '的全部记忆？', async function() {
+        try {
+            await qvcApi('/api/memories/delete', 'POST', { user_id: id, type: type });
+            qvcToast('记忆已删除', 'ok');
+            qvcLoadMemories();
+        } catch (e) {
+            qvcToast('删除失败: ' + e.message, 'error');
+        }
+    });
+}
+
+async function qvcClearAllMemories() {
+    qvcConfirm('确定清空全部记忆（包括用户和群组）？此操作不可恢复！', async function() {
+        try {
+            await qvcApi('/api/memories/clear-all', 'POST');
+            qvcToast('已清空全部记忆', 'ok');
+            qvcLoadMemories();
+        } catch (e) {
+            qvcToast('清空失败: ' + e.message, 'error');
+        }
+    });
+}
+
+function qvcStickerUploadBatch() {
+    var fields = [
+        { name: 'files', label: '选择图片文件（可多选）', type: 'file', value: '', attrs: 'multiple accept="image/*"' }
+    ];
+    qvcShowModal('批量上传表情包', fields, async function(data) {
+        var fileInput = document.querySelector('[data-field="files"]');
+        if (!fileInput || !fileInput.files || !fileInput.files.length) {
+            qvcToast('请选择至少一个图片文件', 'error');
+            return;
+        }
+        var files = fileInput.files;
+        var total = files.length;
+        var success = 0;
+        var fail = 0;
+        var token = localStorage.getItem('__ep_tk__');
+        for (var i = 0; i < total; i++) {
+            var formData = new FormData();
+            var name = files[i].name;
+            var dotIdx = name.lastIndexOf('.');
+            if (dotIdx > 0) name = name.substring(0, dotIdx);
+            formData.append('name', name);
+            formData.append('description', '');
+            formData.append('file', files[i]);
+            try {
+                var resp = await fetch('/QvQChat/api/stickers/upload', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + (token || '') },
+                    body: formData
+                });
+                var result = await resp.json();
+                if (resp.ok && !result.error) {
+                    success++;
+                } else {
+                    fail++;
+                }
+            } catch (e) {
+                fail++;
+            }
+            qvcToast('批量上传进度: ' + (i + 1) + '/' + total, 'info');
+        }
+        qvcHideModal();
+        qvcToast('批量上传完成: ' + success + ' 成功, ' + fail + ' 失败', fail > 0 ? 'error' : 'ok');
+        qvcLoadStickers();
+    });
 }
 
 // ==================== 群组管理 ====================
@@ -1275,11 +1437,16 @@ function qvcShowModal(title, fields, callback) {
             });
             html += '</select>';
             html += '</div>';
+        } else if (f.type === 'html') {
+            html += '<div class="qvc-form-group">';
+            html += '<p style="white-space:pre-wrap;line-height:1.6;color:var(--tx-c);margin:8px 0">' + qvcEsc(f.label) + '</p>';
+            html += '</div>';
         } else {
-            // text / number
+            // text / number / file
+            var extraAttr = f.attrs || '';
             html += '<div class="qvc-form-group">';
             html += '<label>' + qvcEsc(f.label) + '</label>';
-            html += '<input type="' + f.type + '" step="any" class="qvc-input" data-field="' + qvcEsc(f.name) + '" value="' + qvcEsc(f.value != null ? String(f.value) : '') + '" placeholder="' + qvcEsc(f.placeholder || '') + '">';
+            html += '<input type="' + f.type + '" step="any" class="qvc-input" data-field="' + qvcEsc(f.name) + '" value="' + qvcEsc(f.value != null ? String(f.value) : '') + '" placeholder="' + qvcEsc(f.placeholder || '') + '" ' + extraAttr + '>';
             html += '</div>';
         }
     });
@@ -1307,6 +1474,8 @@ function qvcModalSave() {
             var el = document.querySelector('[data-field="' + f.name + '"]');
             var val = el.value;
             data[f.name] = val === '' ? null : Number(val);
+        } else if (f.type === 'html') {
+            // 纯展示字段，不收集数据
         } else {
             data[f.name] = document.querySelector('[data-field="' + f.name + '"]').value;
         }
@@ -1353,43 +1522,106 @@ function qvcImport() {
     var fields = [
         { name: 'file', label: '选择导出文件 (.zip)', type: 'file', value: '' }
     ];
-    qvcShowModal('导入配置', fields, async function(data) {
+    qvcShowModal('导入配置', fields, function(data) {
         var fileInput = document.querySelector('[data-field="file"]');
         if (!fileInput || !fileInput.files || !fileInput.files[0]) {
             qvcToast('请选择文件', 'error');
             return;
         }
-        if (!confirm('导入将覆盖当前所有配置，确定继续？')) return;
-        var formData = new FormData();
-        formData.append('file', fileInput.files[0]);
-        try {
-            var token = localStorage.getItem('__ep_tk__');
-            var resp = await fetch('/QvQChat/api/import', {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + (token || '') },
-                body: formData
-            });
-            var result = await resp.json();
-            if (!resp.ok || result.error) throw new Error(result.error || '导入失败');
-            qvcHideModal();
-            qvcToast(result.msg || '导入成功', 'ok');
-        } catch (err) {
-            qvcToast('导入失败: ' + err.message, 'error');
-        }
+        qvcConfirm('导入将覆盖当前所有配置，确定继续？', async function() {
+            var formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            try {
+                var token = localStorage.getItem('__ep_tk__');
+                var resp = await fetch('/QvQChat/api/import', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + (token || '') },
+                    body: formData
+                });
+                var result = await resp.json();
+                if (!resp.ok || result.error) throw new Error(result.error || '导入失败');
+                qvcHideModal();
+                qvcToast(result.msg || '导入成功', 'ok');
+            } catch (err) {
+                qvcToast('导入失败: ' + err.message, 'error');
+            }
+        });
     });
 }
 
-// ==================== 重置 ====================
-async function qvcResetAll() {
-    if (!confirm('确定清除所有 QvQChat 数据？此操作不可恢复！\n\n包括：全部配置、模型、行为、智能体、知识库、MCP工具、MCP服务器、表情包、记忆、会话历史。\n\n清除后请刷新页面并重启模块。')) return;
-    try {
-        var resp = await qvcApi('/api/reset', 'POST');
-        qvcToast(resp.msg || '已清除所有数据', 'ok');
-        // 重新加载概览
-        setTimeout(function() { location.reload(); }, 2000);
-    } catch (e) {
-        qvcToast('重置失败: ' + e.message, 'error');
+// ==================== 通用确认对话框 ====================
+function qvcConfirm(msg, callback) {
+    var fields = [
+        { name: '_msg', label: msg, type: 'html', value: '' }
+    ];
+    qvcShowModal('确认操作', fields, function(data) {
+        qvcHideModal();
+        if (callback) callback();
+    });
+}
+
+// ==================== AI 批量分析 ====================
+var _qvcSelectMode = false;
+
+function qvcAiBatchSelect() {
+    var grid = document.getElementById('qvc-stickers-list');
+    if (!grid) return;
+    // 切换选择模式
+    _qvcSelectMode = !_qvcSelectMode;
+    if (_qvcSelectMode) {
+        grid.classList.add('qvc-select-mode');
+        // 事件委托：点击卡片切换复选框
+        grid.onclick = function(e) {
+            var card = e.target.closest('.qvc-sticker-card');
+            if (!card) return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+            var cb = card.querySelector('.qvc-sticker-cb');
+            if (cb) cb.checked = !cb.checked;
+        };
+        qvcToast('选择模式已开启，点击卡片勾选表情包，再次点击按钮确认分析', 'info');
+    } else {
+        // 确认分析
+        grid.classList.remove('qvc-select-mode');
+        grid.onclick = null;
+        var cbs = document.querySelectorAll('.qvc-sticker-cb');
+        var checked = [];
+        cbs.forEach(function(cb) { if (cb.checked) checked.push(cb.value); });
+        if (!checked.length) {
+            qvcToast('未选择任何表情包', 'info');
+            return;
+        }
+        qvcConfirm('将用视觉模型分析选中的 ' + checked.length + ' 个表情包，自动填充名称和描述。确定继续？', async function() {
+            var done = 0;
+            for (var i = 0; i < checked.length; i++) {
+                try {
+                    await qvcApi('/api/stickers/autofill', 'POST', { id: checked[i] });
+                    done++;
+                    qvcToast('AI 分析进度: ' + done + '/' + checked.length, 'info');
+                } catch (_) {}
+            }
+            // 清除所有勾选
+            cbs.forEach(function(cb) { cb.checked = false; });
+            qvcToast('AI 分析完成: ' + done + '/' + checked.length + ' 个表情包已更新', 'ok');
+            qvcLoadStickers();
+        });
+        _qvcSelectMode = false;
     }
+}
+
+// ==================== 重置 ====================
+function qvcResetAll() {
+    qvcConfirm(
+        '确定清除所有 QvQChat 数据？此操作不可恢复！包括：全部配置、模型、行为、智能体、知识库、MCP工具、MCP服务器、表情包、记忆、会话历史。清除后请刷新页面并重启模块。',
+        async function() {
+            try {
+                var resp = await qvcApi('/api/reset', 'POST');
+                qvcToast(resp.msg || '已清除所有数据', 'ok');
+                setTimeout(function() { location.reload(); }, 2000);
+            } catch (e) {
+                qvcToast('重置失败: ' + e.message, 'error');
+            }
+        }
+    );
 }
 
 // ==================== 初始化 ====================

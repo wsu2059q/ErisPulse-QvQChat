@@ -48,6 +48,7 @@ class DashboardManager:
         ("/api/stickers/upload", "POST", "_api_upload_sticker"),
         ("/stickers/img/{sticker_id}", "GET", "_api_sticker_image"),
         ("/api/stickers/autofill", "POST", "_api_sticker_autofill"),
+        ("/api/stickers/upload-batch", "POST", "_api_upload_stickers_batch"),
         ("/api/export", "POST", "_api_export"),
         ("/api/import", "POST", "_api_import"),
         ("/api/groups", "GET", "_api_get_groups"),
@@ -56,6 +57,8 @@ class DashboardManager:
         ("/api/reset", "POST", "_api_reset_all"),
         ("/api/memories", "GET", "_api_get_memories"),
         ("/api/memories/delete", "POST", "_api_delete_memory"),
+        ("/api/memories/clear-all", "POST", "_api_clear_all_memories"),
+        ("/api/memories/group", "GET", "_api_get_group_memories"),
     ]
 
     def __init__(self, core):
@@ -504,7 +507,7 @@ class DashboardManager:
             return {"ok": False, "error": "表情包不存在"}
 
         if not self.ai_engine.is_available("vision"):
-            return {"ok": False, "error": "视觉行为不可用，请先配置支持视觉的模型"}
+            return {"ok": True, "description": "", "note": "视觉行为不可用"}
 
         filepath = sticker.get("file", "")
         if sticker.get("is_url"):
@@ -515,22 +518,48 @@ class DashboardManager:
             return {"ok": False, "error": "图片文件不存在"}
 
         try:
-            desc = await self.ai_engine.analyze_image(
+            resp = await self.ai_engine.analyze_image(
                 image_ref,
-                "请用一句话描述这个表情包的内容、情绪和使用场景，用于让 AI 知道什么时候该发送它。",
+                "用 2~6 字概括画面内容作为名称，然后用一句话描述画面中具体发生了什么（15字以内）。"
+                "格式：名称 | 描述。示例：猫咪瞪眼 | 猫瞪大眼睛表情包",
             )
-            desc = desc.strip() if desc else ""
+            desc = resp.strip() if resp else ""
+            name = sticker.get("name", "")
             if desc:
-                # 如果没有名称，也从描述中生成一个简短名称
-                name = sticker.get("name", "")
-                if not name or name.startswith("sticker_"):
-                    # 从描述提取前几个字作为名称
-                    name = desc[:8] if len(desc) > 8 else desc
+                # 解析 名称 | 描述 格式
+                if "|" in desc:
+                    parts = desc.split("|", 1)
+                    ai_name = parts[0].strip()
+                    ai_desc = parts[1].strip()
+                elif "：" in desc:
+                    parts = desc.split("：", 1)
+                    ai_name = parts[0].strip()
+                    ai_desc = parts[1].strip()
+                else:
+                    ai_name = desc[:6]
+                    ai_desc = desc[:25]
+
+                # 截断过长
+                if len(ai_name) > 6:
+                    ai_name = ai_name[:6]
+                if len(ai_desc) > 30:
+                    ai_desc = ai_desc[:30]
+
+                # 如果名称是哈希/自动生成格式，用 AI 生成的重命名
+                is_auto_name = (
+                    not name
+                    or name.startswith("sticker_")
+                    or (len(name) > 10 and all(c in "0123456789abcdefABCDEF" for c in name))
+                )
+                if is_auto_name and ai_name:
+                    name = ai_name
+
                 self.sticker_manager.update_sticker(sticker_id, {
                     "name": name,
-                    "description": desc,
+                    "description": ai_desc if ai_desc else desc[:25],
                 })
-            return {"ok": True, "description": desc}
+                return {"ok": True, "name": name, "description": ai_desc or desc[:25]}
+            return {"ok": True, "description": ""}
         except Exception as e:
             return {"ok": False, "error": f"视觉分析失败: {e}"}
 
@@ -794,15 +823,20 @@ class DashboardManager:
         return {"memories": memories[:100]}  # 最多100个用户
 
     async def _api_delete_memory(self, request) -> Dict[str, Any]:
-        """删除指定用户的全部记忆"""
+        """删除指定用户或群组的全部记忆"""
         body = await self._parse_body(request)
         user_id = body.get("user_id", "")
+        mem_type = body.get("type", "user")  # user | group
         if not user_id:
             return {"ok": False, "error": "缺少 user_id"}
         from ErisPulse import sdk as _sdk
 
+        if mem_type == "group":
+            key = f"qvc:group:{user_id}:memory"
+        else:
+            key = f"qvc:user:{user_id}:memory"
         _sdk.storage.set(
-            f"qvc:user:{user_id}:memory",
+            key,
             {
                 "short_term": [],
                 "long_term": [],
@@ -810,5 +844,124 @@ class DashboardManager:
                 "last_updated": "",
             },
         )
-        self.logger.info(f"已清除用户记忆: {user_id}")
+        self.logger.info(f"已清除{mem_type}记忆: {user_id}")
         return {"ok": True}
+
+    async def _api_get_group_memories(self, request) -> Dict[str, Any]:
+        """获取所有群组的记忆摘要"""
+        from ErisPulse import sdk as _sdk
+
+        storage = _sdk.storage
+        all_keys = storage.keys() if hasattr(storage, "keys") else []
+        memories = []
+        for key in all_keys:
+            if key.startswith("qvc:group:") and key.endswith(":memory"):
+                group_id = key.split(":")[2]
+                mem = storage.get(key, {})
+                long_term = mem.get("long_term", [])
+                if long_term:
+                    memories.append(
+                        {
+                            "group_id": group_id,
+                            "count": len(long_term),
+                            "latest": [
+                                m.get("content", "")[:80] for m in long_term[-5:]
+                            ],
+                            "updated": mem.get("last_updated", ""),
+                        }
+                    )
+        memories.sort(key=lambda x: x["count"], reverse=True)
+        return {"memories": memories[:100]}
+
+    async def _api_clear_all_memories(self, request) -> Dict[str, Any]:
+        """删除全部记忆（用户 + 群组）"""
+        from ErisPulse import sdk as _sdk
+
+        storage = _sdk.storage
+        all_keys = storage.keys() if hasattr(storage, "keys") else []
+        cleared = 0
+        for key in list(all_keys):
+            if (key.startswith("qvc:user:") and key.endswith(":memory")) or (
+                key.startswith("qvc:group:") and key.endswith(":memory")
+            ):
+                try:
+                    storage.set(
+                        key,
+                        {
+                            "short_term": [],
+                            "long_term": [],
+                            "semantic": [],
+                            "last_updated": "",
+                        },
+                    )
+                    cleared += 1
+                except Exception:
+                    pass
+        self.logger.info(f"已清空全部记忆，共清理 {cleared} 条")
+        return {"ok": True, "msg": f"已清空 {cleared} 条记忆"}
+
+    async def _api_upload_stickers_batch(self, request) -> Dict[str, Any]:
+        """批量上传表情包（multipart/form-data，多个 file 字段）"""
+        import os
+
+        try:
+            form = await request.form()
+        except Exception:
+            return {"ok": False, "error": "无法解析表单数据"}
+
+        files = form.getlist("file")
+        if not files:
+            return {"ok": False, "error": "缺少图片文件"}
+
+        results = []
+        errors = []
+        for upload_file in files:
+            try:
+                file_data = await upload_file.read()
+                filename = getattr(upload_file, "filename", "sticker.png")
+                # 用文件名作为默认名称
+                name = filename
+                dot_idx = filename.rfind(".")
+                if dot_idx > 0:
+                    name = filename[:dot_idx]
+                result = self.sticker_manager.add_sticker(
+                    name, "", file_data, filename
+                )
+                if result and result.get("id"):
+                    # 自动视觉分析
+                    try:
+                        if self.ai_engine.is_available("vision"):
+                            sticker_id = result["id"]
+                            sticker = self.sticker_manager.get_sticker(sticker_id)
+                            if sticker:
+                                filepath = sticker.get("file", "")
+                                if filepath and os.path.exists(filepath):
+                                    desc = await self.ai_engine.analyze_image(
+                                        filepath,
+                                        "请用一句话描述这个表情包的内容、情绪和使用场景，用于让 AI 知道什么时候该发送它。",
+                                    )
+                                    desc = desc.strip() if desc else ""
+                                    if desc:
+                                        auto_name = desc[:8] if len(desc) > 8 else desc
+                                        self.sticker_manager.update_sticker(sticker_id, {
+                                            "name": auto_name,
+                                            "description": desc,
+                                        })
+                                        result["name"] = auto_name
+                                        result["description"] = desc
+                    except Exception:
+                        pass
+                    results.append(result)
+                else:
+                    errors.append(f"{filename}: 保存失败")
+            except Exception as e:
+                errors.append(f"{filename}: {e}")
+
+        return {
+            "ok": len(results) > 0,
+            "stickers": results,
+            "errors": errors[:10],
+            "total": len(files),
+            "success": len(results),
+            "fail": len(errors),
+        }

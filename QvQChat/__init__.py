@@ -13,5 +13,5 @@ QvQChat - 智能对话模块
 
 from .Core import Main
 
-__version__ = "2.1.0"
+__version__ = "2.6.0"
 __all__ = ["Main"]
