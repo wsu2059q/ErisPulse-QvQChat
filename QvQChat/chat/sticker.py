@@ -218,16 +218,23 @@ class StickerManager:
             return None
         return sticker.get("file", "")
 
-    def get_catalog_text(self) -> str:
+    def get_catalog_text(self, max_items: int = 0) -> str:
         """
-        生成表情包目录文本
+        生成表情包目录文本（全部列出，用户通过整体提示词管理）
 
         格式：名称 - 描述
         """
         if not self._stickers:
             return ""
+        stickers = sorted(
+            self._stickers.values(),
+            key=lambda s: s.get("created_at", 0),
+            reverse=True,
+        )
+        if max_items > 0:
+            stickers = stickers[:max_items]
         lines = []
-        for sticker in self._stickers.values():
+        for sticker in stickers:
             name = sticker.get("name", "")
             desc = sticker.get("description", "")
             if desc:

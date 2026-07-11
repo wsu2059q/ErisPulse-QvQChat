@@ -507,7 +507,7 @@ class DashboardManager:
             return {"ok": False, "error": "表情包不存在"}
 
         if not self.ai_engine.is_available("vision"):
-            return {"ok": True, "description": "", "note": "视觉行为不可用"}
+            return {"ok": False, "error": "视觉模型不可用，请在行为管理中启用并分配模型"}
 
         filepath = sticker.get("file", "")
         if sticker.get("is_url"):
@@ -549,7 +549,7 @@ class DashboardManager:
                 is_auto_name = (
                     not name
                     or name.startswith("sticker_")
-                    or (len(name) > 10 and all(c in "0123456789abcdefABCDEF" for c in name))
+                    or (len(name) > 10 and not any("\u4e00" <= c <= "\u9fff" for c in name))
                 )
                 if is_auto_name and ai_name:
                     name = ai_name

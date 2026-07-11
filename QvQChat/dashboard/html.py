@@ -155,14 +155,20 @@ HTML = """
     <!-- 表情包面板 -->
     <div class="qvc-panel" id="qvc-panel-stickers">
         <div style="margin-bottom:12px">
-            <div style="display:flex;gap:8px;margin-bottom:8px">
+            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
                 <button class="qvc-btn-sm primary" onclick="qvcStickerUpload()">__ICON_PLUS__ 上传表情包</button>
                 <button class="qvc-btn-sm" onclick="qvcStickerUploadBatch()">批量上传</button>
                 <button class="qvc-btn-sm" onclick="qvcStickerAddUrl()">通过 URL 添加</button>
+                <span style="flex:1"></span>
+                <button class="qvc-btn-sm" id="qvc-sticker-select-btn" onclick="qvcStickerToggleSelect()">选择</button>
             </div>
-            <div style="display:flex;gap:8px">
-                <button class="qvc-btn-sm" onclick="qvcAiBatchSelect()">AI 批量分析</button>
-                <span style="font-size:12px;color:var(--tx-s);line-height:28px">选中多个表情包，一键生成名称和描述</span>
+            <div id="qvc-sticker-toolbar" class="qvc-sticker-toolbar" style="display:none">
+                <span id="qvc-sticker-selcount" class="qvc-sticker-count" style="display:none"></span>
+                <button class="qvc-btn-sm" onclick="qvcStickerSelectAll()">全选</button>
+                <button class="qvc-btn-sm" onclick="qvcStickerDeselect()">取消选择</button>
+                <button class="qvc-btn-sm" onclick="qvcStickerBatchGenerate()">AI 分析</button>
+                <button class="qvc-btn-sm danger" onclick="qvcStickerBatchDelete()">删除</button>
+                <button class="qvc-btn-sm" onclick="qvcStickerToggleSelect()" style="margin-left:auto">完成</button>
             </div>
         </div>
         <div id="qvc-stickers-list" class="qvc-sticker-grid">

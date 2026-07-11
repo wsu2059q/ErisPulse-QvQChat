@@ -1073,6 +1073,10 @@ async function qvcLoadStickers() {
             if (!s.is_url && !s.file) imgSrc = '';
             html += '<div class="qvc-sticker-card">';
             html += '<label class="qvc-sticker-check"><input type="checkbox" class="qvc-sticker-cb" value="' + qvcEsc(s.id) + '"></label>';
+            html += '<div class="qvc-sticker-actions-hover">';
+            html += '<button class="qvc-btn-sm" onclick=\'qvcStickerEdit(' + JSON.stringify(s) + ')\'>' + '__ICON_EDIT__' + '</button>';
+            html += '<button class="qvc-btn-sm danger" onclick=\'qvcStickerDelete("' + qvcEsc(s.id) + '")\'>' + '__ICON_TRASH__' + '</button>';
+            html += '</div>';
             if (imgSrc) {
                 html += '<div class="qvc-sticker-thumb"><img src="' + qvcEsc(imgSrc) + '"></div>';
             } else {
@@ -1082,14 +1086,10 @@ async function qvcLoadStickers() {
             if (s.description) {
                 html += '<div class="qvc-sticker-desc">' + qvcEsc(s.description) + '</div>';
             }
-            html += '<div class="qvc-sticker-actions">';
-            html += '<button class="qvc-btn-sm" onclick=\'qvcStickerEdit(' + JSON.stringify(s) + ')\'>' + '__ICON_EDIT__' + '</button>';
-            html += '<button class="qvc-btn-sm danger" onclick=\'qvcStickerDelete("' + qvcEsc(s.id) + '")\'>' + '__ICON_TRASH__' + '</button>';
-            html += '</div>';
             html += '</div>';
         });
         el.innerHTML = html;
-        // 如果选择模式开启，恢复事件绑定
+        // 如果当前在选择模式，恢复事件绑定
         if (_qvcSelectMode) {
             var grid = document.getElementById('qvc-stickers-list');
             if (grid) {
@@ -1100,6 +1100,7 @@ async function qvcLoadStickers() {
                     if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
                     var cb = card.querySelector('.qvc-sticker-cb');
                     if (cb) cb.checked = !cb.checked;
+                    qvcStickerUpdateToolbar();
                 };
             }
         }
@@ -1579,52 +1580,102 @@ function qvcConfirm(msg, callback) {
     });
 }
 
-// ==================== AI 批量分析 ====================
+// ==================== 批量操作 ====================
 var _qvcSelectMode = false;
 
-function qvcAiBatchSelect() {
-    var grid = document.getElementById('qvc-stickers-list');
-    if (!grid) return;
-    // 切换选择模式
+function qvcStickerToggleSelect() {
     _qvcSelectMode = !_qvcSelectMode;
+    var grid = document.getElementById('qvc-stickers-list');
+    var toolbar = document.getElementById('qvc-sticker-toolbar');
+    var btn = document.getElementById('qvc-sticker-select-btn');
     if (_qvcSelectMode) {
         grid.classList.add('qvc-select-mode');
-        // 事件委托：点击卡片切换复选框
+        btn.textContent = '取消';
+        // 清空选择
+        document.querySelectorAll('.qvc-sticker-cb').forEach(function(cb) { cb.checked = false; });
+        // 展开工具栏（重新触发动画）
+        toolbar.style.display = 'flex';
+        toolbar.style.animation = 'none';
+        void toolbar.offsetHeight;
+        toolbar.style.animation = 'qvcSlideDown 0.2s ease-out';
+        document.getElementById('qvc-sticker-selcount').style.display = 'none';
+        // 卡片点击选择
         grid.onclick = function(e) {
             var card = e.target.closest('.qvc-sticker-card');
             if (!card) return;
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
             var cb = card.querySelector('.qvc-sticker-cb');
             if (cb) cb.checked = !cb.checked;
+            qvcStickerUpdateToolbar();
         };
-        qvcToast('选择模式已开启，点击卡片勾选表情包，再次点击按钮确认分析', 'info');
     } else {
-        // 确认分析
         grid.classList.remove('qvc-select-mode');
         grid.onclick = null;
-        var cbs = document.querySelectorAll('.qvc-sticker-cb');
-        var checked = [];
-        cbs.forEach(function(cb) { if (cb.checked) checked.push(cb.value); });
-        if (!checked.length) {
-            qvcToast('未选择任何表情包', 'info');
-            return;
-        }
-        qvcConfirm('将用视觉模型分析选中的 ' + checked.length + ' 个表情包，自动填充名称和描述。确定继续？', async function() {
-            var done = 0;
-            for (var i = 0; i < checked.length; i++) {
-                try {
-                    await qvcApi('/api/stickers/autofill', 'POST', { id: checked[i] });
-                    done++;
-                    qvcToast('AI 分析进度: ' + done + '/' + checked.length, 'info');
-                } catch (_) {}
-            }
-            // 清除所有勾选
-            cbs.forEach(function(cb) { cb.checked = false; });
-            qvcToast('AI 分析完成: ' + done + '/' + checked.length + ' 个表情包已更新', 'ok');
-            qvcLoadStickers();
-        });
-        _qvcSelectMode = false;
+        btn.textContent = '选择';
+        toolbar.style.display = 'none';
     }
+}
+
+function qvcStickerUpdateToolbar() {
+    if (!_qvcSelectMode) return;
+    var checked = [];
+    document.querySelectorAll('.qvc-sticker-cb').forEach(function(cb) { if (cb.checked) checked.push(cb.value); });
+    var count = document.getElementById('qvc-sticker-selcount');
+    if (checked.length) {
+        count.style.display = '';
+        count.textContent = '已选 ' + checked.length + ' 个';
+    } else {
+        count.style.display = 'none';
+    }
+}
+
+function qvcStickerSelectAll() {
+    document.querySelectorAll('.qvc-sticker-cb').forEach(function(cb) { cb.checked = true; });
+    qvcStickerUpdateToolbar();
+}
+
+function qvcStickerDeselect() {
+    document.querySelectorAll('.qvc-sticker-cb').forEach(function(cb) { cb.checked = false; });
+    qvcStickerUpdateToolbar();
+}
+
+function qvcStickerBatchDelete() {
+    var checked = [];
+    document.querySelectorAll('.qvc-sticker-cb').forEach(function(cb) { if (cb.checked) checked.push(cb.value); });
+    if (!checked.length) { qvcToast('请先选择要删除的表情包', 'info'); return; }
+    qvcConfirm('确定删除选中的 ' + checked.length + ' 个表情包？', async function() {
+        var done = 0;
+        for (var i = 0; i < checked.length; i++) {
+            try {
+                await qvcApi('/api/stickers/delete', 'POST', { id: checked[i] });
+                done++;
+            } catch (_) {}
+        }
+        document.querySelectorAll('.qvc-sticker-cb').forEach(function(cb) { cb.checked = false; });
+        qvcStickerUpdateToolbar();
+        qvcToast('已删除 ' + done + ' 个表情包', 'ok');
+        qvcLoadStickers();
+    });
+}
+
+function qvcStickerBatchGenerate() {
+    var checked = [];
+    document.querySelectorAll('.qvc-sticker-cb').forEach(function(cb) { if (cb.checked) checked.push(cb.value); });
+    if (!checked.length) { qvcToast('请先选择要分析的表情包', 'info'); return; }
+    qvcConfirm('将用视觉模型分析选中的 ' + checked.length + ' 个表情包，确定继续？', async function() {
+        var done = 0, fail = 0;
+        for (var i = 0; i < checked.length; i++) {
+            try {
+                var resp = await qvcApi('/api/stickers/autofill', 'POST', { id: checked[i] });
+                if (resp.ok) done++; else fail++;
+            } catch (_) { fail++; }
+            qvcToast('AI 分析进度: ' + (i + 1) + '/' + checked.length, 'info');
+        }
+        document.querySelectorAll('.qvc-sticker-cb').forEach(function(cb) { cb.checked = false; });
+        qvcStickerUpdateToolbar();
+        qvcToast('AI 分析完成: 成功' + done + '，失败' + fail, fail > 0 ? 'error' : 'ok');
+        qvcLoadStickers();
+    });
 }
 
 // ==================== 重置 ====================
