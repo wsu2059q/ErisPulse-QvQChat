@@ -37,6 +37,7 @@ class QvQConfig:
             "admin": {"admins": []},
             "stalker_mode": {
                 "enabled": True,
+                "mode": "balanced",  # conservative | balanced | active
                 "default_probability": 0.03,
                 "min_messages_between_replies": 15,
                 "max_replies_per_hour": 8,
