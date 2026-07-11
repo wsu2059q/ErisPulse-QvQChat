@@ -430,12 +430,10 @@ STYLES = r"""
     flex-direction: column;
     background: var(--bg-c);
     position: relative;
-    min-height: 180px;
-    cursor: default;
 }
 
-.qvc-sticker-card.qvc-select-mode {
-    cursor: pointer;
+.qvc-sticker-card:hover {
+    border-color: var(--accent);
 }
 
 .qvc-sticker-thumb {
@@ -504,10 +502,109 @@ STYLES = r"""
     display: block;
 }
 
+.qvc-select-mode .qvc-sticker-card {
+    cursor: pointer;
+}
+
 .qvc-sticker-check input {
     width: 16px;
     height: 16px;
     cursor: pointer;
     accent-color: var(--accent);
+}
+
+/* 弹出菜单 */
+.qvc-popup-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 999;
+    background: var(--bg-c, #fff);
+    border: 1px solid var(--bd, #ddd);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    min-width: 150px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.qvc-popup-menu button {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    text-align: left;
+    font-size: 13px;
+    color: var(--tx-c);
+    cursor: pointer;
+}
+
+.qvc-popup-menu button:hover {
+    background: var(--bg2, #f0f0f0);
+}
+
+.qvc-popup-title {
+    padding: 6px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--tx-s, #999);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--bd, #eee);
+}
+
+.qvc-popup-divider {
+    height: 1px;
+    background: var(--bd, #eee);
+    margin: 4px 0;
+}
+
+/* 悬停显示编辑/删除按钮 */
+.qvc-sticker-actions-hover {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 2;
+    display: none;
+    gap: 4px;
+}
+
+.qvc-sticker-card:hover .qvc-sticker-actions-hover {
+    display: flex;
+}
+
+.qvc-sticker-actions-hover .qvc-btn-sm {
+    padding: 2px 6px;
+    font-size: 11px;
+    background: var(--bg-c, #fff);
+    border: 1px solid var(--bd, #ddd);
+    border-radius: 4px;
+}
+
+/* 批量操作工具栏 */
+.qvc-sticker-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg2, #f0f4f8);
+    border: 1px solid var(--bd, #ddd);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    animation: qvcSlideDown 0.2s ease-out;
+    overflow: hidden;
+}
+
+@keyframes qvcSlideDown {
+    from { max-height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; }
+    to { max-height: 60px; opacity: 1; }
+}
+
+.qvc-sticker-count {
+    font-size: 13px;
+    color: var(--tx-c);
+    font-weight: 600;
+    margin-right: 12px;
 }
 """

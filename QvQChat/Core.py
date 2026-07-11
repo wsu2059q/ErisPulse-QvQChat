@@ -739,11 +739,42 @@ class Main(BaseModule):
             self.logger.info(f"调用对话行为 - 消息数: {len(messages)}")
             response = await self.ai_engine.dialogue(messages, tools=tools)
 
-            # 处理 MCP 工具调用
-            if response and not isinstance(response, str):
-                await self._handle_tool_calls(response, data)
-                # 提取工具调用后的文字回复
-                response = getattr(response, "content", None) or ""
+            # 多轮 MCP 工具调用处理（tool_call → tool_result → 再调用 AI → 直到返回文本）
+            max_tool_rounds = 15
+            total_tool_cost = 0
+            for _ in range(max_tool_rounds):
+                if not response or isinstance(response, str):
+                    break
+                # 执行工具调用
+                tool_results = await self._handle_tool_calls(response, data)
+                if not tool_results:
+                    response = getattr(response, "content", None) or ""
+                    break
+                total_tool_cost += len(tool_results)
+                # 超过 10 次工具调用 → 强制结束
+                if total_tool_cost > 10:
+                    self.logger.warning(f"工具调用次数过多 ({total_tool_cost})，强制结束")
+                    response = getattr(response, "content", None) or ""
+                    if not response:
+                        response = "已经查了足够多信息了，让我总结一下。"
+                    break
+                # 追加 assistant 消息（转 dict）
+                if hasattr(response, "model_dump"):
+                    msg_dict = response.model_dump(exclude_none=True)
+                elif hasattr(response, "dict"):
+                    msg_dict = response.dict(exclude_none=True)
+                else:
+                    msg_dict = {"role": "assistant", "content": response.content}
+                    if hasattr(response, "tool_calls") and response.tool_calls:
+                        msg_dict["tool_calls"] = [
+                            {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                            for tc in response.tool_calls
+                        ]
+                messages.append(msg_dict)
+                messages.extend(tool_results)
+                # 再次调用 AI，带上工具结果
+                self.logger.info(f"工具结果已反馈，继续调用 AI，消息数: {len(messages)}")
+                response = await self.ai_engine.dialogue(messages, tools=tools)
 
             if not response or not isinstance(response, str):
                 return None
@@ -766,11 +797,12 @@ class Main(BaseModule):
             self.logger.error(f"生成回复失败: {e}")
             return None
 
-    async def _handle_tool_calls(self, message, data: Dict[str, Any]) -> None:
-        """处理 AI 返回的 MCP 工具调用"""
+    async def _handle_tool_calls(self, message, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """处理 AI 返回的 MCP 工具调用，返回 tool result 消息列表"""
         import json
 
         tool_calls = getattr(message, "tool_calls", None) or []
+        results = []
         for tc in tool_calls:
             func = getattr(tc, "function", None)
             if not func:
@@ -782,8 +814,19 @@ class Main(BaseModule):
             try:
                 result = await self.mcp_manager.call_tool(func.name, arguments)
                 self.logger.debug(f"工具 {func.name} 返回: {truncate_message(result, 100)}")
+                results.append({
+                    "role": "tool",
+                    "tool_call_id": getattr(tc, "id", "call_") or "call_",
+                    "content": result,
+                })
             except Exception as e:
                 self.logger.warning(f"工具 {func.name} 调用失败: {e}")
+                results.append({
+                    "role": "tool",
+                    "tool_call_id": getattr(tc, "id", "call_") or "call_",
+                    "content": f"调用失败: {e}",
+                })
+        return results
 
     def _find_sticker(self, name: str) -> Optional[dict]:
         """模糊匹配表情包名称"""
@@ -794,12 +837,19 @@ class Main(BaseModule):
         for s in self.sticker_manager.list_stickers():
             if s.get("name", "").lower() == name:
                 return s
-        # 包含匹配
+        # 包含匹配（双向：AI名在贴纸名中，或贴纸名在AI名中）
         for s in self.sticker_manager.list_stickers():
-            if name in s.get("name", "").lower():
+            sname = s.get("name", "").lower()
+            if name in sname or sname in name:
                 return s
             if name in s.get("description", "").lower():
                 return s
+        # 截断模糊（AI可能多写或少写一个字）
+        if len(name) > 2:
+            shortened = name[:-1]
+            for s in self.sticker_manager.list_stickers():
+                if shortened in s.get("name", "").lower():
+                    return s
         return None
 
     async def _send_image(self, data: Dict[str, Any], platform: str, image_path: str) -> None:
@@ -907,6 +957,14 @@ class Main(BaseModule):
                 kb_note = " +知识库"
 
         self.logger.info(f"提示词来源: {source}{kb_note} (共{len(prompt)}字符)")
+
+        # MCP 工具使用提示
+        if self.config.get("mcp.enabled", True) and self.mcp_manager.get_stats().get("total", 0) > 0:
+            prompt += (
+                "\n\n【工具使用】你可以调用工具查询信息。"
+                "获取足够信息后请用文字回复，不要持续调工具。"
+            )
+
         return prompt
 
     async def _build_memory_context(
@@ -1239,6 +1297,8 @@ class Main(BaseModule):
                         matched = self._find_sticker(name)
                         if matched:
                             await self._send_image(data, platform, matched["file"])
+                        else:
+                            self.logger.warning(f"表情包标签未匹配: {name}")
                 response = regex.sub("", response).strip()
 
             # 清理残留标签碎片

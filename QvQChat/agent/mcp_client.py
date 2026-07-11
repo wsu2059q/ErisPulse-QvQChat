@@ -16,6 +16,7 @@ MCP Server 客户端（Streamable HTTP）
 """
 
 import asyncio
+import inspect
 import json
 import uuid
 from typing import Any, Dict, List, Optional
@@ -153,10 +154,38 @@ class MCPServerClient:
             timeout=timeout,
         )
 
-        resp_text = resp.text if hasattr(resp, "text") else str(resp)
+        # 获取响应文本（兼容 .text 属性和 .text() 方法）
+        if hasattr(resp, "text"):
+            t = resp.text
+            if inspect.iscoroutinefunction(t):
+                resp_text = await t()
+            elif callable(t):
+                resp_text = t()
+            else:
+                resp_text = t
+        elif hasattr(resp, "read"):
+            rd = resp.read
+            if inspect.iscoroutinefunction(rd):
+                raw = await rd()
+            elif callable(rd):
+                raw = rd()
+            else:
+                raw = rd
+            resp_text = raw.decode() if isinstance(raw, bytes) else str(raw)
+        else:
+            resp_text = str(resp)
 
         # 尝试解析 SSE 格式（data: {...}）
-        if "text/event-stream" in str(getattr(resp, "headers", {}).get("content-type", "")):
+        content_type = ""
+        if hasattr(resp, "headers"):
+            h = resp.headers
+            if callable(h.get):
+                content_type = h.get("content-type", "") or ""
+            elif isinstance(h, dict):
+                content_type = h.get("content-type", "") or h.get("Content-Type", "")
+        ct_str = str(content_type).lower() if content_type else ""
+
+        if "text/event-stream" in ct_str:
             for line in resp_text.split("\n"):
                 line = line.strip()
                 if line.startswith("data:"):
