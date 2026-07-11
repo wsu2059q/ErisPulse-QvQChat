@@ -59,6 +59,13 @@
 
 ![基础设置](.github/assets/settings.png)
 
+### 表情包系统
+
+支持自定义表情包，AI自主根据场景发送
+
+![表情包](.github/assets/stickers.png)
+
+
 ## 功能一览
 
 | 模块 | 说明 |
