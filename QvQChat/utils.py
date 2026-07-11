@@ -117,7 +117,7 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
 
     # 找到所有的 wait 分隔符
     wait_pattern = re.compile(
-        r'<\|\s*wait\s+time\s*=\s*["\']?(\d+)["\']?\s*\|?>', re.IGNORECASE
+        r"<\|\s*wait\s+time\s*=\s*[\"']?(\d+).*?\|?>", re.IGNORECASE
     )
 
     has_wait_separator = False
@@ -176,21 +176,21 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
         parts.append(last_part)
 
     # 构建消息列表
+    # parts 格式: [msg1, delay1, msg2, delay2, msg3, ...]
+    # delayN 是 msgN 发送后到 msg(N+1) 的等待时间
     messages = []
-    prev_delay = 0
+    next_delay = 0
     for i in range(0, len(parts), 2):
         msg_content = parts[i].strip()
         if not msg_content:
-            # 空内容说明 wait 在开头，延时留给下一条
-            if i + 1 < len(parts):
-                prev_delay = int(parts[i + 1])
+            # 空内容说明 wait 在开头
+            next_delay = int(parts[i + 1]) if i + 1 < len(parts) else 0
             continue
+        messages.append({"content": msg_content, "delay": next_delay})
+        next_delay = 0
+        # 读取当前消息对应的 wait 延迟（给下一条消息用）
         if i + 1 < len(parts):
-            delay = int(parts[i + 1])
-        else:
-            delay = prev_delay
-        prev_delay = 0
-        messages.append({"content": msg_content, "delay": delay})
+            next_delay = int(parts[i + 1])
 
     # 如果最后一条消息被遗漏了，添加它
     if len(parts) % 2 == 1 and parts[-1].strip():
@@ -532,8 +532,8 @@ class MessageSender:
             msg_content = msg_info["content"]
             delay = msg_info["delay"]
 
-            # 延迟发送（除第一条消息外）
-            if i > 0 and delay > 0:
+            # 延迟发送
+            if delay > 0:
                 import asyncio
 
                 await asyncio.sleep(delay)

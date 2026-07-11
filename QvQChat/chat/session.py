@@ -344,8 +344,17 @@ class SessionManager:
         stalker = self.config.get("stalker_mode", {})
         session_key = self.get_session_key(user_id, group_id)
 
-        # 更新话题热度
         heat = self.update_topic_heat(session_key, alt_message)
+
+        # 根据模式调整参数
+        mode = stalker.get("mode", "balanced")
+        mode_mult = {"conservative": 0, "balanced": 1, "active": 2}.get(mode, 1)
+        if mode_mult == 0:  # 保守模式
+            stalker = {**stalker, "default_probability": 0, "hot_topic_probability": 0,
+                       "sticker_emoji_probability": 0, "question_probability": 0.5}
+        elif mode_mult == 2:  # 积极模式
+            stalker = {**stalker, "default_probability": stalker.get("default_probability", 0.03) * 2,
+                       "hot_topic_probability": stalker.get("hot_topic_probability", 0.3) * 2}
 
         # 每小时限制
         max_per_hour = stalker.get("max_replies_per_hour", 8)
@@ -364,14 +373,10 @@ class SessionManager:
                 self.increment_hourly_count(user_id, group_id)
                 return True
 
-        # 层级3：高热度话题直接参与
-        if heat > 0.8:
-            hot_prob = stalker.get("hot_topic_probability", 0.3)
-            heat_prob = min(heat * hot_prob, 0.7)
-            if random.random() < heat_prob:
-                self.logger.info(f"话题热度高 ({heat:.2f})，主动参与")
-                self.increment_hourly_count(user_id, group_id)
-                return True
+        # 层级3：高热度话题 → 提高AI判断概率，不直接回复
+        heat_flag = heat > 0.8 and random.random() < min(heat * 0.3, 0.7)
+        if heat_flag:
+            self.logger.info(f"话题热度高 ({heat:.2f})，走AI判断")
 
         # 层级4：沉寂后唤醒
         silence_threshold = stalker.get("silence_threshold_minutes", 30)
@@ -404,6 +409,16 @@ class SessionManager:
             self.logger.info(f"概率命中 ({final_prob:.3f}, 热度:{heat:.2f})")
             self.increment_hourly_count(user_id, group_id)
             return True
+
+        # 热度标志触发AI判断（替代之前直接回复）
+        if heat_flag:
+            self.logger.info(f"热度标志触发AI判断 (热度:{heat:.2f})")
+            should = await self._should_reply_ai(
+                ai_engine, data, alt_message, user_id, group_id, bot_ids, bot_nicknames
+            )
+            if should:
+                self.increment_hourly_count(user_id, group_id)
+            return should
 
         # 表情/表情包触发（不消耗AI，纯随机）
         sticker_prob = stalker.get("sticker_emoji_probability", 0)

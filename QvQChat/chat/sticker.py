@@ -93,9 +93,11 @@ class StickerManager:
         with open(filepath, "wb") as f:
             f.write(file_data)
 
+        name = self._deduplicate_name(name.strip())
+
         sticker = {
             "id": sticker_id,
-            "name": name.strip(),
+            "name": name,
             "description": description.strip(),
             "file": filepath,
             "filename": saved_filename,
@@ -105,6 +107,20 @@ class StickerManager:
         self._save()
         self.logger.info(f"添加表情包: {name} ({sticker_id})")
         return sticker
+
+    def _deduplicate_name(self, name: str) -> str:
+        """确保名称唯一，重名时自动加 (2)/(3)..."""
+        if not name:
+            return name
+        existing = {s.get("name", "").lower() for s in self._stickers.values()}
+        if name.lower() not in existing:
+            return name
+        suffix = 2
+        while True:
+            candidate = f"{name}({suffix})"
+            if candidate.lower() not in existing:
+                return candidate
+            suffix += 1
 
     def add_sticker_by_url(
         self,
@@ -124,9 +140,10 @@ class StickerManager:
             创建的表情包数据
         """
         sticker_id = f"sticker_{uuid.uuid4().hex[:8]}"
+        name = self._deduplicate_name(name.strip())
         sticker = {
             "id": sticker_id,
-            "name": name.strip(),
+            "name": name,
             "description": description.strip(),
             "file": url,
             "filename": "",
@@ -147,7 +164,16 @@ class StickerManager:
             return None
         for key in ("name", "description"):
             if key in data:
-                sticker[key] = data[key]
+                if key == "name":
+                    # 排除自身后去重
+                    old_name = sticker.get("name", "")
+                    new_name = data["name"].strip()
+                    if new_name.lower() != old_name.lower():
+                        sticker[key] = self._deduplicate_name(new_name)
+                    else:
+                        sticker[key] = new_name
+                else:
+                    sticker[key] = data[key]
         self._save()
         return sticker
 
@@ -192,36 +218,9 @@ class StickerManager:
             return None
         return sticker.get("file", "")
 
-    def get_openai_tool_schema(self) -> Optional[Dict[str, Any]]:
+    def get_catalog_text(self) -> str:
         """
-        生成 send_sticker 工具的 OpenAI function calling 定义
-
-        如果没有表情包则返回 None。
-        """
-        if not self._stickers:
-            return None
-
-        return {
-            "type": "function",
-            "function": {
-                "name": "send_sticker",
-                "description": "用表情包配合文字表达，增强互动感。别过度使用。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "sticker_name": {
-                            "type": "string",
-                            "description": "要发送的表情包名称",
-                        }
-                    },
-                    "required": ["sticker_name"],
-                },
-            },
-        }
-
-    def build_sticker_catalog_text(self) -> str:
-        """
-        生成表情包目录文本（注入系统提示词）
+        生成表情包目录文本
 
         格式：名称 - 描述
         """

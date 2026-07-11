@@ -254,7 +254,14 @@ async function qvcLoadBasic() {
 
         // 窥屏模式
         html += '<div class="qvc-section-title">窥屏模式</div>';
+        html += '<div class="qvc-form-row">';
+        html += qvcSelectField('stalker_mode.mode', '回复策略', qvcGetPath(cfg, 'stalker_mode.mode', 'balanced'), [
+            { label: '保守（仅回复@/叫名字）', value: 'conservative' },
+            { label: '均衡（默认）', value: 'balanced' },
+            { label: '积极（频繁参与）', value: 'active' }
+        ]);
         html += qvcCheckField('stalker_mode.enabled', '启用窥屏模式', qvcGetPath(cfg, 'stalker_mode.enabled', true));
+        html += '</div>';
         html += '<div class="qvc-form-row">';
         html += qvcNumField('stalker_mode.default_probability', '默认回复概率', qvcGetPath(cfg, 'stalker_mode.default_probability', 0.03));
         html += qvcNumField('stalker_mode.mention_probability', '被@回复概率', qvcGetPath(cfg, 'stalker_mode.mention_probability', 0.8));
@@ -379,6 +386,18 @@ function qvcArrayField(path, label, arr) {
     return '<div class="qvc-form-group">' +
         '<label>' + qvcEsc(label) + '</label>' +
         '<input type="text" class="qvc-input" data-array="' + qvcEsc(path) + '" value="' + qvcEsc(str) + '">' +
+        '</div>';
+}
+
+function qvcSelectField(path, label, val, options) {
+    var opts = '';
+    (options || []).forEach(function(o) {
+        var sel = o.value === val ? ' selected' : '';
+        opts += '<option value="' + qvcEsc(o.value) + '"' + sel + '>' + qvcEsc(o.label) + '</option>';
+    });
+    return '<div class="qvc-form-group">' +
+        '<label>' + qvcEsc(label) + '</label>' +
+        '<select class="qvc-input" data-path="' + qvcEsc(path) + '">' + opts + '</select>' +
         '</div>';
 }
 
