@@ -416,6 +416,7 @@ class SessionManager:
             should = await self._should_reply_ai(
                 ai_engine, data, alt_message, user_id, group_id, bot_ids, bot_nicknames
             )
+            self.logger.info(f"AI判断结果: {'回复' if should else '不回复'} (热度:{heat:.2f})")
             if should:
                 self.increment_hourly_count(user_id, group_id)
             return should
