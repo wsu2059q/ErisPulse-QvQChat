@@ -192,10 +192,6 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
         if i + 1 < len(parts):
             next_delay = int(parts[i + 1])
 
-    # 如果最后一条消息被遗漏了，添加它
-    if len(parts) % 2 == 1 and parts[-1].strip():
-        messages.append({"content": parts[-1].strip(), "delay": 0})
-
     # 最多返回3条消息
     if len(messages) > 3:
         from ErisPulse.Core import logger
