@@ -727,7 +727,8 @@ class Main(BaseModule):
                     messages.insert(0, {
                         "role": "system",
                         "content": (
-                            "【可用表情包】用 <|sticker|>名称</sticker|> 内嵌到回复里。\n"
+                            "【可用表情包】用 <|sticker|>名称</sticker|> 内嵌到回复里。"
+                            "如果不知道说什么，也可以只发送【一个】表情包，不附带文字。\n"
                             + catalog
                         ),
                     })
@@ -1277,34 +1278,44 @@ class Main(BaseModule):
             if not target_id:
                 return
 
-            # 解析文本中的表情包内嵌标签
+            # 解析文本中的表情包内嵌标签（统一正则，一次性匹配所有格式）
             import re
-            # 标准格式: <|sticker|>name</sticker|>
-            # 兼容格式1: <send_sticker><parameter...>name</parameter></send_sticker>
-            # 兼容格式2: <send_sticker>name</send_sticker>
-            # 兼容格式3: 只有开始标签没有结束标签
-            patterns = [
-                (r"<\|?\s*sticker\s*\|?>\s*([^<>《\n]{1,20})\s*<\|?[\|/]*\s*sticker\s*\|?>", re.IGNORECASE),
-                (r"<\|?\s*send_sticker\s*\|?>.*?parameter.*?sticker_name.*?>([^<>《\n]{1,20})(?=<)", re.IGNORECASE | re.DOTALL),
-                (r"<\|?\s*send_sticker\s*\|?>\s*([^<>《\n]{1,20})\s*<\|?[\|/]*\s*send_sticker\s*\|?>", re.IGNORECASE),
-                (r"<\|?\s*send_sticker[^>]*>\s*([^<>《\n]{1,20})\s*(?:$|<)", re.IGNORECASE),
-            ]
-            for pat, flags in patterns:
-                regex = re.compile(pat, flags)
-                for match in regex.finditer(response):
-                    name = match.group(1).strip()
-                    if name:
-                        matched = self._find_sticker(name)
-                        if matched:
-                            await self._send_image(data, platform, matched["file"])
-                        else:
-                            self.logger.warning(f"表情包标签未匹配: {name}")
-                response = regex.sub("", response).strip()
+            # 格式1: <|sticker|名称</sticker|>  标准
+            # 格式2: <send_sticker><parameter...>名称</parameter></send_sticker>  兼容function calling
+            # 格式3: <send_sticker>名称</send_sticker>  兼容
+            # 格式4: <send_sticker>名称  未闭合
+            sticker_re = re.compile(
+                r"<\|?\s*(?:sticker|send_sticker)\s*\|?>"
+                r"(?:\s*<parameter[^>]*>\s*)?"
+                r"([^<>《\n]{1,30})"
+                r"(?:\s*</parameter>\s*)?"
+                r"\s*(?:</?\|?[\|/]*\s*(?:sticker|send_sticker)\s*\|?>|$)",
+                re.IGNORECASE
+            )
+            # 反向遍历以保持索引正确
+            sent_sticker_count = 0
+            for match in reversed(list(sticker_re.finditer(response))):
+                name = match.group(1).strip()
+                if name:
+                    matched = self._find_sticker(name)
+                    if matched:
+                        await self._send_image(data, platform, matched["file"])
+                        sent_sticker_count += 1
+                        # 表情包发送成功，从文本中移除整个标签
+                        response = response[:match.start()] + response[match.end():]
+                    else:
+                        self.logger.warning(f"表情包标签未匹配: {name}")
+                        # 未找到表情包，保留名称文本，只去除标签语法
+                        response = response[:match.start()] + name + response[match.end():]
 
             # 清理残留标签碎片
             response = re.sub(
                 r"</?\|?[\|/]*\s*(?:sticker|send_sticker|parameter)[^>]*>\s*", "", response
             ).strip()
+
+            # 纯表情包场景：只发了表情包没有文本，不发送空消息
+            if sent_sticker_count > 0 and not response:
+                return
 
             if response:
                 await self.message_sender.send(platform, target_type, target_id, response)
