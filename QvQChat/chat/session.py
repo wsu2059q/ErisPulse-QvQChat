@@ -39,6 +39,14 @@ class SessionManager:
         self._topic_heat: Dict[str, float] = {}  # session_key -> heat score
         self._last_msg_time: Dict[str, float] = {}
 
+        # 会话元数据（用于主动发起对话）
+        self._session_meta: Dict[str, Dict[str, str]] = {}
+
+        # 主动发起对话相关
+        self._last_incoming: Dict[str, float] = {}          # session_key -> 最后一条他人消息时间
+        self._proactive_count: Dict[str, int] = {}          # session_key -> 今日主动发起次数
+        self._proactive_count_date: Dict[str, str] = {}     # session_key -> 计数对应的日期
+
     # ==================== 会话标识 ====================
 
     def get_session_key(self, user_id: str, group_id: Optional[str] = None) -> str:
@@ -95,6 +103,10 @@ class SessionManager:
         self, user_id: str, group_id: Optional[str] = None
     ) -> None:
         self._last_reply_time[self.get_session_key(user_id, group_id)] = time.time()
+
+    def get_last_reply_time_by_key(self, session_key: str) -> float:
+        """通过会话键获取最后回复时间"""
+        return self._last_reply_time.get(session_key, 0)
 
     # ==================== 群内沉寂 ====================
 
@@ -277,6 +289,60 @@ class SessionManager:
         """获取当前话题热度"""
         return self._topic_heat.get(session_key, 0)
 
+    # ==================== 会话元数据 ====================
+
+    def update_session_meta(
+        self, session_key: str, platform: str, target_type: str, target_id: str
+    ) -> None:
+        """更新会话元数据（平台/目标，用于主动发起对话）"""
+        self._session_meta[session_key] = {
+            "platform": platform,
+            "target_type": target_type,
+            "target_id": target_id,
+        }
+
+    def get_session_meta(self, session_key: str) -> Dict[str, str]:
+        """获取会话元数据"""
+        return self._session_meta.get(session_key, {})
+
+    def get_all_session_keys(self) -> List[str]:
+        """获取所有有元数据的会话键"""
+        return list(self._session_meta.keys())
+
+    # ==================== 主动发起对话支持 ====================
+
+    def update_last_incoming(self, session_key: str) -> None:
+        """记录该会话收到一条他人消息的时间（用于活跃度判断）"""
+        self._last_incoming[session_key] = time.time()
+
+    def get_last_incoming_time(self, session_key: str) -> float:
+        """获取该会话最后一条他人消息的时间（无记录返回0）"""
+        # 优先用 _last_incoming（覆盖群聊+私聊）
+        t = self._last_incoming.get(session_key, 0)
+        if t > 0:
+            return t
+        # 回退：群聊可从 _group_silence 取（历史信号，兼容旧逻辑）
+        if session_key.startswith("group:"):
+            data = self._group_silence.get(session_key, {})
+            return data.get("last_message_time", 0)
+        return 0
+
+    def check_proactive_daily_limit(self, session_key: str, max_per_day: int) -> bool:
+        """检查今日主动发起次数是否已达上限"""
+        from datetime import datetime
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self._proactive_count_date.get(session_key) != today:
+            self._proactive_count_date[session_key] = today
+            self._proactive_count[session_key] = 0
+        return self._proactive_count.get(session_key, 0) < max_per_day
+
+    def increment_proactive_count(self, session_key: str) -> None:
+        """主动发起成功后递增计数"""
+        self._proactive_count[session_key] = (
+            self._proactive_count.get(session_key, 0) + 1
+        )
+
     # ==================== 预测模式 ====================
 
     def add_prediction_message(self, session_key: str, message: str) -> List[str]:
@@ -326,7 +392,6 @@ class SessionManager:
         alt_message: str,
         user_id: str,
         group_id: Optional[str],
-        bot_ids: List[str],
         bot_nicknames: List[str],
     ) -> bool:
         """
@@ -385,7 +450,7 @@ class SessionManager:
             # 沉寂后第一条消息，用AI判断
             self.logger.debug(f"群内沉寂{int(silence_duration / 60)}分钟，AI判断")
             should = await self._should_reply_ai(
-                ai_engine, data, alt_message, user_id, group_id, bot_ids, bot_nicknames
+                ai_engine, data, alt_message, user_id, group_id, bot_nicknames
             )
             if should:
                 self.increment_hourly_count(user_id, group_id)
@@ -414,7 +479,7 @@ class SessionManager:
         if heat_flag:
             self.logger.info(f"热度标志触发AI判断 (热度:{heat:.2f})")
             should = await self._should_reply_ai(
-                ai_engine, data, alt_message, user_id, group_id, bot_ids, bot_nicknames
+                ai_engine, data, alt_message, user_id, group_id, bot_nicknames
             )
             self.logger.info(f"AI判断结果: {'回复' if should else '不回复'} (热度:{heat:.2f})")
             if should:
@@ -432,7 +497,7 @@ class SessionManager:
         return False
 
     async def _should_reply_ai(
-        self, ai_engine, data, alt_message, user_id, group_id, bot_ids, bot_nicknames
+        self, ai_engine, data, alt_message, user_id, group_id, bot_nicknames
     ) -> bool:
         """AI智能判断是否回复"""
         from ..chat.memory import QvQMemory
@@ -440,9 +505,8 @@ class SessionManager:
         memory = QvQMemory(self.config, None)
         history = await memory.get_session_history(user_id, group_id)
 
-        # 检查@（优先使用事件 self.user_id）
+        # 检查@（仅使用事件 self.user_id）
         self_user_id = str(data.get("self", {}).get("user_id", ""))
-        all_bot_ids = {self_user_id} | {str(b) for b in bot_ids if b}
         segments = data.get("message", [])
         is_mentioned = False
         mention_info = ""
@@ -450,7 +514,7 @@ class SessionManager:
             if seg.get("type") == "mention":
                 uid = str(seg.get("data", {}).get("user_id", ""))
                 nick = seg.get("data", {}).get("nickname", "")
-                if uid and uid in all_bot_ids:
+                if uid and uid == self_user_id:
                     is_mentioned = True
                     mention_info = f" @{nick or uid} "
                     break

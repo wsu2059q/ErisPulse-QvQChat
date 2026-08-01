@@ -68,6 +68,42 @@ _PERSONALITY_TEMPLATES = {
 - 喜欢用"其实这个很有意思..."开头分享
 
 记住：你就是真实的自己，直接说出你想说的话。""",
+    "中二少年": """你是一个中二少年。你的言行特点：
+- 说话喜欢用夸张的词汇和设定
+- 经常提到"封印""力量""命运"等概念
+- 自称有特殊的身份或能力（但只是嘴上说说）
+- 对日常小事反应很大，仿佛关乎世界存亡
+- 其实是个好人，关键时刻很靠谱
+- 偶尔会突然正经起来，反差很大
+
+记住：你就是真实的自己，不是在"扮演"角色，直接说出你想说的话。""",
+    "社恐": """你是一个社恐的人。你的言行特点：
+- 说话简短，不太主动
+- 被人搭话时会有点紧张但很开心
+- 不太擅长接话，但会认真回应
+- 用词比较小心，怕说错话
+- 熟悉之后会变得话多一点
+- 偶尔会鼓起勇气主动说点什么
+
+记住：你就是真实的自己，直接说出你想说的话。""",
+    "乐子人": """你是一个乐子人。你的言行特点：
+- 永远在找乐子，什么都能开玩笑
+- 喜欢整活、接梗、搞怪
+- 用幽默化解尴尬和严肃气氛
+- 偶尔正经一下会说出特别有道理的话
+- 感情用事但不矫情
+- 什么话题都能往搞笑方向带
+
+记住：你就是真实的自己，直接说出你想说的话。""",
+    "御姐": """你是一个成熟优雅的御姐。你的言行特点：
+- 说话从容自信，不紧不慢
+- 对人温和但有分寸感
+- 经验丰富，看问题很透彻
+- 偶尔会流露关心，但方式很含蓄
+- 幽默感高级，不会低俗
+- 对幼稚的行为会心一笑但不嘲笑
+
+记住：你就是真实的自己，直接说出你想说的话。""",
 }
 
 
@@ -177,6 +213,11 @@ class MultiAgentManager:
             "max_tokens": data.get("max_tokens"),
             "enabled": data.get("enabled", True),
             "is_default": False,
+            "traits": data.get("traits", {}),
+            "catchphrases": data.get("catchphrases", []),
+            "speaking_style": data.get("speaking_style", ""),
+            "greeting": data.get("greeting", ""),
+            "knowledge_tags": data.get("knowledge_tags", []),
             "created_at": time.time(),
         }
         self._agents[agent_id] = agent
@@ -209,6 +250,11 @@ class MultiAgentManager:
             "temperature",
             "max_tokens",
             "enabled",
+            "traits",
+            "catchphrases",
+            "speaking_style",
+            "greeting",
+            "knowledge_tags",
         ):
             if key in data:
                 agent[key] = data[key]
@@ -285,11 +331,10 @@ class MultiAgentManager:
         return agent
 
     def get_effective_prompt(self, session_key: str) -> str:
-        """获取会话的有效系统提示词"""
+        """获取会话的有效系统提示词（含人格特质/口头禅/说话风格）"""
         agent = self.get_agent_for_session(session_key)
         prompt = agent.get("system_prompt", "")
         if not prompt:
-            # 智能回退：找任意已启用的自定义智能体的提示词
             for a in self._agents.values():
                 if (
                     a.get("enabled", True)
@@ -297,8 +342,58 @@ class MultiAgentManager:
                     and a.get("system_prompt")
                 ):
                     self.logger.info(f"默认智能体无提示词，自动使用: {a['name']}")
-                    return a["system_prompt"]
+                    agent = a
+                    prompt = a["system_prompt"]
+                    break
+
+        # 注入人格特质
+        extras = []
+        traits = agent.get("traits", {})
+        if traits:
+            trait_descs = []
+            trait_map = {
+                "friendliness": ("友善", "冷淡"),
+                "activity": ("活跃", "安静"),
+                "formality": ("正式", "随意"),
+                "humor": ("幽默", "严肃"),
+                "curiosity": ("好奇", "漠然"),
+            }
+            for key, (high, low) in trait_map.items():
+                val = traits.get(key)
+                if val is not None and 0 <= val <= 1:
+                    if val >= 0.6:
+                        trait_descs.append(f"偏{high}")
+                    elif val <= 0.4:
+                        trait_descs.append(f"偏{low}")
+            if trait_descs:
+                extras.append(f"你的性格特点：{'、'.join(trait_descs)}。")
+
+        speaking_style = agent.get("speaking_style", "")
+        if speaking_style:
+            extras.append(f"你的说话风格：{speaking_style}")
+
+        catchphrases = agent.get("catchphrases", [])
+        if catchphrases:
+            extras.append(f'你的口头禅：{"、".join(catchphrases)}。偶尔自然地使用。')
+
+        greeting = agent.get("greeting", "")
+        if greeting:
+            extras.append(f"（开场白参考：{greeting}）")
+
+        if extras:
+            extras_text = "\n".join(f"- {e}" for e in extras)
+            prompt = f"{prompt}\n\n【人格特质】\n{extras_text}" if prompt else extras_text
+
         return prompt
+
+    def clone_agent(self, agent_id: str, new_name: str = None) -> Optional[Dict[str, Any]]:
+        """克隆智能体"""
+        agent = self._agents.get(agent_id)
+        if not agent:
+            return None
+        data = {k: v for k, v in agent.items() if k not in ("id", "created_at", "updated_at", "is_default")}
+        data["name"] = new_name or f"{agent.get('name', '')} (副本)"
+        return self.create_agent(data)
 
     def get_effective_model_params(self, session_key: str) -> Dict[str, Any]:
         """

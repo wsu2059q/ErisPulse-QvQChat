@@ -652,7 +652,10 @@ class MessageSender:
                     await adapter.Send.To(target_type, target_id).Image(url)
                 elif url.startswith(("http://", "https://")):
                     resp = await sdk.client.get(url, timeout=30)
-                    img_bytes = resp.content if hasattr(resp, "content") else resp.read()
+                    if hasattr(resp, "content"):
+                        img_bytes = resp.content
+                    else:
+                        img_bytes = await resp.read() if hasattr(resp, "read") else resp
                     await adapter.Send.To(target_type, target_id).Image(img_bytes)
                 elif os.path.exists(url):
                     with open(url, "rb") as f:

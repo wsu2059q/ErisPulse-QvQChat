@@ -199,6 +199,20 @@ class QvQMemory:
         session = self.storage.get(session_key, [])
         return [{"role": msg["role"], "content": msg["content"]} for msg in session]
 
+    async def get_session_history_detailed(
+        self, user_id: str, group_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        获取会话历史（含 timestamp 等元数据，用于主动发起对话时让 AI 感知时间跨度）
+
+        Returns:
+            List[Dict[str, Any]]: 原始会话条目（含 role/content/timestamp）
+        """
+        session_key = self._get_session_key(
+            user_id if not group_id else f"group:{group_id}"
+        )
+        return self.storage.get(session_key, [])
+
     async def clear_session(self, user_id: str, group_id: Optional[str] = None) -> None:
         """
         清除会话历史
@@ -226,6 +240,14 @@ class QvQMemory:
         """
         memory = await self.get_user_memory(user_id)
 
+        # 记忆去重
+        dedup_enabled = self.config.get("memory.dedup_enabled", True)
+        if dedup_enabled:
+            for entry in memory["long_term"]:
+                if self._is_similar_memory(content, entry.get("content", "")):
+                    self.logger.debug(f"记忆去重: 跳过相似记忆「{content[:30]}」")
+                    return
+
         long_term_entry = {
             "content": content,
             "tags": tags or [],
@@ -235,14 +257,61 @@ class QvQMemory:
 
         memory["long_term"].append(long_term_entry)
 
-        max_tokens = self.config.get("max_memory_tokens", 10000)
-        if len(memory["long_term"]) * 100 > max_tokens:  # 估算
-            memory["long_term"] = memory["long_term"][-50:]
+        # 记忆遗忘衰减
+        decay_enabled = self.config.get("memory.decay_enabled", True)
+        if decay_enabled:
+            self._apply_memory_decay(memory)
+
+        # 最大记忆数限制
+        max_per_user = self.config.get("memory.max_per_user", 100)
+        if len(memory["long_term"]) > max_per_user:
+            memory["long_term"] = memory["long_term"][-max_per_user:]
 
         await self.set_user_memory(user_id, memory)
 
         # 检查是否需要压缩记忆
         await self._check_and_compress_memory(user_id)
+
+    @staticmethod
+    def _is_similar_memory(new_content: str, existing: str) -> bool:
+        """简单的记忆相似度判断"""
+        new = new_content.strip()
+        old = existing.strip()
+        if not new or not old:
+            return False
+        if new == old:
+            return True
+        if new in old or old in new:
+            return True
+        new_set = set(new)
+        old_set = set(old)
+        if not new_set or not old_set:
+            return False
+        overlap = len(new_set & old_set) / max(len(new_set | old_set), 1)
+        return overlap > 0.75
+
+    def _apply_memory_decay(self, memory: Dict[str, Any]) -> None:
+        """应用记忆遗忘衰减：移除过旧且不重要的记忆"""
+        decay_days = self.config.get("memory.decay_days", 30)
+        if decay_days <= 0:
+            return
+        now = datetime.now()
+        kept = []
+        for entry in memory.get("long_term", []):
+            ts = entry.get("timestamp", "")
+            if not ts:
+                kept.append(entry)
+                continue
+            try:
+                entry_time = datetime.fromisoformat(ts)
+                age_days = (now - entry_time).days
+                if age_days <= decay_days:
+                    kept.append(entry)
+                else:
+                    self.logger.debug(f"记忆衰减: 移除{age_days}天前的记忆「{entry.get('content', '')[:30]}」")
+            except Exception:
+                kept.append(entry)
+        memory["long_term"] = kept
 
     async def add_group_memory(
         self, group_id: str, sender_id: str, content: str, is_context: bool = False

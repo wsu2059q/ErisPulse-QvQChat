@@ -10,6 +10,7 @@ QvQChat 主模块
 import asyncio
 import random
 import time
+import traceback
 from typing import Any, Dict, List, Optional
 
 from ErisPulse import sdk
@@ -94,6 +95,10 @@ class Main(BaseModule):
         # AI 启用状态
         self._ai_disabled: Dict[str, bool] = {}
 
+        # 消息聚合状态
+        self._msg_buffers: Dict[str, Dict[str, Any]] = {}
+        self._msg_timers: Dict[str, asyncio.Task] = {}
+
         # 运行统计
         self._stats = {
             "total_messages": 0,
@@ -137,6 +142,9 @@ class Main(BaseModule):
             # 异步连接 MCP 服务器（不阻塞模块加载）
             if self.config.get("mcp.enabled", True):
                 asyncio.create_task(self._connect_mcp_servers())
+            # 主动发起对话循环
+            if self.config.get("human_state.proactive_message.enabled", False):
+                asyncio.create_task(self._proactive_loop())
             self.logger.info("QvQChat 模块已加载")
             return True
         except Exception as e:
@@ -205,7 +213,7 @@ class Main(BaseModule):
     # ==================== 消息处理 ====================
 
     async def _handle_message(self, data: Dict[str, Any]) -> None:
-        """消息处理主入口"""
+        """消息处理主入口（含消息聚合）"""
         try:
             self._stats["total_messages"] += 1
 
@@ -245,15 +253,9 @@ class Main(BaseModule):
             if not alt_message:
                 return
 
-            # 累积到短期记忆
-            await self.memory.add_short_term_memory(
-                user_id, "user", alt_message, group_id, user_nickname
-            )
-
             # 更新群沉寂 + 注册群组
             if group_id:
                 self.session.update_group_silence(user_id, group_id)
-                # 确保群组被注册（Dashboard 可见）
                 if group_id not in self.config.list_all_groups():
                     group_cfg = self.config.get_group_config(group_id)
                     if group_name:
@@ -261,7 +263,152 @@ class Main(BaseModule):
                     self.config.set_group_config(group_id, group_cfg)
                     self.logger.info(f"发现新群组: {group_name or group_id}")
 
+            # 更新会话元数据（用于主动发起对话）
+            session_key = self.session.get_session_key(user_id, group_id)
+            self.session.update_session_meta(
+                session_key, platform,
+                "group" if group_id else "user",
+                group_id or user_id,
+            )
+            # 记录该会话收到一条他人消息的时间（活跃度判断用）
+            self.session.update_last_incoming(session_key)
+
+            # 消息聚合判断
+            agg_cfg = self.config.get("message_aggregation", {})
+            if agg_cfg.get("enabled", True):
+                window = float(
+                    agg_cfg.get(
+                        "private_window" if not group_id else "group_window", 0
+                    )
+                )
+                max_buffer = int(agg_cfg.get("max_buffer", 8))
+                if window > 0:
+                    await self._buffer_message(
+                        data, alt_message, image_urls, user_id, group_id,
+                        user_nickname, group_name, platform, window, max_buffer,
+                    )
+                    return
+
+            # 无聚合：直接处理
+            await self._process_message(
+                data, alt_message, image_urls, user_id, group_id,
+                user_nickname, group_name, platform,
+            )
+
+        except Exception as e:
+            self.logger.error(f"处理消息出错: {e}\n{traceback.format_exc()}")
+
+    async def _buffer_message(
+        self,
+        data: Dict[str, Any],
+        alt_message: str,
+        image_urls: List[str],
+        user_id: str,
+        group_id: Optional[str],
+        user_nickname: str,
+        group_name: str,
+        platform: str,
+        window: float,
+        max_buffer: int,
+    ) -> None:
+        """缓冲消息用于聚合（debounce 窗口）"""
+        session_key = self.session.get_session_key(user_id, group_id)
+
+        buf = self._msg_buffers.get(session_key)
+        if buf is None:
+            buf = {
+                "messages": [],
+                "images": [],
+                "data": data,
+                "user_id": user_id,
+                "group_id": group_id,
+                "user_nickname": user_nickname,
+                "group_name": group_name,
+                "platform": platform,
+            }
+            self._msg_buffers[session_key] = buf
+
+        buf["messages"].append(alt_message)
+        buf["images"].extend(image_urls)
+        buf["data"] = data  # 更新为最新消息的事件数据（用于回复）
+
+        count = len(buf["messages"])
+        self.logger.debug(f"消息聚合 [{session_key}] 缓冲 {count} 条")
+
+        # 达到最大缓冲数：立即触发处理
+        if count >= max_buffer:
+            await self._flush_buffer(session_key)
+            return
+
+        # 重置定时器
+        old_timer = self._msg_timers.get(session_key)
+        if old_timer and not old_timer.done():
+            old_timer.cancel()
+
+        self._msg_timers[session_key] = asyncio.create_task(
+            self._buffer_timer_task(session_key, window)
+        )
+
+    async def _buffer_timer_task(self, session_key: str, window: float) -> None:
+        """聚合定时器任务"""
+        try:
+            await asyncio.sleep(window)
+            await self._flush_buffer(session_key)
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.error(f"聚合定时器出错: {e}")
+
+    async def _flush_buffer(self, session_key: str) -> None:
+        """冲刷缓冲区，处理聚合消息"""
+        buf = self._msg_buffers.pop(session_key, None)
+        timer = self._msg_timers.pop(session_key, None)
+        if timer and not timer.done():
+            timer.cancel()
+
+        if not buf or not buf["messages"]:
+            return
+
+        # 合并消息文本
+        combined_message = "\n".join(buf["messages"])
+        all_images = list(set(buf["images"]))
+
+        self.logger.info(
+            f"聚合触发 [{session_key}] - 合并 {len(buf['messages'])} 条消息: "
+            f"{truncate_message(combined_message, 80)}"
+        )
+
+        await self._process_message(
+            buf["data"],
+            combined_message,
+            all_images,
+            buf["user_id"],
+            buf["group_id"],
+            buf["user_nickname"],
+            buf["group_name"],
+            buf["platform"],
+        )
+
+    async def _process_message(
+        self,
+        data: Dict[str, Any],
+        alt_message: str,
+        image_urls: List[str],
+        user_id: str,
+        group_id: Optional[str],
+        user_nickname: str,
+        group_name: str,
+        platform: str,
+    ) -> None:
+        """处理单条/聚合后的消息（生成回复并发送）"""
+        try:
+            # 累积到短期记忆
+            await self.memory.add_short_term_memory(
+                user_id, "user", alt_message, group_id, user_nickname
+            )
+
             # 判断是否回复
+            bot_nicknames = self.config.get("bot_nicknames", [])
             should_reply = await self._check_should_reply(
                 data, alt_message, user_id, group_id
             )
@@ -269,6 +416,13 @@ class Main(BaseModule):
             if not should_reply:
                 self.logger.debug("窥屏模式决定不回复")
                 return
+
+            # 已读不回（低概率跳过，模拟真人偶尔看了不回）
+            if self._should_read_receipt_skip():
+                return
+
+            # 检测是否被提及（用于注入提示词）
+            is_mentioned = self._is_mentioned(data, bot_nicknames, alt_message)
 
             session_desc = get_session_description(
                 user_id, user_nickname, group_id, group_name
@@ -282,7 +436,6 @@ class Main(BaseModule):
                 alt_message, user_id, group_id, user_nickname
             )
             if output_result:
-                # 独立输出行为命中，直接发送（跳过 AI 调用）
                 delay = _calc_typing_delay(output_result, self.config)
                 if delay > 0:
                     await asyncio.sleep(delay)
@@ -294,8 +447,16 @@ class Main(BaseModule):
                 self.session.update_last_reply_time(user_id, group_id)
                 return
 
-            # 速率限制
-            est_tokens = SessionManager.estimate_tokens(alt_message) * 2
+            # 速率限制（估算包含系统提示词+历史+用户消息）
+            history = await self.memory.get_session_history(user_id, group_id)
+            history_tokens = sum(
+                SessionManager.estimate_tokens(m.get("content", "")) for m in history[-15:]
+            )
+            est_tokens = (
+                SessionManager.estimate_tokens(alt_message)
+                + history_tokens
+                + 200  # 系统提示词估算
+            )
             self._stats["total_tokens_est"] += est_tokens
             if not self.session.check_rate_limit(est_tokens, user_id, group_id):
                 self.logger.warning("触发速率限制，跳过回复")
@@ -315,10 +476,14 @@ class Main(BaseModule):
                 group_name,
                 platform,
                 data,
+                is_mentioned=is_mentioned,
             )
 
             if not response:
                 return
+
+            # 拟人化后处理（错字纠正、打字中断等）
+            response = self._apply_humanize_postprocess(response)
 
             # 拟人化打字延迟
             delay = _calc_typing_delay(response, self.config)
@@ -341,11 +506,12 @@ class Main(BaseModule):
             self.session.update_last_reply_time(user_id, group_id)
             self.session.clear_cached_images(user_id, group_id)
 
-            # 保存AI回复到记忆
+            # 保存AI回复到记忆（清理特殊标签，避免历史污染）
             bot_names = self.config.get("bot_nicknames", [])
             bot_name = bot_names[0] if bot_names else ""
+            clean_for_memory = self._clean_response_for_history(response)
             await self.memory.add_short_term_memory(
-                user_id, "assistant", response, group_id, bot_name
+                user_id, "assistant", clean_for_memory, group_id, bot_name
             )
 
             # 行为链：群聊后续监听
@@ -359,7 +525,7 @@ class Main(BaseModule):
                 asyncio.create_task(self._extract_memory_async(user_id, group_id))
 
         except Exception as e:
-            self.logger.error(f"处理消息出错: {e}")
+            self.logger.error(f"处理消息出错: {e}\n{traceback.format_exc()}")
 
     async def _check_should_reply(
         self,
@@ -369,10 +535,9 @@ class Main(BaseModule):
         group_id: Optional[str],
     ) -> bool:
         """检查是否应该回复"""
-        bot_ids = self.config.get("bot_ids", [])
         bot_nicknames = self.config.get("bot_nicknames", [])
 
-        # 检查 @机器人（优先使用事件 self.user_id）
+        # 检查 @机器人（仅使用事件 self.user_id）
         is_mentioned = self._is_mentioned(data, bot_nicknames, alt_message)
 
         # 私聊：始终回复
@@ -447,7 +612,6 @@ class Main(BaseModule):
             alt_message,
             user_id,
             group_id,
-            bot_ids,
             bot_nicknames,
         )
 
@@ -556,6 +720,216 @@ class Main(BaseModule):
                 return f"@{user_nickname} {response}"
         return response
 
+    # ==================== 拟人化后处理 ====================
+
+    def _apply_humanize_postprocess(self, response: str) -> str:
+        """拟人化后处理：错字纠正、打字中断、半句发出等"""
+        humanize = self.config.get("humanize", {})
+
+        # 错字纠正（先执行，因为可能产生多消息）
+        typo_prob = float(humanize.get("typo_probability", 0)) if humanize else 0
+        if typo_prob > 0 and random.random() < typo_prob:
+            response = self._inject_typo_correction(response)
+
+        # 打字中断（半句发出）
+        half_prob = float(humanize.get("half_send_probability", 0)) if humanize else 0
+        if half_prob > 0 and random.random() < half_prob:
+            response = self._inject_half_send(response)
+
+        return response
+
+    def _inject_typo_correction(self, text: str) -> str:
+        """模拟打错字后下一条消息纠正
+
+        策略：随机交换两个相邻中文字符，然后用 <|wait|> 分隔发纠正消息
+        效果示例：
+          消息1: 我天今好开心
+          消息2: 打错了 是 今天
+        """
+        chinese_indices = [
+            i for i, c in enumerate(text) if "\u4e00" <= c <= "\u9fff"
+        ]
+        if len(chinese_indices) < 4 or len(text) < 6:
+            return text
+
+        adjacent_pairs = []
+        for idx in range(len(chinese_indices) - 1):
+            p1, p2 = chinese_indices[idx], chinese_indices[idx + 1]
+            if p2 == p1 + 1 and text[p1] != text[p2]:
+                adjacent_pairs.append((p1, p2))
+
+        if not adjacent_pairs:
+            return text
+
+        pos1, pos2 = random.choice(adjacent_pairs)
+        char1, char2 = text[pos1], text[pos2]
+
+        typo_text = text[:pos1] + char2 + char1 + text[pos2 + 1:]
+        correct_word = char1 + char2
+
+        corrections = [
+            correct_word,
+            f"打错了，{correct_word}",
+            f"打错了 是{correct_word}",
+            f"{correct_word}*",
+            f"是{correct_word}",
+        ]
+        correction = random.choice(corrections)
+
+        wait_time = random.randint(1, 3)
+        self.logger.debug(f"拟人化[错字纠正]: {char1}{char2} -> {char2}{char1}")
+        return f"{typo_text} <|wait time=\"{wait_time}\"|> {correction}"
+
+    def _inject_half_send(self, text: str) -> str:
+        """模拟打字打到一半不小心发出，后半句下一条才出来
+
+        策略：在标点符号处或句子中间截断
+        效果示例：
+          消息1: 今天去吃了
+          消息2: 一家超好吃的火锅
+        """
+        if len(text) < 8:
+            return text
+
+        break_chars = ["，", "。", "；", "、", "！", "？", ",", " ", "~", "～"]
+        break_positions = []
+        for i, c in enumerate(text):
+            if c in break_chars and 3 < i < len(text) - 3:
+                break_positions.append(i)
+
+        if break_positions:
+            pos = random.choice(break_positions)
+            first_half = text[: pos + 1].strip()
+            second_half = text[pos + 1 :].strip()
+        else:
+            mid = len(text) // 2 + random.randint(-2, 2)
+            mid = max(4, min(mid, len(text) - 3))
+            first_half = text[:mid].strip()
+            second_half = text[mid:].strip()
+
+        if not first_half or not second_half:
+            return text
+
+        wait_time = random.randint(1, 3)
+        self.logger.debug(f"拟人化[半句发出]: 在位置 {len(first_half)} 处截断")
+        return f"{first_half} <|wait time=\"{wait_time}\"|> {second_half}"
+
+    def _should_read_receipt_skip(self) -> bool:
+        """已读不回判断（低概率跳过回复，模拟真人偶尔看了不回）"""
+        skip_prob = float(self.config.get("humanize.read_receipt_skip", 0))
+        if skip_prob > 0 and random.random() < skip_prob:
+            self.logger.debug("已读不回（拟人化）")
+            return True
+        return False
+
+    @staticmethod
+    def _clean_response_for_history(response: str) -> str:
+        """清理回复中的特殊标签，避免历史记录污染
+
+        移除以下标签（防止 AI 从历史中学到格式后在功能关闭时仍尝试使用）：
+        - <|sticker|xxx</sticker|> → 移除（表情包标签）
+        - <|voice style=".."|>xxx<|/voice|> → 只保留语音正文
+        - <|wait time="N"|> → 移除（多消息分隔符）
+        - [img]url[/img] / [sticker]file[/sticker] → 移除
+        """
+        import re
+
+        # 表情包标签（含内容一起移除）
+        response = re.sub(
+            r"<\|?\s*(?:sticker|send_sticker)\s*\|?>?"
+            r"(?:\s*<parameter[^>]*>\s*)?"
+            r"[^<>《\n]{0,30}"
+            r"(?:\s*</parameter>\s*)?"
+            r"\s*(?:<\|?\s*/?\s*(?:sticker|send_sticker)\s*\|?>)?",
+            "", response, flags=re.IGNORECASE
+        )
+        # 语音标签 → 只保留正文
+        response = re.sub(
+            r"<\|?\s*voice\s+style\s*=\s*[\"']?[^\"'>]*[\"']?\s*\|?>",
+            "", response, flags=re.IGNORECASE
+        )
+        response = re.sub(
+            r"<\|?\s*/\s*voice\s*\|?>", "", response, flags=re.IGNORECASE
+        )
+        # wait 分隔符
+        response = re.sub(
+            r"<\|\s*wait\s+time\s*=\s*[\"']?\d+[\"']?\s*\|?>", "", response, flags=re.IGNORECASE
+        )
+        response = re.sub(
+            r"<\|\s*wait\s+time\s*=\s*[\"']?\d+[\"']?\s*>", "", response, flags=re.IGNORECASE
+        )
+        # [img] / [sticker] BBCode 标签
+        response = re.sub(
+            r"\[(?:img|sticker)\].*?\[/(?:img|sticker)\]", "", response, flags=re.IGNORECASE | re.DOTALL
+        )
+        # 清理多余空格
+        response = re.sub(r"  +", " ", response).strip()
+        return response if response else "(表情包/语音回复)"
+
+    # ==================== 人类状态（情绪/精力） ====================
+
+    def _get_human_state(self, session_key: str) -> Dict[str, float]:
+        """获取当前情绪/精力状态"""
+        state_cfg = self.config.get("human_state", {})
+        if not state_cfg.get("enabled", True):
+            return {"mood": 0.6, "energy": 0.8}
+
+        from datetime import datetime
+
+        hour = datetime.now().hour
+        energy = float(state_cfg.get("energy", 0.8))
+        mood = float(state_cfg.get("mood", 0.6))
+
+        sleep_cfg = state_cfg.get("sleep_schedule", {})
+        if sleep_cfg.get("enabled", False):
+            sleep_time = int(sleep_cfg.get("sleep_time", 2))
+            wake_time = int(sleep_cfg.get("wake_time", 8))
+            if sleep_time > wake_time:
+                is_sleepy = hour >= sleep_time or hour < wake_time
+            else:
+                is_sleepy = sleep_time <= hour < wake_time
+            if is_sleepy:
+                energy *= 0.3
+                mood *= 0.7
+
+        hour_progress = (hour + datetime.now().minute / 60) / 24
+        energy += 0.2 * (1 - abs(hour_progress - 0.4) * 2)
+
+        return {
+            "mood": max(0.1, min(1.0, mood)),
+            "energy": max(0.1, min(1.0, energy)),
+        }
+
+    def get_human_state(self) -> Dict[str, Any]:
+        """获取人类状态（供 Dashboard 显示）"""
+        return self._get_human_state("global")
+
+    @staticmethod
+    def _mood_to_text(mood: float) -> str:
+        if mood >= 0.8:
+            return random.choice(["心情特别好", "今天超开心", "心情很愉快"])
+        elif mood >= 0.6:
+            return random.choice(["心情还不错", "挺开心的", "心情挺好"])
+        elif mood >= 0.4:
+            return random.choice(["心情一般般", "没什么特别的", "心情平淡"])
+        elif mood >= 0.2:
+            return random.choice(["有点不开心", "心情不太好", "有点低落"])
+        else:
+            return random.choice(["心情很糟", "今天很不爽", "心情差到极点"])
+
+    @staticmethod
+    def _energy_to_text(energy: float) -> str:
+        if energy >= 0.8:
+            return random.choice(["精力充沛", "精神很好", "充满活力"])
+        elif energy >= 0.6:
+            return random.choice(["还算有精神", "状态还行", "挺清醒的"])
+        elif energy >= 0.4:
+            return random.choice(["有点累了", "稍微有点困", "一般般"])
+        elif energy >= 0.2:
+            return random.choice(["很困了", "快撑不住了", "累得不行"])
+        else:
+            return random.choice(["困死了", "已经迷糊了", "随时会睡着"])
+
     def get_status(self) -> Dict[str, Any]:
         """获取模块完整状态（供调试）"""
         active_agents = self.multi_agent.list_agents()
@@ -593,17 +967,15 @@ class Main(BaseModule):
     ) -> bool:
         """检查是否被@或叫名字
 
-        优先使用事件中的 self.user_id 判断 mention 段是否指向自己，
-        而非依赖配置中手动维护的 bot_ids。
+        仅使用事件中的 self.user_id 判断 mention 段是否指向自己，
+        无需手动配置 bot_ids。
         """
         self_user_id = str(data.get("self", {}).get("user_id", ""))
-        bot_ids = self.config.get("bot_ids", [])
-        all_bot_ids = {self_user_id} | {str(b) for b in bot_ids if b}
 
         for seg in data.get("message", []):
             if seg.get("type") == "mention":
                 mentioned_id = str(seg.get("data", {}).get("user_id", ""))
-                if mentioned_id and mentioned_id in all_bot_ids:
+                if mentioned_id and mentioned_id == self_user_id:
                     return True
         for nick in bot_nicknames:
             if nick and nick in message:
@@ -674,6 +1046,7 @@ class Main(BaseModule):
         group_name: str,
         platform: str,
         data: Dict[str, Any],
+        is_mentioned: bool = False,
     ) -> Optional[str]:
         """生成AI回复"""
         try:
@@ -693,9 +1066,10 @@ class Main(BaseModule):
             if memory_ctx:
                 messages.append({"role": "system", "content": memory_ctx})
 
-            # 场景提示（含时间感知 + 情绪感知）
+            # 场景提示（含时间感知 + 情绪感知 + 被提及感知）
             scene = self._build_scene_prompt(
-                user_nickname, group_id is not None, user_input, platform
+                user_nickname, group_id is not None, user_input, platform,
+                is_mentioned=is_mentioned,
             )
             if scene:
                 messages.append({"role": "system", "content": scene})
@@ -874,7 +1248,9 @@ class Main(BaseModule):
         except Exception:
             send_methods = []
         if "Image" not in send_methods:
-            self.logger.debug(f"平台 {platform} 不支持 Image")
+            self.logger.warning(
+                f"平台 {platform} 不支持 Image 发送，支持的方法: {send_methods}"
+            )
             return
 
         try:
@@ -884,7 +1260,10 @@ class Main(BaseModule):
             elif image_path.startswith(("http://", "https://")):
                 # HTTP URL → 下载为 bytes
                 resp = await self.sdk.client.get(image_path, timeout=30)
-                img_bytes = resp.content if hasattr(resp, "content") else resp.read()
+                if hasattr(resp, "content"):
+                    img_bytes = resp.content
+                else:
+                    img_bytes = await resp.read() if hasattr(resp, "read") else resp
                 self.logger.info(f"图片下载完成: {len(img_bytes)} bytes from {image_path}")
                 await adapter.Send.To(target_type, target_id).Image(img_bytes)
             else:
@@ -994,7 +1373,8 @@ class Main(BaseModule):
             return ""
 
     def _build_scene_prompt(
-        self, user_nickname: str, is_group: bool, user_input: str, platform: str
+        self, user_nickname: str, is_group: bool, user_input: str, platform: str,
+        is_mentioned: bool = False,
     ) -> str:
         """
         构建场景提示
@@ -1013,6 +1393,19 @@ class Main(BaseModule):
 
         if user_nickname:
             parts.append(f"对方: {user_nickname}")
+
+        # 被提及感知（被@时注入提示词，让 AI 知道这是专门对自己说的）
+        if is_mentioned:
+            parts.append("【你被@了】对方专门@了你，这条消息是直接对你说的，请务必回复。")
+
+        # 情绪/精力状态感知
+        state_cfg = self.config.get("human_state", {})
+        if state_cfg.get("enabled", True) and self.config.get("humanize.mood_aware", True):
+            session_key = "global"
+            state = self._get_human_state(session_key)
+            mood_desc = self._mood_to_text(state["mood"])
+            energy_desc = self._energy_to_text(state["energy"])
+            parts.append(f"你现在的状态: {mood_desc}，{energy_desc}")
 
         # 语音感知（如果语音功能启用 且 平台支持语音）
         if self.config.get("voice.enabled", False) and self._platform_supports_voice(
@@ -1133,8 +1526,17 @@ class Main(BaseModule):
             if len(history) < 4:
                 return
 
-            recent = history[-15:]
-            dialogue_text = "\n".join(f"{m['role']}: {m['content']}" for m in recent)
+            # 只取最近几轮对话，减少 prompt 大小（避免超时）
+            recent = history[-8:]
+            # 截断过长的单条消息
+            dialogue_lines = []
+            for m in recent:
+                content = m.get("content", "")
+                if len(content) > 200:
+                    content = content[:200] + "..."
+                role = "我" if m.get("role") == "assistant" else "对方"
+                dialogue_lines.append(f"{role}: {content}")
+            dialogue_text = "\n".join(dialogue_lines)
 
             prompt = (
                 "从以下对话中提取值得长期记忆的关键信息"
@@ -1144,9 +1546,10 @@ class Main(BaseModule):
                 f"{dialogue_text}"
             )
 
+            memory_timeout = float(self.config.get("memory.timeout", 60.0))
             result = await asyncio.wait_for(
                 self.ai_engine.memory_process(prompt),
-                timeout=30.0,
+                timeout=memory_timeout,
             )
 
             if result and result.strip() and result.strip() != "无":
@@ -1170,7 +1573,7 @@ class Main(BaseModule):
                 self.logger.debug("行为[memory]完成 - 无值得记忆的内容")
 
         except asyncio.TimeoutError:
-            self.logger.warning("行为[memory]超时(30s)，跳过")
+            self.logger.warning(f"行为[memory]超时({int(self.config.get('memory.timeout', 60.0))}s)，跳过")
         except Exception as e:
             self.logger.debug(f"记忆提取跳过: {e}")
         finally:
@@ -1249,8 +1652,9 @@ class Main(BaseModule):
                     await asyncio.sleep(delay)
 
                 await self.message_sender.send(platform, "group", group_id, response)
+                clean_resp = self._clean_response_for_history(response)
                 await self.memory.add_short_term_memory(
-                    user_id, "assistant", response, group_id, bot_name
+                    user_id, "assistant", clean_resp, group_id, bot_name
                 )
                 self._stats["total_replies"] += 1
                 initial_len = len(
@@ -1260,6 +1664,295 @@ class Main(BaseModule):
 
         except Exception as e:
             self.logger.debug(f"持续监听结束: {e}")
+
+    # ==================== 主动发起对话 ====================
+
+    async def _proactive_loop(self) -> None:
+        """主动发起对话循环（间隔可配置）"""
+        await asyncio.sleep(60)  # 启动后等待1分钟
+        while True:
+            try:
+                await self._check_proactive_messages()
+            except Exception as e:
+                self.logger.debug(f"主动发起循环出错: {e}")
+            interval = int(
+                self.config.get(
+                    "human_state.proactive_message.check_interval_minutes", 30
+                )
+            )
+            await asyncio.sleep(max(interval, 5) * 60)
+
+    @staticmethod
+    def _humanize_duration(seconds: Optional[float]) -> str:
+        """把秒数转成「x分钟/x小时/x天」的可读时长"""
+        if seconds is None or seconds < 0:
+            return "未知"
+        mins = int(seconds / 60)
+        if mins < 1:
+            return "不到1分钟"
+        if mins < 60:
+            return f"{mins}分钟"
+        hours = mins / 60
+        if hours < 24:
+            return f"{hours:.1f}小时"
+        days = hours / 24
+        return f"{days:.1f}天"
+
+    @staticmethod
+    def _relative_time_from_iso(ts_iso: str, now_ts: float) -> str:
+        """把 ISO 时间戳转成相对当前的可读描述"""
+        if not ts_iso:
+            return ""
+        from datetime import datetime
+
+        try:
+            t = datetime.fromisoformat(ts_iso).timestamp()
+        except Exception:
+            return ""
+        gap = now_ts - t
+        if gap < 60:
+            return "刚刚"
+        if gap < 3600:
+            return f"{int(gap / 60)}分钟前"
+        if gap < 86400:
+            return f"{gap / 3600:.1f}小时前"
+        return f"{gap / 86400:.1f}天前"
+
+    async def _check_proactive_messages(self) -> None:
+        """检查是否有需要主动发起的会话（活跃度感知）
+
+        判定顺序：
+        1. 沉寂门槛（距上次 AI 回复）
+        2. 每日上限
+        3. 活跃度感知：
+           a. 死群检测（久无他人发言 → 跳过，避免单口相声）
+           b. 单口相声检测（最近 N 条全为 AI 发言 → 跳过）
+           c. 冷启动保护（历史他人消息过少 → 跳过）
+           d. 活跃群聊 → 概率加成
+        4. 概率命中
+        """
+        proactive_cfg = self.config.get("human_state.proactive_message", {})
+        if not proactive_cfg.get("enabled", False):
+            return
+
+        min_hours = float(proactive_cfg.get("min_silence_hours", 6))
+        probability = float(proactive_cfg.get("probability", 0.1))
+        min_threshold = min_hours * 3600
+
+        activity_aware = proactive_cfg.get("activity_aware", True)
+        dead_group_hours = float(proactive_cfg.get("dead_group_silence_hours", 24))
+        active_window = float(proactive_cfg.get("active_window_minutes", 30)) * 60
+        active_bonus = float(proactive_cfg.get("active_bonus_probability", 0.1))
+        max_per_day = int(proactive_cfg.get("max_per_day", 1))
+        monologue_threshold = int(proactive_cfg.get("monologue_threshold", 3))
+        min_history_msgs = int(proactive_cfg.get("min_history_messages", 1))
+
+        if not self.ai_engine.is_available("dialogue"):
+            return
+
+        now = time.time()
+
+        for session_key in self.session.get_all_session_keys():
+            meta = self.session.get_session_meta(session_key)
+            if not meta:
+                continue
+
+            # 1. 沉寂门槛（距上次 AI 回复）
+            last_reply = self.session.get_last_reply_time_by_key(session_key)
+            reply_silence = now - last_reply if last_reply else 999999
+            if reply_silence < min_threshold:
+                continue
+
+            # 2. 每日上限
+            if not self.session.check_proactive_daily_limit(
+                session_key, max_per_day
+            ):
+                self.logger.debug(
+                    f"{session_key} 主动发起已达每日上限({max_per_day})，跳过"
+                )
+                continue
+
+            # 准备历史（活跃度判定要用）
+            is_group = meta.get("target_type") == "group"
+            target_id = meta.get("target_id", "")
+            history = await self.memory.get_session_history(
+                "" if is_group else target_id,
+                target_id if is_group else None,
+            )
+
+            # 3. 活跃度感知
+            is_active_group = False
+            if activity_aware:
+                last_incoming = self.session.get_last_incoming_time(session_key)
+                incoming_silence = (
+                    now - last_incoming if last_incoming else 999999
+                )
+
+                # 3a. 死群检测：久无他人发言 → 跳过
+                if incoming_silence > dead_group_hours * 3600:
+                    self.logger.info(
+                        f"{session_key} 已{int(incoming_silence / 3600)}h无他人发言"
+                        f"(>dead_group_silence_hours={dead_group_hours}h)，跳过避免单口相声"
+                    )
+                    continue
+
+                # 3b. 单口相声检测：最近全是 AI 发言
+                if history and monologue_threshold > 0:
+                    recent = history[-(monologue_threshold + 2):]
+                    assistant_cnt = sum(
+                        1 for m in recent if m.get("role") == "assistant"
+                    )
+                    user_cnt = sum(
+                        1 for m in recent if m.get("role") == "user"
+                    )
+                    if user_cnt == 0 and assistant_cnt >= monologue_threshold:
+                        self.logger.info(
+                            f"{session_key} 最近{len(recent)}条全为AI发言，"
+                            "单口相声风险，跳过"
+                        )
+                        continue
+
+                # 3c. 冷启动保护：历史他人消息不足
+                incoming_total = sum(
+                    1 for m in history if m.get("role") == "user"
+                )
+                if incoming_total < min_history_msgs:
+                    self.logger.debug(
+                        f"{session_key} 历史仅{incoming_total}条他人消息"
+                        f"(<min_history_messages={min_history_msgs})，跳过"
+                    )
+                    continue
+
+                # 3d. 活跃群聊标记（概率加成）
+                if last_incoming and incoming_silence < active_window:
+                    is_active_group = True
+
+            # 4. 概率命中（活跃群聊加成）
+            final_prob = min(probability + (active_bonus if is_active_group else 0), 1.0)
+            if random.random() >= final_prob:
+                continue
+
+            await self._send_proactive_message(session_key, meta)
+
+    async def _send_proactive_message(
+        self, session_key: str, meta: Dict[str, str]
+    ) -> None:
+        """对指定会话主动发起对话（让 AI 感知真实时间跨度）"""
+        platform = meta.get("platform", "")
+        target_type = meta.get("target_type", "user")
+        target_id = meta.get("target_id", "")
+        if not platform or not target_id:
+            return
+
+        try:
+            is_group = target_type == "group"
+            user_id = "" if is_group else target_id
+            group_id = target_id if is_group else None
+
+            # 拉取带时间戳的完整历史
+            detailed = await self.memory.get_session_history_detailed(
+                user_id or target_id, group_id
+            )
+
+            # 计算真实时间跨度
+            now = time.time()
+            last_reply = self.session.get_last_reply_time_by_key(session_key)
+            reply_silence = now - last_reply if last_reply else None
+            last_incoming = self.session.get_last_incoming_time(session_key)
+            incoming_silence = now - last_incoming if last_incoming else None
+
+            time_desc = self._get_time_description()
+            state = self._get_human_state(session_key)
+            mood_text = self._mood_to_text(state["mood"])
+            energy_text = self._energy_to_text(state["energy"])
+
+            reply_gap = self._humanize_duration(reply_silence)
+            incoming_gap = self._humanize_duration(incoming_silence)
+
+            # 构建主动发起的提示词（注入真实时间跨度）
+            proactive_prompt = (
+                f"现在是{time_desc}，你{mood_text}，{energy_text}。\n"
+                f"- 距离你上次发言：{reply_gap}\n"
+                f"- 距离{( '群里' if is_group else '对方')}最后一条消息：{incoming_gap}\n"
+            )
+            if is_group:
+                if last_incoming and incoming_silence is not None and incoming_silence < 1800:
+                    proactive_prompt += (
+                        "群里最近还挺热闹，你可以自然地插一句话参与进去。\n"
+                    )
+                else:
+                    proactive_prompt += (
+                        "群里最近比较安静。如果你想找话题，说一句简短自然的开场白就好，"
+                        "不要长篇大论、不要强行没话找话。"
+                        "如果实在没什么值得说的，可以只输出「(沉默)」选择不发送。\n"
+                    )
+            else:
+                proactive_prompt += (
+                    "你想主动找对方说点什么，说一句自然的开场白，不要太刻意。"
+                    "如果实在没什么好说的，可以只输出「(沉默)」选择不发送。\n"
+                )
+            proactive_prompt += (
+                "下面的历史消息每条前的【x分钟前/x小时前/x天前】是该消息的实际发送时间，"
+                "请据此判断话题是否还有时效性，避免提起已经过时的话题。"
+            )
+
+            system_prompt = self._build_system_prompt(
+                user_id or target_id, group_id, "", "", ""
+            )
+            messages: List[Dict[str, Any]] = [
+                {"role": "system", "content": system_prompt or "你是一个真实的普通人。"},
+                {"role": "system", "content": proactive_prompt},
+            ]
+
+            # 注入带时间标注的历史（让 AI 感知每条消息的时间跨度）
+            if detailed:
+                for msg in detailed[-5:]:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    rel = self._relative_time_from_iso(
+                        msg.get("timestamp", ""), now
+                    )
+                    if rel:
+                        content = f"【{rel}】{content}"
+                    messages.append({"role": role, "content": content})
+
+            response = await self.ai_engine.dialogue(messages)
+            if not response or not isinstance(response, str):
+                return
+            response = response.strip()
+
+            # AI 选择沉默 / 无效回复
+            if self._is_skip_response(response) or not response:
+                self.logger.info(
+                    f"主动发起选择沉默 - {session_key} - {truncate_message(response, 40)}"
+                )
+                return
+
+            delay = _calc_typing_delay(response, self.config)
+            if delay > 0:
+                await asyncio.sleep(delay)
+
+            await self.message_sender.send(platform, target_type, target_id, response)
+            self._stats["total_replies"] += 1
+
+            # 主动发起成功 → 递增每日计数
+            self.session.increment_proactive_count(session_key)
+            # 更新该会话的「最后回复时间」
+            self.session.update_last_reply_time(
+                user_id or target_id, group_id
+            )
+
+            bot_names = self.config.get("bot_nicknames", [])
+            bot_name = bot_names[0] if bot_names else ""
+            clean_resp = self._clean_response_for_history(response)
+            await self.memory.add_short_term_memory(
+                user_id or target_id, "assistant", clean_resp, group_id, bot_name
+            )
+            self.logger.info(
+                f"主动发起对话 - {session_key} - {truncate_message(response, 60)}"
+            )
+        except Exception as e:
+            self.logger.debug(f"主动发起对话失败: {e}")
 
     # ==================== 工具方法 ====================
 
@@ -1280,16 +1973,17 @@ class Main(BaseModule):
 
             # 解析文本中的表情包内嵌标签（统一正则，一次性匹配所有格式）
             import re
-            # 格式1: <|sticker|名称</sticker|>  标准
-            # 格式2: <send_sticker><parameter...>名称</parameter></send_sticker>  兼容function calling
-            # 格式3: <send_sticker>名称</send_sticker>  兼容
-            # 格式4: <send_sticker>名称  未闭合
+            # 格式1: <|sticker|名称</sticker|>  标准（注意：开标签无 >）
+            # 格式2: <|sticker|>名称</sticker|>  开标签有 >
+            # 格式3: <send_sticker><parameter...>名称</parameter></send_sticker>  兼容function calling
+            # 格式4: <send_sticker>名称</send_sticker>  兼容
+            # 格式5: <|sticker|名称  未闭合
             sticker_re = re.compile(
-                r"<\|?\s*(?:sticker|send_sticker)\s*\|?>"
+                r"<\|?\s*(?:sticker|send_sticker)\s*\|?>?"  # 开标签（> 可选）
                 r"(?:\s*<parameter[^>]*>\s*)?"
                 r"([^<>《\n]{1,30})"
                 r"(?:\s*</parameter>\s*)?"
-                r"\s*(?:</?\|?[\|/]*\s*(?:sticker|send_sticker)\s*\|?>|$)",
+                r"\s*(?:<\|?\s*/?\s*(?:sticker|send_sticker)\s*\|?>|$)",
                 re.IGNORECASE
             )
             # 反向遍历以保持索引正确
@@ -1308,9 +2002,11 @@ class Main(BaseModule):
                         # 未找到表情包，保留名称文本，只去除标签语法
                         response = response[:match.start()] + name + response[match.end():]
 
-            # 清理残留标签碎片
+            # 清理残留的空标签碎片（不含内容，避免误删文本）
             response = re.sub(
-                r"</?\|?[\|/]*\s*(?:sticker|send_sticker|parameter)[^>]*>\s*", "", response
+                r"<\|?\s*/?(?:sticker|send_sticker)\s*\|?>"
+                r"|</?parameter[^>]*>",
+                "", response, flags=re.IGNORECASE
             ).strip()
 
             # 纯表情包场景：只发了表情包没有文本，不发送空消息
@@ -1323,11 +2019,18 @@ class Main(BaseModule):
             self.logger.error(f"发送回复失败: {e}")
 
     def _extract_images(self, data: Dict[str, Any]) -> List[str]:
-        """提取消息中的图片URL"""
+        """提取消息中的图片URL（兼容多种消息段格式）"""
         urls = []
         for seg in data.get("message", []):
-            if seg.get("type") == "image":
-                url = seg.get("data", {}).get("url") or seg.get("data", {}).get("file")
+            if seg.get("type") in ("image", "img"):
+                seg_data = seg.get("data", {})
+                # 按优先级尝试多种字段名
+                url = (
+                    seg_data.get("url")
+                    or seg_data.get("file")
+                    or seg_data.get("path")
+                    or seg_data.get("src")
+                )
                 if url:
                     urls.append(url)
         return urls

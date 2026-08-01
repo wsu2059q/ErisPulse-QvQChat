@@ -33,8 +33,13 @@ class QvQConfig:
             "rate_limit_tokens": 20000,
             "rate_limit_window": 60,
             "bot_nicknames": [],
-            "bot_ids": [],
             "admin": {"admins": []},
+            "message_aggregation": {
+                "enabled": True,
+                "private_window": 3.0,
+                "group_window": 0.0,
+                "max_buffer": 8,
+            },
             "stalker_mode": {
                 "enabled": True,
                 "mode": "balanced",  # conservative | balanced | active
@@ -71,6 +76,36 @@ class QvQConfig:
                 "random_at_probability": 0.15,
                 "multi_msg_enabled": True,
                 "multi_msg_max": 3,
+                "typo_probability": 0.08,
+                "half_send_probability": 0.06,
+                "read_receipt_skip": 0.05,
+                "mood_aware": True,
+            },
+            "human_state": {
+                "enabled": True,
+                "mood": 0.6,
+                "energy": 0.8,
+                "sleep_schedule": {"enabled": False, "sleep_time": 2, "wake_time": 8},
+                "proactive_message": {
+                    "enabled": False,
+                    "min_silence_hours": 6,          # 距上次「AI回复」多久后才可能主动发起
+                    "probability": 0.1,              # 每次检查的基础命中概率
+                    "check_interval_minutes": 30,    # 主动发起循环检查间隔
+                    "activity_aware": True,          # 活跃度感知：死群不主动发起
+                    "dead_group_silence_hours": 24,  # 群聊无他人消息超过该时长 → 跳过（避免单口相声）
+                    "active_window_minutes": 30,     # 该时长内有他人发言视为「活跃群聊」
+                    "active_bonus_probability": 0.1, # 活跃群聊的概率加成
+                    "max_per_day": 1,                # 每个会话每日主动发起上限
+                    "monologue_threshold": 3,        # 最近N条全为AI发言 → 跳过（已在单口相声）
+                    "min_history_messages": 1,       # 历史至少有N条他人消息才主动发起（冷启动保护）
+                },
+            },
+            "memory": {
+                "dedup_enabled": True,
+                "decay_enabled": True,
+                "decay_days": 30,
+                "max_per_user": 100,
+                "timeout": 60.0,
             },
             "voice": {
                 "enabled": False,

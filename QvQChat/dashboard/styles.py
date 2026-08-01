@@ -607,4 +607,314 @@ STYLES = r"""
     font-weight: 600;
     margin-right: 12px;
 }
+
+/* ==================== 子标签页（设置页内） ==================== */
+.qvc-subtabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--bd);
+    padding-bottom: 0;
+}
+
+.qvc-subtab {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--tx-s);
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    background: transparent;
+    transition: all .15s;
+    user-select: none;
+}
+
+.qvc-subtab:hover {
+    color: var(--tx-p);
+    background: var(--bg-s);
+}
+
+.qvc-subtab.active {
+    color: var(--accent);
+    background: var(--bg-t);
+    border-color: var(--bd);
+    font-weight: 600;
+}
+
+.qvc-subpanel {
+    display: none;
+}
+
+.qvc-subpanel.active {
+    display: block;
+    animation: qvc-fade .15s ease;
+}
+
+/* ==================== 折叠卡片 ==================== */
+.qvc-collapse {
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.qvc-collapse-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--tx-p);
+    cursor: pointer;
+    background: var(--bg-s);
+    transition: background .15s;
+    user-select: none;
+}
+
+.qvc-collapse-header:hover {
+    background: var(--bg-t);
+}
+
+.qvc-collapse-header .qvc-collapse-arrow {
+    transition: transform .2s;
+    font-size: 12px;
+    color: var(--tx-s);
+}
+
+.qvc-collapse.expanded .qvc-collapse-arrow {
+    transform: rotate(90deg);
+}
+
+.qvc-collapse-body {
+    display: none;
+    padding: 14px;
+}
+
+.qvc-collapse.expanded .qvc-collapse-body {
+    display: block;
+    animation: qvc-fade .15s ease;
+}
+
+/* ==================== 滑块 ==================== */
+.qvc-slider-group {
+    margin-bottom: 14px;
+}
+
+.qvc-slider-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--tx-s);
+    margin-bottom: 4px;
+}
+
+.qvc-slider-label .qvc-slider-val {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+input[type="range"].qvc-range {
+    width: 100%;
+    height: 6px;
+    background: var(--bg-s);
+    border-radius: 3px;
+    appearance: none;
+    outline: none;
+}
+
+input[type="range"].qvc-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+input[type="range"].qvc-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
+
+/* ==================== 智能体卡片 ==================== */
+.qvc-agent-card {
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: var(--bg-s);
+    transition: border-color .15s;
+}
+
+.qvc-agent-card:hover {
+    border-color: var(--accent);
+}
+
+.qvc-agent-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.qvc-agent-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--tx-p);
+}
+
+.qvc-agent-traits {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.qvc-trait-tag {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--bg-t);
+    color: var(--tx-s);
+    border: 1px solid var(--bd);
+}
+
+/* ==================== Playground ==================== */
+.qvc-playground {
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 12px;
+}
+
+.qvc-playground-log {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 12px;
+    background: var(--bg-c, var(--bg-s));
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.qvc-playground-msg {
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+
+.qvc-playground-msg.user {
+    background: rgba(33, 150, 243, 0.1);
+    margin-left: 20px;
+}
+
+.qvc-playground-msg.assistant {
+    background: rgba(76, 175, 80, 0.1);
+    margin-right: 20px;
+}
+
+.qvc-playground-input {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    border-top: 1px solid var(--bd);
+    background: var(--bg-s);
+}
+
+/* ==================== 开关切换 ==================== */
+.qvc-switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 22px;
+}
+
+.qvc-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.qvc-switch-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bd);
+    border-radius: 22px;
+    transition: .3s;
+}
+
+.qvc-switch-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: .3s;
+}
+
+.qvc-switch input:checked + .qvc-switch-slider {
+    background: var(--accent);
+}
+
+.qvc-switch input:checked + .qvc-switch-slider:before {
+    transform: translateX(16px);
+}
+
+/* ==================== 标签输入 ==================== */
+.qvc-tag-input-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px;
+    min-height: 38px;
+    border: 1px solid var(--bd);
+    border-radius: 6px;
+    background: var(--bg-s);
+}
+
+.qvc-tag-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    background: var(--bg-t);
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    color: var(--tx-c);
+}
+
+.qvc-tag-item .qvc-tag-remove {
+    cursor: pointer;
+    color: var(--tx-s);
+    font-weight: bold;
+}
+
+.qvc-tag-item .qvc-tag-remove:hover {
+    color: #f44336;
+}
+
+.qvc-tag-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--tx-p);
+    font-size: 12px;
+    font-family: inherit;
+    flex: 1;
+    min-width: 80px;
+}
 """

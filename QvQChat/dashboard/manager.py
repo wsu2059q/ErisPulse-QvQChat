@@ -32,6 +32,9 @@ class DashboardManager:
         ("/api/agents", "GET", "_api_get_agents"),
         ("/api/agents", "POST", "_api_save_agent"),
         ("/api/agents/delete", "POST", "_api_delete_agent"),
+        ("/api/agents/test", "POST", "_api_test_agent"),
+        ("/api/agents/clone", "POST", "_api_clone_agent"),
+        ("/api/agents/bind", "POST", "_api_bind_agent"),
         ("/api/knowledge", "GET", "_api_get_knowledge"),
         ("/api/knowledge", "POST", "_api_save_knowledge"),
         ("/api/knowledge/delete", "POST", "_api_delete_knowledge"),
@@ -59,6 +62,15 @@ class DashboardManager:
         ("/api/memories/delete", "POST", "_api_delete_memory"),
         ("/api/memories/clear-all", "POST", "_api_clear_all_memories"),
         ("/api/memories/group", "GET", "_api_get_group_memories"),
+        ("/api/memories/detail", "GET", "_api_get_memory_detail"),
+        ("/api/memories/edit", "POST", "_api_edit_memory"),
+        ("/api/sessions", "GET", "_api_get_sessions"),
+        ("/api/sessions/history", "GET", "_api_get_session_history"),
+        ("/api/sessions/edit", "POST", "_api_edit_session_message"),
+        ("/api/sessions/delete", "POST", "_api_delete_session_message"),
+        ("/api/sessions/clear", "POST", "_api_clear_session"),
+        ("/api/sessions/add", "POST", "_api_add_session_message"),
+        ("/api/human-state", "GET", "_api_get_human_state"),
     ]
 
     def __init__(self, core):
@@ -148,26 +160,17 @@ class DashboardManager:
                 self.logger.info("Dashboard 模块未安装，跳过视窗注册")
                 return
 
-            # 组装 HTML
+            # 组装 HTML — 自动替换所有图标占位符
             html = html_mod.HTML
-            html = html.replace("__ICON_OVERVIEW__", icons.OVERVIEW)
-            html = html.replace("__ICON_SETTINGS__", icons.SETTINGS)
-            html = html.replace("__ICON_MODELS__", icons.CPU)
-            html = html.replace("__ICON_BEHAVIORS__", icons.SETTINGS)
-            html = html.replace("__ICON_AGENTS__", icons.USERS)
-            html = html.replace("__ICON_BOOK__", icons.BOOK)
-            html = html.replace("__ICON_TOOL__", icons.TOOL)
-            html = html.replace("__ICON_GROUP__", icons.GROUP)
-            html = html.replace("__ICON_PLUS__", icons.PLUS)
-            html = html.replace("__ICON_SAVE__", icons.SAVE)
-            html = html.replace("__ICON_CLOSE__", icons.CLOSE)
+            for _icon_name in dir(icons):
+                if _icon_name.isupper():
+                    html = html.replace(f"__ICON_{_icon_name}__", getattr(icons, _icon_name))
 
-            # 组装 JS
+            # 组装 JS — 自动替换所有图标占位符
             js = scripts.SCRIPTS
-            js = js.replace("__ICON_EDIT__", icons.EDIT)
-            js = js.replace("__ICON_TRASH__", icons.TRASH)
-            js = js.replace("__ICON_SAVE__", icons.SAVE)
-            js = js.replace("__ICON_REFRESH__", icons.REFRESH)
+            for _icon_name in dir(icons):
+                if _icon_name.isupper():
+                    js = js.replace(f"__ICON_{_icon_name}__", getattr(icons, _icon_name))
 
             self.sdk.Dashboard.register_view(
                 id="QvQChat",
@@ -231,6 +234,7 @@ class DashboardManager:
             "features": features,
             "active_groups": len(self.config.list_all_groups()),
             "runtime": self.core.get_stats(),
+            "human_state": self.core.get_human_state(),
             "debug": self.core.get_status(),
         }
 
@@ -342,6 +346,78 @@ class DashboardManager:
     async def _api_delete_agent(self, request) -> Dict[str, Any]:
         body = await self._parse_body(request)
         return {"ok": self.multi_agent.delete_agent(body.get("id", ""))}
+
+    async def _api_test_agent(self, request) -> Dict[str, Any]:
+        """测试智能体（Playground）"""
+        body = await self._parse_body(request)
+        agent_id = body.get("id", "")
+        message = body.get("message", "")
+
+        if not message.strip():
+            return {"ok": False, "error": "消息不能为空"}
+
+        agent = self.multi_agent.get_agent(agent_id)
+        if not agent:
+            return {"ok": False, "error": "智能体不存在"}
+
+        if not self.ai_engine.is_available("dialogue"):
+            return {"ok": False, "error": "对话行为未配置模型"}
+
+        try:
+            # 使用临时 session_key 构建提示词
+            test_key = f"_test:{agent_id}"
+            self.multi_agent.bind_agent(agent_id, test_key)
+            prompt = self.multi_agent.get_effective_prompt(test_key)
+            self.multi_agent.unbind_agent(test_key)
+
+            messages = []
+            if prompt:
+                messages.append({"role": "system", "content": prompt})
+
+            # 加载测试历史（如果有）
+            test_history = body.get("history", [])
+            for h in test_history[-10:]:
+                messages.append(h)
+
+            messages.append({"role": "user", "content": message})
+
+            # 使用智能体的模型参数覆盖
+            kwargs = {}
+            params = self.multi_agent.get_effective_model_params(test_key)
+            if "temperature" in params:
+                kwargs["temperature"] = params["temperature"]
+            if "max_tokens" in params:
+                kwargs["max_tokens"] = params["max_tokens"]
+
+            response = await self.ai_engine.dialogue(messages, **kwargs)
+            reply = response if isinstance(response, str) else str(response)
+            return {"ok": True, "reply": reply.strip()}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    async def _api_clone_agent(self, request) -> Dict[str, Any]:
+        """克隆智能体"""
+        body = await self._parse_body(request)
+        agent_id = body.get("id", "")
+        new_name = body.get("name", "")
+        result = self.multi_agent.clone_agent(agent_id, new_name)
+        return {"ok": result is not None, "agent": result}
+
+    async def _api_bind_agent(self, request) -> Dict[str, Any]:
+        """绑定/解绑智能体到会话"""
+        body = await self._parse_body(request)
+        agent_id = body.get("agent_id", "")
+        session_key = body.get("session_key", "")
+        action = body.get("action", "bind")  # bind | unbind
+
+        if not session_key:
+            return {"ok": False, "error": "缺少 session_key"}
+
+        if action == "unbind":
+            return {"ok": self.multi_agent.unbind_agent(session_key)}
+        if not agent_id:
+            return {"ok": False, "error": "缺少 agent_id"}
+        return {"ok": self.multi_agent.bind_agent(agent_id, session_key)}
 
     # ----- 知识库 -----
 
@@ -795,11 +871,10 @@ class DashboardManager:
     # ----- 记忆洞察 -----
 
     async def _api_get_memories(self, request) -> Dict[str, Any]:
-        """获取所有用户的记忆摘要"""
+        """获取所有用户的记忆摘要（包括会话历史概览）"""
         from ErisPulse import sdk as _sdk
 
         storage = _sdk.storage
-        # 扫描所有用户记忆键
         all_keys = storage.keys() if hasattr(storage, "keys") else []
         memories = []
         for key in all_keys:
@@ -807,20 +882,26 @@ class DashboardManager:
                 user_id = key.split(":")[2]
                 mem = storage.get(key, {})
                 long_term = mem.get("long_term", [])
-                if long_term:
-                    memories.append(
-                        {
-                            "user_id": user_id,
-                            "count": len(long_term),
-                            "latest": [
-                                m.get("content", "")[:80] for m in long_term[-5:]
-                            ],
-                            "updated": mem.get("last_updated", ""),
-                        }
-                    )
-        # 按记忆数量排序
+                short_term = mem.get("short_term", [])
+                memories.append(
+                    {
+                        "user_id": user_id,
+                        "count": len(long_term),
+                        "short_term_count": len(short_term),
+                        "latest": [
+                            m.get("content", "")[:80] for m in long_term[-5:]
+                        ],
+                        "updated": mem.get("last_updated", ""),
+                    }
+                )
         memories.sort(key=lambda x: x["count"], reverse=True)
-        return {"memories": memories[:100]}  # 最多100个用户
+        
+        memory_enabled = self.ai_engine.is_available("memory")
+        return {
+            "memories": memories[:100],
+            "memory_extraction_enabled": memory_enabled,
+            "hint": "" if memory_enabled else "记忆提取行为未分配模型，长期记忆不会自动生成。请在行为管理中为 memory 行为分配模型。",
+        }
 
     async def _api_delete_memory(self, request) -> Dict[str, Any]:
         """删除指定用户或群组的全部记忆"""
@@ -859,11 +940,16 @@ class DashboardManager:
                 group_id = key.split(":")[2]
                 mem = storage.get(key, {})
                 long_term = mem.get("long_term", [])
-                if long_term:
+                sender_memory = mem.get("sender_memory", {})
+                sender_count = sum(len(v) for v in sender_memory.values())
+                total = len(long_term) + sender_count
+                if total > 0 or long_term:
                     memories.append(
                         {
                             "group_id": group_id,
-                            "count": len(long_term),
+                            "count": total,
+                            "long_term_count": len(long_term),
+                            "sender_count": sender_count,
                             "latest": [
                                 m.get("content", "")[:80] for m in long_term[-5:]
                             ],
@@ -899,6 +985,221 @@ class DashboardManager:
                     pass
         self.logger.info(f"已清空全部记忆，共清理 {cleared} 条")
         return {"ok": True, "msg": f"已清空 {cleared} 条记忆"}
+
+    async def _api_get_memory_detail(self, request) -> Dict[str, Any]:
+        """获取用户/群组的完整记忆详情"""
+        from ErisPulse import sdk as _sdk
+
+        user_id = request.query_params.get("user_id", "")
+        mem_type = request.query_params.get("type", "user")
+        if not user_id:
+            return {"ok": False, "error": "缺少 user_id"}
+
+        storage = _sdk.storage
+        if mem_type == "group":
+            key = f"qvc:group:{user_id}:memory"
+            mem = storage.get(key, {})
+            return {
+                "ok": True,
+                "type": "group",
+                "id": user_id,
+                "long_term": mem.get("long_term", []),
+                "sender_memory": mem.get("sender_memory", {}),
+                "shared_context": mem.get("shared_context", []),
+            }
+        else:
+            key = f"qvc:user:{user_id}:memory"
+            mem = storage.get(key, {})
+            return {
+                "ok": True,
+                "type": "user",
+                "id": user_id,
+                "short_term": mem.get("short_term", []),
+                "long_term": mem.get("long_term", []),
+                "semantic": mem.get("semantic", []),
+            }
+
+    async def _api_edit_memory(self, request) -> Dict[str, Any]:
+        """编辑单条长期记忆"""
+        from ErisPulse import sdk as _sdk
+
+        body = await self._parse_body(request)
+        user_id = body.get("user_id", "")
+        mem_type = body.get("type", "user")
+        index = body.get("index", -1)
+        content = body.get("content", "")
+        action = body.get("action", "edit")  # edit | delete
+
+        if not user_id or index < 0:
+            return {"ok": False, "error": "参数不完整"}
+
+        storage = _sdk.storage
+        key = f"qvc:{mem_type}:{user_id}:memory"
+        mem = storage.get(key, {})
+        long_term = mem.get("long_term", [])
+
+        if index >= len(long_term):
+            return {"ok": False, "error": "索引超出范围"}
+
+        if action == "delete":
+            long_term.pop(index)
+        else:
+            if not content.strip():
+                return {"ok": False, "error": "内容不能为空"}
+            long_term[index]["content"] = content.strip()
+
+        mem["long_term"] = long_term
+        storage.set(key, mem)
+        return {"ok": True}
+
+    # ----- 会话历史管理 -----
+
+    async def _api_get_sessions(self, request) -> Dict[str, Any]:
+        """获取所有会话列表（含消息数、最后活跃时间）"""
+        from ErisPulse import sdk as _sdk
+
+        storage = _sdk.storage
+        all_keys = storage.keys() if hasattr(storage, "keys") else []
+        sessions = []
+        for key in all_keys:
+            if key.startswith("qvc:session:"):
+                chat_id = key[len("qvc:session:") :]
+                history = storage.get(key, [])
+                if not history:
+                    continue
+                is_group = chat_id.startswith("group:")
+                raw_id = chat_id.split(":", 1)[1] if ":" in chat_id else chat_id
+                last_msg = history[-1] if history else {}
+                sessions.append(
+                    {
+                        "session_key": chat_id,
+                        "type": "group" if is_group else "user",
+                        "id": raw_id,
+                        "message_count": len(history),
+                        "last_time": last_msg.get("timestamp", ""),
+                        "last_role": last_msg.get("role", ""),
+                        "preview": (last_msg.get("content", "")[:60] if last_msg else ""),
+                    }
+                )
+        sessions.sort(
+            key=lambda x: x.get("last_time", ""), reverse=True
+        )
+        return {"sessions": sessions}
+
+    async def _api_get_session_history(self, request) -> Dict[str, Any]:
+        """获取会话完整历史"""
+        from ErisPulse import sdk as _sdk
+
+        session_key = request.query_params.get("session_key", "")
+        if not session_key:
+            return {"ok": False, "error": "缺少 session_key"}
+
+        storage = _sdk.storage
+        history = storage.get(f"qvc:session:{session_key}", [])
+        return {"session_key": session_key, "history": history}
+
+    async def _api_edit_session_message(self, request) -> Dict[str, Any]:
+        """编辑会话中的单条消息"""
+        from ErisPulse import sdk as _sdk
+
+        body = await self._parse_body(request)
+        session_key = body.get("session_key", "")
+        index = body.get("index", -1)
+        content = body.get("content", "")
+
+        if not session_key or index < 0:
+            return {"ok": False, "error": "参数不完整"}
+
+        storage = _sdk.storage
+        key = f"qvc:session:{session_key}"
+        history = storage.get(key, [])
+        if index >= len(history):
+            return {"ok": False, "error": "索引超出范围"}
+
+        history[index]["content"] = content.strip()
+        storage.set(key, history)
+        return {"ok": True}
+
+    async def _api_delete_session_message(self, request) -> Dict[str, Any]:
+        """删除会话中的单条消息"""
+        from ErisPulse import sdk as _sdk
+
+        body = await self._parse_body(request)
+        session_key = body.get("session_key", "")
+        index = body.get("index", -1)
+
+        if not session_key or index < 0:
+            return {"ok": False, "error": "参数不完整"}
+
+        storage = _sdk.storage
+        key = f"qvc:session:{session_key}"
+        history = storage.get(key, [])
+        if index >= len(history):
+            return {"ok": False, "error": "索引超出范围"}
+
+        history.pop(index)
+        storage.set(key, history)
+        return {"ok": True}
+
+    async def _api_clear_session(self, request) -> Dict[str, Any]:
+        """清空会话历史"""
+        from ErisPulse import sdk as _sdk
+
+        body = await self._parse_body(request)
+        session_key = body.get("session_key", "")
+        if not session_key:
+            return {"ok": False, "error": "缺少 session_key"}
+
+        storage = _sdk.storage
+        storage.set(f"qvc:session:{session_key}", [])
+        self.logger.info(f"已清空会话: {session_key}")
+        return {"ok": True}
+
+    async def _api_add_session_message(self, request) -> Dict[str, Any]:
+        """手动添加会话消息"""
+        from ErisPulse import sdk as _sdk
+        from datetime import datetime
+
+        body = await self._parse_body(request)
+        session_key = body.get("session_key", "")
+        role = body.get("role", "user")
+        content = body.get("content", "")
+
+        if not session_key or not content.strip():
+            return {"ok": False, "error": "参数不完整"}
+
+        storage = _sdk.storage
+        key = f"qvc:session:{session_key}"
+        history = storage.get(key, [])
+        history.append(
+            {
+                "role": role,
+                "content": content.strip(),
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+        max_length = self.config.get("max_history_length", 20)
+        if len(history) > max_length:
+            history = history[-max_length:]
+        storage.set(key, history)
+        return {"ok": True}
+
+    # ----- 人类状态 -----
+
+    async def _api_get_human_state(self, request) -> Dict[str, Any]:
+        """获取当前情绪/精力状态"""
+        state = self.core.get_human_state()
+        from datetime import datetime
+        hour = datetime.now().hour
+        state_cfg = self.config.get("human_state", {})
+        return {
+            "mood": round(state["mood"], 2),
+            "energy": round(state["energy"], 2),
+            "mood_text": self.core._mood_to_text(state["mood"]),
+            "energy_text": self.core._energy_to_text(state["energy"]),
+            "hour": hour,
+            "enabled": state_cfg.get("enabled", True),
+        }
 
     async def _api_upload_stickers_batch(self, request) -> Dict[str, Any]:
         """批量上传表情包（multipart/form-data，多个 file 字段）"""

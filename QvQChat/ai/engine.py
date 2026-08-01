@@ -213,6 +213,48 @@ class AIEngine:
                 self.logger.debug(f"读取本地图片失败 {url}: {e}")
                 return url
 
+        # 相对路径 / 临时文件（如 yunhu 适配器的 .tmp 文件）
+        # 在常见临时目录中搜索
+        if not url.startswith(("http://", "https://", "data:", "base64://")):
+            import tempfile
+            import glob
+            search_dirs = [
+                tempfile.gettempdir(),
+                os.path.join(tempfile.gettempdir(), "yunhu"),
+                os.getcwd(),
+                os.path.join(os.getcwd(), "data"),
+            ]
+            for search_dir in search_dirs:
+                # 尝试直接拼接
+                candidate = os.path.join(search_dir, os.path.basename(url))
+                if os.path.exists(candidate):
+                    try:
+                        with open(candidate, "rb") as f:
+                            raw = f.read()
+                        mime = mimetypes.guess_type(candidate)[0] or "image/png"
+                        b64 = base64.b64encode(raw).decode()
+                        self.logger.debug(f"在临时目录找到图片: {candidate}")
+                        return f"data:{mime};base64,{b64}"
+                    except Exception:
+                        pass
+                # 通配符搜索（file_id 可能带有或不带扩展名）
+                basename = os.path.basename(url)
+                name_part = os.path.splitext(basename)[0]
+                if name_part:
+                    for pattern in [f"{name_part}.*", f"*{name_part}*"]:
+                        for match in glob.glob(os.path.join(search_dir, pattern)):
+                            if os.path.isfile(match):
+                                try:
+                                    with open(match, "rb") as f:
+                                        raw = f.read()
+                                    if len(raw) > 0:
+                                        mime = mimetypes.guess_type(match)[0] or "image/png"
+                                        b64 = base64.b64encode(raw).decode()
+                                        self.logger.debug(f"通配匹配到图片: {match}")
+                                        return f"data:{mime};base64,{b64}"
+                                except Exception:
+                                    pass
+
         # HTTP(S) 远程 URL
         if url.startswith(("http://", "https://")) and httpx is not None:
             try:
@@ -227,6 +269,7 @@ class AIEngine:
                 self.logger.debug(f"下载远程图片失败 {url}: {e}")
                 return url
 
+        self.logger.warning(f"图片无法转为 data URL，原样传递: {url}")
         return url
 
     async def analyze_image(self, image_url: str, user_text: str = "") -> str:

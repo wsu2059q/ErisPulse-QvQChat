@@ -41,6 +41,9 @@ HTML = """
         <div class="qvc-tab" data-tab="memories" onclick="qvcTab('memories')">
             __ICON_GROUP__ <span>记忆管理</span>
         </div>
+        <div class="qvc-tab" data-tab="sessions" onclick="qvcTab('sessions')">
+            __ICON_GROUP__ <span>会话管理</span>
+        </div>
         <div class="qvc-tab" data-tab="groups" onclick="qvcTab('groups')">
             __ICON_GROUP__ <span>群组管理</span>
         </div>
@@ -59,6 +62,9 @@ HTML = """
 
         <div class="qvc-section-title">功能开关</div>
         <div id="qvc-overview-features"></div>
+
+        <div class="qvc-section-title">人类状态</div>
+        <div id="qvc-overview-human-state"></div>
     </div>
 
     <!-- 基础设置面板 -->
@@ -100,8 +106,9 @@ HTML = """
     <!-- 多智能体面板 -->
     <div class="qvc-panel" id="qvc-panel-agents">
         <div style="margin-bottom:12px;text-align:right">
+            <button class="qvc-btn-sm" onclick="qvcAgentQuickCreate()">__ICON_PLUS__ 从模板创建</button>
             <button class="qvc-btn-sm primary" onclick="qvcAgentEdit(null)">
-                __ICON_PLUS__ 添加智能体
+                __ICON_PLUS__ 自定义智能体
             </button>
         </div>
         <div id="qvc-agents-list">
@@ -178,10 +185,23 @@ HTML = """
 
     <!-- 记忆管理面板 -->
     <div class="qvc-panel" id="qvc-panel-memories">
-        <div style="margin-bottom:12px;text-align:right">
+        <div id="qvc-memory-hint" style="margin-bottom:8px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <input type="text" class="qvc-input" id="qvc-memory-search" placeholder="搜索用户/群组 ID..." style="max-width:240px" oninput="qvcFilterMemories()">
             <button class="qvc-btn-sm danger" onclick="qvcClearAllMemories()">清空全部记忆</button>
         </div>
         <div id="qvc-memories-list">
+            <div class="qvc-empty">正在加载...</div>
+        </div>
+    </div>
+
+    <!-- 会话管理面板 -->
+    <div class="qvc-panel" id="qvc-panel-sessions">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <input type="text" class="qvc-input" id="qvc-session-search" placeholder="搜索会话..." style="max-width:240px" oninput="qvcFilterSessions()">
+            <button class="qvc-btn-sm" onclick="qvcLoadSessions()">__ICON_REFRESH__ 刷新</button>
+        </div>
+        <div id="qvc-sessions-list">
             <div class="qvc-empty">正在加载...</div>
         </div>
     </div>
