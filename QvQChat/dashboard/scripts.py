@@ -47,7 +47,6 @@ var _qvcI18nMap = {
     'qvc-tab-models': 'tab.models',
     'qvc-tab-behaviors': 'tab.behaviors',
     'qvc-tab-pipeline': 'tab.pipeline',
-    'qvc-tab-render': 'tab.render',
     'qvc-tab-agents': 'tab.agents',
     'qvc-tab-knowledge': 'tab.knowledge',
     'qvc-tab-tools': 'tab.tools',
@@ -150,7 +149,6 @@ function qvcTab(name) {
             models: qvcLoadModels,
             behaviors: qvcLoadBehaviors,
             pipeline: qvcLoadPipeline,
-            render: qvcLoadRender,
             agents: qvcLoadAgents,
             knowledge: qvcLoadKnowledge,
             tools: qvcLoadTools,
@@ -958,49 +956,6 @@ async function qvcSavePipeline() {
         }
     } catch (e) {
         qvcToast(qvcT('pipeline.save_failed', '保存失败') + ': ' + e.message, 'error');
-    }
-}
-
-// ==================== 渲染能力 ====================
-async function qvcLoadRender() {
-    try {
-        var data = await qvcApi('/api/render', 'GET');
-        var statusEl = document.getElementById('qvc-render-status');
-        if (!data.available) {
-            statusEl.innerHTML = '<div class="qvc-badge qvc-badge-off">' + qvcT('render.not_available', '渲染不可用（需安装 Takumi 模块）') + '</div>';
-        } else {
-            statusEl.innerHTML = '<div class="qvc-badge qvc-badge-ok">' + qvcT('render.available', '渲染已启用') + '</div>';
-        }
-        var cfg = data.config || {};
-        var setEl = function(id, val) {
-            var el = document.getElementById(id);
-            if (el) el.checked = !!val;
-        };
-        setEl('qvc-render-enabled', cfg.enabled !== false);
-        setEl('qvc-render-style-inject', cfg.style_inject !== false);
-        setEl('qvc-render-auto-height', cfg.auto_height !== false);
-        var guide = document.getElementById('qvc-render-style-guide');
-        if (guide) guide.textContent = data.style_guide || '';
-    } catch (e) {
-        qvcToast(qvcT('toast.render_load_failed', '加载渲染配置失败') + ': ' + e.message, 'error');
-    }
-}
-
-async function qvcSaveRenderConfig() {
-    try {
-        var config = {
-            enabled: !!document.getElementById('qvc-render-enabled').checked,
-            style_inject: !!document.getElementById('qvc-render-style-inject').checked,
-            auto_height: !!document.getElementById('qvc-render-auto-height').checked
-        };
-        var resp = await qvcApi('/api/render/config', 'POST', config);
-        if (resp.ok) {
-            qvcToast(qvcT('toast.config_saved', '配置已保存'), 'ok');
-        } else {
-            qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + (resp.error || ''), 'error');
-        }
-    } catch (e) {
-        qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + e.message, 'error');
     }
 }
 

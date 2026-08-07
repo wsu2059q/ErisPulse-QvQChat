@@ -117,12 +117,7 @@ class DashboardManager:
         "pipeline.move_up": ("QvQChat.pipeline_move_up", "上移"),
         "pipeline.move_down": ("QvQChat.pipeline_move_down", "下移"),
 
-        "tab.render": ("QvQChat.tab_render", "渲染能力"),
-        "render.available": ("QvQChat.render_available", "渲染已启用"),
-        "render.not_available": ("QvQChat.render_not_available", "渲染不可用（需安装 Takumi 模块）"),
         "btn.edit": ("QvQChat.btn_edit", "编辑"),
-        "btn.delete": ("QvQChat.btn_delete", "删除"),
-        "toast.render_load_failed": ("QvQChat.toast_render_load_failed", "加载渲染配置失败"),
 
         "ov.mood": ("QvQChat.ov_mood", "情绪"),
         "ov.energy": ("QvQChat.ov_energy", "精力"),
