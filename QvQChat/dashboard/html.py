@@ -2,68 +2,74 @@
 
 HTML = """
 <div class="qvc-wrap">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-        <h1 class="page-title" style="margin:0">QvQChat 管理面板</h1>
-        <div style="display:flex;gap:8px">
-            <button class="qvc-btn-sm" onclick="qvcExport('desensitize')">脱敏导出</button>
-            <button class="qvc-btn-sm" onclick="qvcExport('migrate')">迁移导出</button>
-            <button class="qvc-btn-sm" onclick="qvcImport()">导入</button>
-            <button class="qvc-btn-sm danger" onclick="qvcResetAll()">重置全部</button>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+        <div>
+            <h1 class="page-title" id="qvc-page-title">QvQChat</h1>
+            <p style="color:var(--tx-s);font-size:13px;margin-bottom:16px" id="qvc-page-desc">智能对话模块 · 管理 AI 模型、行为、智能体、知识库与记忆</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+            <button class="qvc-btn-sm" id="qvc-btn-export-desensitize" onclick="qvcExport('desensitize')">脱敏导出</button>
+            <button class="qvc-btn-sm" id="qvc-btn-export-migrate" onclick="qvcExport('migrate')">迁移导出</button>
+            <button class="qvc-btn-sm" id="qvc-btn-import" onclick="qvcImport()">导入</button>
+            <button class="qvc-btn-sm danger" id="qvc-btn-reset" onclick="qvcResetAll()">重置全部</button>
         </div>
     </div>
 
     <!-- 标签栏 -->
     <div class="qvc-tabs">
         <div class="qvc-tab active" data-tab="overview" onclick="qvcTab('overview')">
-            __ICON_OVERVIEW__ <span>概览</span>
+            __ICON_OVERVIEW__ <span id="qvc-tab-overview">概览</span>
         </div>
         <div class="qvc-tab" data-tab="basic" onclick="qvcTab('basic')">
-            __ICON_SETTINGS__ <span>基础设置</span>
+            __ICON_SETTINGS__ <span id="qvc-tab-basic">基础设置</span>
         </div>
         <div class="qvc-tab" data-tab="models" onclick="qvcTab('models')">
-            __ICON_MODELS__ <span>模型管理</span>
+            __ICON_MODELS__ <span id="qvc-tab-models">模型管理</span>
         </div>
         <div class="qvc-tab" data-tab="behaviors" onclick="qvcTab('behaviors')">
-            __ICON_BEHAVIORS__ <span>行为管理</span>
+            __ICON_BEHAVIORS__ <span id="qvc-tab-behaviors">行为管理</span>
+        </div>
+        <div class="qvc-tab" data-tab="pipeline" onclick="qvcTab('pipeline')">
+            __ICON_SETTINGS__ <span id="qvc-tab-pipeline">注入管线</span>
         </div>
         <div class="qvc-tab" data-tab="agents" onclick="qvcTab('agents')">
-            __ICON_AGENTS__ <span>多智能体</span>
+            __ICON_AGENTS__ <span id="qvc-tab-agents">多智能体</span>
         </div>
         <div class="qvc-tab" data-tab="knowledge" onclick="qvcTab('knowledge')">
-            __ICON_BOOK__ <span>知识库</span>
+            __ICON_BOOK__ <span id="qvc-tab-knowledge">知识库</span>
         </div>
         <div class="qvc-tab" data-tab="tools" onclick="qvcTab('tools')">
-            __ICON_TOOL__ <span>MCP工具</span>
+            __ICON_TOOL__ <span id="qvc-tab-tools">MCP工具</span>
         </div>
         <div class="qvc-tab" data-tab="stickers" onclick="qvcTab('stickers')">
-            __ICON_BOOK__ <span>表情包</span>
+            __ICON_BOOK__ <span id="qvc-tab-stickers">表情包</span>
         </div>
         <div class="qvc-tab" data-tab="memories" onclick="qvcTab('memories')">
-            __ICON_GROUP__ <span>记忆管理</span>
+            __ICON_GROUP__ <span id="qvc-tab-memories">记忆管理</span>
         </div>
         <div class="qvc-tab" data-tab="sessions" onclick="qvcTab('sessions')">
-            __ICON_GROUP__ <span>会话管理</span>
+            __ICON_GROUP__ <span id="qvc-tab-sessions">会话管理</span>
         </div>
         <div class="qvc-tab" data-tab="groups" onclick="qvcTab('groups')">
-            __ICON_GROUP__ <span>群组管理</span>
+            __ICON_GROUP__ <span id="qvc-tab-groups">群组管理</span>
         </div>
     </div>
 
     <!-- 概览面板 -->
     <div class="qvc-panel active" id="qvc-panel-overview">
-        <div class="qvc-section-title">运行状态</div>
+        <div class="qvc-section-title" id="qvc-ov-title-runtime">运行状态</div>
         <div class="qvc-stat-grid" id="qvc-overview-stats"></div>
 
-        <div class="qvc-section-title">运行统计</div>
+        <div class="qvc-section-title" id="qvc-ov-title-stats">运行统计</div>
         <div class="qvc-stat-grid" id="qvc-overview-runtime"></div>
 
-        <div class="qvc-section-title">AI 子系统状态</div>
+        <div class="qvc-section-title" id="qvc-ov-title-ai">AI 子系统状态</div>
         <div id="qvc-overview-ai"></div>
 
-        <div class="qvc-section-title">功能开关</div>
+        <div class="qvc-section-title" id="qvc-ov-title-features">功能开关</div>
         <div id="qvc-overview-features"></div>
 
-        <div class="qvc-section-title">人类状态</div>
+        <div class="qvc-section-title" id="qvc-ov-title-human">人类状态</div>
         <div id="qvc-overview-human-state"></div>
     </div>
 
@@ -73,8 +79,8 @@ HTML = """
             <div class="qvc-empty">正在加载配置...</div>
         </div>
         <div style="margin-top:16px;text-align:right">
-            <button class="qvc-btn-sm primary" onclick="qvcSaveBasic()">
-                __ICON_SAVE__ 保存配置
+            <button class="qvc-btn-sm primary" id="qvc-btn-save-basic" onclick="qvcSaveBasic()">
+                __ICON_SAVE__ <span id="qvc-btn-save-basic-label">保存配置</span>
             </button>
         </div>
     </div>
@@ -100,6 +106,29 @@ HTML = """
         </div>
         <div id="qvc-behaviors-list">
             <div class="qvc-empty">正在加载...</div>
+        </div>
+    </div>
+
+    <!-- 注入管线面板 -->
+    <div class="qvc-panel" id="qvc-panel-pipeline">
+        <div class="qvc-section-title" id="qvc-pipeline-title">提示词注入器</div>
+        <div class="qvc-desc" id="qvc-pipeline-desc">注入器按优先级顺序拼接系统提示词。可开关、调整顺序。</div>
+        <div id="qvc-pipeline-list">
+            <div class="qvc-empty">正在加载...</div>
+        </div>
+        <div class="qvc-section-title" style="margin-top:20px" id="qvc-pipeline-time-title">时间叙述设置</div>
+        <div class="qvc-form-group">
+            <label id="qvc-pipeline-time-prob-label">时间注入概率 (0~1，1=总是注入)</label>
+            <input type="range" class="qvc-range" id="qvc-pipeline-time-prob" min="0" max="1" step="0.05" value="0.7"
+                oninput="document.getElementById('qvc-pipeline-time-prob-val').textContent=this.value">
+            <span class="qvc-slider-val" id="qvc-pipeline-time-prob-val">0.7</span>
+        </div>
+        <div class="qvc-form-group">
+            <label id="qvc-pipeline-time-ttl-label">时间叙述缓存 (秒)</label>
+            <input type="number" class="qvc-input" id="qvc-pipeline-time-ttl" value="3600">
+        </div>
+        <div style="margin-top:16px;text-align:right">
+            <button class="qvc-btn-sm primary" onclick="qvcSavePipeline()">__ICON_SAVE__ <span id="qvc-pipeline-save-label">保存</span></button>
         </div>
     </div>
 

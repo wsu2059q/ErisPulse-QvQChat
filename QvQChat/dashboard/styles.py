@@ -917,4 +917,155 @@ input[type="range"].qvc-range::-moz-range-thumb {
     flex: 1;
     min-width: 80px;
 }
+
+/* ==================== 注入管线 ==================== */
+.qvc-desc {
+    font-size: 12px;
+    color: var(--tx-s);
+    margin-bottom: 12px;
+}
+
+.qvc-pipeline-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-s);
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    transition: all .15s;
+}
+
+.qvc-pipeline-item:hover {
+    border-color: var(--accent);
+}
+
+.qvc-pipeline-order {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.qvc-btn-icon {
+    width: 24px;
+    height: 20px;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1;
+    border: 1px solid var(--bd);
+    border-radius: 4px;
+    background: var(--bg-t);
+    color: var(--tx-s);
+    cursor: pointer;
+    transition: all .15s;
+}
+
+.qvc-btn-icon:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.qvc-pipeline-info {
+    flex: 1;
+}
+
+.qvc-pipeline-name {
+    font-size: 14px;
+    color: var(--tx-p);
+    font-weight: 600;
+}
+
+.qvc-pipeline-priority {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--tx-t);
+    background: var(--bg-t);
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: 6px;
+}
+
+/* ==================== 视觉现代化覆盖层 ==================== */
+/* 输入焦点环：统一的 accent 光晕 */
+.qvc-input:focus,
+.qvc-textarea:focus,
+.qvc-select:focus {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* 面板/卡片：柔和层级 */
+.qvc-panel.active {
+    animation: qvc-fade .18s ease;
+}
+
+.qvc-list-item,
+.qvc-pipeline-item {
+    transition: border-color .15s, transform .12s ease, box-shadow .15s;
+}
+
+.qvc-list-item:hover,
+.qvc-pipeline-item:hover {
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* 按钮交互反馈 */
+.qvc-btn-sm,
+.qvc-btn-icon {
+    transition: all .15s ease;
+}
+
+.qvc-btn-sm:active,
+.qvc-btn-icon:active {
+    transform: scale(.96);
+}
+
+.qvc-btn-sm.primary {
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.qvc-btn-sm.primary:hover {
+    box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* 空状态更友好 */
+.qvc-empty {
+    padding: 28px 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--tx-t);
+    background: var(--bg-s);
+    border: 1px dashed var(--bd);
+    border-radius: 8px;
+}
+
+/* 统计卡片微光 */
+.qvc-stat-card {
+    transition: transform .12s ease, box-shadow .15s;
+}
+
+.qvc-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* 区块标题装饰 */
+.qvc-section-title {
+    border-bottom: 1px solid color-mix(in srgb, var(--bd) 80%, var(--accent) 20%);
+}
+
+/* 滚动条美化 */
+.qvc-wrap ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.qvc-wrap ::-webkit-scrollbar-thumb {
+    background: var(--bd);
+    border-radius: 4px;
+}
+
+.qvc-wrap ::-webkit-scrollbar-thumb:hover {
+    background: var(--tx-t);
+}
 """

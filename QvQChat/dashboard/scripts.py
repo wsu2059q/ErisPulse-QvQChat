@@ -6,6 +6,7 @@ var _qvcLoaded = {};
 var _qvcModalCallback = null;
 var _qvcModalFields = [];
 var _qvcBasicConfig = {};
+var _qvcPipelineList = [];
 
 // ==================== API 辅助 ====================
 async function qvcApi(path, method, body) {
@@ -29,6 +30,49 @@ async function qvcApi(path, method, body) {
 }
 
 // ==================== 工具函数 ====================
+// i18n 翻译辅助（翻译字典由后端注入 _qvcI18n）
+function qvcT(key, fallback) {
+    if (typeof _qvcI18n !== 'undefined' && _qvcI18n && _qvcI18n[key]) {
+        return _qvcI18n[key];
+    }
+    return fallback || key;
+}
+
+// 统一应用页面级 i18n（标题/副标题/标签/按钮）
+var _qvcI18nMap = {
+    'qvc-page-title': 'page.title',
+    'qvc-page-desc': 'page.desc',
+    'qvc-tab-overview': 'tab.overview',
+    'qvc-tab-basic': 'tab.basic',
+    'qvc-tab-models': 'tab.models',
+    'qvc-tab-behaviors': 'tab.behaviors',
+    'qvc-tab-pipeline': 'tab.pipeline',
+    'qvc-tab-agents': 'tab.agents',
+    'qvc-tab-knowledge': 'tab.knowledge',
+    'qvc-tab-tools': 'tab.tools',
+    'qvc-tab-stickers': 'tab.stickers',
+    'qvc-tab-memories': 'tab.memories',
+    'qvc-tab-sessions': 'tab.sessions',
+    'qvc-tab-groups': 'tab.groups',
+    'qvc-btn-export-desensitize': 'btn.export_desensitize',
+    'qvc-btn-export-migrate': 'btn.export_migrate',
+    'qvc-btn-import': 'btn.import',
+    'qvc-btn-reset': 'btn.reset',
+    'qvc-btn-save-basic-label': 'btn.save_config',
+    'qvc-ov-title-runtime': 'overview.runtime',
+    'qvc-ov-title-stats': 'overview.stats',
+    'qvc-ov-title-ai': 'overview.ai',
+    'qvc-ov-title-features': 'overview.features',
+    'qvc-ov-title-human': 'overview.human'
+};
+
+function qvcApplyI18n() {
+    for (var eid in _qvcI18nMap) {
+        var el = document.getElementById(eid);
+        if (el) el.textContent = qvcT(_qvcI18nMap[eid], el.textContent);
+    }
+}
+
 function qvcToast(msg, type) {
     var existing = document.querySelector('.qvc-toast');
     if (existing) existing.remove();
@@ -89,6 +133,7 @@ function qvcTab(name) {
             basic: qvcLoadBasic,
             models: qvcLoadModels,
             behaviors: qvcLoadBehaviors,
+            pipeline: qvcLoadPipeline,
             agents: qvcLoadAgents,
             knowledge: qvcLoadKnowledge,
             tools: qvcLoadTools,
@@ -767,6 +812,112 @@ async function qvcBehaviorDelete(id) {
             qvcToast('删除失败: ' + e.message, 'error');
         }
     });
+}
+
+// ==================== 注入管线 ====================
+async function qvcLoadPipeline() {
+    try {
+        // 应用 i18n 标签
+        var i18nEls = {
+            'qvc-pipeline-title': 'pipeline.title',
+            'qvc-pipeline-desc': 'pipeline.desc',
+            'qvc-pipeline-time-title': 'pipeline.time_settings',
+            'qvc-pipeline-time-prob-label': 'pipeline.time_prob',
+            'qvc-pipeline-time-ttl-label': 'pipeline.time_ttl',
+            'qvc-pipeline-save-label': 'pipeline.save'
+        };
+        for (var eid in i18nEls) {
+            var el = document.getElementById(eid);
+            if (el) el.textContent = qvcT(i18nEls[eid], el.textContent);
+        }
+
+        var data = await qvcApi('/api/pipeline', 'GET');
+        var injectors = data.injectors || [];
+        var cfg = data.config || {};
+        _qvcPipelineList = injectors.map(function(i) { return { id: i.id, priority: i.priority, enabled: !!i.enabled }; });
+        var el = document.getElementById('qvc-pipeline-list');
+        if (!injectors.length) {
+            el.innerHTML = '<div class="qvc-empty">' + qvcT('pipeline.empty', '无注入器') + '</div>';
+        } else {
+            qvcRenderPipelineList();
+        }
+        var prob = document.getElementById('qvc-pipeline-time-prob');
+        var ttl = document.getElementById('qvc-pipeline-time-ttl');
+        if (prob) { prob.value = cfg.time_inject_probability != null ? cfg.time_inject_probability : 0.7; prob.oninput(); }
+        if (ttl) { ttl.value = cfg.time_cache_ttl != null ? cfg.time_cache_ttl : 3600; }
+    } catch (e) {
+        qvcToast(qvcT('pipeline.load_failed', '加载注入管线失败') + ': ' + e.message, 'error');
+    }
+}
+
+function qvcPipelineToggle(cb) {
+    var id = cb.getAttribute('data-id');
+    var inj = _qvcPipelineList.filter(function(i) { return i.id === id; })[0];
+    if (inj) inj.enabled = cb.checked;
+}
+
+function qvcPipelineMove(id, dir) {
+    var idx = _qvcPipelineList.findIndex(function(i) { return i.id === id; });
+    if (idx < 0) return;
+    var target = idx + dir;
+    if (target < 0 || target >= _qvcPipelineList.length) return;
+    var tmp = _qvcPipelineList[idx];
+    _qvcPipelineList[idx] = _qvcPipelineList[target];
+    _qvcPipelineList[target] = tmp;
+    _qvcPipelineList.forEach(function(i, n) { i.priority = (n + 1) * 10; });
+    qvcRenderPipelineList();
+}
+
+function qvcRenderPipelineList() {
+    var el = document.getElementById('qvc-pipeline-list');
+    if (!el) return;
+    var html = '';
+    _qvcPipelineList.forEach(function(inj) {
+        html += '<div class="qvc-pipeline-item" data-id="' + qvcEsc(inj.id) + '">' +
+            '<div class="qvc-pipeline-order">' +
+                '<button class="qvc-btn-icon" onclick="qvcPipelineMove(\'' + inj.id + '\', -1)" title="' + qvcT('pipeline.move_up', '上移') + '">↑</button>' +
+                '<button class="qvc-btn-icon" onclick="qvcPipelineMove(\'' + inj.id + '\', 1)" title="' + qvcT('pipeline.move_down', '下移') + '">↓</button>' +
+            '</div>' +
+            '<div class="qvc-pipeline-info">' +
+                '<div class="qvc-pipeline-name">' + qvcEsc(inj.id) +
+                    ' <span class="qvc-pipeline-priority">priority=' + inj.priority + '</span></div>' +
+            '</div>' +
+            '<label class="qvc-switch">' +
+                '<input type="checkbox" data-id="' + qvcEsc(inj.id) + '"' + (inj.enabled ? ' checked' : '') + ' onchange="qvcPipelineToggle(this)">' +
+                '<span class="qvc-switch-slider"></span>' +
+            '</label>' +
+        '</div>';
+    });
+    el.innerHTML = html;
+}
+
+async function qvcSavePipeline() {
+    try {
+        var list = [];
+        document.querySelectorAll('#qvc-pipeline-list .qvc-pipeline-item').forEach(function(item) {
+            var id = item.getAttribute('data-id');
+            var cb = item.querySelector('input[type="checkbox"]');
+            var inj = _qvcPipelineList.filter(function(i) { return i.id === id; })[0];
+            list.push({
+                id: id,
+                enabled: cb ? cb.checked : true,
+                priority: inj ? inj.priority : 50
+            });
+        });
+        var config = {
+            time_inject_probability: parseFloat(document.getElementById('qvc-pipeline-time-prob').value),
+            time_cache_ttl: parseInt(document.getElementById('qvc-pipeline-time-ttl').value) || 3600
+        };
+        var resp = await qvcApi('/api/pipeline', 'POST', { injectors: list, config: config });
+        if (resp.ok) {
+            qvcToast(qvcT('pipeline.saved', '注入管线已保存'), 'ok');
+            qvcLoadPipeline();
+        } else {
+            qvcToast(qvcT('pipeline.save_failed', '保存失败') + ': ' + (resp.error || '未知错误'), 'error');
+        }
+    } catch (e) {
+        qvcToast(qvcT('pipeline.save_failed', '保存失败') + ': ' + e.message, 'error');
+    }
 }
 
 // ==================== 多智能体 ====================
@@ -2323,6 +2474,8 @@ function qvcResetAll() {
 
 // ==================== 初始化 ====================
 function loadQvQChatView() {
+    // 应用页面级 i18n（标题/副标题/标签/按钮）
+    qvcApplyI18n();
     // 点击背景关闭弹窗
     var bg = document.getElementById('qvc-modal-bg');
     if (bg) {

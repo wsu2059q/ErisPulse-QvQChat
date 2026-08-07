@@ -9,7 +9,7 @@ import io
 import os
 from typing import Any, Dict
 
-from ErisPulse import sdk
+from ErisPulse import i18n, sdk
 
 from . import html as html_mod
 from . import icons, scripts, styles
@@ -71,6 +71,8 @@ class DashboardManager:
         ("/api/sessions/clear", "POST", "_api_clear_session"),
         ("/api/sessions/add", "POST", "_api_add_session_message"),
         ("/api/human-state", "GET", "_api_get_human_state"),
+        ("/api/pipeline", "GET", "_api_get_pipeline"),
+        ("/api/pipeline", "POST", "_api_save_pipeline"),
     ]
 
     def __init__(self, core):
@@ -101,6 +103,10 @@ class DashboardManager:
     @property
     def knowledge_base(self):
         return self.core.knowledge_base
+
+    @property
+    def pipeline(self):
+        return self.core.pipeline
 
     @property
     def mcp_manager(self):
@@ -172,10 +178,62 @@ class DashboardManager:
                 if _icon_name.isupper():
                     js = js.replace(f"__ICON_{_icon_name}__", getattr(icons, _icon_name))
 
+            # 注入 i18n 翻译字典（前端通过 qvcT() 读取）
+            try:
+                i18n_js = {
+                    "page.title": i18n.t("QvQChat.page_title", default="QvQChat"),
+                    "page.desc": i18n.t("QvQChat.page_desc", default="智能对话模块 · 管理 AI 模型、行为、智能体、知识库与记忆"),
+                    "tab.overview": i18n.t("QvQChat.tab_overview", default="概览"),
+                    "tab.basic": i18n.t("QvQChat.tab_basic", default="基础设置"),
+                    "tab.models": i18n.t("QvQChat.tab_models", default="模型管理"),
+                    "tab.behaviors": i18n.t("QvQChat.tab_behaviors", default="行为管理"),
+                    "tab.pipeline": i18n.t("QvQChat.tab_pipeline", default="注入管线"),
+                    "tab.agents": i18n.t("QvQChat.tab_agents", default="多智能体"),
+                    "tab.knowledge": i18n.t("QvQChat.tab_knowledge", default="知识库"),
+                    "tab.tools": i18n.t("QvQChat.tab_tools", default="MCP工具"),
+                    "tab.stickers": i18n.t("QvQChat.tab_stickers", default="表情包"),
+                    "tab.memories": i18n.t("QvQChat.tab_memories", default="记忆管理"),
+                    "tab.sessions": i18n.t("QvQChat.tab_sessions", default="会话管理"),
+                    "tab.groups": i18n.t("QvQChat.tab_groups", default="群组管理"),
+                    "btn.export_desensitize": i18n.t("QvQChat.btn_export_desensitize", default="脱敏导出"),
+                    "btn.export_migrate": i18n.t("QvQChat.btn_export_migrate", default="迁移导出"),
+                    "btn.import": i18n.t("QvQChat.btn_import", default="导入"),
+                    "btn.reset": i18n.t("QvQChat.btn_reset", default="重置全部"),
+                    "btn.save_config": i18n.t("QvQChat.btn_save_config", default="保存配置"),
+                    "overview.runtime": i18n.t("QvQChat.overview_runtime", default="运行状态"),
+                    "overview.stats": i18n.t("QvQChat.overview_stats", default="运行统计"),
+                    "overview.ai": i18n.t("QvQChat.overview_ai", default="AI 子系统状态"),
+                    "overview.features": i18n.t("QvQChat.overview_features", default="功能开关"),
+                    "overview.human": i18n.t("QvQChat.overview_human", default="人类状态"),
+                    "pipeline.title": i18n.t("QvQChat.pipeline_title", default="注入管线"),
+                    "pipeline.desc": i18n.t("QvQChat.pipeline_desc", default="注入器按优先级顺序拼接系统提示词。可开关、调整顺序。"),
+                    "pipeline.time_settings": i18n.t("QvQChat.pipeline_time_settings", default="时间叙述设置"),
+                    "pipeline.time_prob": i18n.t("QvQChat.pipeline_time_prob", default="时间注入概率 (0~1，1=总是注入)"),
+                    "pipeline.time_ttl": i18n.t("QvQChat.pipeline_time_ttl", default="时间叙述缓存 (秒)"),
+                    "pipeline.save": i18n.t("QvQChat.pipeline_save", default="保存"),
+                    "pipeline.saved": i18n.t("QvQChat.pipeline_saved", default="注入管线已保存"),
+                    "pipeline.save_failed": i18n.t("QvQChat.pipeline_save_failed", default="保存失败"),
+                    "pipeline.load_failed": i18n.t("QvQChat.pipeline_load_failed", default="加载注入管线失败"),
+                    "pipeline.empty": i18n.t("QvQChat.pipeline_empty", default="无注入器"),
+                    "pipeline.move_up": i18n.t("QvQChat.pipeline_move_up", default="上移"),
+                    "pipeline.move_down": i18n.t("QvQChat.pipeline_move_down", default="下移"),
+                }
+                import json as _json
+                js = "var _qvcI18n = " + _json.dumps(i18n_js, ensure_ascii=False) + ";\n" + js
+            except Exception:
+                pass
+
             self.sdk.Dashboard.register_view(
                 id="QvQChat",
                 title="QvQChat",
                 title_en="QvQChat",
+                titles={
+                    "zh": "QvQChat",
+                    "en": "QvQChat",
+                    "zh-TW": "QvQChat",
+                    "ja": "QvQChat",
+                    "ru": "QvQChat",
+                },
                 icon_svg=icons.CHAT,
                 html_content=html,
                 js_content=js,
@@ -184,6 +242,13 @@ class DashboardManager:
                 group="qvq",
                 group_title="QvQChat",
                 group_title_en="QvQChat",
+                group_titles={
+                    "zh": "QvQChat",
+                    "en": "QvQChat",
+                    "zh-TW": "QvQChat",
+                    "ja": "QvQChat",
+                    "ru": "QvQChat",
+                },
             )
             self.logger.info("Dashboard 视窗注册成功")
         except Exception as e:
@@ -1200,6 +1265,48 @@ class DashboardManager:
             "hour": hour,
             "enabled": state_cfg.get("enabled", True),
         }
+
+    # ----- 注入管线 -----
+
+    async def _api_get_pipeline(self, request) -> Dict[str, Any]:
+        """获取注入管线状态"""
+        try:
+            injectors = self.pipeline.list_injectors()
+            config = self.config.get("pipeline", {})
+            return {
+                "injectors": injectors,
+                "config": config,
+            }
+        except Exception as e:
+            return {"injectors": [], "config": {}, "error": str(e)}
+
+    async def _api_save_pipeline(self, request) -> Dict[str, Any]:
+        """更新注入管线（开关/排序/配置）"""
+        try:
+            data = await request.json()
+            updated = 0
+
+            injectors = data.get("injectors")
+            if isinstance(injectors, list):
+                for item in injectors:
+                    iid = item.get("id")
+                    inj = self.pipeline.get_injector(iid)
+                    if not inj:
+                        continue
+                    if "enabled" in item:
+                        inj.enabled = bool(item.get("enabled"))
+                    if "priority" in item:
+                        inj.priority = int(item.get("priority"))
+                    updated += 1
+
+            config = data.get("config")
+            if isinstance(config, dict):
+                for key, val in config.items():
+                    self.config.set(f"pipeline.{key}", val)
+
+            return {"ok": True, "updated": updated}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     async def _api_upload_stickers_batch(self, request) -> Dict[str, Any]:
         """批量上传表情包（multipart/form-data，多个 file 字段）"""

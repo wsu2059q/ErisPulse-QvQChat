@@ -238,3 +238,335 @@ class QvQI18n(BaseI18n):
         ja="プロンプトパイプライン設定",
         ru="Настройки пайплайна подсказок",
     )
+
+    # ==================== Dashboard 注入管线 ====================
+
+    pipeline_title: I18nKey = I18nKey(
+        default="Prompt Injectors",
+        zh_CN="提示词注入器",
+        zh_TW="提示詞注入器",
+        en="Prompt Injectors",
+        ja="プロンプト注入器",
+        ru="Инъекторы подсказок",
+    )
+
+    pipeline_desc: I18nKey = I18nKey(
+        default="Injectors are concatenated by priority to build the system prompt. Toggle or reorder them.",
+        zh_CN="注入器按优先级顺序拼接系统提示词。可开关、调整顺序。",
+        zh_TW="注入器按優先級順序拼接系統提示詞。可開關、調整順序。",
+        en="Injectors are concatenated by priority to build the system prompt. Toggle or reorder them.",
+        ja="インジェクターは優先度順に連結されシステムプロンプトを構成します。切り替え・並べ替え可能です。",
+        ru="Инъекторы объединяются по приоритету для построения системного промпта. Включайте/исключайте и меняйте порядок.",
+    )
+
+    pipeline_time_settings: I18nKey = I18nKey(
+        default="Time narration settings",
+        zh_CN="时间叙述设置",
+        zh_TW="時間敘述設定",
+        en="Time narration settings",
+        ja="時間ナレーション設定",
+        ru="Настройки временного повествования",
+    )
+
+    pipeline_time_prob: I18nKey = I18nKey(
+        default="Time injection probability (0~1, 1=always)",
+        zh_CN="时间注入概率 (0~1，1=总是注入)",
+        zh_TW="時間注入機率 (0~1，1=總是注入)",
+        en="Time injection probability (0~1, 1=always)",
+        ja="時間注入確率（0〜1、1=常に注入）",
+        ru="Вероятность инъекции времени (0~1, 1=всегда)",
+    )
+
+    pipeline_time_ttl: I18nKey = I18nKey(
+        default="Time narration cache (seconds)",
+        zh_CN="时间叙述缓存 (秒)",
+        zh_TW="時間敘述快取（秒）",
+        en="Time narration cache (seconds)",
+        ja="時間ナレーションキャッシュ（秒）",
+        ru="Кэш временного повествования (сек)",
+    )
+
+    pipeline_save: I18nKey = I18nKey(
+        default="Save",
+        zh_CN="保存",
+        zh_TW="保存",
+        en="Save",
+        ja="保存",
+        ru="Сохранить",
+    )
+
+    pipeline_saved: I18nKey = I18nKey(
+        default="Pipeline saved",
+        zh_CN="注入管线已保存",
+        zh_TW="注入管線已保存",
+        en="Pipeline saved",
+        ja="パイプラインを保存しました",
+        ru="Пайплайн сохранён",
+    )
+
+    pipeline_save_failed: I18nKey = I18nKey(
+        default="Save failed",
+        zh_CN="保存失败",
+        zh_TW="保存失敗",
+        en="Save failed",
+        ja="保存に失敗しました",
+        ru="Не удалось сохранить",
+    )
+
+    pipeline_load_failed: I18nKey = I18nKey(
+        default="Failed to load pipeline",
+        zh_CN="加载注入管线失败",
+        zh_TW="載入注入管線失敗",
+        en="Failed to load pipeline",
+        ja="パイプラインの読み込みに失敗しました",
+        ru="Не удалось загрузить пайплайн",
+    )
+
+    pipeline_empty: I18nKey = I18nKey(
+        default="No injectors",
+        zh_CN="无注入器",
+        zh_TW="無注入器",
+        en="No injectors",
+        ja="インジェクターがありません",
+        ru="Нет инъекторов",
+    )
+
+    pipeline_move_up: I18nKey = I18nKey(
+        default="Move up",
+        zh_CN="上移",
+        zh_TW="上移",
+        en="Move up",
+        ja="上へ移動",
+        ru="Вверх",
+    )
+
+    pipeline_move_down: I18nKey = I18nKey(
+        default="Move down",
+        zh_CN="下移",
+        zh_TW="下移",
+        en="Move down",
+        ja="下へ移動",
+        ru="Вниз",
+    )
+
+    page_title: I18nKey = I18nKey(
+        default="QvQChat",
+        zh_CN="QvQChat 管理面板",
+        zh_TW="QvQChat 管理面板",
+        en="QvQChat",
+        ja="QvQChat 管理パネル",
+        ru="QvQChat панель управления",
+    )
+
+    page_desc: I18nKey = I18nKey(
+        default="Smart dialogue module · Manage AI models, behaviors, agents, knowledge base and memory",
+        zh_CN="智能对话模块 · 管理 AI 模型、行为、智能体、知识库与记忆",
+        zh_TW="智慧對話模組 · 管理 AI 模型、行為、智慧體、知識庫與記憶",
+        en="Smart dialogue module · Manage AI models, behaviors, agents, knowledge base and memory",
+        ja="スマート対話モジュール · AIモデル、行動、エージェント、知識ベース、記憶を管理",
+        ru="Интеллектуальный чат-модуль · Управление моделями, поведением, агентами, базой знаний и памятью",
+    )
+
+    # ==================== Dashboard 标签页 ====================
+
+    tab_overview: I18nKey = I18nKey(
+        default="Overview",
+        zh_CN="概览",
+        zh_TW="概覽",
+        en="Overview",
+        ja="概要",
+        ru="Обзор",
+    )
+
+    tab_basic: I18nKey = I18nKey(
+        default="Basic Settings",
+        zh_CN="基础设置",
+        zh_TW="基礎設定",
+        en="Basic Settings",
+        ja="基本設定",
+        ru="Основные настройки",
+    )
+
+    tab_models: I18nKey = I18nKey(
+        default="Models",
+        zh_CN="模型管理",
+        zh_TW="模型管理",
+        en="Models",
+        ja="モデル管理",
+        ru="Модели",
+    )
+
+    tab_behaviors: I18nKey = I18nKey(
+        default="Behaviors",
+        zh_CN="行为管理",
+        zh_TW="行為管理",
+        en="Behaviors",
+        ja="行動管理",
+        ru="Поведение",
+    )
+
+    tab_pipeline: I18nKey = I18nKey(
+        default="Pipeline",
+        zh_CN="注入管线",
+        zh_TW="注入管線",
+        en="Pipeline",
+        ja="パイプライン",
+        ru="Пайплайн",
+    )
+
+    tab_agents: I18nKey = I18nKey(
+        default="Agents",
+        zh_CN="多智能体",
+        zh_TW="多智慧體",
+        en="Agents",
+        ja="マルチエージェント",
+        ru="Агенты",
+    )
+
+    tab_knowledge: I18nKey = I18nKey(
+        default="Knowledge Base",
+        zh_CN="知识库",
+        zh_TW="知識庫",
+        en="Knowledge Base",
+        ja="知識ベース",
+        ru="База знаний",
+    )
+
+    tab_tools: I18nKey = I18nKey(
+        default="MCP Tools",
+        zh_CN="MCP工具",
+        zh_TW="MCP工具",
+        en="MCP Tools",
+        ja="MCPツール",
+        ru="MCP-инструменты",
+    )
+
+    tab_stickers: I18nKey = I18nKey(
+        default="Stickers",
+        zh_CN="表情包",
+        zh_TW="表情包",
+        en="Stickers",
+        ja="スタンプ",
+        ru="Стикеры",
+    )
+
+    tab_memories: I18nKey = I18nKey(
+        default="Memories",
+        zh_CN="记忆管理",
+        zh_TW="記憶管理",
+        en="Memories",
+        ja="記憶管理",
+        ru="Память",
+    )
+
+    tab_sessions: I18nKey = I18nKey(
+        default="Sessions",
+        zh_CN="会话管理",
+        zh_TW="會話管理",
+        en="Sessions",
+        ja="セッション管理",
+        ru="Сессии",
+    )
+
+    tab_groups: I18nKey = I18nKey(
+        default="Groups",
+        zh_CN="群组管理",
+        zh_TW="群組管理",
+        en="Groups",
+        ja="グループ管理",
+        ru="Группы",
+    )
+
+    # ==================== Dashboard 按钮 ====================
+
+    btn_export_desensitize: I18nKey = I18nKey(
+        default="Desensitized Export",
+        zh_CN="脱敏导出",
+        zh_TW="脫敏匯出",
+        en="Desensitized Export",
+        ja="匿名化エクスポート",
+        ru="Экспорт с десенсибилизацией",
+    )
+
+    btn_export_migrate: I18nKey = I18nKey(
+        default="Migrate Export",
+        zh_CN="迁移导出",
+        zh_TW="遷移匯出",
+        en="Migrate Export",
+        ja="移行エクスポート",
+        ru="Миграционный экспорт",
+    )
+
+    btn_import: I18nKey = I18nKey(
+        default="Import",
+        zh_CN="导入",
+        zh_TW="匯入",
+        en="Import",
+        ja="インポート",
+        ru="Импорт",
+    )
+
+    btn_reset: I18nKey = I18nKey(
+        default="Reset All",
+        zh_CN="重置全部",
+        zh_TW="重設全部",
+        en="Reset All",
+        ja="全てリセット",
+        ru="Сбросить всё",
+    )
+
+    btn_save_config: I18nKey = I18nKey(
+        default="Save Config",
+        zh_CN="保存配置",
+        zh_TW="保存設定",
+        en="Save Config",
+        ja="設定を保存",
+        ru="Сохранить настройки",
+    )
+
+    # ==================== Dashboard 概览区块 ====================
+
+    overview_runtime: I18nKey = I18nKey(
+        default="Runtime Status",
+        zh_CN="运行状态",
+        zh_TW="運行狀態",
+        en="Runtime Status",
+        ja="実行状態",
+        ru="Статус",
+    )
+
+    overview_stats: I18nKey = I18nKey(
+        default="Runtime Statistics",
+        zh_CN="运行统计",
+        zh_TW="運行統計",
+        en="Runtime Statistics",
+        ja="実行統計",
+        ru="Статистика",
+    )
+
+    overview_ai: I18nKey = I18nKey(
+        default="AI Subsystem Status",
+        zh_CN="AI 子系统状态",
+        zh_TW="AI 子系統狀態",
+        en="AI Subsystem Status",
+        ja="AIサブシステム状態",
+        ru="Статус AI-подсистемы",
+    )
+
+    overview_features: I18nKey = I18nKey(
+        default="Feature Toggles",
+        zh_CN="功能开关",
+        zh_TW="功能開關",
+        en="Feature Toggles",
+        ja="機能トグル",
+        ru="Переключатели функций",
+    )
+
+    overview_human: I18nKey = I18nKey(
+        default="Human State",
+        zh_CN="人类状态",
+        zh_TW="人類狀態",
+        en="Human State",
+        ja="人間状態",
+        ru="Состояние человека",
+    )
