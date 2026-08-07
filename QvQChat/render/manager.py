@@ -38,11 +38,12 @@ class RenderManager:
             return self._takumi
         try:
             self._takumi = sdk.module.get("Takumi")
-        except Exception:
+        except Exception as e:
+            self.logger.warning(f"加载 Takumi 模块异常: {e}")
             self._takumi = None
         if self._takumi is None:
             self.logger.warning(
-                "Takumi 模块未安装，渲染能力已禁用。执行 epsdk install Takumi 启用。"
+                "Takumi 模块未找到，渲染能力已禁用。执行 epsdk install Takumi 启用。"
             )
         return self._takumi
 
@@ -107,30 +108,23 @@ class RenderManager:
             lang="zh-CN",
         )
 
-        img_bytes = self._call_sync(takumi, "render_html", **kwargs)
-        if isinstance(img_bytes, bytes) and img_bytes:
-            path = self._save_output(img_bytes, fmt)
+        self.logger.debug(
+            f"渲染请求: html={len(html)}字符, css={len(css or '')}字符, "
+            f"stylesheets={'有' if stylesheets else '无'}"
+        )
+
+        fn = getattr(takumi, "render_html")
+        result = fn(**kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+
+        if isinstance(result, bytes) and result:
+            path = self._save_output(result, fmt)
             self.logger.info(f"渲染完成: {path} ({width}x{height})")
             return path
 
         self.logger.warning("Takumi 渲染返回空结果")
         return None
-
-    @staticmethod
-    def _call_sync(obj, method: str, *args, **kwargs):
-        """调用 Takumi 模块方法（模块方法是同步的；若返回 awaitable 则同步执行）"""
-        fn = getattr(obj, method)
-        result = fn(*args, **kwargs)
-        if inspect.isawaitable(result):
-            import asyncio
-            try:
-                asyncio.get_running_loop()
-                raise RuntimeError(f"{method} 返回 awaitable，但已在异步上下文中")
-            except RuntimeError as e:
-                if "no running event loop" in str(e) or "No running event loop" in str(e):
-                    return asyncio.run(result)
-                raise
-        return result
 
     # ==================== 风格建议 ====================
 

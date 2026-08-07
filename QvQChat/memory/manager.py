@@ -29,7 +29,7 @@ class MemoryManager:
         self.store = MemoryStore(config, self.logger)
         self.retriever = MemoryRetriever(self.store, self.logger)
         self.extractor = MemoryExtractor(self.store, ai_engine, config, self.logger)
-        self.intent = IntentRouter(self.store, ai_engine, self.logger)
+        self.intent = IntentRouter(self.store, ai_engine, self.logger, config)
 
     # ==================== 会话历史（兼容旧 API） ====================
 

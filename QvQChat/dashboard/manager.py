@@ -364,8 +364,6 @@ class DashboardManager:
         ("/api/pipeline", "GET", "_api_get_pipeline"),
         ("/api/pipeline", "POST", "_api_save_pipeline"),
         ("/api/i18n", "GET", "_api_get_i18n"),
-        ("/api/render", "GET", "_api_get_render"),
-        ("/api/render/config", "POST", "_api_save_render_config"),
     ]
 
     def __init__(self, core):
@@ -400,10 +398,6 @@ class DashboardManager:
     @property
     def pipeline(self):
         return self.core.pipeline
-
-    @property
-    def render_manager(self):
-        return self.core.render_manager
 
     @property
     def mcp_manager(self):
@@ -1547,30 +1541,6 @@ class DashboardManager:
     async def _api_get_i18n(self, request) -> Dict[str, Any]:
         """获取前端翻译字典（实时跟随框架语言切换）"""
         return self._build_i18n_dict()
-
-    # ----- 渲染能力 -----
-
-    async def _api_get_render(self, request) -> Dict[str, Any]:
-        """获取渲染状态 + 配置 + 风格建议预览"""
-        try:
-            return {
-                "available": self.render_manager.is_available(),
-                "config": self.config.get("render", {}),
-                "style_guide": self.render_manager.get_style_guide(),
-            }
-        except Exception as e:
-            return {"available": False, "config": {}, "style_guide": "", "error": str(e)}
-
-    async def _api_save_render_config(self, request) -> Dict[str, Any]:
-        """保存渲染配置"""
-        try:
-            body = await self._parse_body(request)
-            if isinstance(body, dict):
-                for key, val in body.items():
-                    self.config.set(f"render.{key}", val)
-            return {"ok": True}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
 
     async def _api_get_pipeline(self, request) -> Dict[str, Any]:
         """获取注入管线状态"""

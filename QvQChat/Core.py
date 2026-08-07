@@ -28,8 +28,6 @@ from .chat.memory import QvQMemory
 from .chat.session import SessionManager
 from .chat.sticker import StickerManager
 from .dashboard import DashboardManager
-from .render import RenderManager
-from .render.injector import RenderInjector
 from .utils import MessageSender, get_session_description, truncate_message
 
 # ==================== 拟人化工具 ====================
@@ -99,15 +97,10 @@ class Main(BaseModule):
             self.sdk.adapter, self.config.config, self.logger
         )
 
-        # 渲染子系统（AI 渲染能力，软依赖 Takumi）
-        self.render_manager = RenderManager(self.config, self.logger)
-
         # 提示词注入管线
         self.pipeline = PromptPipeline(self)
         for inj in create_default_injectors(self):
             self.pipeline.register(inj)
-        # 注册渲染能力注入器
-        self.pipeline.register(RenderInjector(self))
 
         # AI 启用状态
         self._ai_disabled: Dict[str, bool] = {}
@@ -366,6 +359,8 @@ class Main(BaseModule):
         """聚合定时器任务"""
         try:
             await asyncio.sleep(window)
+            # 处理已开始：从计时器表中移除，避免被新消息 cancel 杀死正在执行的处理
+            self._msg_timers.pop(session_key, None)
             await self._flush_buffer(session_key)
         except asyncio.CancelledError:
             pass
@@ -556,6 +551,9 @@ class Main(BaseModule):
                     self.logger.warning(i18n.t("QvQChat.memory_fallback_to_dialogue"))
                 asyncio.create_task(self._extract_memory_async(user_id, group_id))
 
+        except asyncio.CancelledError:
+            self.logger.warning(f"处理被取消(可能被新消息聚合抢占): {truncate_message(alt_message, 40)}")
+            raise
         except Exception as e:
             self.logger.error(f"处理消息出错: {e}\n{traceback.format_exc()}")
 
@@ -1220,6 +1218,8 @@ class Main(BaseModule):
             self.logger.info(f"对话行为完成 - 回复: {truncate_message(response, 80)}")
             return response
 
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             self.logger.error(f"生成回复失败: {e}")
             return None
@@ -1800,30 +1800,8 @@ class Main(BaseModule):
                 "", response, flags=re.IGNORECASE
             ).strip()
 
-            # 渲染标签解析（AI 渲染能力）
-            sent_render_count = 0
-            if self.render_manager.is_available():
-                from .render.tag_parser import parse_render_tags, RENDER_TAG_RE
-                render_reqs = parse_render_tags(response)
-                for req in render_reqs:
-                    path = await self.render_manager.render(req)
-                    if path:
-                        await self._send_image(data, platform, path)
-                        sent_render_count += 1
-                        response = RENDER_TAG_RE.sub(
-                            "", response, count=1
-                        )
-                    else:
-                        # 渲染失败，保留标签内文本，移除标签语法
-                        response = RENDER_TAG_RE.sub(
-                            lambda m: m.group(1).strip(),
-                            response, count=1
-                        )
-                if sent_render_count > 0:
-                    response = response.strip()
-
-            # 纯表情包/纯渲染场景：只发了图片没有文本，不发送空消息
-            if response == "" and (sent_sticker_count > 0 or sent_render_count > 0):
+            # 纯表情包场景：只发了图片没有文本，不发送空消息
+            if response == "" and sent_sticker_count > 0:
                 return
 
             if response:
