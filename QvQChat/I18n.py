@@ -571,6 +571,1621 @@ class QvQI18n(BaseI18n):
         ru="Состояние человека",
     )
 
+    ov_mood: I18nKey = I18nKey(
+        default='情绪',
+        zh_CN='情绪',
+        zh_TW='情绪',
+        en='情绪',
+        ja='情绪',
+        ru='情绪',
+    )
+
+    ov_energy: I18nKey = I18nKey(
+        default='精力',
+        zh_CN='精力',
+        zh_TW='精力',
+        en='精力',
+        ja='精力',
+        ru='精力',
+    )
+
+    toast_overview_failed: I18nKey = I18nKey(
+        default='加载概览失败',
+        zh_CN='加载概览失败',
+        zh_TW='加载概览失败',
+        en='加载概览失败',
+        ja='加载概览失败',
+        ru='加载概览失败',
+    )
+
+    toast_behavior_load_failed: I18nKey = I18nKey(
+        default='加载行为失败',
+        zh_CN='加载行为失败',
+        zh_TW='加载行为失败',
+        en='加载行为失败',
+        ja='加载行为失败',
+        ru='加载行为失败',
+    )
+
+    toast_model_load_failed: I18nKey = I18nKey(
+        default='加载模型失败',
+        zh_CN='加载模型失败',
+        zh_TW='加载模型失败',
+        en='加载模型失败',
+        ja='加载模型失败',
+        ru='加载模型失败',
+    )
+
+    toast_agent_load_failed: I18nKey = I18nKey(
+        default='加载智能体失败',
+        zh_CN='加载智能体失败',
+        zh_TW='加载智能体失败',
+        en='加载智能体失败',
+        ja='加载智能体失败',
+        ru='加载智能体失败',
+    )
+
+    toast_knowledge_load_failed: I18nKey = I18nKey(
+        default='加载知识库失败',
+        zh_CN='加载知识库失败',
+        zh_TW='加载知识库失败',
+        en='加载知识库失败',
+        ja='加载知识库失败',
+        ru='加载知识库失败',
+    )
+
+    toast_tool_load_failed: I18nKey = I18nKey(
+        default='加载工具失败',
+        zh_CN='加载工具失败',
+        zh_TW='加载工具失败',
+        en='加载工具失败',
+        ja='加载工具失败',
+        ru='加载工具失败',
+    )
+
+
+    modal_edit_model: I18nKey = I18nKey(
+        default='编辑模型',
+        zh_CN='编辑模型',
+        zh_TW='编辑模型',
+        en='编辑模型',
+        ja='编辑模型',
+        ru='编辑模型',
+    )
+
+    modal_add_model: I18nKey = I18nKey(
+        default='添加模型',
+        zh_CN='添加模型',
+        zh_TW='添加模型',
+        en='添加模型',
+        ja='添加模型',
+        ru='添加模型',
+    )
+
+    modal_edit_behavior: I18nKey = I18nKey(
+        default='编辑行为',
+        zh_CN='编辑行为',
+        zh_TW='编辑行为',
+        en='编辑行为',
+        ja='编辑行为',
+        ru='编辑行为',
+    )
+
+    modal_add_behavior: I18nKey = I18nKey(
+        default='添加行为',
+        zh_CN='添加行为',
+        zh_TW='添加行为',
+        en='添加行为',
+        ja='添加行为',
+        ru='添加行为',
+    )
+
+    modal_edit_agent: I18nKey = I18nKey(
+        default='编辑智能体',
+        zh_CN='编辑智能体',
+        zh_TW='编辑智能体',
+        en='编辑智能体',
+        ja='编辑智能体',
+        ru='编辑智能体',
+    )
+
+    modal_create_agent: I18nKey = I18nKey(
+        default='创建智能体',
+        zh_CN='创建智能体',
+        zh_TW='创建智能体',
+        en='创建智能体',
+        ja='创建智能体',
+        ru='创建智能体',
+    )
+
+    modal_edit_knowledge: I18nKey = I18nKey(
+        default='编辑知识',
+        zh_CN='编辑知识',
+        zh_TW='编辑知识',
+        en='编辑知识',
+        ja='编辑知识',
+        ru='编辑知识',
+    )
+
+    modal_add_knowledge: I18nKey = I18nKey(
+        default='添加知识',
+        zh_CN='添加知识',
+        zh_TW='添加知识',
+        en='添加知识',
+        ja='添加知识',
+        ru='添加知识',
+    )
+
+    modal_edit_tool: I18nKey = I18nKey(
+        default='编辑工具',
+        zh_CN='编辑工具',
+        zh_TW='编辑工具',
+        en='编辑工具',
+        ja='编辑工具',
+        ru='编辑工具',
+    )
+
+    modal_add_tool: I18nKey = I18nKey(
+        default='添加工具',
+        zh_CN='添加工具',
+        zh_TW='添加工具',
+        en='添加工具',
+        ja='添加工具',
+        ru='添加工具',
+    )
+
+    modal_edit_mcp_server: I18nKey = I18nKey(
+        default='编辑 MCP 服务器',
+        zh_CN='编辑 MCP 服务器',
+        zh_TW='编辑 MCP 服务器',
+        en='编辑 MCP 服务器',
+        ja='编辑 MCP 服务器',
+        ru='编辑 MCP 服务器',
+    )
+
+    modal_add_mcp_server: I18nKey = I18nKey(
+        default='添加 MCP 服务器',
+        zh_CN='添加 MCP 服务器',
+        zh_TW='添加 MCP 服务器',
+        en='添加 MCP 服务器',
+        ja='添加 MCP 服务器',
+        ru='添加 MCP 服务器',
+    )
+
+    modal__agent_id: I18nKey = I18nKey(
+        default='绑定智能体',
+        zh_CN='绑定智能体',
+        zh_TW='绑定智能体',
+        en='绑定智能体',
+        ja='绑定智能体',
+        ru='绑定智能体',
+    )
+
+    modal__cap_chat: I18nKey = I18nKey(
+        default='文本对话',
+        zh_CN='文本对话',
+        zh_TW='文本对话',
+        en='文本对话',
+        ja='文本对话',
+        ru='文本对话',
+    )
+
+    modal__cap_tools: I18nKey = I18nKey(
+        default='工具调用',
+        zh_CN='工具调用',
+        zh_TW='工具调用',
+        en='工具调用',
+        ja='工具调用',
+        ru='工具调用',
+    )
+
+    modal__cap_vision: I18nKey = I18nKey(
+        default='图片识别',
+        zh_CN='图片识别',
+        zh_TW='图片识别',
+        en='图片识别',
+        ja='图片识别',
+        ru='图片识别',
+    )
+
+    modal__catchphrases: I18nKey = I18nKey(
+        default='口头禅（逗号分隔，如：嘿嘿,哎呀）',
+        zh_CN='口头禅（逗号分隔，如：嘿嘿,哎呀）',
+        zh_TW='口头禅（逗号分隔，如：嘿嘿,哎呀）',
+        en='口头禅（逗号分隔，如：嘿嘿,哎呀）',
+        ja='口头禅（逗号分隔，如：嘿嘿,哎呀）',
+        ru='口头禅（逗号分隔，如：嘿嘿,哎呀）',
+    )
+
+    modal__headers: I18nKey = I18nKey(
+        default='请求头 (JSON，可选)',
+        zh_CN='请求头 (JSON，可选)',
+        zh_TW='请求头 (JSON，可选)',
+        en='请求头 (JSON，可选)',
+        ja='请求头 (JSON，可选)',
+        ru='请求头 (JSON，可选)',
+    )
+
+    modal__html_extra: I18nKey = I18nKey(
+        default='── 个性化设定 ──',
+        zh_CN='── 个性化设定 ──',
+        zh_TW='── 个性化设定 ──',
+        en='── 个性化设定 ──',
+        ja='── 个性化设定 ──',
+        ru='── 个性化设定 ──',
+    )
+
+    modal__html_model: I18nKey = I18nKey(
+        default='── 模型覆盖（留空使用默认）──',
+        zh_CN='── 模型覆盖（留空使用默认）──',
+        zh_TW='── 模型覆盖（留空使用默认）──',
+        en='── 模型覆盖（留空使用默认）──',
+        ja='── 模型覆盖（留空使用默认）──',
+        ru='── 模型覆盖（留空使用默认）──',
+    )
+
+    modal__html_traits: I18nKey = I18nKey(
+        default='── 人格特质滑块（拖动调整，影响 AI 的性格倾向）──',
+        zh_CN='── 人格特质滑块（拖动调整，影响 AI 的性格倾向）──',
+        zh_TW='── 人格特质滑块（拖动调整，影响 AI 的性格倾向）──',
+        en='── 人格特质滑块（拖动调整，影响 AI 的性格倾向）──',
+        ja='── 人格特质滑块（拖动调整，影响 AI 的性格倾向）──',
+        ru='── 人格特质滑块（拖动调整，影响 AI 的性格倾向）──',
+    )
+
+    modal__knowledge_tags: I18nKey = I18nKey(
+        default='知识库标签绑定（逗号分隔，仅注入匹配的知识）',
+        zh_CN='知识库标签绑定（逗号分隔，仅注入匹配的知识）',
+        zh_TW='知识库标签绑定（逗号分隔，仅注入匹配的知识）',
+        en='知识库标签绑定（逗号分隔，仅注入匹配的知识）',
+        ja='知识库标签绑定（逗号分隔，仅注入匹配的知识）',
+        ru='知识库标签绑定（逗号分隔，仅注入匹配的知识）',
+    )
+
+    modal__parameters: I18nKey = I18nKey(
+        default='参数 JSON Schema',
+        zh_CN='参数 JSON Schema',
+        zh_TW='参数 JSON Schema',
+        en='参数 JSON Schema',
+        ja='参数 JSON Schema',
+        ru='参数 JSON Schema',
+    )
+
+    modal__t_activity: I18nKey = I18nKey(
+        default='活跃度',
+        zh_CN='活跃度',
+        zh_TW='活跃度',
+        en='活跃度',
+        ja='活跃度',
+        ru='活跃度',
+    )
+
+    modal__t_curiosity: I18nKey = I18nKey(
+        default='好奇心',
+        zh_CN='好奇心',
+        zh_TW='好奇心',
+        en='好奇心',
+        ja='好奇心',
+        ru='好奇心',
+    )
+
+    modal__t_formality: I18nKey = I18nKey(
+        default='正式度',
+        zh_CN='正式度',
+        zh_TW='正式度',
+        en='正式度',
+        ja='正式度',
+        ru='正式度',
+    )
+
+    modal__t_friendliness: I18nKey = I18nKey(
+        default='友善度',
+        zh_CN='友善度',
+        zh_TW='友善度',
+        en='友善度',
+        ja='友善度',
+        ru='友善度',
+    )
+
+    modal__t_humor: I18nKey = I18nKey(
+        default='幽默感',
+        zh_CN='幽默感',
+        zh_TW='幽默感',
+        en='幽默感',
+        ja='幽默感',
+        ru='幽默感',
+    )
+
+    modal__tags: I18nKey = I18nKey(
+        default='标签（逗号分隔）',
+        zh_CN='标签（逗号分隔）',
+        zh_TW='标签（逗号分隔）',
+        en='标签（逗号分隔）',
+        ja='标签（逗号分隔）',
+        ru='标签（逗号分隔）',
+    )
+
+    modal__template: I18nKey = I18nKey(
+        default='从模板快速创建（选择后自动填充提示词）',
+        zh_CN='从模板快速创建（选择后自动填充提示词）',
+        zh_TW='从模板快速创建（选择后自动填充提示词）',
+        en='从模板快速创建（选择后自动填充提示词）',
+        ja='从模板快速创建（选择后自动填充提示词）',
+        ru='从模板快速创建（选择后自动填充提示词）',
+    )
+
+    modal__trigger_words: I18nKey = I18nKey(
+        default='触发词（逗号分隔）',
+        zh_CN='触发词（逗号分隔）',
+        zh_TW='触发词（逗号分隔）',
+        en='触发词（逗号分隔）',
+        ja='触发词（逗号分隔）',
+        ru='触发词（逗号分隔）',
+    )
+
+    modal_api_key: I18nKey = I18nKey(
+        default='API 密钥',
+        zh_CN='API 密钥',
+        zh_TW='API 密钥',
+        en='API 密钥',
+        ja='API 密钥',
+        ru='API 密钥',
+    )
+
+    modal_base_url: I18nKey = I18nKey(
+        default='API 地址',
+        zh_CN='API 地址',
+        zh_TW='API 地址',
+        en='API 地址',
+        ja='API 地址',
+        ru='API 地址',
+    )
+
+    modal_behavior_type: I18nKey = I18nKey(
+        default='行为类型',
+        zh_CN='行为类型',
+        zh_TW='行为类型',
+        en='行为类型',
+        ja='行为类型',
+        ru='行为类型',
+    )
+
+    modal_category: I18nKey = I18nKey(
+        default='分类',
+        zh_CN='分类',
+        zh_TW='分类',
+        en='分类',
+        ja='分类',
+        ru='分类',
+    )
+
+    modal_content: I18nKey = I18nKey(
+        default='内容',
+        zh_CN='内容',
+        zh_TW='内容',
+        en='内容',
+        ja='内容',
+        ru='内容',
+    )
+
+    modal_description: I18nKey = I18nKey(
+        default='描述',
+        zh_CN='描述',
+        zh_TW='描述',
+        en='描述',
+        ja='描述',
+        ru='描述',
+    )
+
+    modal_enable_ai: I18nKey = I18nKey(
+        default='启用 AI',
+        zh_CN='启用 AI',
+        zh_TW='启用 AI',
+        en='启用 AI',
+        ja='启用 AI',
+        ru='启用 AI',
+    )
+
+    modal_enable_memory: I18nKey = I18nKey(
+        default='启用记忆',
+        zh_CN='启用记忆',
+        zh_TW='启用记忆',
+        en='启用记忆',
+        ja='启用记忆',
+        ru='启用记忆',
+    )
+
+    modal_enabled: I18nKey = I18nKey(
+        default='启用',
+        zh_CN='启用',
+        zh_TW='启用',
+        en='启用',
+        ja='启用',
+        ru='启用',
+    )
+
+    modal_endpoint: I18nKey = I18nKey(
+        default='HTTP 端点（可选）',
+        zh_CN='HTTP 端点（可选）',
+        zh_TW='HTTP 端点（可选）',
+        en='HTTP 端点（可选）',
+        ja='HTTP 端点（可选）',
+        ru='HTTP 端点（可选）',
+    )
+
+    modal_file: I18nKey = I18nKey(
+        default='选择图片',
+        zh_CN='选择图片',
+        zh_TW='选择图片',
+        en='选择图片',
+        ja='选择图片',
+        ru='选择图片',
+    )
+
+    modal_files: I18nKey = I18nKey(
+        default='选择图片文件（可多选）',
+        zh_CN='选择图片文件（可多选）',
+        zh_TW='选择图片文件（可多选）',
+        en='选择图片文件（可多选）',
+        ja='选择图片文件（可多选）',
+        ru='选择图片文件（可多选）',
+    )
+
+    modal_greeting: I18nKey = I18nKey(
+        default='开场白（参考，AI 不一定每次使用）',
+        zh_CN='开场白（参考，AI 不一定每次使用）',
+        zh_TW='开场白（参考，AI 不一定每次使用）',
+        en='开场白（参考，AI 不一定每次使用）',
+        ja='开场白（参考，AI 不一定每次使用）',
+        ru='开场白（参考，AI 不一定每次使用）',
+    )
+
+    modal_group_name: I18nKey = I18nKey(
+        default='群名称',
+        zh_CN='群名称',
+        zh_TW='群名称',
+        en='群名称',
+        ja='群名称',
+        ru='群名称',
+    )
+
+    modal_max_tokens: I18nKey = I18nKey(
+        default='最大 Tokens',
+        zh_CN='最大 Tokens',
+        zh_TW='最大 Tokens',
+        en='最大 Tokens',
+        ja='最大 Tokens',
+        ru='最大 Tokens',
+    )
+
+    modal_memory_mode: I18nKey = I18nKey(
+        default='记忆模式',
+        zh_CN='记忆模式',
+        zh_TW='记忆模式',
+        en='记忆模式',
+        ja='记忆模式',
+        ru='记忆模式',
+    )
+
+    modal_method: I18nKey = I18nKey(
+        default='请求方法',
+        zh_CN='请求方法',
+        zh_TW='请求方法',
+        en='请求方法',
+        ja='请求方法',
+        ru='请求方法',
+    )
+
+    modal_model: I18nKey = I18nKey(
+        default='指定模型 ID',
+        zh_CN='指定模型 ID',
+        zh_TW='指定模型 ID',
+        en='指定模型 ID',
+        ja='指定模型 ID',
+        ru='指定模型 ID',
+    )
+
+    modal_models: I18nKey = I18nKey(
+        default='分配模型',
+        zh_CN='分配模型',
+        zh_TW='分配模型',
+        en='分配模型',
+        ja='分配模型',
+        ru='分配模型',
+    )
+
+    modal_name: I18nKey = I18nKey(
+        default='名称',
+        zh_CN='名称',
+        zh_TW='名称',
+        en='名称',
+        ja='名称',
+        ru='名称',
+    )
+
+    modal_prediction_interval: I18nKey = I18nKey(
+        default='预测间隔（消息数）',
+        zh_CN='预测间隔（消息数）',
+        zh_TW='预测间隔（消息数）',
+        en='预测间隔（消息数）',
+        ja='预测间隔（消息数）',
+        ru='预测间隔（消息数）',
+    )
+
+    modal_priority: I18nKey = I18nKey(
+        default='优先级',
+        zh_CN='优先级',
+        zh_TW='优先级',
+        en='优先级',
+        ja='优先级',
+        ru='优先级',
+    )
+
+    modal_required_capability: I18nKey = I18nKey(
+        default='所需能力',
+        zh_CN='所需能力',
+        zh_TW='所需能力',
+        en='所需能力',
+        ja='所需能力',
+        ru='所需能力',
+    )
+
+    modal_response_template: I18nKey = I18nKey(
+        default='输出模板（支持 {ai_response}/{at_user}/[img]url[/img]/[sticker]url[/sticker]）',
+        zh_CN='输出模板（支持 {ai_response}/{at_user}/[img]url[/img]/[sticker]url[/sticker]）',
+        zh_TW='输出模板（支持 {ai_response}/{at_user}/[img]url[/img]/[sticker]url[/sticker]）',
+        en='输出模板（支持 {ai_response}/{at_user}/[img]url[/img]/[sticker]url[/sticker]）',
+        ja='输出模板（支持 {ai_response}/{at_user}/[img]url[/img]/[sticker]url[/sticker]）',
+        ru='输出模板（支持 {ai_response}/{at_user}/[img]url[/img]/[sticker]url[/sticker]）',
+    )
+
+    modal_role: I18nKey = I18nKey(
+        default='角色',
+        zh_CN='角色',
+        zh_TW='角色',
+        en='角色',
+        ja='角色',
+        ru='角色',
+    )
+
+    modal_speaking_style: I18nKey = I18nKey(
+        default='说话风格（如：活泼可爱、冷静理性）',
+        zh_CN='说话风格（如：活泼可爱、冷静理性）',
+        zh_TW='说话风格（如：活泼可爱、冷静理性）',
+        en='说话风格（如：活泼可爱、冷静理性）',
+        ja='说话风格（如：活泼可爱、冷静理性）',
+        ru='说话风格（如：活泼可爱、冷静理性）',
+    )
+
+    modal_system_prompt: I18nKey = I18nKey(
+        default='系统提示词',
+        zh_CN='系统提示词',
+        zh_TW='系统提示词',
+        en='系统提示词',
+        ja='系统提示词',
+        ru='系统提示词',
+    )
+
+    modal_temperature: I18nKey = I18nKey(
+        default='温度',
+        zh_CN='温度',
+        zh_TW='温度',
+        en='温度',
+        ja='温度',
+        ru='温度',
+    )
+
+    modal_title: I18nKey = I18nKey(
+        default='标题',
+        zh_CN='标题',
+        zh_TW='标题',
+        en='标题',
+        ja='标题',
+        ru='标题',
+    )
+
+    modal_trigger_mode: I18nKey = I18nKey(
+        default='触发模式',
+        zh_CN='触发模式',
+        zh_TW='触发模式',
+        en='触发模式',
+        ja='触发模式',
+        ru='触发模式',
+    )
+
+    modal_trigger_probability: I18nKey = I18nKey(
+        default='触发概率 (0=从不, 1=总是)',
+        zh_CN='触发概率 (0=从不, 1=总是)',
+        zh_TW='触发概率 (0=从不, 1=总是)',
+        en='触发概率 (0=从不, 1=总是)',
+        ja='触发概率 (0=从不, 1=总是)',
+        ru='触发概率 (0=从不, 1=总是)',
+    )
+
+    modal_url: I18nKey = I18nKey(
+        default='图片 URL',
+        zh_CN='图片 URL',
+        zh_TW='图片 URL',
+        en='图片 URL',
+        ja='图片 URL',
+        ru='图片 URL',
+    )
+
+
+    toast_config_saved: I18nKey = I18nKey(
+        default='配置已保存',
+        zh_CN='配置已保存',
+        zh_TW='配置已保存',
+        en='配置已保存',
+        ja='配置已保存',
+        ru='配置已保存',
+    )
+
+    toast_model_saved: I18nKey = I18nKey(
+        default='模型已保存',
+        zh_CN='模型已保存',
+        zh_TW='模型已保存',
+        en='模型已保存',
+        ja='模型已保存',
+        ru='模型已保存',
+    )
+
+    toast_model_deleted: I18nKey = I18nKey(
+        default='模型已删除',
+        zh_CN='模型已删除',
+        zh_TW='模型已删除',
+        en='模型已删除',
+        ja='模型已删除',
+        ru='模型已删除',
+    )
+
+    toast_behavior_saved: I18nKey = I18nKey(
+        default='行为已保存',
+        zh_CN='行为已保存',
+        zh_TW='行为已保存',
+        en='行为已保存',
+        ja='行为已保存',
+        ru='行为已保存',
+    )
+
+    toast_behavior_deleted: I18nKey = I18nKey(
+        default='行为已删除',
+        zh_CN='行为已删除',
+        zh_TW='行为已删除',
+        en='行为已删除',
+        ja='行为已删除',
+        ru='行为已删除',
+    )
+
+    toast_agent_saved: I18nKey = I18nKey(
+        default='智能体已保存',
+        zh_CN='智能体已保存',
+        zh_TW='智能体已保存',
+        en='智能体已保存',
+        ja='智能体已保存',
+        ru='智能体已保存',
+    )
+
+    toast_agent_deleted: I18nKey = I18nKey(
+        default='智能体已删除',
+        zh_CN='智能体已删除',
+        zh_TW='智能体已删除',
+        en='智能体已删除',
+        ja='智能体已删除',
+        ru='智能体已删除',
+    )
+
+    toast_knowledge_saved: I18nKey = I18nKey(
+        default='知识已保存',
+        zh_CN='知识已保存',
+        zh_TW='知识已保存',
+        en='知识已保存',
+        ja='知识已保存',
+        ru='知识已保存',
+    )
+
+    toast_knowledge_deleted: I18nKey = I18nKey(
+        default='知识已删除',
+        zh_CN='知识已删除',
+        zh_TW='知识已删除',
+        en='知识已删除',
+        ja='知识已删除',
+        ru='知识已删除',
+    )
+
+    toast_tool_saved: I18nKey = I18nKey(
+        default='工具已保存',
+        zh_CN='工具已保存',
+        zh_TW='工具已保存',
+        en='工具已保存',
+        ja='工具已保存',
+        ru='工具已保存',
+    )
+
+    toast_tool_deleted: I18nKey = I18nKey(
+        default='工具已删除',
+        zh_CN='工具已删除',
+        zh_TW='工具已删除',
+        en='工具已删除',
+        ja='工具已删除',
+        ru='工具已删除',
+    )
+
+    toast_mcp_server_saved: I18nKey = I18nKey(
+        default='MCP 服务器已保存',
+        zh_CN='MCP 服务器已保存',
+        zh_TW='MCP 服务器已保存',
+        en='MCP 服务器已保存',
+        ja='MCP 服务器已保存',
+        ru='MCP 服务器已保存',
+    )
+
+    toast_mcp_server_deleted: I18nKey = I18nKey(
+        default='MCP 服务器已删除',
+        zh_CN='MCP 服务器已删除',
+        zh_TW='MCP 服务器已删除',
+        en='MCP 服务器已删除',
+        ja='MCP 服务器已删除',
+        ru='MCP 服务器已删除',
+    )
+
+    toast_save_failed: I18nKey = I18nKey(
+        default='保存失败',
+        zh_CN='保存失败',
+        zh_TW='保存失败',
+        en='保存失败',
+        ja='保存失败',
+        ru='保存失败',
+    )
+
+    toast_delete_failed: I18nKey = I18nKey(
+        default='删除失败',
+        zh_CN='删除失败',
+        zh_TW='删除失败',
+        en='删除失败',
+        ja='删除失败',
+        ru='删除失败',
+    )
+
+    toast_load_failed: I18nKey = I18nKey(
+        default='加载失败',
+        zh_CN='加载失败',
+        zh_TW='加载失败',
+        en='加载失败',
+        ja='加载失败',
+        ru='加载失败',
+    )
+
+    toast_conn_failed: I18nKey = I18nKey(
+        default='连接失败',
+        zh_CN='连接失败',
+        zh_TW='连接失败',
+        en='连接失败',
+        ja='连接失败',
+        ru='连接失败',
+    )
+
+    toast_export_failed: I18nKey = I18nKey(
+        default='导出失败',
+        zh_CN='导出失败',
+        zh_TW='导出失败',
+        en='导出失败',
+        ja='导出失败',
+        ru='导出失败',
+    )
+
+    toast_import_failed: I18nKey = I18nKey(
+        default='导入失败',
+        zh_CN='导入失败',
+        zh_TW='导入失败',
+        en='导入失败',
+        ja='导入失败',
+        ru='导入失败',
+    )
+
+    toast_reset_failed: I18nKey = I18nKey(
+        default='重置失败',
+        zh_CN='重置失败',
+        zh_TW='重置失败',
+        en='重置失败',
+        ja='重置失败',
+        ru='重置失败',
+    )
+
+    toast_analyze_failed: I18nKey = I18nKey(
+        default='分析失败',
+        zh_CN='分析失败',
+        zh_TW='分析失败',
+        en='分析失败',
+        ja='分析失败',
+        ru='分析失败',
+    )
+
+    toast_unknown_error: I18nKey = I18nKey(
+        default='未知错误',
+        zh_CN='未知错误',
+        zh_TW='未知错误',
+        en='未知错误',
+        ja='未知错误',
+        ru='未知错误',
+    )
+
+
+    cfg_bot_nicknames: I18nKey = I18nKey(
+        default='机器人昵称（逗号分隔）',
+        zh_CN='机器人昵称（逗号分隔）',
+        zh_TW='机器人昵称（逗号分隔）',
+        en='机器人昵称（逗号分隔）',
+        ja='机器人昵称（逗号分隔）',
+        ru='机器人昵称（逗号分隔）',
+    )
+
+    cfg_message_aggregation_enabled: I18nKey = I18nKey(
+        default='启用消息聚合（私聊连续发多条只回复一次）',
+        zh_CN='启用消息聚合（私聊连续发多条只回复一次）',
+        zh_TW='启用消息聚合（私聊连续发多条只回复一次）',
+        en='启用消息聚合（私聊连续发多条只回复一次）',
+        ja='启用消息聚合（私聊连续发多条只回复一次）',
+        ru='启用消息聚合（私聊连续发多条只回复一次）',
+    )
+
+    cfg_message_aggregation_private_window: I18nKey = I18nKey(
+        default='私聊聚合窗口(秒)',
+        zh_CN='私聊聚合窗口(秒)',
+        zh_TW='私聊聚合窗口(秒)',
+        en='私聊聚合窗口(秒)',
+        ja='私聊聚合窗口(秒)',
+        ru='私聊聚合窗口(秒)',
+    )
+
+    cfg_message_aggregation_group_window: I18nKey = I18nKey(
+        default='群聊聚合窗口(秒,0=禁用)',
+        zh_CN='群聊聚合窗口(秒,0=禁用)',
+        zh_TW='群聊聚合窗口(秒,0=禁用)',
+        en='群聊聚合窗口(秒,0=禁用)',
+        ja='群聊聚合窗口(秒,0=禁用)',
+        ru='群聊聚合窗口(秒,0=禁用)',
+    )
+
+    cfg_message_aggregation_max_buffer: I18nKey = I18nKey(
+        default='最大缓冲消息数',
+        zh_CN='最大缓冲消息数',
+        zh_TW='最大缓冲消息数',
+        en='最大缓冲消息数',
+        ja='最大缓冲消息数',
+        ru='最大缓冲消息数',
+    )
+
+    cfg_max_message_length: I18nKey = I18nKey(
+        default='单条消息最大长度',
+        zh_CN='单条消息最大长度',
+        zh_TW='单条消息最大长度',
+        en='单条消息最大长度',
+        ja='单条消息最大长度',
+        ru='单条消息最大长度',
+    )
+
+    cfg_max_history_length: I18nKey = I18nKey(
+        default='历史消息保留条数',
+        zh_CN='历史消息保留条数',
+        zh_TW='历史消息保留条数',
+        en='历史消息保留条数',
+        ja='历史消息保留条数',
+        ru='历史消息保留条数',
+    )
+
+    cfg_humanize_typing_delay: I18nKey = I18nKey(
+        default='打字延迟（模拟输入时间）',
+        zh_CN='打字延迟（模拟输入时间）',
+        zh_TW='打字延迟（模拟输入时间）',
+        en='打字延迟（模拟输入时间）',
+        ja='打字延迟（模拟输入时间）',
+        ru='打字延迟（模拟输入时间）',
+    )
+
+    cfg_humanize_multi_msg_enabled: I18nKey = I18nKey(
+        default='多条消息分割',
+        zh_CN='多条消息分割',
+        zh_TW='多条消息分割',
+        en='多条消息分割',
+        ja='多条消息分割',
+        ru='多条消息分割',
+    )
+
+    cfg_humanize_min_delay: I18nKey = I18nKey(
+        default='最小延迟(秒)',
+        zh_CN='最小延迟(秒)',
+        zh_TW='最小延迟(秒)',
+        en='最小延迟(秒)',
+        ja='最小延迟(秒)',
+        ru='最小延迟(秒)',
+    )
+
+    cfg_humanize_max_delay: I18nKey = I18nKey(
+        default='最大延迟(秒)',
+        zh_CN='最大延迟(秒)',
+        zh_TW='最大延迟(秒)',
+        en='最大延迟(秒)',
+        ja='最大延迟(秒)',
+        ru='最大延迟(秒)',
+    )
+
+    cfg_humanize_random_at_probability: I18nKey = I18nKey(
+        default='群聊随机@对方概率',
+        zh_CN='群聊随机@对方概率',
+        zh_TW='群聊随机@对方概率',
+        en='群聊随机@对方概率',
+        ja='群聊随机@对方概率',
+        ru='群聊随机@对方概率',
+    )
+
+    cfg_humanize_typo_probability: I18nKey = I18nKey(
+        default='错字概率(0~1)',
+        zh_CN='错字概率(0~1)',
+        zh_TW='错字概率(0~1)',
+        en='错字概率(0~1)',
+        ja='错字概率(0~1)',
+        ru='错字概率(0~1)',
+    )
+
+    cfg_humanize_half_send_probability: I18nKey = I18nKey(
+        default='半句发出概率(0~1)',
+        zh_CN='半句发出概率(0~1)',
+        zh_TW='半句发出概率(0~1)',
+        en='半句发出概率(0~1)',
+        ja='半句发出概率(0~1)',
+        ru='半句发出概率(0~1)',
+    )
+
+    cfg_humanize_read_receipt_skip: I18nKey = I18nKey(
+        default='已读不回概率(0~1)',
+        zh_CN='已读不回概率(0~1)',
+        zh_TW='已读不回概率(0~1)',
+        en='已读不回概率(0~1)',
+        ja='已读不回概率(0~1)',
+        ru='已读不回概率(0~1)',
+    )
+
+    cfg_human_state_enabled: I18nKey = I18nKey(
+        default='启用情绪/精力系统',
+        zh_CN='启用情绪/精力系统',
+        zh_TW='启用情绪/精力系统',
+        en='启用情绪/精力系统',
+        ja='启用情绪/精力系统',
+        ru='启用情绪/精力系统',
+    )
+
+    cfg_humanize_mood_aware: I18nKey = I18nKey(
+        default='将情绪状态注入提示词',
+        zh_CN='将情绪状态注入提示词',
+        zh_TW='将情绪状态注入提示词',
+        en='将情绪状态注入提示词',
+        ja='将情绪状态注入提示词',
+        ru='将情绪状态注入提示词',
+    )
+
+    cfg_human_state_mood: I18nKey = I18nKey(
+        default='当前情绪',
+        zh_CN='当前情绪',
+        zh_TW='当前情绪',
+        en='当前情绪',
+        ja='当前情绪',
+        ru='当前情绪',
+    )
+
+    cfg_human_state_energy: I18nKey = I18nKey(
+        default='当前精力',
+        zh_CN='当前精力',
+        zh_TW='当前精力',
+        en='当前精力',
+        ja='当前精力',
+        ru='当前精力',
+    )
+
+    cfg_human_state_sleep_schedule_enabled: I18nKey = I18nKey(
+        default='启用作息时间（深夜精力下降）',
+        zh_CN='启用作息时间（深夜精力下降）',
+        zh_TW='启用作息时间（深夜精力下降）',
+        en='启用作息时间（深夜精力下降）',
+        ja='启用作息时间（深夜精力下降）',
+        ru='启用作息时间（深夜精力下降）',
+    )
+
+    cfg_human_state_sleep_schedule_sleep_time: I18nKey = I18nKey(
+        default='睡觉时间(时)',
+        zh_CN='睡觉时间(时)',
+        zh_TW='睡觉时间(时)',
+        en='睡觉时间(时)',
+        ja='睡觉时间(时)',
+        ru='睡觉时间(时)',
+    )
+
+    cfg_human_state_sleep_schedule_wake_time: I18nKey = I18nKey(
+        default='起床时间(时)',
+        zh_CN='起床时间(时)',
+        zh_TW='起床时间(时)',
+        en='起床时间(时)',
+        ja='起床时间(时)',
+        ru='起床时间(时)',
+    )
+
+    cfg_human_state_proactive_message_enabled: I18nKey = I18nKey(
+        default='启用主动发起对话',
+        zh_CN='启用主动发起对话',
+        zh_TW='启用主动发起对话',
+        en='启用主动发起对话',
+        ja='启用主动发起对话',
+        ru='启用主动发起对话',
+    )
+
+    cfg_human_state_proactive_message_min_silence_hours: I18nKey = I18nKey(
+        default='最小沉寂小时',
+        zh_CN='最小沉寂小时',
+        zh_TW='最小沉寂小时',
+        en='最小沉寂小时',
+        ja='最小沉寂小时',
+        ru='最小沉寂小时',
+    )
+
+    cfg_human_state_proactive_message_probability: I18nKey = I18nKey(
+        default='主动发起概率(0~1)',
+        zh_CN='主动发起概率(0~1)',
+        zh_TW='主动发起概率(0~1)',
+        en='主动发起概率(0~1)',
+        ja='主动发起概率(0~1)',
+        ru='主动发起概率(0~1)',
+    )
+
+    cfg_human_state_proactive_message_check_interval_minutes: I18nKey = I18nKey(
+        default='检查间隔(分钟)',
+        zh_CN='检查间隔(分钟)',
+        zh_TW='检查间隔(分钟)',
+        en='检查间隔(分钟)',
+        ja='检查间隔(分钟)',
+        ru='检查间隔(分钟)',
+    )
+
+    cfg_human_state_proactive_message_max_per_day: I18nKey = I18nKey(
+        default='每日上限',
+        zh_CN='每日上限',
+        zh_TW='每日上限',
+        en='每日上限',
+        ja='每日上限',
+        ru='每日上限',
+    )
+
+    cfg_stalker_mode_enabled: I18nKey = I18nKey(
+        default='启用窥屏模式',
+        zh_CN='启用窥屏模式',
+        zh_TW='启用窥屏模式',
+        en='启用窥屏模式',
+        ja='启用窥屏模式',
+        ru='启用窥屏模式',
+    )
+
+    cfg_stalker_mode_default_probability: I18nKey = I18nKey(
+        default='基础回复概率',
+        zh_CN='基础回复概率',
+        zh_TW='基础回复概率',
+        en='基础回复概率',
+        ja='基础回复概率',
+        ru='基础回复概率',
+    )
+
+    cfg_stalker_mode_question_probability: I18nKey = I18nKey(
+        default='提问触发概率',
+        zh_CN='提问触发概率',
+        zh_TW='提问触发概率',
+        en='提问触发概率',
+        ja='提问触发概率',
+        ru='提问触发概率',
+    )
+
+    cfg_stalker_mode_hot_topic_probability: I18nKey = I18nKey(
+        default='热度触发概率',
+        zh_CN='热度触发概率',
+        zh_TW='热度触发概率',
+        en='热度触发概率',
+        ja='热度触发概率',
+        ru='热度触发概率',
+    )
+
+    cfg_stalker_mode_sticker_emoji_probability: I18nKey = I18nKey(
+        default='表情触发概率',
+        zh_CN='表情触发概率',
+        zh_TW='表情触发概率',
+        en='表情触发概率',
+        ja='表情触发概率',
+        ru='表情触发概率',
+    )
+
+    cfg_stalker_mode_night_mode_enabled: I18nKey = I18nKey(
+        default='启用夜间窥屏',
+        zh_CN='启用夜间窥屏',
+        zh_TW='启用夜间窥屏',
+        en='启用夜间窥屏',
+        ja='启用夜间窥屏',
+        ru='启用夜间窥屏',
+    )
+
+    cfg_stalker_mode_night_mode_begin: I18nKey = I18nKey(
+        default='开始(时)',
+        zh_CN='开始(时)',
+        zh_TW='开始(时)',
+        en='开始(时)',
+        ja='开始(时)',
+        ru='开始(时)',
+    )
+
+    cfg_stalker_mode_night_mode_end: I18nKey = I18nKey(
+        default='结束(时)',
+        zh_CN='结束(时)',
+        zh_TW='结束(时)',
+        en='结束(时)',
+        ja='结束(时)',
+        ru='结束(时)',
+    )
+
+    cfg_continue_conversation_enabled: I18nKey = I18nKey(
+        default='启用对话连续性',
+        zh_CN='启用对话连续性',
+        zh_TW='启用对话连续性',
+        en='启用对话连续性',
+        ja='启用对话连续性',
+        ru='启用对话连续性',
+    )
+
+    cfg_continue_conversation_max_messages: I18nKey = I18nKey(
+        default='最大监听消息数',
+        zh_CN='最大监听消息数',
+        zh_TW='最大监听消息数',
+        en='最大监听消息数',
+        ja='最大监听消息数',
+        ru='最大监听消息数',
+    )
+
+    cfg_continue_conversation_max_duration: I18nKey = I18nKey(
+        default='监听时长（秒）',
+        zh_CN='监听时长（秒）',
+        zh_TW='监听时长（秒）',
+        en='监听时长（秒）',
+        ja='监听时长（秒）',
+        ru='监听时长（秒）',
+    )
+
+    cfg_knowledge_base_enabled: I18nKey = I18nKey(
+        default='启用知识库注入',
+        zh_CN='启用知识库注入',
+        zh_TW='启用知识库注入',
+        en='启用知识库注入',
+        ja='启用知识库注入',
+        ru='启用知识库注入',
+    )
+
+    cfg_knowledge_base_auto_search: I18nKey = I18nKey(
+        default='自动搜索匹配',
+        zh_CN='自动搜索匹配',
+        zh_TW='自动搜索匹配',
+        en='自动搜索匹配',
+        ja='自动搜索匹配',
+        ru='自动搜索匹配',
+    )
+
+    cfg_knowledge_base_max_context_tokens: I18nKey = I18nKey(
+        default='最大上下文 Tokens',
+        zh_CN='最大上下文 Tokens',
+        zh_TW='最大上下文 Tokens',
+        en='最大上下文 Tokens',
+        ja='最大上下文 Tokens',
+        ru='最大上下文 Tokens',
+    )
+
+    cfg_memory_dedup_enabled: I18nKey = I18nKey(
+        default='记忆去重',
+        zh_CN='记忆去重',
+        zh_TW='记忆去重',
+        en='记忆去重',
+        ja='记忆去重',
+        ru='记忆去重',
+    )
+
+    cfg_memory_decay_enabled: I18nKey = I18nKey(
+        default='记忆遗忘衰减',
+        zh_CN='记忆遗忘衰减',
+        zh_TW='记忆遗忘衰减',
+        en='记忆遗忘衰减',
+        ja='记忆遗忘衰减',
+        ru='记忆遗忘衰减',
+    )
+
+    cfg_memory_decay_days: I18nKey = I18nKey(
+        default='衰减天数',
+        zh_CN='衰减天数',
+        zh_TW='衰减天数',
+        en='衰减天数',
+        ja='衰减天数',
+        ru='衰减天数',
+    )
+
+    cfg_memory_max_per_user: I18nKey = I18nKey(
+        default='每用户最大记忆数',
+        zh_CN='每用户最大记忆数',
+        zh_TW='每用户最大记忆数',
+        en='每用户最大记忆数',
+        ja='每用户最大记忆数',
+        ru='每用户最大记忆数',
+    )
+
+    cfg_mcp_enabled: I18nKey = I18nKey(
+        default='启用 MCP 工具',
+        zh_CN='启用 MCP 工具',
+        zh_TW='启用 MCP 工具',
+        en='启用 MCP 工具',
+        ja='启用 MCP 工具',
+        ru='启用 MCP 工具',
+    )
+
+    cfg_mcp_auto_inject: I18nKey = I18nKey(
+        default='自动注入工具定义',
+        zh_CN='自动注入工具定义',
+        zh_TW='自动注入工具定义',
+        en='自动注入工具定义',
+        ja='自动注入工具定义',
+        ru='自动注入工具定义',
+    )
+
+    cfg_multi_agent_enabled: I18nKey = I18nKey(
+        default='启用多智能体',
+        zh_CN='启用多智能体',
+        zh_TW='启用多智能体',
+        en='启用多智能体',
+        ja='启用多智能体',
+        ru='启用多智能体',
+    )
+
+    cfg_stickers_enabled: I18nKey = I18nKey(
+        default='启用表情包功能',
+        zh_CN='启用表情包功能',
+        zh_TW='启用表情包功能',
+        en='启用表情包功能',
+        ja='启用表情包功能',
+        ru='启用表情包功能',
+    )
+
+    cfg_stickers_probability: I18nKey = I18nKey(
+        default='表情包触发概率 (0~1)',
+        zh_CN='表情包触发概率 (0~1)',
+        zh_TW='表情包触发概率 (0~1)',
+        en='表情包触发概率 (0~1)',
+        ja='表情包触发概率 (0~1)',
+        ru='表情包触发概率 (0~1)',
+    )
+
+    cfg_stickers_max_per_session: I18nKey = I18nKey(
+        default='每轮对话最多次数',
+        zh_CN='每轮对话最多次数',
+        zh_TW='每轮对话最多次数',
+        en='每轮对话最多次数',
+        ja='每轮对话最多次数',
+        ru='每轮对话最多次数',
+    )
+
+    cfg_voice_enabled: I18nKey = I18nKey(
+        default='启用语音合成',
+        zh_CN='启用语音合成',
+        zh_TW='启用语音合成',
+        en='启用语音合成',
+        ja='启用语音合成',
+        ru='启用语音合成',
+    )
+
+    cfg_voice_api_url: I18nKey = I18nKey(
+        default='API 地址',
+        zh_CN='API 地址',
+        zh_TW='API 地址',
+        en='API 地址',
+        ja='API 地址',
+        ru='API 地址',
+    )
+
+    cfg_voice_model: I18nKey = I18nKey(
+        default='模型',
+        zh_CN='模型',
+        zh_TW='模型',
+        en='模型',
+        ja='模型',
+        ru='模型',
+    )
+
+    cfg_voice_api_key: I18nKey = I18nKey(
+        default='API 密钥',
+        zh_CN='API 密钥',
+        zh_TW='API 密钥',
+        en='API 密钥',
+        ja='API 密钥',
+        ru='API 密钥',
+    )
+
+    cfg_voice_voice: I18nKey = I18nKey(
+        default='音色',
+        zh_CN='音色',
+        zh_TW='音色',
+        en='音色',
+        ja='音色',
+        ru='音色',
+    )
+
+    cfg_voice_speed: I18nKey = I18nKey(
+        default='语速',
+        zh_CN='语速',
+        zh_TW='语速',
+        en='语速',
+        ja='语速',
+        ru='语速',
+    )
+
+    cfg_voice_sample_rate: I18nKey = I18nKey(
+        default='采样率',
+        zh_CN='采样率',
+        zh_TW='采样率',
+        en='采样率',
+        ja='采样率',
+        ru='采样率',
+    )
+
+    cfg_min_reply_interval: I18nKey = I18nKey(
+        default='最小回复间隔(秒)',
+        zh_CN='最小回复间隔(秒)',
+        zh_TW='最小回复间隔(秒)',
+        en='最小回复间隔(秒)',
+        ja='最小回复间隔(秒)',
+        ru='最小回复间隔(秒)',
+    )
+
+    cfg_rate_limit_tokens: I18nKey = I18nKey(
+        default='速率限制 Tokens',
+        zh_CN='速率限制 Tokens',
+        zh_TW='速率限制 Tokens',
+        en='速率限制 Tokens',
+        ja='速率限制 Tokens',
+        ru='速率限制 Tokens',
+    )
+
+    cfg_rate_limit_window: I18nKey = I18nKey(
+        default='速率限制窗口(秒)',
+        zh_CN='速率限制窗口(秒)',
+        zh_TW='速率限制窗口(秒)',
+        en='速率限制窗口(秒)',
+        ja='速率限制窗口(秒)',
+        ru='速率限制窗口(秒)',
+    )
+
+    section_robot_identity: I18nKey = I18nKey(
+        default='机器人身份',
+        zh_CN='机器人身份',
+        zh_TW='机器人身份',
+        en='机器人身份',
+        ja='机器人身份',
+        ru='机器人身份',
+    )
+
+    section_aggregation: I18nKey = I18nKey(
+        default='消息聚合（对话窗口）',
+        zh_CN='消息聚合（对话窗口）',
+        zh_TW='消息聚合（对话窗口）',
+        en='消息聚合（对话窗口）',
+        ja='消息聚合（对话窗口）',
+        ru='消息聚合（对话窗口）',
+    )
+
+    section_message_limits: I18nKey = I18nKey(
+        default='消息限制',
+        zh_CN='消息限制',
+        zh_TW='消息限制',
+        en='消息限制',
+        ja='消息限制',
+        ru='消息限制',
+    )
+
+    section_typing_pace: I18nKey = I18nKey(
+        default='打字与回复节奏',
+        zh_CN='打字与回复节奏',
+        zh_TW='打字与回复节奏',
+        en='打字与回复节奏',
+        ja='打字与回复节奏',
+        ru='打字与回复节奏',
+    )
+
+    section_imperfect_input: I18nKey = I18nKey(
+        default='不完美输入（错字/半句/已读不回）',
+        zh_CN='不完美输入（错字/半句/已读不回）',
+        zh_TW='不完美输入（错字/半句/已读不回）',
+        en='不完美输入（错字/半句/已读不回）',
+        ja='不完美输入（错字/半句/已读不回）',
+        ru='不完美输入（错字/半句/已读不回）',
+    )
+
+    section_human_state: I18nKey = I18nKey(
+        default='情绪/精力/作息/主动发起',
+        zh_CN='情绪/精力/作息/主动发起',
+        zh_TW='情绪/精力/作息/主动发起',
+        en='情绪/精力/作息/主动发起',
+        ja='情绪/精力/作息/主动发起',
+        ru='情绪/精力/作息/主动发起',
+    )
+
+    section_stalker: I18nKey = I18nKey(
+        default='窥屏模式',
+        zh_CN='窥屏模式',
+        zh_TW='窥屏模式',
+        en='窥屏模式',
+        ja='窥屏模式',
+        ru='窥屏模式',
+    )
+
+    section_reply_probs: I18nKey = I18nKey(
+        default='回复触发概率',
+        zh_CN='回复触发概率',
+        zh_TW='回复触发概率',
+        en='回复触发概率',
+        ja='回复触发概率',
+        ru='回复触发概率',
+    )
+
+    section_night_mode: I18nKey = I18nKey(
+        default='夜间模式',
+        zh_CN='夜间模式',
+        zh_TW='夜间模式',
+        en='夜间模式',
+        ja='夜间模式',
+        ru='夜间模式',
+    )
+
+    section_continue_conversation: I18nKey = I18nKey(
+        default='对话连续性',
+        zh_CN='对话连续性',
+        zh_TW='对话连续性',
+        en='对话连续性',
+        ja='对话连续性',
+        ru='对话连续性',
+    )
+
+    section_knowledge: I18nKey = I18nKey(
+        default='知识库',
+        zh_CN='知识库',
+        zh_TW='知识库',
+        en='知识库',
+        ja='知识库',
+        ru='知识库',
+    )
+
+    section_memory: I18nKey = I18nKey(
+        default='记忆系统',
+        zh_CN='记忆系统',
+        zh_TW='记忆系统',
+        en='记忆系统',
+        ja='记忆系统',
+        ru='记忆系统',
+    )
+
+    section_mcp: I18nKey = I18nKey(
+        default='MCP 工具',
+        zh_CN='MCP 工具',
+        zh_TW='MCP 工具',
+        en='MCP 工具',
+        ja='MCP 工具',
+        ru='MCP 工具',
+    )
+
+    section_multi_agent: I18nKey = I18nKey(
+        default='多智能体',
+        zh_CN='多智能体',
+        zh_TW='多智能体',
+        en='多智能体',
+        ja='多智能体',
+        ru='多智能体',
+    )
+
+    section_stickers: I18nKey = I18nKey(
+        default='表情包',
+        zh_CN='表情包',
+        zh_TW='表情包',
+        en='表情包',
+        ja='表情包',
+        ru='表情包',
+    )
+
+    section_voice: I18nKey = I18nKey(
+        default='语音合成',
+        zh_CN='语音合成',
+        zh_TW='语音合成',
+        en='语音合成',
+        ja='语音合成',
+        ru='语音合成',
+    )
+
+    section_rate_limits: I18nKey = I18nKey(
+        default='速率限制',
+        zh_CN='速率限制',
+        zh_TW='速率限制',
+        en='速率限制',
+        ja='速率限制',
+        ru='速率限制',
+    )
+
+    settings_identity: I18nKey = I18nKey(
+        default='身份与消息',
+        zh_CN='身份与消息',
+        zh_TW='身份与消息',
+        en='身份与消息',
+        ja='身份与消息',
+        ru='身份与消息',
+    )
+
+    settings_humanize: I18nKey = I18nKey(
+        default='拟人化',
+        zh_CN='拟人化',
+        zh_TW='拟人化',
+        en='拟人化',
+        ja='拟人化',
+        ru='拟人化',
+    )
+
+    settings_stalker: I18nKey = I18nKey(
+        default='窥屏策略',
+        zh_CN='窥屏策略',
+        zh_TW='窥屏策略',
+        en='窥屏策略',
+        ja='窥屏策略',
+        ru='窥屏策略',
+    )
+
+    settings_features: I18nKey = I18nKey(
+        default='功能开关',
+        zh_CN='功能开关',
+        zh_TW='功能开关',
+        en='功能开关',
+        ja='功能开关',
+        ru='功能开关',
+    )
+
+    settings_advanced: I18nKey = I18nKey(
+        default='高级',
+        zh_CN='高级',
+        zh_TW='高级',
+        en='高级',
+        ja='高级',
+        ru='高级',
+    )
+
+    opt_mode_conservative: I18nKey = I18nKey(
+        default='保守（仅回复@/叫名字）',
+        zh_CN='保守（仅回复@/叫名字）',
+        zh_TW='保守（仅回复@/叫名字）',
+        en='保守（仅回复@/叫名字）',
+        ja='保守（仅回复@/叫名字）',
+        ru='保守（仅回复@/叫名字）',
+    )
+
+    opt_mode_balanced: I18nKey = I18nKey(
+        default='均衡（默认）',
+        zh_CN='均衡（默认）',
+        zh_TW='均衡（默认）',
+        en='均衡（默认）',
+        ja='均衡（默认）',
+        ru='均衡（默认）',
+    )
+
+    opt_mode_active: I18nKey = I18nKey(
+        default='积极（频繁参与）',
+        zh_CN='积极（频繁参与）',
+        zh_TW='积极（频繁参与）',
+        en='积极（频繁参与）',
+        ja='积极（频繁参与）',
+        ru='积极（频繁参与）',
+    )
+
+
     btn_save: I18nKey = I18nKey(
         default='Save',
         zh_CN='保存',

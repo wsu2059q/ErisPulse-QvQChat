@@ -260,19 +260,19 @@ async function qvcLoadOverview() {
         var moodPct = Math.round((hs.mood || 0.6) * 100);
         var energyPct = Math.round((hs.energy || 0.8) * 100);
         hsHtml += '<div class="qvc-list-item">';
-        hsHtml += '<div class="qvc-list-item-info"><div class="qvc-list-item-title">情绪</div></div>';
+        hsHtml += '<div class="qvc-list-item-info"><div class="qvc-list-item-title">' + qvcT('ov.mood', '情绪') + '</div></div>';
         hsHtml += '<div style="width:120px;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;margin-right:8px"><div style="width:' + moodPct + '%;height:100%;background:linear-gradient(90deg,#f44336,#ffc107,#4caf50);border-radius:4px"></div></div>';
         hsHtml += '<span class="qvc-badge">' + (hs.mood_text || '') + ' (' + moodPct + '%)</span>';
         hsHtml += '</div>';
         hsHtml += '<div class="qvc-list-item">';
-        hsHtml += '<div class="qvc-list-item-info"><div class="qvc-list-item-title">精力</div></div>';
+        hsHtml += '<div class="qvc-list-item-info"><div class="qvc-list-item-title">' + qvcT('ov.energy', '精力') + '</div></div>';
         hsHtml += '<div style="width:120px;height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden;margin-right:8px"><div style="width:' + energyPct + '%;height:100%;background:linear-gradient(90deg,#9c27b0,#2196f3,#00bcd4);border-radius:4px"></div></div>';
         hsHtml += '<span class="qvc-badge">' + (hs.energy_text || '') + ' (' + energyPct + '%)</span>';
         hsHtml += '</div>';
         var hsEl = document.getElementById('qvc-overview-human-state');
         if (hsEl) hsEl.innerHTML = hsHtml;
     } catch (e) {
-        qvcToast('加载概览失败: ' + e.message, 'error');
+        qvcToast(qvcT('toast.overview_failed', '加载概览失败') + ': ' + e.message, 'error');
     }
 }
 
@@ -297,15 +297,6 @@ async function qvcToggleFeature(path, key) {
 }
 
 // ==================== 基础设置（子标签页） ====================
-function qvcCollapse(title, innerHtml, expanded) {
-    var cls = expanded ? ' expanded' : '';
-    return '<div class="qvc-collapse' + cls + '">' +
-        '<div class="qvc-collapse-header" onclick="qvcToggleCollapse(this)">' +
-        '<span>' + qvcEsc(title) + '</span>' +
-        '<span class="qvc-collapse-arrow">▶</span></div>' +
-        '<div class="qvc-collapse-body">' + innerHtml + '</div></div>';
-}
-
 function qvcToggleCollapse(header) {
     var card = header.parentElement;
     card.classList.toggle('expanded');
@@ -323,11 +314,46 @@ function qvcSettingsTab(name) {
 function qvcSlider(path, label, val, min, max, step) {
     var v = val != null ? val : (min + max) / 2;
     return '<div class="qvc-slider-group">' +
-        '<div class="qvc-slider-label"><span>' + qvcEsc(label) + '</span>' +
+        '<div class="qvc-slider-label"><span>' + qvcEsc(qvcFieldLabel(path, label)) + '</span>' +
         '<span class="qvc-slider-val" id="slider-val-' + path.replace(/\./g, '-') + '">' + v + '</span></div>' +
         '<input type="range" class="qvc-range" data-path="' + qvcEsc(path) + '" min="' + min + '" max="' + max + '" step="' + (step || 1) + '" value="' + v + '"' +
         ' oninput="document.getElementById(\'slider-val-' + path.replace(/\./g, '-') + '\').textContent=this.value">' +
         '</div>';
+}
+
+// 折叠区块标题翻译映射
+var _qvcSectionLabels = {
+    '机器人身份': 'section.robot_identity',
+    '消息聚合（对话窗口）': 'section.aggregation',
+    '消息限制': 'section.message_limits',
+    '打字与回复节奏': 'section.typing_pace',
+    '不完美输入（错字/半句/已读不回）': 'section.imperfect_input',
+    '情绪/精力/作息/主动发起': 'section.human_state',
+    '窥屏模式': 'section.stalker',
+    '回复触发概率': 'section.reply_probs',
+    '夜间模式': 'section.night_mode',
+    '对话连续性': 'section.continue_conversation',
+    '知识库': 'section.knowledge',
+    '记忆系统': 'section.memory',
+    'MCP 工具': 'section.mcp',
+    '多智能体': 'section.multi_agent',
+    '表情包': 'section.stickers',
+    '语音合成': 'section.voice',
+    '速率限制': 'section.rate_limits'
+};
+
+function qvcSectionLabel(title) {
+    var key = _qvcSectionLabels[title];
+    return key ? qvcT(key, title) : title;
+}
+
+function qvcCollapse(title, innerHtml, expanded) {
+    var cls = expanded ? ' expanded' : '';
+    return '<div class="qvc-collapse' + cls + '">' +
+        '<div class="qvc-collapse-header" onclick="qvcToggleCollapse(this)">' +
+        '<span>' + qvcEsc(qvcSectionLabel(title)) + '</span>' +
+        '<span class="qvc-collapse-arrow">▶</span></div>' +
+        '<div class="qvc-collapse-body">' + innerHtml + '</div></div>';
 }
 
 async function qvcLoadBasic() {
@@ -339,11 +365,11 @@ async function qvcLoadBasic() {
 
         // 子标签栏
         html += '<div class="qvc-subtabs">';
-        html += '<div class="qvc-subtab active" data-subtab="identity" onclick="qvcSettingsTab(\'identity\')">身份与消息</div>';
-        html += '<div class="qvc-subtab" data-subtab="humanize" onclick="qvcSettingsTab(\'humanize\')">拟人化</div>';
-        html += '<div class="qvc-subtab" data-subtab="stalker" onclick="qvcSettingsTab(\'stalker\')">窥屏策略</div>';
-        html += '<div class="qvc-subtab" data-subtab="features" onclick="qvcSettingsTab(\'features\')">功能开关</div>';
-        html += '<div class="qvc-subtab" data-subtab="advanced" onclick="qvcSettingsTab(\'advanced\')">高级</div>';
+        html += '<div class="qvc-subtab active" data-subtab="identity" onclick="qvcSettingsTab(\'identity\')">' + qvcT('settings.identity', '身份与消息') + '</div>';
+        html += '<div class="qvc-subtab" data-subtab="humanize" onclick="qvcSettingsTab(\'humanize\')">' + qvcT('settings.humanize', '拟人化') + '</div>';
+        html += '<div class="qvc-subtab" data-subtab="stalker" onclick="qvcSettingsTab(\'stalker\')">' + qvcT('settings.stalker', '窥屏策略') + '</div>';
+        html += '<div class="qvc-subtab" data-subtab="features" onclick="qvcSettingsTab(\'features\')">' + qvcT('settings.features', '功能开关') + '</div>';
+        html += '<div class="qvc-subtab" data-subtab="advanced" onclick="qvcSettingsTab(\'advanced\')">' + qvcT('settings.advanced', '高级') + '</div>';
         html += '</div>';
 
         // ===== 子面板1: 身份与消息 =====
@@ -413,9 +439,9 @@ async function qvcLoadBasic() {
         var stalkHtml = '';
         var modeHtml = '<div class="qvc-form-row">';
         modeHtml += qvcSelectField('stalker_mode.mode', '回复策略', qvcGetPath(cfg, 'stalker_mode.mode', 'balanced'), [
-            { label: '保守（仅回复@/叫名字）', value: 'conservative' },
-            { label: '均衡（默认）', value: 'balanced' },
-            { label: '积极（频繁参与）', value: 'active' }
+            { label: '保守（仅回复@/叫名字）', i18nKey: 'opt.mode.conservative', value: 'conservative' },
+            { label: '均衡（默认）', i18nKey: 'opt.mode.balanced', value: 'balanced' },
+            { label: '积极（频繁参与）', i18nKey: 'opt.mode.active', value: 'active' }
         ]);
         modeHtml += qvcCheckField('stalker_mode.enabled', '启用窥屏模式', qvcGetPath(cfg, 'stalker_mode.enabled', true));
         modeHtml += '</div>';
@@ -506,20 +532,25 @@ async function qvcLoadBasic() {
 
         document.getElementById('qvc-basic-form').innerHTML = html;
     } catch (e) {
-        document.getElementById('qvc-basic-form').innerHTML = '<div class="qvc-empty">加载失败: ' + qvcEsc(e.message) + '</div>';
+        document.getElementById('qvc-basic-form').innerHTML = '<div class="qvc-empty">' + qvcT('toast.load_failed', '加载失败') + ': ' + qvcEsc(e.message) + '</div>';
     }
+}
+
+// 字段标签按配置路径自动翻译（cfg.<path>），无翻译时回退到中文标签
+function qvcFieldLabel(path, label) {
+    return qvcT('cfg.' + path, label);
 }
 
 function qvcTextField(path, label, val) {
     return '<div class="qvc-form-group">' +
-        '<label>' + qvcEsc(label) + '</label>' +
+        '<label>' + qvcEsc(qvcFieldLabel(path, label)) + '</label>' +
         '<input type="text" class="qvc-input" data-path="' + qvcEsc(path) + '" value="' + qvcEsc(val) + '">' +
         '</div>';
 }
 
 function qvcNumField(path, label, val) {
     return '<div class="qvc-form-group">' +
-        '<label>' + qvcEsc(label) + '</label>' +
+        '<label>' + qvcEsc(qvcFieldLabel(path, label)) + '</label>' +
         '<input type="number" step="any" class="qvc-input" data-path="' + qvcEsc(path) + '" value="' + qvcEsc(val) + '">' +
         '</div>';
 }
@@ -527,14 +558,14 @@ function qvcNumField(path, label, val) {
 function qvcCheckField(path, label, checked) {
     return '<label class="qvc-checkbox-row">' +
         '<input type="checkbox" data-path="' + qvcEsc(path) + '"' + (checked ? ' checked' : '') + '>' +
-        qvcEsc(label) +
+        qvcEsc(qvcFieldLabel(path, label)) +
         '</label>';
 }
 
 function qvcArrayField(path, label, arr) {
     var str = Array.isArray(arr) ? arr.join(', ') : '';
     return '<div class="qvc-form-group">' +
-        '<label>' + qvcEsc(label) + '</label>' +
+        '<label>' + qvcEsc(qvcFieldLabel(path, label)) + '</label>' +
         '<input type="text" class="qvc-input" data-array="' + qvcEsc(path) + '" value="' + qvcEsc(str) + '">' +
         '</div>';
 }
@@ -543,10 +574,11 @@ function qvcSelectField(path, label, val, options) {
     var opts = '';
     (options || []).forEach(function(o) {
         var sel = o.value === val ? ' selected' : '';
-        opts += '<option value="' + qvcEsc(o.value) + '"' + sel + '>' + qvcEsc(o.label) + '</option>';
+        var olabel = o.i18nKey ? qvcT(o.i18nKey, o.label) : o.label;
+        opts += '<option value="' + qvcEsc(o.value) + '"' + sel + '>' + qvcEsc(olabel) + '</option>';
     });
     return '<div class="qvc-form-group">' +
-        '<label>' + qvcEsc(label) + '</label>' +
+        '<label>' + qvcEsc(qvcFieldLabel(path, label)) + '</label>' +
         '<select class="qvc-input" data-path="' + qvcEsc(path) + '">' + opts + '</select>' +
         '</div>';
 }
@@ -575,9 +607,9 @@ async function qvcSaveBasic() {
         });
 
         await qvcApi('/api/config', 'POST', { config: _qvcBasicConfig });
-        qvcToast('配置已保存', 'ok');
+        qvcToast(qvcT('toast.config_saved', '配置已保存'), 'ok');
     } catch (e) {
-        qvcToast('保存失败: ' + e.message, 'error');
+        qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + e.message, 'error');
     }
 }
 
@@ -629,7 +661,7 @@ function qvcModelEdit(model) {
         { name: 'temperature', label: '温度', type: 'number', value: m.temperature != null ? m.temperature : 0.7 },
         { name: 'max_tokens', label: '最大 Tokens', type: 'number', value: m.max_tokens != null ? m.max_tokens : 2000 }
     ];
-    qvcShowModal(model ? '编辑模型' : '添加模型', fields, async function(data) {
+    qvcShowModal(model ? qvcT('modal.edit_model','编辑模型') : qvcT('modal.add_model','添加模型'), fields, async function(data) {
         var payload = {
             name: data.name,
             base_url: data.base_url,
@@ -647,10 +679,10 @@ function qvcModelEdit(model) {
         try {
             await qvcApi('/api/models', 'POST', payload);
             qvcHideModal();
-            qvcToast('模型已保存', 'ok');
+            qvcToast(qvcT('toast.model_saved', '模型已保存'), 'ok');
             qvcLoadModels();
         } catch (e) {
-            qvcToast('保存失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -659,10 +691,10 @@ async function qvcModelDelete(id) {
     qvcConfirm('确定删除此模型？', async function() {
         try {
             await qvcApi('/api/models/delete', 'POST', { id: id });
-            qvcToast('模型已删除', 'ok');
+            qvcToast(qvcT('toast.model_deleted', '模型已删除'), 'ok');
             qvcLoadModels();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -801,10 +833,10 @@ async function qvcBehaviorEdit(behavior) {
         try {
             await qvcApi('/api/behaviors', 'POST', payload);
             qvcHideModal();
-            qvcToast('行为已保存', 'ok');
+            qvcToast(qvcT('toast.behavior_saved', '行为已保存'), 'ok');
             qvcLoadBehaviors();
         } catch (e) {
-            qvcToast('保存失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -813,10 +845,10 @@ async function qvcBehaviorDelete(id) {
     qvcConfirm('确定删除此行为？', async function() {
         try {
             await qvcApi('/api/behaviors/delete', 'POST', { id: id });
-            qvcToast('行为已删除', 'ok');
+            qvcToast(qvcT('toast.behavior_deleted', '行为已删除'), 'ok');
             qvcLoadBehaviors();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -1041,7 +1073,7 @@ async function qvcAgentEdit(agent) {
         { name: 'max_tokens', label: '最大 Tokens', type: 'number', value: a.max_tokens },
         { name: 'enabled', label: '启用', type: 'checkbox', value: a.enabled !== false }
     ];
-    qvcShowModal(agent ? '编辑智能体' : '创建智能体', fields, async function(data) {
+    qvcShowModal(agent ? qvcT('modal.edit_agent','编辑智能体') : qvcT('modal.create_agent','创建智能体'), fields, async function(data) {
         var payload = {
             name: data.name,
             description: data.description,
@@ -1066,10 +1098,10 @@ async function qvcAgentEdit(agent) {
         try {
             await qvcApi('/api/agents', 'POST', payload);
             qvcHideModal();
-            qvcToast('智能体已保存', 'ok');
+            qvcToast(qvcT('toast.agent_saved', '智能体已保存'), 'ok');
             qvcLoadAgents();
         } catch (e) {
-            qvcToast('保存失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + e.message, 'error');
         }
     });
 
@@ -1155,10 +1187,10 @@ async function qvcAgentDelete(id) {
     qvcConfirm('确定删除此智能体？', async function() {
         try {
             await qvcApi('/api/agents/delete', 'POST', { id: id });
-            qvcToast('智能体已删除', 'ok');
+            qvcToast(qvcT('toast.agent_deleted', '智能体已删除'), 'ok');
             qvcLoadAgents();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -1329,7 +1361,7 @@ async function qvcKbDelete(id) {
             qvcToast('知识条目已删除', 'ok');
             qvcLoadKnowledge();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -1421,7 +1453,7 @@ function qvcToolEdit(tool) {
         },
         { name: 'enabled', label: '启用', type: 'checkbox', value: t.enabled !== false }
     ];
-    qvcShowModal(tool ? '编辑工具' : '添加工具', fields, async function(data) {
+    qvcShowModal(tool ? qvcT('modal.edit_tool','编辑工具') : qvcT('modal.add_tool','添加工具'), fields, async function(data) {
         var params = {};
         try {
             params = data._parameters ? JSON.parse(data._parameters) : {};
@@ -1441,7 +1473,7 @@ function qvcToolEdit(tool) {
         try {
             await qvcApi('/api/tools', 'POST', payload);
             qvcHideModal();
-            qvcToast('工具已保存', 'ok');
+            qvcToast(qvcT('toast.tool_saved', '工具已保存'), 'ok');
             qvcLoadTools();
         } catch (err) {
             qvcToast('保存失败: ' + err.message, 'error');
@@ -1453,10 +1485,10 @@ async function qvcToolDelete(id) {
     qvcConfirm('确定删除此工具？', async function() {
         try {
             await qvcApi('/api/tools/delete', 'POST', { id: id });
-            qvcToast('工具已删除', 'ok');
+            qvcToast(qvcT('toast.tool_deleted', '工具已删除'), 'ok');
             qvcLoadTools();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -1474,7 +1506,7 @@ function qvcMcpServerEdit(server) {
         { name: '_headers', label: '请求头 (JSON，可选)', type: 'textarea', value: headersStr, placeholder: '{"Authorization": "Bearer xxx"}' },
         { name: 'enabled', label: '启用', type: 'checkbox', value: s.enabled !== false }
     ];
-    qvcShowModal(server ? '编辑 MCP 服务器' : '添加 MCP 服务器', fields, async function(data) {
+    qvcShowModal(server ? qvcT('modal.edit_mcp_server','编辑 MCP 服务器') : qvcT('modal.add_mcp_server','添加 MCP 服务器'), fields, async function(data) {
         var headers = {};
         try {
             headers = data._headers ? JSON.parse(data._headers) : {};
@@ -1491,7 +1523,7 @@ function qvcMcpServerEdit(server) {
         try {
             await qvcApi('/api/mcp-servers', 'POST', payload);
             qvcHideModal();
-            qvcToast('MCP 服务器已保存', 'ok');
+            qvcToast(qvcT('toast.mcp_server_saved', 'MCP 服务器已保存'), 'ok');
             qvcLoadTools();
         } catch (err) {
             qvcToast('保存失败: ' + err.message, 'error');
@@ -1503,10 +1535,10 @@ async function qvcMcpServerDelete(name) {
     qvcConfirm('确定删除 MCP 服务器「' + name + '」？', async function() {
         try {
             await qvcApi('/api/mcp-servers/delete', 'POST', { name: name });
-            qvcToast('MCP 服务器已删除', 'ok');
+            qvcToast(qvcT('toast.mcp_server_deleted', 'MCP 服务器已删除'), 'ok');
             qvcLoadTools();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -1522,7 +1554,7 @@ async function qvcMcpConnect(name) {
         }
         qvcLoadTools();
     } catch (e) {
-        qvcToast('连接失败: ' + e.message, 'error');
+        qvcToast(qvcT('toast.conn_failed', '连接失败') + ': ' + e.message, 'error');
     }
 }
 
@@ -1533,7 +1565,7 @@ async function qvcMcpConnectAll() {
         qvcToast('连接完成', 'ok');
         qvcLoadTools();
     } catch (e) {
-        qvcToast('连接失败: ' + e.message, 'error');
+        qvcToast(qvcT('toast.conn_failed', '连接失败') + ': ' + e.message, 'error');
     }
 }
 
@@ -1679,7 +1711,7 @@ async function qvcStickerDelete(id) {
             qvcToast('已删除', 'ok');
             qvcLoadStickers();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -1722,7 +1754,7 @@ async function qvcLoadMemories() {
         
         qvcRenderMemories();
     } catch (e) {
-        document.getElementById('qvc-memories-list').innerHTML = '<div class="qvc-empty">加载失败: ' + qvcEsc(e.message) + '</div>';
+        document.getElementById('qvc-memories-list').innerHTML = '<div class="qvc-empty">' + qvcT('toast.load_failed', '加载失败') + ': ' + qvcEsc(e.message) + '</div>';
     }
 }
 
@@ -1822,7 +1854,7 @@ async function qvcViewMemoryDetail(id, type) {
         // 隐藏确定按钮（只展示）
         _qvcModalCallback = null;
     } catch (e) {
-        qvcToast('加载失败: ' + e.message, 'error');
+        qvcToast(qvcT('toast.load_failed', '加载失败') + ': ' + e.message, 'error');
     }
 }
 
@@ -1852,7 +1884,7 @@ async function qvcDeleteMemoryEntry(id, type, index) {
             qvcViewMemoryDetail(id, type);
             qvcLoadMemories();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -1865,7 +1897,7 @@ async function qvcDeleteMemory(id, type) {
             qvcToast('记忆已删除', 'ok');
             qvcLoadMemories();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -1891,7 +1923,7 @@ async function qvcLoadSessions() {
         _qvcSessionData = data.sessions || [];
         qvcRenderSessions();
     } catch (e) {
-        document.getElementById('qvc-sessions-list').innerHTML = '<div class="qvc-empty">加载失败: ' + qvcEsc(e.message) + '</div>';
+        document.getElementById('qvc-sessions-list').innerHTML = '<div class="qvc-empty">' + qvcT('toast.load_failed', '加载失败') + ': ' + qvcEsc(e.message) + '</div>';
     }
 }
 
@@ -1967,7 +1999,7 @@ async function qvcViewSession(sessionKey, id, type) {
         document.getElementById('qvc-modal-bg').classList.add('show');
         _qvcModalCallback = null;
     } catch (e) {
-        qvcToast('加载失败: ' + e.message, 'error');
+        qvcToast(qvcT('toast.load_failed', '加载失败') + ': ' + e.message, 'error');
     }
 }
 
@@ -2002,7 +2034,7 @@ async function qvcDeleteSessionMsg(sessionKey, index) {
             qvcViewSession(sessionKey, id, type);
             qvcLoadSessions();
         } catch (e) {
-            qvcToast('删除失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -2182,7 +2214,7 @@ function qvcGroupEdit(group) {
             qvcToast('群组配置已保存', 'ok');
             qvcLoadGroups();
         } catch (e) {
-            qvcToast('保存失败: ' + e.message, 'error');
+            qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + e.message, 'error');
         }
     });
 }
@@ -2192,10 +2224,12 @@ function qvcShowModal(title, fields, callback) {
     document.getElementById('qvc-modal-title').textContent = title;
     var body = document.getElementById('qvc-modal-body');
     var html = '';
+    // 字段标签按 field.name 翻译（modal.<name>），无翻译时回退中文
+    var tlabel = function(f) { return qvcT('modal.' + f.name, f.label); };
     fields.forEach(function(f) {
         if (f.type === 'checkbox-group') {
             html += '<div class="qvc-form-group">';
-            html += '<label>' + qvcEsc(f.label) + '</label>';
+            html += '<label>' + qvcEsc(tlabel(f)) + '</label>';
             var selected = f.value || [];
             (f.options || []).forEach(function(opt) {
                 var checked = selected.indexOf(opt.value) >= 0 ? 'checked' : '';
@@ -2208,16 +2242,16 @@ function qvcShowModal(title, fields, callback) {
         } else if (f.type === 'checkbox') {
             html += '<label class="qvc-checkbox-row">';
             html += '<input type="checkbox" data-field="' + qvcEsc(f.name) + '"' + (f.value ? ' checked' : '') + '>';
-            html += qvcEsc(f.label);
+            html += qvcEsc(tlabel(f));
             html += '</label>';
         } else if (f.type === 'textarea') {
             html += '<div class="qvc-form-group">';
-            html += '<label>' + qvcEsc(f.label) + '</label>';
+            html += '<label>' + qvcEsc(tlabel(f)) + '</label>';
             html += '<textarea class="qvc-textarea" data-field="' + qvcEsc(f.name) + '" placeholder="' + qvcEsc(f.placeholder || '') + '">' + qvcEsc(f.value != null ? String(f.value) : '') + '</textarea>';
             html += '</div>';
         } else if (f.type === 'select') {
             html += '<div class="qvc-form-group">';
-            html += '<label>' + qvcEsc(f.label) + '</label>';
+            html += '<label>' + qvcEsc(tlabel(f)) + '</label>';
             html += '<select class="qvc-select" data-field="' + qvcEsc(f.name) + '">';
             (f.options || []).forEach(function(opt) {
                 var sel = opt.value === f.value ? ' selected' : '';
@@ -2235,7 +2269,7 @@ function qvcShowModal(title, fields, callback) {
             var step = f.step != null ? f.step : 0.05;
             var rval = f.value != null ? f.value : (min + max) / 2;
             html += '<div class="qvc-slider-group">';
-            html += '<div class="qvc-slider-label"><span>' + qvcEsc(f.label) + '</span>';
+            html += '<div class="qvc-slider-label"><span>' + qvcEsc(tlabel(f)) + '</span>';
             html += '<span class="qvc-slider-val" id="modal-slider-' + qvcEsc(f.name) + '">' + rval + '</span></div>';
             html += '<input type="range" class="qvc-range" data-field="' + qvcEsc(f.name) + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + rval + '"';
             html += ' oninput="document.getElementById(\'modal-slider-' + qvcEsc(f.name) + '\').textContent=this.value">';
@@ -2244,7 +2278,7 @@ function qvcShowModal(title, fields, callback) {
             // text / number / file
             var extraAttr = f.attrs || '';
             html += '<div class="qvc-form-group">';
-            html += '<label>' + qvcEsc(f.label) + '</label>';
+            html += '<label>' + qvcEsc(tlabel(f)) + '</label>';
             html += '<input type="' + f.type + '" step="any" class="qvc-input" data-field="' + qvcEsc(f.name) + '" value="' + qvcEsc(f.value != null ? String(f.value) : '') + '" placeholder="' + qvcEsc(f.placeholder || '') + '" ' + extraAttr + '>';
             html += '</div>';
         }
@@ -2319,7 +2353,7 @@ async function qvcExport(mode) {
         URL.revokeObjectURL(a.href);
         qvcToast('导出成功', 'ok');
     } catch (e) {
-        qvcToast('导出失败: ' + e.message, 'error');
+        qvcToast(qvcT('toast.export_failed', '导出失败') + ': ' + e.message, 'error');
     }
 }
 
@@ -2473,7 +2507,7 @@ function qvcResetAll() {
                 qvcToast(resp.msg || '已清除所有数据', 'ok');
                 setTimeout(function() { location.reload(); }, 2000);
             } catch (e) {
-                qvcToast('重置失败: ' + e.message, 'error');
+                qvcToast(qvcT('toast.reset_failed', '重置失败') + ': ' + e.message, 'error');
             }
         }
     );
