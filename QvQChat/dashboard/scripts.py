@@ -73,6 +73,21 @@ function qvcApplyI18n() {
     }
 }
 
+// 实时拉取 i18n 翻译（跟随框架语言切换），拉取后重新应用
+async function qvcLoadI18n() {
+    try {
+        var data = await qvcApi('/api/i18n', 'GET');
+        if (data && typeof data === 'object') {
+            _qvcI18n = data;
+            qvcApplyI18n();
+            return true;
+        }
+    } catch (e) {
+        // 拉取失败时保留注入的快照
+    }
+    return false;
+}
+
 function qvcToast(msg, type) {
     var existing = document.querySelector('.qvc-toast');
     if (existing) existing.remove();
@@ -160,13 +175,13 @@ async function qvcLoadOverview() {
         var stickerStats = stats.stickers || {};
 
         var cards = [
-            { num: modelStats.total || 0, label: 'AI 模型' },
-            { num: behaviorStats.total || 0, label: '行为定义' },
-            { num: agentStats.total || 0, label: '智能体' },
-            { num: kbStats.total || 0, label: '知识条目' },
-            { num: toolStats.total || 0, label: 'MCP 工具' },
-            { num: stickerStats.total || 0, label: '表情包' },
-            { num: data.active_groups || 0, label: '活跃群组' }
+            { num: modelStats.total || 0, label: qvcT('ov.ai_models', 'AI 模型') },
+            { num: behaviorStats.total || 0, label: qvcT('ov.behaviors', '行为定义') },
+            { num: agentStats.total || 0, label: qvcT('ov.agents', '智能体') },
+            { num: kbStats.total || 0, label: qvcT('ov.knowledge', '知识条目') },
+            { num: toolStats.total || 0, label: qvcT('ov.mcp_tools', 'MCP 工具') },
+            { num: stickerStats.total || 0, label: qvcT('ov.stickers', '表情包') },
+            { num: data.active_groups || 0, label: qvcT('ov.active_groups', '活跃群组') }
         ];
 
         var html = '';
@@ -181,11 +196,11 @@ async function qvcLoadOverview() {
         // 运行统计
         var rt = data.runtime || {};
         var rtCards = [
-            { num: rt.uptime || '-', label: '运行时间' },
-            { num: rt.total_messages || 0, label: '接收消息' },
-            { num: rt.total_replies || 0, label: '发送回复' },
-            { num: rt.reply_rate || '0%', label: '回复率' },
-            { num: (rt.total_tokens_est || 0).toLocaleString(), label: '估算 Token' }
+            { num: rt.uptime || '-', label: qvcT('ov.uptime', '运行时间') },
+            { num: rt.total_messages || 0, label: qvcT('ov.received', '接收消息') },
+            { num: rt.total_replies || 0, label: qvcT('ov.replied', '发送回复') },
+            { num: rt.reply_rate || '0%', label: qvcT('ov.reply_rate', '回复率') },
+            { num: (rt.total_tokens_est || 0).toLocaleString(), label: qvcT('ov.est_tokens', '估算 Token') }
         ];
         var rtHtml = '';
         rtCards.forEach(function(c) {
@@ -200,16 +215,16 @@ async function qvcLoadOverview() {
         // AI 子系统状态
         var aiStatus = data.ai_status || {};
         var rows = [
-            { label: '对话行为', ok: aiStatus.dialogue },
-            { label: '记忆提取', ok: aiStatus.memory },
-            { label: '意图识别', ok: aiStatus.intent },
-            { label: '图片分析', ok: aiStatus.vision },
-            { label: '回复判断', ok: aiStatus.reply_judge }
+            { label: qvcT('ov.dialogue', '对话行为'), ok: aiStatus.dialogue },
+            { label: qvcT('ov.memory', '记忆提取'), ok: aiStatus.memory },
+            { label: qvcT('ov.intent', '意图识别'), ok: aiStatus.intent },
+            { label: qvcT('ov.vision', '图片分析'), ok: aiStatus.vision },
+            { label: qvcT('ov.reply_judge', '回复判断'), ok: aiStatus.reply_judge }
         ];
         var aiHtml = '';
         rows.forEach(function(r) {
             var cls = r.ok ? 'qvc-badge-ok' : 'qvc-badge-off';
-            var txt = r.ok ? '正常' : '未就绪';
+            var txt = r.ok ? qvcT('status.ok', '正常') : qvcT('status.not_ready', '未就绪');
             aiHtml += '<div class="qvc-list-item">';
             aiHtml += '<div class="qvc-list-item-info"><div class="qvc-list-item-title">' + qvcEsc(r.label) + '</div></div>';
             aiHtml += '<span class="qvc-badge ' + cls + '">' + txt + '</span>';
@@ -221,17 +236,17 @@ async function qvcLoadOverview() {
         var features = data.features || {};
         var featHtml = '';
         var featMap = [
-            { key: 'stalker_mode', label: '窥屏模式', path: 'stalker_mode.enabled' },
-            { key: 'continue_conversation', label: '对话连续性', path: 'continue_conversation.enabled' },
-            { key: 'knowledge_base', label: '知识库注入', path: 'knowledge_base.enabled' },
-            { key: 'mcp', label: 'MCP 工具调用', path: 'mcp.enabled' },
-            { key: 'multi_agent', label: '多智能体', path: 'multi_agent.enabled' },
-            { key: 'voice', label: '语音合成', path: 'voice.enabled' }
+            { key: 'stalker_mode', label: qvcT('feat.stalker', '窥屏模式'), path: 'stalker_mode.enabled' },
+            { key: 'continue_conversation', label: qvcT('feat.continue_conversation', '对话连续性'), path: 'continue_conversation.enabled' },
+            { key: 'knowledge_base', label: qvcT('feat.knowledge', '知识库注入'), path: 'knowledge_base.enabled' },
+            { key: 'mcp', label: qvcT('feat.mcp', 'MCP 工具调用'), path: 'mcp.enabled' },
+            { key: 'multi_agent', label: qvcT('feat.multi_agent', '多智能体'), path: 'multi_agent.enabled' },
+            { key: 'voice', label: qvcT('feat.voice', '语音合成'), path: 'voice.enabled' }
         ];
         featMap.forEach(function(f) {
             var on = features[f.key];
             var cls = on ? 'qvc-badge-ok' : 'qvc-badge-off';
-            var txt = on ? '已启用' : '已关闭';
+            var txt = on ? qvcT('status.enabled', '已启用') : qvcT('status.disabled', '已关闭');
             featHtml += '<div class="qvc-list-item" style="cursor:pointer" onclick="qvcToggleFeature(\'' + f.path + '\', \'' + f.key + '\')">';
             featHtml += '<div class="qvc-list-item-info"><div class="qvc-list-item-title">' + qvcEsc(f.label) + '</div></div>';
             featHtml += '<span class="qvc-badge ' + cls + '" id="qvc-feat-' + f.key + '">' + txt + '</span>';
@@ -263,29 +278,21 @@ async function qvcLoadOverview() {
 
 async function qvcToggleFeature(path, key) {
     try {
-        var data = await qvcApi('/api/config', 'GET');
-        var cfg = data.config || {};
-        // 获取当前值
-        var keys = path.split('.');
-        var cur = cfg;
-        for (var i = 0; i < keys.length; i++) {
-            if (cur == null || typeof cur !== 'object') { cur = null; break; }
-            cur = cur[keys[i]];
-        }
-        var newVal = !(cur === true || cur === 'true');
-        // 发送单个键的切换
+        // 从当前 badge 的 class 读取真实当前值（避免读缓存拿到延迟 flush 前的旧值）
+        var el = document.getElementById('qvc-feat-' + key);
+        var cur = el ? el.classList.contains('qvc-badge-ok') : true;
+        var newVal = !cur;
         var body = {};
         body[path] = newVal;
         await qvcApi('/api/config', 'POST', body);
         // 更新 UI
-        var el = document.getElementById('qvc-feat-' + key);
         if (el) {
             el.className = 'qvc-badge ' + (newVal ? 'qvc-badge-ok' : 'qvc-badge-off');
-            el.textContent = newVal ? '已启用' : '已关闭';
+            el.textContent = newVal ? qvcT('status.enabled', '已启用') : qvcT('status.disabled', '已关闭');
         }
-        qvcToast((newVal ? '已启用' : '已关闭') + ': ' + key, 'ok');
+        qvcToast((newVal ? qvcT('status.enabled', '已启用') : qvcT('status.disabled', '已关闭')) + ': ' + key, 'ok');
     } catch (e) {
-        qvcToast('切换失败: ' + e.message, 'error');
+        qvcToast(qvcT('toggle.failed', '切换失败') + ': ' + e.message, 'error');
     }
 }
 
@@ -588,9 +595,9 @@ async function qvcLoadModels() {
         models.forEach(function(m) {
             var caps = m.capabilities || {};
             var badges = '';
-            if (caps.chat) badges += '<span class="qvc-badge qvc-badge-ok">文本</span> ';
-            if (caps.vision) badges += '<span class="qvc-badge qvc-badge-ok">视觉</span> ';
-            if (caps.tools) badges += '<span class="qvc-badge qvc-badge-ok">工具</span> ';
+            if (caps.chat) badges += '<span class="qvc-badge qvc-badge-ok">' + qvcT('badge.text','文本') + '</span> ';
+            if (caps.vision) badges += '<span class="qvc-badge qvc-badge-ok">' + qvcT('badge.vision','视觉') + '</span> ';
+            if (caps.tools) badges += '<span class="qvc-badge qvc-badge-ok">' + qvcT('badge.tools','工具') + '</span> ';
             html += '<div class="qvc-list-item">';
             html += '<div class="qvc-list-item-info">';
             html += '<div class="qvc-list-item-title">' + qvcEsc(m.name || '未命名') + ' ' + badges + '</div>';
@@ -679,8 +686,8 @@ async function qvcLoadBehaviors() {
         var html = '';
         behaviors.forEach(function(b) {
             var badges = '';
-            badges += '<span class="qvc-badge ' + (b.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (b.enabled ? '启用' : '禁用') + '</span> ';
-            if (b.is_builtin) badges += '<span class="qvc-badge qvc-badge-off">内置</span> ';
+            badges += '<span class="qvc-badge ' + (b.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (b.enabled ? qvcT('badge.enabled','启用') : qvcT('badge.disabled','禁用')) + '</span> ';
+            if (b.is_builtin) badges += '<span class="qvc-badge qvc-badge-off">' + qvcT('badge.builtin','内置') + '</span> ';
             var modelNames = (b.models || []).map(function(mid) {
                 return modelMap[mid] || mid;
             });
@@ -965,8 +972,8 @@ async function qvcLoadAgents() {
             html += '<div>';
             html += '<span class="qvc-agent-card-title">' + qvcEsc(a.name || a.id) + '</span> ';
             var badges = '';
-            badges += '<span class="qvc-badge ' + (a.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (a.enabled ? '启用' : '禁用') + '</span> ';
-            if (a.is_default) badges += '<span class="qvc-badge qvc-badge-off">默认</span> ';
+            badges += '<span class="qvc-badge ' + (a.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (a.enabled ? qvcT('badge.enabled','启用') : qvcT('badge.disabled','禁用')) + '</span> ';
+            if (a.is_default) badges += '<span class="qvc-badge qvc-badge-off">' + qvcT('badge.default','默认') + '</span> ';
             html += badges;
             html += '</div>';
             html += '<div style="display:flex;gap:4px;flex-wrap:wrap">';
@@ -1263,7 +1270,7 @@ async function qvcLoadKnowledge() {
         var html = '';
         entries.forEach(function(e) {
             var badges = '';
-            badges += '<span class="qvc-badge ' + (e.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (e.enabled ? '启用' : '禁用') + '</span> ';
+            badges += '<span class="qvc-badge ' + (e.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (e.enabled ? qvcT('badge.enabled','启用') : qvcT('badge.disabled','禁用')) + '</span> ';
             if (e.category) badges += '<span class="qvc-badge qvc-badge-off">' + qvcEsc(e.category) + '</span> ';
             html += '<div class="qvc-list-item">';
             html += '<div class="qvc-list-item-info">';
@@ -1344,8 +1351,8 @@ async function qvcLoadTools() {
             var serversHtml = '';
             servers.forEach(function(s) {
                 var badges = '';
-                badges += '<span class="qvc-badge ' + (s.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (s.enabled ? '启用' : '禁用') + '</span> ';
-                badges += '<span class="qvc-badge ' + (s.connected ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (s.connected ? '已连接' : '未连接') + '</span> ';
+                badges += '<span class="qvc-badge ' + (s.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (s.enabled ? qvcT('badge.enabled','启用') : qvcT('badge.disabled','禁用')) + '</span> ';
+                badges += '<span class="qvc-badge ' + (s.connected ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (s.connected ? qvcT('badge.connected','已连接') : qvcT('badge.disconnected','未连接')) + '</span> ';
                 if (s.connected) badges += '<span class="qvc-badge qvc-badge-off">' + (s.tool_count || 0) + ' 工具</span> ';
                 serversHtml += '<div class="qvc-list-item">';
                 serversHtml += '<div class="qvc-list-item-info">';
@@ -1372,7 +1379,7 @@ async function qvcLoadTools() {
         var html = '';
         tools.forEach(function(t) {
             var badges = '';
-            badges += '<span class="qvc-badge ' + (t.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (t.enabled ? '启用' : '禁用') + '</span> ';
+            badges += '<span class="qvc-badge ' + (t.enabled ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (t.enabled ? qvcT('badge.enabled','启用') : qvcT('badge.disabled','禁用')) + '</span> ';
             if (t.endpoint) badges += '<span class="qvc-badge qvc-badge-off">HTTP</span> ';
             html += '<div class="qvc-list-item">';
             html += '<div class="qvc-list-item-info">';
@@ -1737,7 +1744,7 @@ function qvcRenderMemories() {
     }
     
     if (!userMemories.length && !groupMemories.length) {
-        el.innerHTML = '<div class="qvc-empty">' + (search ? '未找到匹配的记忆' : '暂无存储的记忆') + '</div>';
+        el.innerHTML = '<div class="qvc-empty">' + (search ? qvcT('empty.no_memories_match','未找到匹配的记忆') : qvcT('empty.no_memories','暂无存储的记忆')) + '</div>';
         return;
     }
     var html = '';
@@ -1904,7 +1911,7 @@ function qvcRenderSessions() {
     }
     var el = document.getElementById('qvc-sessions-list');
     if (!sessions.length) {
-        el.innerHTML = '<div class="qvc-empty">' + (search ? '未找到匹配的会话' : '暂无会话记录') + '</div>';
+        el.innerHTML = '<div class="qvc-empty">' + (search ? qvcT('empty.no_sessions_match','未找到匹配的会话') : qvcT('empty.no_sessions','暂无会话记录')) + '</div>';
         return;
     }
     var html = '';
@@ -2096,8 +2103,8 @@ async function qvcLoadGroups() {
             var cfg = g.config || {};
             var displayName = cfg.group_name || g.id;
             var badges = '';
-            badges += '<span class="qvc-badge ' + (cfg.enable_ai !== false ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (cfg.enable_ai !== false ? 'AI启用' : 'AI关闭') + '</span> ';
-            badges += '<span class="qvc-badge ' + (cfg.enable_memory !== false ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (cfg.enable_memory !== false ? '记忆' : '无记忆') + '</span> ';
+            badges += '<span class="qvc-badge ' + (cfg.enable_ai !== false ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (cfg.enable_ai !== false ? qvcT('badge.ai_on','AI启用') : qvcT('badge.ai_off','AI关闭')) + '</span> ';
+            badges += '<span class="qvc-badge ' + (cfg.enable_memory !== false ? 'qvc-badge-ok' : 'qvc-badge-off') + '">' + (cfg.enable_memory !== false ? qvcT('badge.mem_on','记忆') : qvcT('badge.mem_off','无记忆')) + '</span> ';
             html += '<div class="qvc-list-item">';
             html += '<div class="qvc-list-item-info">';
             html += '<div class="qvc-list-item-title">' + qvcEsc(displayName) + ' ' + badges + '</div>';
@@ -2474,8 +2481,10 @@ function qvcResetAll() {
 
 // ==================== 初始化 ====================
 function loadQvQChatView() {
-    // 应用页面级 i18n（标题/副标题/标签/按钮）
-    qvcApplyI18n();
+    // 实时拉取 i18n 翻译（跟随框架语言切换），然后应用页面级 i18n
+    qvcLoadI18n().then(function() {
+        qvcApplyI18n();
+    });
     // 点击背景关闭弹窗
     var bg = document.getElementById('qvc-modal-bg');
     if (bg) {

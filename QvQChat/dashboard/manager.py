@@ -18,6 +18,106 @@ from . import icons, scripts, styles
 class DashboardManager:
     """Dashboard 管理器"""
 
+    # Dashboard 前端翻译键映射：前端键 -> (QvQChat i18n 键, 默认文本)
+    I18N_KEYS = {
+        "page.title": ("QvQChat.page_title", "QvQChat"),
+        "page.desc": ("QvQChat.page_desc", "智能对话模块 · 管理 AI 模型、行为、智能体、知识库与记忆"),
+        "tab.overview": ("QvQChat.tab_overview", "概览"),
+        "tab.basic": ("QvQChat.tab_basic", "基础设置"),
+        "tab.models": ("QvQChat.tab_models", "模型管理"),
+        "tab.behaviors": ("QvQChat.tab_behaviors", "行为管理"),
+        "tab.pipeline": ("QvQChat.tab_pipeline", "注入管线"),
+        "tab.agents": ("QvQChat.tab_agents", "多智能体"),
+        "tab.knowledge": ("QvQChat.tab_knowledge", "知识库"),
+        "tab.tools": ("QvQChat.tab_tools", "MCP工具"),
+        "tab.stickers": ("QvQChat.tab_stickers", "表情包"),
+        "tab.memories": ("QvQChat.tab_memories", "记忆管理"),
+        "tab.sessions": ("QvQChat.tab_sessions", "会话管理"),
+        "tab.groups": ("QvQChat.tab_groups", "群组管理"),
+        "btn.export_desensitize": ("QvQChat.btn_export_desensitize", "脱敏导出"),
+        "btn.export_migrate": ("QvQChat.btn_export_migrate", "迁移导出"),
+        "btn.import": ("QvQChat.btn_import", "导入"),
+        "btn.reset": ("QvQChat.btn_reset", "重置全部"),
+        "btn.save_config": ("QvQChat.btn_save_config", "保存配置"),
+        "btn.save": ("QvQChat.btn_save", "保存"),
+        "btn.cancel": ("QvQChat.btn_cancel", "取消"),
+        "btn.delete": ("QvQChat.btn_delete", "删除"),
+        "btn.clear": ("QvQChat.btn_clear", "清空"),
+        "btn.refresh": ("QvQChat.btn_refresh", "刷新"),
+        "btn.add": ("QvQChat.btn_add", "添加"),
+        "btn.select_all": ("QvQChat.btn_select_all", "全选"),
+        "btn.done": ("QvQChat.btn_done", "完成"),
+        "overview.runtime": ("QvQChat.overview_runtime", "运行状态"),
+        "overview.stats": ("QvQChat.overview_stats", "运行统计"),
+        "overview.ai": ("QvQChat.overview_ai", "AI 子系统状态"),
+        "overview.features": ("QvQChat.overview_features", "功能开关"),
+        "overview.human": ("QvQChat.overview_human", "人类状态"),
+        "ov.ai_models": ("QvQChat.ov_ai_models", "AI 模型"),
+        "ov.behaviors": ("QvQChat.ov_behaviors", "行为定义"),
+        "ov.agents": ("QvQChat.ov_agents", "智能体"),
+        "ov.knowledge": ("QvQChat.ov_knowledge", "知识条目"),
+        "ov.mcp_tools": ("QvQChat.ov_mcp_tools", "MCP 工具"),
+        "ov.stickers": ("QvQChat.ov_stickers", "表情包"),
+        "ov.active_groups": ("QvQChat.ov_active_groups", "活跃群组"),
+        "ov.uptime": ("QvQChat.ov_uptime", "运行时间"),
+        "ov.received": ("QvQChat.ov_received", "接收消息"),
+        "ov.replied": ("QvQChat.ov_replied", "发送回复"),
+        "ov.reply_rate": ("QvQChat.ov_reply_rate", "回复率"),
+        "ov.est_tokens": ("QvQChat.ov_est_tokens", "估算 Token"),
+        "ov.dialogue": ("QvQChat.ov_dialogue", "对话行为"),
+        "ov.memory": ("QvQChat.ov_memory", "记忆提取"),
+        "ov.intent": ("QvQChat.ov_intent", "意图识别"),
+        "ov.vision": ("QvQChat.ov_vision", "图片分析"),
+        "ov.reply_judge": ("QvQChat.ov_reply_judge", "回复判断"),
+        "status.ok": ("QvQChat.status_ok", "正常"),
+        "status.not_ready": ("QvQChat.status_not_ready", "未就绪"),
+        "status.enabled": ("QvQChat.status_enabled", "已启用"),
+        "status.disabled": ("QvQChat.status_disabled", "已关闭"),
+        "toggle.failed": ("QvQChat.toggle_failed", "切换失败"),
+        "feat.stalker": ("QvQChat.feat_stalker", "窥屏模式"),
+        "feat.continue_conversation": ("QvQChat.feat_continue_conversation", "对话连续性"),
+        "feat.knowledge": ("QvQChat.feat_knowledge", "知识库注入"),
+        "feat.mcp": ("QvQChat.feat_mcp", "MCP 工具调用"),
+        "feat.multi_agent": ("QvQChat.feat_multi_agent", "多智能体"),
+        "feat.voice": ("QvQChat.feat_voice", "语音合成"),
+        "badge.enabled": ("QvQChat.badge_enabled", "启用"),
+        "badge.disabled": ("QvQChat.badge_disabled", "禁用"),
+        "badge.builtin": ("QvQChat.badge_builtin", "内置"),
+        "badge.default": ("QvQChat.badge_default", "默认"),
+        "badge.connected": ("QvQChat.badge_connected", "已连接"),
+        "badge.disconnected": ("QvQChat.badge_disconnected", "未连接"),
+        "badge.ai_on": ("QvQChat.badge_ai_on", "AI启用"),
+        "badge.ai_off": ("QvQChat.badge_ai_off", "AI关闭"),
+        "badge.mem_on": ("QvQChat.badge_mem_on", "记忆"),
+        "badge.mem_off": ("QvQChat.badge_mem_off", "无记忆"),
+        "badge.text": ("QvQChat.badge_text", "文本"),
+        "badge.vision": ("QvQChat.badge_vision", "视觉"),
+        "badge.tools": ("QvQChat.badge_tools", "工具"),
+        "empty.no_models": ("QvQChat.empty_no_models", "暂无模型"),
+        "empty.no_behaviors": ("QvQChat.empty_no_behaviors", "暂无行为"),
+        "empty.no_agents": ("QvQChat.empty_no_agents", "暂无智能体"),
+        "empty.no_knowledge": ("QvQChat.empty_no_knowledge", "暂无知识"),
+        "empty.no_tools": ("QvQChat.empty_no_tools", "暂无工具"),
+        "empty.no_stickers": ("QvQChat.empty_no_stickers", "暂无表情包"),
+        "empty.no_memories": ("QvQChat.empty_no_memories", "暂无记忆"),
+        "empty.no_memories_match": ("QvQChat.empty_no_memories_match", "未找到匹配的记忆"),
+        "empty.no_sessions": ("QvQChat.empty_no_sessions", "暂无会话"),
+        "empty.no_sessions_match": ("QvQChat.empty_no_sessions_match", "未找到匹配的会话"),
+        "empty.no_groups": ("QvQChat.empty_no_groups", "暂无群组"),
+        "pipeline.title": ("QvQChat.pipeline_title", "注入管线"),
+        "pipeline.desc": ("QvQChat.pipeline_desc", "注入器按优先级顺序拼接系统提示词。可开关、调整顺序。"),
+        "pipeline.time_settings": ("QvQChat.pipeline_time_settings", "时间叙述设置"),
+        "pipeline.time_prob": ("QvQChat.pipeline_time_prob", "时间注入概率 (0~1，1=总是注入)"),
+        "pipeline.time_ttl": ("QvQChat.pipeline_time_ttl", "时间叙述缓存 (秒)"),
+        "pipeline.save": ("QvQChat.pipeline_save", "保存"),
+        "pipeline.saved": ("QvQChat.pipeline_saved", "注入管线已保存"),
+        "pipeline.save_failed": ("QvQChat.pipeline_save_failed", "保存失败"),
+        "pipeline.load_failed": ("QvQChat.pipeline_load_failed", "加载注入管线失败"),
+        "pipeline.empty": ("QvQChat.pipeline_empty", "无注入器"),
+        "pipeline.move_up": ("QvQChat.pipeline_move_up", "上移"),
+        "pipeline.move_down": ("QvQChat.pipeline_move_down", "下移"),
+    }
+
     ROUTES = [
         ("/api/status", "GET", "_api_status"),
         ("/api/config", "GET", "_api_get_config"),
@@ -73,6 +173,7 @@ class DashboardManager:
         ("/api/human-state", "GET", "_api_get_human_state"),
         ("/api/pipeline", "GET", "_api_get_pipeline"),
         ("/api/pipeline", "POST", "_api_save_pipeline"),
+        ("/api/i18n", "GET", "_api_get_i18n"),
     ]
 
     def __init__(self, core):
@@ -178,46 +279,9 @@ class DashboardManager:
                 if _icon_name.isupper():
                     js = js.replace(f"__ICON_{_icon_name}__", getattr(icons, _icon_name))
 
-            # 注入 i18n 翻译字典（前端通过 qvcT() 读取）
+            # 注入 i18n 翻译字典（初始快照，前端通过 /api/i18n 实时刷新）
             try:
-                i18n_js = {
-                    "page.title": i18n.t("QvQChat.page_title", default="QvQChat"),
-                    "page.desc": i18n.t("QvQChat.page_desc", default="智能对话模块 · 管理 AI 模型、行为、智能体、知识库与记忆"),
-                    "tab.overview": i18n.t("QvQChat.tab_overview", default="概览"),
-                    "tab.basic": i18n.t("QvQChat.tab_basic", default="基础设置"),
-                    "tab.models": i18n.t("QvQChat.tab_models", default="模型管理"),
-                    "tab.behaviors": i18n.t("QvQChat.tab_behaviors", default="行为管理"),
-                    "tab.pipeline": i18n.t("QvQChat.tab_pipeline", default="注入管线"),
-                    "tab.agents": i18n.t("QvQChat.tab_agents", default="多智能体"),
-                    "tab.knowledge": i18n.t("QvQChat.tab_knowledge", default="知识库"),
-                    "tab.tools": i18n.t("QvQChat.tab_tools", default="MCP工具"),
-                    "tab.stickers": i18n.t("QvQChat.tab_stickers", default="表情包"),
-                    "tab.memories": i18n.t("QvQChat.tab_memories", default="记忆管理"),
-                    "tab.sessions": i18n.t("QvQChat.tab_sessions", default="会话管理"),
-                    "tab.groups": i18n.t("QvQChat.tab_groups", default="群组管理"),
-                    "btn.export_desensitize": i18n.t("QvQChat.btn_export_desensitize", default="脱敏导出"),
-                    "btn.export_migrate": i18n.t("QvQChat.btn_export_migrate", default="迁移导出"),
-                    "btn.import": i18n.t("QvQChat.btn_import", default="导入"),
-                    "btn.reset": i18n.t("QvQChat.btn_reset", default="重置全部"),
-                    "btn.save_config": i18n.t("QvQChat.btn_save_config", default="保存配置"),
-                    "overview.runtime": i18n.t("QvQChat.overview_runtime", default="运行状态"),
-                    "overview.stats": i18n.t("QvQChat.overview_stats", default="运行统计"),
-                    "overview.ai": i18n.t("QvQChat.overview_ai", default="AI 子系统状态"),
-                    "overview.features": i18n.t("QvQChat.overview_features", default="功能开关"),
-                    "overview.human": i18n.t("QvQChat.overview_human", default="人类状态"),
-                    "pipeline.title": i18n.t("QvQChat.pipeline_title", default="注入管线"),
-                    "pipeline.desc": i18n.t("QvQChat.pipeline_desc", default="注入器按优先级顺序拼接系统提示词。可开关、调整顺序。"),
-                    "pipeline.time_settings": i18n.t("QvQChat.pipeline_time_settings", default="时间叙述设置"),
-                    "pipeline.time_prob": i18n.t("QvQChat.pipeline_time_prob", default="时间注入概率 (0~1，1=总是注入)"),
-                    "pipeline.time_ttl": i18n.t("QvQChat.pipeline_time_ttl", default="时间叙述缓存 (秒)"),
-                    "pipeline.save": i18n.t("QvQChat.pipeline_save", default="保存"),
-                    "pipeline.saved": i18n.t("QvQChat.pipeline_saved", default="注入管线已保存"),
-                    "pipeline.save_failed": i18n.t("QvQChat.pipeline_save_failed", default="保存失败"),
-                    "pipeline.load_failed": i18n.t("QvQChat.pipeline_load_failed", default="加载注入管线失败"),
-                    "pipeline.empty": i18n.t("QvQChat.pipeline_empty", default="无注入器"),
-                    "pipeline.move_up": i18n.t("QvQChat.pipeline_move_up", default="上移"),
-                    "pipeline.move_down": i18n.t("QvQChat.pipeline_move_down", default="下移"),
-                }
+                i18n_js = self._build_i18n_dict()
                 import json as _json
                 js = "var _qvcI18n = " + _json.dumps(i18n_js, ensure_ascii=False) + ";\n" + js
             except Exception:
@@ -304,6 +368,12 @@ class DashboardManager:
         }
 
     async def _api_get_config(self, request) -> Dict[str, Any]:
+        # 先刷入待写入的配置（无待写时为空操作），
+        # 确保 getConfig("QvQChat") 能读到最新值（含刚 toggle 的键）
+        try:
+            sdk.config.force_save()
+        except Exception:
+            pass
         return {"config": sdk.config.getConfig("QvQChat", {})}
 
     async def _api_save_config(self, request) -> Dict[str, Any]:
@@ -1267,6 +1337,20 @@ class DashboardManager:
         }
 
     # ----- 注入管线 -----
+
+    def _build_i18n_dict(self) -> Dict[str, str]:
+        """构建前端 i18n 翻译字典（实时从框架 i18n 读取）"""
+        result = {}
+        for frontend_key, (qvq_key, default) in self.I18N_KEYS.items():
+            try:
+                result[frontend_key] = i18n.t(qvq_key, default=default)
+            except Exception:
+                result[frontend_key] = default
+        return result
+
+    async def _api_get_i18n(self, request) -> Dict[str, Any]:
+        """获取前端翻译字典（实时跟随框架语言切换）"""
+        return self._build_i18n_dict()
 
     async def _api_get_pipeline(self, request) -> Dict[str, Any]:
         """获取注入管线状态"""

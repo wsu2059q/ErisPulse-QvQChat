@@ -570,3 +570,544 @@ class QvQI18n(BaseI18n):
         ja="人間状態",
         ru="Состояние человека",
     )
+
+    btn_save: I18nKey = I18nKey(
+        default='Save',
+        zh_CN='保存',
+        zh_TW='保存',
+        en='Save',
+        ja='保存',
+        ru='保存',
+    )
+
+    btn_cancel: I18nKey = I18nKey(
+        default='Cancel',
+        zh_CN='取消',
+        zh_TW='取消',
+        en='Cancel',
+        ja='取消',
+        ru='取消',
+    )
+
+    btn_delete: I18nKey = I18nKey(
+        default='Delete',
+        zh_CN='删除',
+        zh_TW='删除',
+        en='Delete',
+        ja='删除',
+        ru='删除',
+    )
+
+    btn_clear: I18nKey = I18nKey(
+        default='Clear',
+        zh_CN='清空',
+        zh_TW='清空',
+        en='Clear',
+        ja='清空',
+        ru='清空',
+    )
+
+    btn_refresh: I18nKey = I18nKey(
+        default='Refresh',
+        zh_CN='刷新',
+        zh_TW='刷新',
+        en='Refresh',
+        ja='刷新',
+        ru='刷新',
+    )
+
+    btn_add: I18nKey = I18nKey(
+        default='Add',
+        zh_CN='添加',
+        zh_TW='添加',
+        en='Add',
+        ja='添加',
+        ru='添加',
+    )
+
+    btn_select_all: I18nKey = I18nKey(
+        default='Select All',
+        zh_CN='全选',
+        zh_TW='全选',
+        en='Select All',
+        ja='全选',
+        ru='全选',
+    )
+
+    btn_done: I18nKey = I18nKey(
+        default='Done',
+        zh_CN='完成',
+        zh_TW='完成',
+        en='Done',
+        ja='完成',
+        ru='完成',
+    )
+
+    ov_ai_models: I18nKey = I18nKey(
+        default='AI Models',
+        zh_CN='AI 模型',
+        zh_TW='AI 模型',
+        en='AI Models',
+        ja='AI 模型',
+        ru='AI 模型',
+    )
+
+    ov_behaviors: I18nKey = I18nKey(
+        default='Behaviors',
+        zh_CN='行为定义',
+        zh_TW='行为定义',
+        en='Behaviors',
+        ja='行为定义',
+        ru='行为定义',
+    )
+
+    ov_agents: I18nKey = I18nKey(
+        default='Agents',
+        zh_CN='智能体',
+        zh_TW='智能体',
+        en='Agents',
+        ja='智能体',
+        ru='智能体',
+    )
+
+    ov_knowledge: I18nKey = I18nKey(
+        default='Knowledge Entries',
+        zh_CN='知识条目',
+        zh_TW='知识条目',
+        en='Knowledge Entries',
+        ja='知识条目',
+        ru='知识条目',
+    )
+
+    ov_mcp_tools: I18nKey = I18nKey(
+        default='MCP Tools',
+        zh_CN='MCP 工具',
+        zh_TW='MCP 工具',
+        en='MCP Tools',
+        ja='MCP 工具',
+        ru='MCP 工具',
+    )
+
+    ov_stickers: I18nKey = I18nKey(
+        default='Stickers',
+        zh_CN='表情包',
+        zh_TW='表情包',
+        en='Stickers',
+        ja='表情包',
+        ru='表情包',
+    )
+
+    ov_active_groups: I18nKey = I18nKey(
+        default='Active Groups',
+        zh_CN='活跃群组',
+        zh_TW='活跃群组',
+        en='Active Groups',
+        ja='活跃群组',
+        ru='活跃群组',
+    )
+
+    ov_uptime: I18nKey = I18nKey(
+        default='Uptime',
+        zh_CN='运行时间',
+        zh_TW='运行时间',
+        en='Uptime',
+        ja='运行时间',
+        ru='运行时间',
+    )
+
+    ov_received: I18nKey = I18nKey(
+        default='Messages Received',
+        zh_CN='接收消息',
+        zh_TW='接收消息',
+        en='Messages Received',
+        ja='接收消息',
+        ru='接收消息',
+    )
+
+    ov_replied: I18nKey = I18nKey(
+        default='Replies Sent',
+        zh_CN='发送回复',
+        zh_TW='发送回复',
+        en='Replies Sent',
+        ja='发送回复',
+        ru='发送回复',
+    )
+
+    ov_reply_rate: I18nKey = I18nKey(
+        default='Reply Rate',
+        zh_CN='回复率',
+        zh_TW='回复率',
+        en='Reply Rate',
+        ja='回复率',
+        ru='回复率',
+    )
+
+    ov_est_tokens: I18nKey = I18nKey(
+        default='Estimated Tokens',
+        zh_CN='估算 Token',
+        zh_TW='估算 Token',
+        en='Estimated Tokens',
+        ja='估算 Token',
+        ru='估算 Token',
+    )
+
+    ov_dialogue: I18nKey = I18nKey(
+        default='Dialogue',
+        zh_CN='对话行为',
+        zh_TW='对话行为',
+        en='Dialogue',
+        ja='对话行为',
+        ru='对话行为',
+    )
+
+    ov_memory: I18nKey = I18nKey(
+        default='Memory',
+        zh_CN='记忆提取',
+        zh_TW='记忆提取',
+        en='Memory',
+        ja='记忆提取',
+        ru='记忆提取',
+    )
+
+    ov_intent: I18nKey = I18nKey(
+        default='Intent',
+        zh_CN='意图识别',
+        zh_TW='意图识别',
+        en='Intent',
+        ja='意图识别',
+        ru='意图识别',
+    )
+
+    ov_vision: I18nKey = I18nKey(
+        default='Vision',
+        zh_CN='图片分析',
+        zh_TW='图片分析',
+        en='Vision',
+        ja='图片分析',
+        ru='图片分析',
+    )
+
+    ov_reply_judge: I18nKey = I18nKey(
+        default='Reply Judge',
+        zh_CN='回复判断',
+        zh_TW='回复判断',
+        en='Reply Judge',
+        ja='回复判断',
+        ru='回复判断',
+    )
+
+    status_ok: I18nKey = I18nKey(
+        default='OK',
+        zh_CN='正常',
+        zh_TW='正常',
+        en='OK',
+        ja='正常',
+        ru='正常',
+    )
+
+    status_not_ready: I18nKey = I18nKey(
+        default='Not Ready',
+        zh_CN='未就绪',
+        zh_TW='未就绪',
+        en='Not Ready',
+        ja='未就绪',
+        ru='未就绪',
+    )
+
+    status_enabled: I18nKey = I18nKey(
+        default='Enabled',
+        zh_CN='已启用',
+        zh_TW='已启用',
+        en='Enabled',
+        ja='已启用',
+        ru='已启用',
+    )
+
+    status_disabled: I18nKey = I18nKey(
+        default="Disabled",
+        zh_CN="已关闭",
+        zh_TW="已關閉",
+        en="Disabled",
+        ja="無効",
+        ru="Выключено",
+    )
+
+    toggle_failed: I18nKey = I18nKey(
+        default="Toggle failed",
+        zh_CN="切换失败",
+        zh_TW="切換失敗",
+        en="Toggle failed",
+        ja="切替に失敗しました",
+        ru="Не удалось переключить",
+    )
+
+    feat_stalker: I18nKey = I18nKey(
+        default='Stalker Mode',
+        zh_CN='窥屏模式',
+        zh_TW='窥屏模式',
+        en='Stalker Mode',
+        ja='窥屏模式',
+        ru='窥屏模式',
+    )
+
+    feat_continue_conversation: I18nKey = I18nKey(
+        default='Conversation Continuity',
+        zh_CN='对话连续性',
+        zh_TW='对话连续性',
+        en='Conversation Continuity',
+        ja='对话连续性',
+        ru='对话连续性',
+    )
+
+    feat_knowledge: I18nKey = I18nKey(
+        default='Knowledge Injection',
+        zh_CN='知识库注入',
+        zh_TW='知识库注入',
+        en='Knowledge Injection',
+        ja='知识库注入',
+        ru='知识库注入',
+    )
+
+    feat_mcp: I18nKey = I18nKey(
+        default='MCP Tool Calls',
+        zh_CN='MCP 工具调用',
+        zh_TW='MCP 工具调用',
+        en='MCP Tool Calls',
+        ja='MCP 工具调用',
+        ru='MCP 工具调用',
+    )
+
+    feat_multi_agent: I18nKey = I18nKey(
+        default='Multi-Agent',
+        zh_CN='多智能体',
+        zh_TW='多智能体',
+        en='Multi-Agent',
+        ja='多智能体',
+        ru='多智能体',
+    )
+
+    feat_voice: I18nKey = I18nKey(
+        default='Voice Synthesis',
+        zh_CN='语音合成',
+        zh_TW='语音合成',
+        en='Voice Synthesis',
+        ja='语音合成',
+        ru='语音合成',
+    )
+
+    badge_enabled: I18nKey = I18nKey(
+        default='Enabled',
+        zh_CN='启用',
+        zh_TW='启用',
+        en='Enabled',
+        ja='启用',
+        ru='启用',
+    )
+
+    badge_disabled: I18nKey = I18nKey(
+        default='Disabled',
+        zh_CN='禁用',
+        zh_TW='禁用',
+        en='Disabled',
+        ja='禁用',
+        ru='禁用',
+    )
+
+    badge_builtin: I18nKey = I18nKey(
+        default='Builtin',
+        zh_CN='内置',
+        zh_TW='内置',
+        en='Builtin',
+        ja='内置',
+        ru='内置',
+    )
+
+    badge_default: I18nKey = I18nKey(
+        default='Default',
+        zh_CN='默认',
+        zh_TW='默认',
+        en='Default',
+        ja='默认',
+        ru='默认',
+    )
+
+    badge_connected: I18nKey = I18nKey(
+        default='Connected',
+        zh_CN='已连接',
+        zh_TW='已连接',
+        en='Connected',
+        ja='已连接',
+        ru='已连接',
+    )
+
+    badge_disconnected: I18nKey = I18nKey(
+        default='Disconnected',
+        zh_CN='未连接',
+        zh_TW='未连接',
+        en='Disconnected',
+        ja='未连接',
+        ru='未连接',
+    )
+
+    badge_ai_on: I18nKey = I18nKey(
+        default='AI On',
+        zh_CN='AI启用',
+        zh_TW='AI启用',
+        en='AI On',
+        ja='AI启用',
+        ru='AI启用',
+    )
+
+    badge_ai_off: I18nKey = I18nKey(
+        default='AI Off',
+        zh_CN='AI关闭',
+        zh_TW='AI关闭',
+        en='AI Off',
+        ja='AI关闭',
+        ru='AI关闭',
+    )
+
+    badge_mem_on: I18nKey = I18nKey(
+        default='Memory',
+        zh_CN='记忆',
+        zh_TW='记忆',
+        en='Memory',
+        ja='记忆',
+        ru='记忆',
+    )
+
+    badge_mem_off: I18nKey = I18nKey(
+        default='No Memory',
+        zh_CN='无记忆',
+        zh_TW='无记忆',
+        en='No Memory',
+        ja='无记忆',
+        ru='无记忆',
+    )
+
+    badge_text: I18nKey = I18nKey(
+        default='Text',
+        zh_CN='文本',
+        zh_TW='文本',
+        en='Text',
+        ja='文本',
+        ru='文本',
+    )
+
+    badge_vision: I18nKey = I18nKey(
+        default='Vision',
+        zh_CN='视觉',
+        zh_TW='视觉',
+        en='Vision',
+        ja='视觉',
+        ru='视觉',
+    )
+
+    badge_tools: I18nKey = I18nKey(
+        default='Tools',
+        zh_CN='工具',
+        zh_TW='工具',
+        en='Tools',
+        ja='工具',
+        ru='工具',
+    )
+
+    empty_no_models: I18nKey = I18nKey(
+        default='No models yet. Click Add to create one.',
+        zh_CN='暂无模型，点击右上角添加',
+        zh_TW='暂无模型，点击右上角添加',
+        en='No models yet. Click Add to create one.',
+        ja='暂无模型，点击右上角添加',
+        ru='暂无模型，点击右上角添加',
+    )
+
+    empty_no_behaviors: I18nKey = I18nKey(
+        default='No behaviors defined',
+        zh_CN='暂无行为定义',
+        zh_TW='暂无行为定义',
+        en='No behaviors defined',
+        ja='暂无行为定义',
+        ru='暂无行为定义',
+    )
+
+    empty_no_agents: I18nKey = I18nKey(
+        default='No agents yet. Click Create to add one.',
+        zh_CN='暂无智能体，点击右上角创建',
+        zh_TW='暂无智能体，点击右上角创建',
+        en='No agents yet. Click Create to add one.',
+        ja='暂无智能体，点击右上角创建',
+        ru='暂无智能体，点击右上角创建',
+    )
+
+    empty_no_knowledge: I18nKey = I18nKey(
+        default='No knowledge entries',
+        zh_CN='暂无知识条目',
+        zh_TW='暂无知识条目',
+        en='No knowledge entries',
+        ja='暂无知识条目',
+        ru='暂无知识条目',
+    )
+
+    empty_no_tools: I18nKey = I18nKey(
+        default='No tools defined',
+        zh_CN='暂无工具定义',
+        zh_TW='暂无工具定义',
+        en='No tools defined',
+        ja='暂无工具定义',
+        ru='暂无工具定义',
+    )
+
+    empty_no_stickers: I18nKey = I18nKey(
+        default='No stickers. Click Upload to add.',
+        zh_CN='暂无表情包。点击「上传表情包」添加。',
+        zh_TW='暂无表情包。点击「上传表情包」添加。',
+        en='No stickers. Click Upload to add.',
+        ja='暂无表情包。点击「上传表情包」添加。',
+        ru='暂无表情包。点击「上传表情包」添加。',
+    )
+
+    empty_no_memories: I18nKey = I18nKey(
+        default='No memories stored',
+        zh_CN='暂无存储的记忆',
+        zh_TW='暂无存储的记忆',
+        en='No memories stored',
+        ja='暂无存储的记忆',
+        ru='暂无存储的记忆',
+    )
+
+    empty_no_memories_match: I18nKey = I18nKey(
+        default='No matching memories',
+        zh_CN='未找到匹配的记忆',
+        zh_TW='未找到匹配的记忆',
+        en='No matching memories',
+        ja='未找到匹配的记忆',
+        ru='未找到匹配的记忆',
+    )
+
+    empty_no_sessions: I18nKey = I18nKey(
+        default='No session records',
+        zh_CN='暂无会话记录',
+        zh_TW='暂无会话记录',
+        en='No session records',
+        ja='暂无会话记录',
+        ru='暂无会话记录',
+    )
+
+    empty_no_sessions_match: I18nKey = I18nKey(
+        default='No matching sessions',
+        zh_CN='未找到匹配的会话',
+        zh_TW='未找到匹配的会话',
+        en='No matching sessions',
+        ja='未找到匹配的会话',
+        ru='未找到匹配的会话',
+    )
+
+    empty_no_groups: I18nKey = I18nKey(
+        default='No groups (groups auto-register on first message)',
+        zh_CN='暂无群组（群组在收到第一条消息后自动注册）',
+        zh_TW='暂无群组（群组在收到第一条消息后自动注册）',
+        en='No groups (groups auto-register on first message)',
+        ja='暂无群组（群组在收到第一条消息后自动注册）',
+        ru='暂无群组（群组在收到第一条消息后自动注册）',
+    )
+
