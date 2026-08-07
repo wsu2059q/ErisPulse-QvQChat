@@ -46,20 +46,23 @@ class IntentRouter:
 
     QUESTION_PATTERN = re.compile(r"[?？]|吗$|了吗$|了没$|了么$|没有$")
 
-    def __init__(self, store, ai_engine, logger):
+    def __init__(self, store, ai_engine, logger, config=None):
         self.store = store
         self.ai_engine = ai_engine
         self.logger = logger
+        self.config = config
 
     async def classify(self, user_id: str, message: str, group_id: Optional[str] = None) -> IntentResult:
         """识别意图并处理
 
         :return: IntentResult（intent=dialogue 时 content/response 为空）
         """
+        # 正则快速匹配（记住/忘记）——零延迟
         result = self._regex_classify(message)
         if result:
             return result
 
+        # AI 意图分类（走行为系统，有短超时保护防止阻塞）
         if self.ai_engine and self.ai_engine.is_available("intent"):
             result = await self._ai_classify(user_id, message, group_id)
             if result:
@@ -99,9 +102,13 @@ class IntentRouter:
     async def _ai_classify(
         self, user_id: str, message: str, group_id: Optional[str]
     ) -> Optional[IntentResult]:
-        """AI 意图分类（可选，需要 intent 行为已分配模型）"""
+        """AI 意图分类（走行为系统，5s 超时保护防止阻塞消息流）"""
+        import asyncio
         try:
-            intent = await self.ai_engine.identify_intent(message)
+            intent = await asyncio.wait_for(
+                self.ai_engine.identify_intent(message),
+                timeout=5,
+            )
             intent = intent.strip().lower() if isinstance(intent, str) else "dialogue"
 
             if intent == "memory_add":
@@ -112,6 +119,8 @@ class IntentRouter:
                 content = await self._extract_content(message, "忘记的内容")
                 if content:
                     return IntentResult(intent="memory_delete", content=content)
+        except asyncio.TimeoutError:
+            self.logger.debug("AI意图分类超时(5s)，跳过")
         except Exception as e:
             self.logger.debug(f"AI意图分类失败: {e}")
 

@@ -294,7 +294,7 @@ class QvQConfig:
                 "decay_enabled": True,
                 "decay_days": 30,
                 "max_per_user": 100,
-                "timeout": 60.0,
+                "timeout": 30.0,
                 "extract_min_history": 4,
             },
             "voice": {

@@ -40,6 +40,9 @@ def parse_render_tags(text: str) -> List[RenderRequest]:
 
 def _parse_content(content: str) -> Optional[RenderRequest]:
     """解析标签内容（自由 HTML，可选 ||css|| 段）"""
+    # 忽略旧的模板格式 tpl:xxx（模板系统已移除）
+    if content.startswith("tpl:"):
+        return None
     html = content
     css = ""
     if "||css||" in content:

@@ -525,21 +525,21 @@ class Main(BaseModule):
             if group_id and self.config.get("humanize.random_at_probability", 0.15) > 0:
                 response = self._maybe_at_mention(data, response, user_nickname)
 
-            # 发送回复
-            await self._send_response(data, response, platform)
+            # 发送回复（返回清理后的文本）
+            sent_text = await self._send_response(data, response, platform)
             self._stats["total_replies"] += 1
             self.logger.info(
-                f"回复已发送 - {session_desc} - {truncate_message(response, 60)}"
+                f"回复已发送 - {session_desc} - {truncate_message(sent_text or response, 60)}"
             )
 
             # 更新回复时间
             self.session.update_last_reply_time(user_id, group_id)
             self.session.clear_cached_images(user_id, group_id)
 
-            # 保存AI回复到记忆（清理特殊标签，避免历史污染）
+            # 保存AI回复到记忆（用清理后的文本，避免历史污染）
             bot_names = self.config.get("bot_nicknames", [])
             bot_name = bot_names[0] if bot_names else ""
-            clean_for_memory = self._clean_response_for_history(response)
+            clean_for_memory = self._clean_response_for_history(sent_text or response)
             await self.memory.add_short_term_memory(
                 user_id, "assistant", clean_for_memory, group_id, bot_name
             )
@@ -1748,7 +1748,8 @@ class Main(BaseModule):
 
     async def _send_response(
         self, data: Dict[str, Any], response: str, platform: str
-    ) -> None:
+    ) -> str:
+        """发送回复（自动处理文本中的标签），返回清理后的文本"""
         """发送回复（自动处理文本中的 <|send_sticker|> 标签）"""
         try:
             if not platform:
@@ -1827,8 +1828,10 @@ class Main(BaseModule):
 
             if response:
                 await self.message_sender.send(platform, target_type, target_id, response)
+            return response
         except Exception as e:
             self.logger.error(f"发送回复失败: {e}")
+            return response
 
     def _extract_images(self, data: Dict[str, Any]) -> List[str]:
         """提取消息中的图片URL（兼容多种消息段格式）"""
