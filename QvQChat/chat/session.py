@@ -418,11 +418,11 @@ class SessionManager:
             stalker = {**stalker, "default_probability": 0, "hot_topic_probability": 0,
                        "sticker_emoji_probability": 0, "question_probability": 0.5}
         elif mode_mult == 2:  # 积极模式
-            stalker = {**stalker, "default_probability": stalker.get("default_probability", 0.03) * 2,
-                       "hot_topic_probability": stalker.get("hot_topic_probability", 0.3) * 2}
+            stalker = {**stalker, "default_probability": float(stalker.get("default_probability", 0.03)) * 2,
+                       "hot_topic_probability": float(stalker.get("hot_topic_probability", 0.3)) * 2}
 
         # 每小时限制
-        max_per_hour = stalker.get("max_replies_per_hour", 8)
+        max_per_hour = int(stalker.get("max_replies_per_hour", 8))
         if not self.check_hourly_limit(user_id, group_id, max_per_hour):
             self.logger.debug("每小时回复上限已达")
             return False
@@ -430,7 +430,7 @@ class SessionManager:
         # 层级2：提问检测（零成本）
         is_question = self._is_question(alt_message)
         if is_question:
-            question_prob = stalker.get("question_probability", 0.6)
+            question_prob = float(stalker.get("question_probability", 0.6))
             if heat > 0.5:
                 question_prob = min(question_prob + 0.3, 0.95)
             if random.random() < question_prob:
@@ -444,7 +444,7 @@ class SessionManager:
             self.logger.info(f"话题热度高 ({heat:.2f})，走AI判断")
 
         # 层级4：沉寂后唤醒
-        silence_threshold = stalker.get("silence_threshold_minutes", 30)
+        silence_threshold = float(stalker.get("silence_threshold_minutes", 30))
         silence_duration = self.get_group_silence_duration(user_id, group_id)
         if silence_duration > silence_threshold * 60:
             # 沉寂后第一条消息，用AI判断
@@ -457,7 +457,7 @@ class SessionManager:
             return should
 
         # 层级4：消息间隔 + 概率
-        min_messages = stalker.get("min_messages_between_replies", 15)
+        min_messages = int(stalker.get("min_messages_between_replies", 15))
         count = self.get_message_count(user_id, group_id)
         if count < min_messages:
             self.increment_message_count(user_id, group_id)
@@ -466,7 +466,7 @@ class SessionManager:
         self.reset_message_count(user_id, group_id)
 
         # 基础概率 + 热度加成
-        base_prob = stalker.get("default_probability", 0.03)
+        base_prob = float(stalker.get("default_probability", 0.03))
         heat_bonus = min(heat * 0.05, 0.15)
         final_prob = base_prob + heat_bonus
 
@@ -487,7 +487,7 @@ class SessionManager:
             return should
 
         # 表情/表情包触发（不消耗AI，纯随机）
-        sticker_prob = stalker.get("sticker_emoji_probability", 0)
+        sticker_prob = float(stalker.get("sticker_emoji_probability", 0))
         if sticker_prob > 0 and random.random() < sticker_prob:
             if heat > 0.3:
                 self.logger.info(f"表情触发 ({sticker_prob}, 热度:{heat:.2f})")

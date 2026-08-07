@@ -171,12 +171,19 @@ class AIEngine:
             return "dialogue"
 
     async def memory_process(self, prompt: str) -> str:
-        """记忆提取行为"""
-        result = await self.execute_behavior(
-            "memory",
-            [{"role": "user", "content": prompt}],
-        )
-        return result if isinstance(result, str) else str(result)
+        """记忆提取行为（memory 行为无模型时自动复用 dialogue 模型）"""
+        try:
+            result = await self.execute_behavior(
+                "memory",
+                [{"role": "user", "content": prompt}],
+            )
+            return result if isinstance(result, str) else str(result)
+        except RuntimeError:
+            result = await self.execute_behavior(
+                "dialogue",
+                [{"role": "user", "content": prompt}],
+            )
+            return result if isinstance(result, str) else str(result)
 
     async def _ensure_data_url(self, url: str) -> str:
         """

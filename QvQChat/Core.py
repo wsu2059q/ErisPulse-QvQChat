@@ -13,10 +13,12 @@ import time
 import traceback
 from typing import Any, Dict, List, Optional
 
-from ErisPulse import sdk
+from ErisPulse import i18n, sdk
 from ErisPulse.Core.Bases import BaseModule
 from ErisPulse.Core.Event import message
 
+from .config import QvQConfig, QvQConfigData
+from .I18n import QvQI18n
 from .agent.knowledge import KnowledgeBase
 from .agent.multi import MultiAgentManager
 from .agent.tools import MCPManager
@@ -24,7 +26,6 @@ from .ai import AIEngine, BehaviorManager, ModelPool
 from .chat.memory import QvQMemory
 from .chat.session import SessionManager
 from .chat.sticker import StickerManager
-from .config import QvQConfig
 from .dashboard import DashboardManager
 from .utils import MessageSender, get_session_description, truncate_message
 
@@ -58,6 +59,9 @@ class Main(BaseModule):
     - 智能体：多智能体人格 + 知识库 + MCP工具
     - Dashboard：Web 管理面板
     """
+
+    ConfigClass = QvQConfigData
+    I18nClass = QvQI18n
 
     def __init__(self):
         self.sdk = sdk
@@ -107,14 +111,11 @@ class Main(BaseModule):
             "started_at": time.time(),
         }
 
-        self.logger.info("QvQChat 模块初始化完成")
+        self.logger.info(i18n.t("QvQChat.module_init_done"))
 
         # 检查配置引导
         if not self.model_pool.list_models():
-            self.logger.warning(
-                "尚未配置任何 AI 模型。请在 Dashboard 的「模型管理」中添加模型，"
-                "然后在「行为管理」中为行为分配模型。"
-            )
+            self.logger.warning(i18n.t("QvQChat.no_models_configured"))
         else:
             unassigned = [
                 b["name"]
@@ -125,8 +126,7 @@ class Main(BaseModule):
             ]
             if unassigned:
                 self.logger.warning(
-                    f"以下行为未分配模型: {', '.join(unassigned)}。"
-                    "请在 Dashboard 的「行为管理」中分配。"
+                    i18n.t("QvQChat.behaviors_unassigned", behaviors=", ".join(unassigned))
                 )
 
     @staticmethod
@@ -145,20 +145,20 @@ class Main(BaseModule):
             # 主动发起对话循环
             if self.config.get("human_state.proactive_message.enabled", False):
                 asyncio.create_task(self._proactive_loop())
-            self.logger.info("QvQChat 模块已加载")
+            self.logger.info(i18n.t("QvQChat.module_loaded"))
             return True
         except Exception as e:
-            self.logger.error(f"QvQChat 模块加载失败: {e}")
+            self.logger.error(i18n.t("QvQChat.module_load_failed", error=e))
             return False
 
     async def on_unload(self, event: Dict[str, Any]) -> bool:
         try:
             await self.mcp_manager.disconnect_all_servers()
             self.dashboard.unregister()
-            self.logger.info("QvQChat 模块已卸载")
+            self.logger.info(i18n.t("QvQChat.module_unloaded"))
             return True
         except Exception as e:
-            self.logger.error(f"QvQChat 模块卸载失败: {e}")
+            self.logger.error(i18n.t("QvQChat.module_unload_failed", error=e))
             return False
 
     def _register_event_handlers(self) -> None:
@@ -418,7 +418,8 @@ class Main(BaseModule):
                 return
 
             # 已读不回（低概率跳过，模拟真人偶尔看了不回）
-            if self._should_read_receipt_skip():
+            # 私聊场景不触发：用户主动私聊本身就是强意图，"已读不回"会严重伤害体验
+            if group_id is not None and self._should_read_receipt_skip():
                 return
 
             # 检测是否被提及（用于注入提示词）
@@ -520,8 +521,10 @@ class Main(BaseModule):
                     self._continue_conversation(user_id, group_id, platform)
                 )
 
-            # 行为链：回复后异步提取记忆（检查行为可用性）
-            if self.ai_engine.is_available("memory"):
+            # 行为链：回复后异步提取记忆（memory 无模型时 fallback 到 dialogue）
+            if self.ai_engine.is_available("memory") or self.ai_engine.is_available("dialogue"):
+                if not self.ai_engine.is_available("memory"):
+                    self.logger.warning(i18n.t("QvQChat.memory_fallback_to_dialogue"))
                 asyncio.create_task(self._extract_memory_async(user_id, group_id))
 
         except Exception as e:
@@ -1016,14 +1019,27 @@ class Main(BaseModule):
         r"^[^:\n]{1,10}:\s.*\n[^:\n]{1,10}:\s",
     ]
 
-    def _is_skip_response(self, text: str) -> bool:
-        """检测AI是否输出了无效回复"""
+    def _is_skip_response(self, text: str, is_private: bool = False) -> bool:
+        """检测AI是否输出了无效回复
+
+        Args:
+            text: 待检测的回复文本
+            is_private: 是否为私聊场景。私聊下不应用 _SKIP_REGEX 多行格式检测
+                       （多行检测会误判正常的"昵称:内容"风格回复），仅检明确标记。
+        """
         stripped = text.strip()
         if len(stripped) <= 60:
             for marker in self._SKIP_MARKERS:
                 if marker in stripped:
                     return True
         import re
+
+        # 私聊场景：只跑第一条括号推理检测，跳过多行聊天记录格式检测
+        # （多行检测会把 AI 的正常多行回复误判为"输出聊天记录"）
+        if is_private:
+            if re.search(self._SKIP_REGEX[0], stripped):
+                return True
+            return False
 
         for pattern in self._SKIP_REGEX:
             if re.search(pattern, stripped):
@@ -1156,7 +1172,7 @@ class Main(BaseModule):
             response = response.strip()
 
             # 过滤无效回复
-            if self._is_skip_response(response):
+            if self._is_skip_response(response, is_private=group_id is None):
                 self.logger.info(f"回复无效，不发送: {truncate_message(response, 40)}")
                 return None
 
@@ -1719,17 +1735,12 @@ class Main(BaseModule):
         return f"{gap / 86400:.1f}天前"
 
     async def _check_proactive_messages(self) -> None:
-        """检查是否有需要主动发起的会话（活跃度感知）
+        """检查是否有需要主动发起的会话
 
         判定顺序：
         1. 沉寂门槛（距上次 AI 回复）
         2. 每日上限
-        3. 活跃度感知：
-           a. 死群检测（久无他人发言 → 跳过，避免单口相声）
-           b. 单口相声检测（最近 N 条全为 AI 发言 → 跳过）
-           c. 冷启动保护（历史他人消息过少 → 跳过）
-           d. 活跃群聊 → 概率加成
-        4. 概率命中
+        3. 概率命中
         """
         proactive_cfg = self.config.get("human_state.proactive_message", {})
         if not proactive_cfg.get("enabled", False):
@@ -1738,14 +1749,7 @@ class Main(BaseModule):
         min_hours = float(proactive_cfg.get("min_silence_hours", 6))
         probability = float(proactive_cfg.get("probability", 0.1))
         min_threshold = min_hours * 3600
-
-        activity_aware = proactive_cfg.get("activity_aware", True)
-        dead_group_hours = float(proactive_cfg.get("dead_group_silence_hours", 24))
-        active_window = float(proactive_cfg.get("active_window_minutes", 30)) * 60
-        active_bonus = float(proactive_cfg.get("active_bonus_probability", 0.1))
         max_per_day = int(proactive_cfg.get("max_per_day", 1))
-        monologue_threshold = int(proactive_cfg.get("monologue_threshold", 3))
-        min_history_msgs = int(proactive_cfg.get("min_history_messages", 1))
 
         if not self.ai_engine.is_available("dialogue"):
             return
@@ -1772,67 +1776,158 @@ class Main(BaseModule):
                 )
                 continue
 
-            # 准备历史（活跃度判定要用）
-            is_group = meta.get("target_type") == "group"
-            target_id = meta.get("target_id", "")
-            history = await self.memory.get_session_history(
-                "" if is_group else target_id,
-                target_id if is_group else None,
-            )
-
-            # 3. 活跃度感知
-            is_active_group = False
-            if activity_aware:
-                last_incoming = self.session.get_last_incoming_time(session_key)
-                incoming_silence = (
-                    now - last_incoming if last_incoming else 999999
-                )
-
-                # 3a. 死群检测：久无他人发言 → 跳过
-                if incoming_silence > dead_group_hours * 3600:
-                    self.logger.info(
-                        f"{session_key} 已{int(incoming_silence / 3600)}h无他人发言"
-                        f"(>dead_group_silence_hours={dead_group_hours}h)，跳过避免单口相声"
-                    )
-                    continue
-
-                # 3b. 单口相声检测：最近全是 AI 发言
-                if history and monologue_threshold > 0:
-                    recent = history[-(monologue_threshold + 2):]
-                    assistant_cnt = sum(
-                        1 for m in recent if m.get("role") == "assistant"
-                    )
-                    user_cnt = sum(
-                        1 for m in recent if m.get("role") == "user"
-                    )
-                    if user_cnt == 0 and assistant_cnt >= monologue_threshold:
-                        self.logger.info(
-                            f"{session_key} 最近{len(recent)}条全为AI发言，"
-                            "单口相声风险，跳过"
-                        )
-                        continue
-
-                # 3c. 冷启动保护：历史他人消息不足
-                incoming_total = sum(
-                    1 for m in history if m.get("role") == "user"
-                )
-                if incoming_total < min_history_msgs:
-                    self.logger.debug(
-                        f"{session_key} 历史仅{incoming_total}条他人消息"
-                        f"(<min_history_messages={min_history_msgs})，跳过"
-                    )
-                    continue
-
-                # 3d. 活跃群聊标记（概率加成）
-                if last_incoming and incoming_silence < active_window:
-                    is_active_group = True
-
-            # 4. 概率命中（活跃群聊加成）
-            final_prob = min(probability + (active_bonus if is_active_group else 0), 1.0)
-            if random.random() >= final_prob:
+            # 3. 概率命中
+            if random.random() >= probability:
                 continue
 
             await self._send_proactive_message(session_key, meta)
+
+    @staticmethod
+    def _iso_to_age_seconds(ts_iso: str, now_ts: float) -> Optional[float]:
+        """把 ISO 时间戳转成「距今多少秒」，失败返回 None"""
+        if not ts_iso:
+            return None
+        from datetime import datetime
+
+        try:
+            return now_ts - datetime.fromisoformat(ts_iso).timestamp()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _format_history_label(age_seconds: Optional[float], role: str) -> str:
+        """给历史消息生成时效性标签（让 AI 感知话题已陈旧）
+
+        - 短（< 5 分钟）：[刚刚]
+        - 中（5 分钟 ~ 1 小时）：[x分钟前]
+        - 长（> 1 小时）：[x小时前 · 话题已结束]
+        - 极长（> 1 天）：[x天前 · 已过时]
+        """
+        if age_seconds is None or age_seconds < 0:
+            return ""
+        mins = age_seconds / 60
+        if mins < 5:
+            tag = "刚刚"
+        elif mins < 60:
+            tag = f"{int(mins)}分钟前"
+        elif mins < 1440:
+            tag = f"{mins / 60:.1f}小时前 · 话题已结束"
+            if role == "user":
+                tag += " · 不要直接回应这条"
+        else:
+            tag = f"{mins / 1440:.1f}天前 · 已过时"
+        return f"【{tag}】"
+
+    def _get_proactive_motivation(self, hour: int) -> str:
+        """按时段返回真人主动搭话的内在动机（用于让 AI 知道"为什么想说"）"""
+        if 0 <= hour < 6:
+            return (
+                "你睡不着（或被什么惊醒），脑子里乱糟糟的，"
+                "突然想找个人说点有的没的——多半是情绪化的、零碎的、私密的。"
+            )
+        if 6 <= hour < 9:
+            return (
+                "你刚醒没多久，还有点迷糊，"
+                "可能想分享一下梦境、或者就单纯跟对方打个招呼说「早」。"
+            )
+        if 9 <= hour < 12:
+            return (
+                "上午你精神还行，如果主动找对方多半是"
+                "想起某件具体的事、或者惦记着上次的某个话题。"
+            )
+        if 12 <= hour < 14:
+            return (
+                "中午吃饭的空档，你想随便扯两句——"
+                "可能就是问问对方吃了没，或者吐槽一下手头的事。"
+            )
+        if 14 <= hour < 17:
+            return (
+                "下午你有点犯困/无聊想摸鱼，"
+                "想找人说点轻松的、不费脑子的闲话。"
+            )
+        if 17 <= hour < 20:
+            return (
+                "傍晚你心情比较放松，"
+                "想分享今天的见闻、吐槽一下白天发生的事。"
+            )
+        if 20 <= hour < 23:
+            return (
+                "晚上是你最活跃的时段，"
+                "如果主动找对方多半是想正经聊聊、或者情绪到位想说点走心的。"
+            )
+        return (
+            "深夜了你还醒着，"
+            "想说点什么但又不至于太长——多半是临睡前的一句碎碎念。"
+        )
+
+    def _build_proactive_prompt(
+        self,
+        is_group: bool,
+        time_desc: str,
+        mood_text: str,
+        energy_text: str,
+        reply_gap: str,
+        incoming_gap: str,
+        incoming_silence: Optional[float],
+    ) -> str:
+        """构建主动发起对话的提示词
+
+        核心策略：
+        1. 明确告诉 AI "现在是主动发起，不是回复"
+        2. 注入真实时间感（沉默多久 / 话题已结束多久）
+        3. 注入真人主动搭话范式（few-shot）
+        4. 时段化搭话动机
+        5. 强约束：不要"接"最近一条消息、不要解释为什么突然说话
+        """
+        from datetime import datetime
+
+        hour = datetime.now().hour
+        motivation = self._get_proactive_motivation(hour)
+
+        # 距最后一条他人消息的"陈旧度"
+        if incoming_silence is None:
+            incoming_staleness_hint = (
+                "（群里/对方很久没说话了，可能是死群，要慎重新开话题）"
+            )
+        elif incoming_silence < 300:
+            incoming_staleness_hint = (
+                "——对方刚说完没多久，话题可能还热，但你要做的是「插话参与」而不是「回复」"
+            )
+        elif incoming_silence < 1800:
+            incoming_staleness_hint = (
+                "——话题还有点余温，但已经过去了，真人多半不会回头接"
+            )
+        elif incoming_silence < 7200:
+            incoming_staleness_hint = "——话题早就凉了，不要回头接"
+        else:
+            incoming_staleness_hint = "——已经是很久以前的话，绝对不要直接回应"
+
+        scene = "群聊" if is_group else "私聊"
+        other = "群里" if is_group else "对方"
+
+        prompt = (
+            f"现在是{time_desc}，你{mood_text}，{energy_text}。\n\n"
+            f"【时间感】\n"
+            f"- 距离你上次开口说话：{reply_gap}\n"
+            f"- 距离{other}最后一条消息：{incoming_gap} {incoming_staleness_hint}\n\n"
+            f"【任务定位：这是「主动发起」，不是「回复」】\n"
+            f"你现在身处{scene}，{motivation}\n"
+            f"你想主动开口说一句话——是「想起来要说点什么」的主动行为，不是在回应别人刚说的话。\n\n"
+            f"【真人主动搭话的本质特征（体会一下，不要背诵）】\n"
+            f"- 真人开口前，脑子里一定先闪过一个念头（可能是件事、一种情绪、一个画面、甚至只是个声音）\n"
+            f"- 这个念头不会每次都长得一样（今天可能是想起件旧事，明天可能是单纯睡不着）\n"
+            f"- 真人不会为了「开口」而开口；是因为「有个念头想说」才开口\n"
+            f"- 开头的那几个字，是念头自然溢出的结果，不是套公式\n\n"
+            f"【强约束】\n"
+            f"- 1~2 句话，简短、自然、口语化\n"
+            f"- 不要解释「为什么突然说话」（真人不会解释）\n"
+            f"- 不要回头接最后一条消息的内容（话题已经过去了）\n"
+            f"- 不要长篇大论、不要强行没话找话\n"
+            f"- **不要每次都用同一种方式开口**（真人不会每次都「对了」或都「突然想起」）\n"
+            f"- 如果实在没什么想说的，只输出「(沉默)」选择不说\n\n"
+            f"【下面的历史仅供你回忆上下文，禁止直接回应它们】\n"
+        )
+        return prompt
 
     async def _send_proactive_message(
         self, session_key: str, meta: Dict[str, str]
@@ -1869,31 +1964,15 @@ class Main(BaseModule):
             reply_gap = self._humanize_duration(reply_silence)
             incoming_gap = self._humanize_duration(incoming_silence)
 
-            # 构建主动发起的提示词（注入真实时间跨度）
-            proactive_prompt = (
-                f"现在是{time_desc}，你{mood_text}，{energy_text}。\n"
-                f"- 距离你上次发言：{reply_gap}\n"
-                f"- 距离{( '群里' if is_group else '对方')}最后一条消息：{incoming_gap}\n"
-            )
-            if is_group:
-                if last_incoming and incoming_silence is not None and incoming_silence < 1800:
-                    proactive_prompt += (
-                        "群里最近还挺热闹，你可以自然地插一句话参与进去。\n"
-                    )
-                else:
-                    proactive_prompt += (
-                        "群里最近比较安静。如果你想找话题，说一句简短自然的开场白就好，"
-                        "不要长篇大论、不要强行没话找话。"
-                        "如果实在没什么值得说的，可以只输出「(沉默)」选择不发送。\n"
-                    )
-            else:
-                proactive_prompt += (
-                    "你想主动找对方说点什么，说一句自然的开场白，不要太刻意。"
-                    "如果实在没什么好说的，可以只输出「(沉默)」选择不发送。\n"
-                )
-            proactive_prompt += (
-                "下面的历史消息每条前的【x分钟前/x小时前/x天前】是该消息的实际发送时间，"
-                "请据此判断话题是否还有时效性，避免提起已经过时的话题。"
+            # 构建主动发起的提示词（注入真实时间跨度 + 真人化搭话动机）
+            proactive_prompt = self._build_proactive_prompt(
+                is_group=is_group,
+                time_desc=time_desc,
+                mood_text=mood_text,
+                energy_text=energy_text,
+                reply_gap=reply_gap,
+                incoming_gap=incoming_gap,
+                incoming_silence=incoming_silence,
             )
 
             system_prompt = self._build_system_prompt(
@@ -1904,16 +1983,17 @@ class Main(BaseModule):
                 {"role": "system", "content": proactive_prompt},
             ]
 
-            # 注入带时间标注的历史（让 AI 感知每条消息的时间跨度）
+            # 注入历史：把时间标注升级为时效性标注，让 AI 真切感知"话题已结束"
             if detailed:
+                now_ts = time.time()
                 for msg in detailed[-5:]:
                     role = msg.get("role", "user")
                     content = msg.get("content", "")
-                    rel = self._relative_time_from_iso(
-                        msg.get("timestamp", ""), now
-                    )
-                    if rel:
-                        content = f"【{rel}】{content}"
+                    msg_ts_iso = msg.get("timestamp", "")
+                    msg_age = self._iso_to_age_seconds(msg_ts_iso, now_ts)
+                    label = self._format_history_label(msg_age, role)
+                    if label:
+                        content = f"{label} {content}".strip()
                     messages.append({"role": role, "content": content})
 
             response = await self.ai_engine.dialogue(messages)

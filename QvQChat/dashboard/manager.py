@@ -181,7 +181,7 @@ class DashboardManager:
                 js_content=js,
                 css_content=styles.STYLES,
                 loader="loadQvQChatView",
-                group="group_qvc",
+                group="qvq",
                 group_title="QvQChat",
                 group_title_en="QvQChat",
             )

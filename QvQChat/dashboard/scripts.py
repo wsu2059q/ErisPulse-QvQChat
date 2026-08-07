@@ -345,24 +345,14 @@ async function qvcLoadBasic() {
         moodHtml += qvcNumField('human_state.sleep_schedule.wake_time', '起床时间(时)', qvcGetPath(cfg, 'human_state.sleep_schedule.wake_time', 8));
         moodHtml += '</div>';
         moodHtml += qvcCheckField('human_state.proactive_message.enabled', '启用主动发起对话', qvcGetPath(cfg, 'human_state.proactive_message.enabled', false));
-        moodHtml += qvcCheckField('human_state.proactive_message.activity_aware', '活跃度感知（死群/单口相声时不主动发起）', qvcGetPath(cfg, 'human_state.proactive_message.activity_aware', true));
         moodHtml += '<div class="qvc-form-row">';
         moodHtml += qvcNumField('human_state.proactive_message.min_silence_hours', '最小沉寂小时', qvcGetPath(cfg, 'human_state.proactive_message.min_silence_hours', 6));
         moodHtml += qvcNumField('human_state.proactive_message.probability', '主动发起概率(0~1)', qvcGetPath(cfg, 'human_state.proactive_message.probability', 0.1));
         moodHtml += '</div>';
         moodHtml += '<div class="qvc-form-row">';
         moodHtml += qvcNumField('human_state.proactive_message.check_interval_minutes', '检查间隔(分钟)', qvcGetPath(cfg, 'human_state.proactive_message.check_interval_minutes', 30));
-        moodHtml += qvcNumField('human_state.proactive_message.dead_group_silence_hours', '死群阈值(小时)', qvcGetPath(cfg, 'human_state.proactive_message.dead_group_silence_hours', 24));
-        moodHtml += '</div>';
-        moodHtml += '<div class="qvc-form-row">';
-        moodHtml += qvcNumField('human_state.proactive_message.active_window_minutes', '活跃窗口(分钟)', qvcGetPath(cfg, 'human_state.proactive_message.active_window_minutes', 30));
         moodHtml += qvcNumField('human_state.proactive_message.max_per_day', '每日上限', qvcGetPath(cfg, 'human_state.proactive_message.max_per_day', 1));
         moodHtml += '</div>';
-        moodHtml += '<div class="qvc-form-row">';
-        moodHtml += qvcNumField('human_state.proactive_message.monologue_threshold', '单口相声阈值', qvcGetPath(cfg, 'human_state.proactive_message.monologue_threshold', 3));
-        moodHtml += qvcNumField('human_state.proactive_message.min_history_messages', '最少他人消息数', qvcGetPath(cfg, 'human_state.proactive_message.min_history_messages', 1));
-        moodHtml += '</div>';
-        moodHtml += qvcSlider('human_state.proactive_message.active_bonus_probability', '活跃群聊概率加成', qvcGetPath(cfg, 'human_state.proactive_message.active_bonus_probability', 0.1), 0, 1, 0.05);
         humHtml += qvcCollapse('情绪/精力/作息/主动发起', moodHtml, false);
 
         html += '<div class="qvc-subpanel" id="qvc-settings-humanize">' + humHtml + '</div>';
@@ -518,7 +508,7 @@ async function qvcSaveBasic() {
             var val;
             if (el.type === 'checkbox') {
                 val = el.checked;
-            } else if (el.type === 'number') {
+            } else if (el.type === 'number' || el.type === 'range') {
                 val = el.value === '' ? null : Number(el.value);
             } else {
                 val = el.value;
