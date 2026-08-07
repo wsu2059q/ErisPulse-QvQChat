@@ -229,3 +229,12 @@ class QvQI18n(BaseI18n):
         ja="ボットのニックネーム（呼ばれた時に応答）",
         ru="Никнеймы бота (отвечает при обращении)",
     )
+
+    cfg_pipeline: I18nKey = I18nKey(
+        default="Prompt pipeline settings",
+        zh_CN="注入管线设置",
+        zh_TW="注入管線設定",
+        en="Prompt pipeline settings",
+        ja="プロンプトパイプライン設定",
+        ru="Настройки пайплайна подсказок",
+    )

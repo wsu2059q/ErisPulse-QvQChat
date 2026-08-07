@@ -19,6 +19,7 @@ from ErisPulse.Core.Event import message
 
 from .config import QvQConfig, QvQConfigData
 from .I18n import QvQI18n
+from .pipeline import PromptContext, PromptPipeline, create_default_injectors
 from .agent.knowledge import KnowledgeBase
 from .agent.multi import MultiAgentManager
 from .agent.tools import MCPManager
@@ -95,6 +96,11 @@ class Main(BaseModule):
         self.message_sender = MessageSender(
             self.sdk.adapter, self.config.config, self.logger
         )
+
+        # 提示词注入管线
+        self.pipeline = PromptPipeline(self)
+        for inj in create_default_injectors(self):
+            self.pipeline.register(inj)
 
         # AI 启用状态
         self._ai_disabled: Dict[str, bool] = {}
@@ -1084,10 +1090,18 @@ class Main(BaseModule):
         try:
             history = await self.memory.get_session_history(user_id, group_id)
 
-            # 构建系统提示词
-            system_prompt = self._build_system_prompt(
-                user_id, group_id, user_input, user_nickname, group_name
+            # 构建系统提示词（通过注入管线）
+            ctx = PromptContext(
+                user_id=user_id,
+                group_id=group_id,
+                user_input=user_input,
+                user_nickname=user_nickname,
+                group_name=group_name,
+                platform=platform,
+                is_mentioned=is_mentioned,
+                is_group=group_id is not None,
             )
+            system_prompt = await self.pipeline.build(ctx)
 
             messages = []
             if system_prompt:
@@ -1099,14 +1113,6 @@ class Main(BaseModule):
             )
             if memory_ctx:
                 messages.append({"role": "system", "content": memory_ctx})
-
-            # 场景提示（含时间感知 + 情绪感知 + 被提及感知）
-            scene = self._build_scene_prompt(
-                user_nickname, group_id is not None, user_input, platform,
-                is_mentioned=is_mentioned,
-            )
-            if scene:
-                messages.append({"role": "system", "content": scene})
 
             # 添加历史
             messages.extend(history[-15:])
@@ -1317,70 +1323,6 @@ class Main(BaseModule):
         except Exception as e:
             self.logger.warning(f"发送图片失败: {image_path} - {e}")
 
-    def _build_system_prompt(
-        self,
-        user_id: str,
-        group_id: Optional[str],
-        user_input: str,
-        user_nickname: str,
-        group_name: str,
-    ) -> str:
-        """构建系统提示词（多智能体 + 知识库 + 行为提示词）"""
-        rules = (
-            self.behavior_manager.get_behavior_prompt("dialogue")
-            or "【回复格式规则】\n口语化、简短、不要用任何格式。"
-        )
-
-        # 多智能体：人格 + 行为规则
-        if self.config.get("multi_agent.enabled", True):
-            session_key = self.session.get_session_key(user_id, group_id)
-            agent_prompt = self.multi_agent.get_effective_prompt(session_key)
-            if agent_prompt:
-                prompt = agent_prompt + "\n\n" + rules
-                source = "多智能体+行为"
-            else:
-                prompt = "你是一个真实的普通人，不是AI助手。\n\n" + rules
-                source = "行为[默认]"
-        else:
-            prompt = "你是一个真实的普通人，不是AI助手。\n\n" + rules
-            source = "行为[默认]"
-
-        # 群配置覆盖
-        if group_id:
-            group_prompt = self.config.get_group_config(group_id).get(
-                "system_prompt", ""
-            )
-            if group_prompt:
-                prompt = group_prompt
-                source = f"群配置[{group_id}]"
-
-        # 知识库注入
-        kb_note = ""
-        if self.config.get("knowledge_base.enabled", True):
-            max_tokens = self.config.get("knowledge_base.max_context_tokens", 2000)
-            keyword = (
-                user_input
-                if self.config.get("knowledge_base.auto_search", True)
-                else None
-            )
-            kb_ctx = self.knowledge_base.build_context(
-                max_tokens=max_tokens, keyword=keyword
-            )
-            if kb_ctx:
-                prompt = (prompt + "\n\n" + kb_ctx) if prompt else kb_ctx
-                kb_note = " +知识库"
-
-        self.logger.info(f"提示词来源: {source}{kb_note} (共{len(prompt)}字符)")
-
-        # MCP 工具使用提示
-        if self.config.get("mcp.enabled", True) and self.mcp_manager.get_stats().get("total", 0) > 0:
-            prompt += (
-                "\n\n【工具使用】你可以调用工具查询信息。"
-                "获取足够信息后请用文字回复，不要持续调工具。"
-            )
-
-        return prompt
-
     async def _build_memory_context(
         self, user_id: str, history: List[Dict[str, str]], group_id: Optional[str],
         user_input: str = "",
@@ -1409,80 +1351,6 @@ class Main(BaseModule):
         except Exception:
             return ""
 
-    def _build_scene_prompt(
-        self, user_nickname: str, is_group: bool, user_input: str, platform: str,
-        is_mentioned: bool = False,
-    ) -> str:
-        """
-        构建场景提示
-
-        完全由行为系统驱动：遍历所有已启用的场景行为，
-        收集它们的提示词作为上下文。
-        用户可以自由开关时间感知、情绪感知等。
-        """
-        parts = []
-
-        # 场景上下文（不含身份声明-身份由智能体/行为提示词决定）
-        if is_group:
-            parts.append("当前在群聊中。")
-        else:
-            parts.append("当前在私聊中。")
-
-        if user_nickname:
-            parts.append(f"对方: {user_nickname}")
-
-        # 被提及感知（被@时注入提示词，让 AI 知道这是专门对自己说的）
-        if is_mentioned:
-            parts.append("【你被@了】对方专门@了你，这条消息是直接对你说的，请务必回复。")
-
-        # 情绪/精力状态感知
-        state_cfg = self.config.get("human_state", {})
-        if state_cfg.get("enabled", True) and self.config.get("humanize.mood_aware", True):
-            session_key = "global"
-            state = self._get_human_state(session_key)
-            mood_desc = self._mood_to_text(state["mood"])
-            energy_desc = self._energy_to_text(state["energy"])
-            parts.append(f"你现在的状态: {mood_desc}，{energy_desc}")
-
-        # 语音感知（如果语音功能启用 且 平台支持语音）
-        if self.config.get("voice.enabled", False) and self._platform_supports_voice(
-            platform
-        ):
-            parts.append(
-                "你已经启用了语音功能，这是真实的可用功能。"
-                '在回复中用 <|voice style="语气"|>文本<|/voice|> 格式就能发送语音。'
-                "style 可以用自然语言描述任何效果（欢快、撒娇、四川话等）。"
-            )
-
-        # 遍历所有已启用的场景行为
-        for behavior in self.behavior_manager.list_behaviors():
-            if not behavior.get("enabled", True):
-                continue
-            if behavior.get("behavior_type") != "scene":
-                continue
-
-            bid = behavior.get("id", "")
-            prompt = behavior.get("system_prompt", "")
-            if not prompt:
-                continue
-
-            # 特殊处理：时间感知行为需要填充当前时段
-            if bid == "time_aware":
-                time_desc = self._get_time_description()
-                parts.append(prompt % time_desc if "%s" in prompt else prompt)
-            else:
-                parts.append(prompt)
-
-        active_behaviors = [
-            b["id"]
-            for b in self.behavior_manager.list_behaviors()
-            if b.get("behavior_type") == "scene" and b.get("enabled", True)
-        ]
-        self.logger.info(
-            f"场景行为: {active_behaviors or '无'} | 语音: {'开' if self.config.get('voice.enabled', False) else '关'}"
-        )
-        return "\n".join(parts)
-
     @staticmethod
     def _platform_supports_voice(platform: str) -> bool:
         """检查平台是否支持语音发送"""
@@ -1490,27 +1358,6 @@ class Main(BaseModule):
             return "Voice" in sdk.adapter.list_sends(platform)
         except Exception:
             return False
-
-    @staticmethod
-    def _get_time_description() -> str:
-        """获取当前时段描述"""
-        from datetime import datetime
-
-        hour = datetime.now().hour
-        if 5 <= hour < 8:
-            return "清晨，你刚醒还有点迷糊"
-        elif 8 <= hour < 11:
-            return "上午，你精力充沛"
-        elif 11 <= hour < 13:
-            return "中午，你可能在吃饭"
-        elif 13 <= hour < 17:
-            return "下午，你有点困但还行"
-        elif 17 <= hour < 20:
-            return "傍晚，你心情不错比较放松"
-        elif 20 <= hour < 24:
-            return "晚上，你比较活跃"
-        else:
-            return "深夜，你有点困了但还在熬夜"
 
     async def _inject_images(
         self, messages: List[Dict[str, Any]], image_urls: List[str], user_input: str
@@ -1788,117 +1635,6 @@ class Main(BaseModule):
             tag = f"{mins / 1440:.1f}天前 · 已过时"
         return f"【{tag}】"
 
-    def _get_proactive_motivation(self, hour: int) -> str:
-        """按时段返回真人主动搭话的内在动机（用于让 AI 知道"为什么想说"）"""
-        if 0 <= hour < 6:
-            return (
-                "你睡不着（或被什么惊醒），脑子里乱糟糟的，"
-                "突然想找个人说点有的没的——多半是情绪化的、零碎的、私密的。"
-            )
-        if 6 <= hour < 9:
-            return (
-                "你刚醒没多久，还有点迷糊，"
-                "可能想分享一下梦境、或者就单纯跟对方打个招呼说「早」。"
-            )
-        if 9 <= hour < 12:
-            return (
-                "上午你精神还行，如果主动找对方多半是"
-                "想起某件具体的事、或者惦记着上次的某个话题。"
-            )
-        if 12 <= hour < 14:
-            return (
-                "中午吃饭的空档，你想随便扯两句——"
-                "可能就是问问对方吃了没，或者吐槽一下手头的事。"
-            )
-        if 14 <= hour < 17:
-            return (
-                "下午你有点犯困/无聊想摸鱼，"
-                "想找人说点轻松的、不费脑子的闲话。"
-            )
-        if 17 <= hour < 20:
-            return (
-                "傍晚你心情比较放松，"
-                "想分享今天的见闻、吐槽一下白天发生的事。"
-            )
-        if 20 <= hour < 23:
-            return (
-                "晚上是你最活跃的时段，"
-                "如果主动找对方多半是想正经聊聊、或者情绪到位想说点走心的。"
-            )
-        return (
-            "深夜了你还醒着，"
-            "想说点什么但又不至于太长——多半是临睡前的一句碎碎念。"
-        )
-
-    def _build_proactive_prompt(
-        self,
-        is_group: bool,
-        time_desc: str,
-        mood_text: str,
-        energy_text: str,
-        reply_gap: str,
-        incoming_gap: str,
-        incoming_silence: Optional[float],
-    ) -> str:
-        """构建主动发起对话的提示词
-
-        核心策略：
-        1. 明确告诉 AI "现在是主动发起，不是回复"
-        2. 注入真实时间感（沉默多久 / 话题已结束多久）
-        3. 注入真人主动搭话范式（few-shot）
-        4. 时段化搭话动机
-        5. 强约束：不要"接"最近一条消息、不要解释为什么突然说话
-        """
-        from datetime import datetime
-
-        hour = datetime.now().hour
-        motivation = self._get_proactive_motivation(hour)
-
-        # 距最后一条他人消息的"陈旧度"
-        if incoming_silence is None:
-            incoming_staleness_hint = (
-                "（群里/对方很久没说话了，可能是死群，要慎重新开话题）"
-            )
-        elif incoming_silence < 300:
-            incoming_staleness_hint = (
-                "——对方刚说完没多久，话题可能还热，但你要做的是「插话参与」而不是「回复」"
-            )
-        elif incoming_silence < 1800:
-            incoming_staleness_hint = (
-                "——话题还有点余温，但已经过去了，真人多半不会回头接"
-            )
-        elif incoming_silence < 7200:
-            incoming_staleness_hint = "——话题早就凉了，不要回头接"
-        else:
-            incoming_staleness_hint = "——已经是很久以前的话，绝对不要直接回应"
-
-        scene = "群聊" if is_group else "私聊"
-        other = "群里" if is_group else "对方"
-
-        prompt = (
-            f"现在是{time_desc}，你{mood_text}，{energy_text}。\n\n"
-            f"【时间感】\n"
-            f"- 距离你上次开口说话：{reply_gap}\n"
-            f"- 距离{other}最后一条消息：{incoming_gap} {incoming_staleness_hint}\n\n"
-            f"【任务定位：这是「主动发起」，不是「回复」】\n"
-            f"你现在身处{scene}，{motivation}\n"
-            f"你想主动开口说一句话——是「想起来要说点什么」的主动行为，不是在回应别人刚说的话。\n\n"
-            f"【真人主动搭话的本质特征（体会一下，不要背诵）】\n"
-            f"- 真人开口前，脑子里一定先闪过一个念头（可能是件事、一种情绪、一个画面、甚至只是个声音）\n"
-            f"- 这个念头不会每次都长得一样（今天可能是想起件旧事，明天可能是单纯睡不着）\n"
-            f"- 真人不会为了「开口」而开口；是因为「有个念头想说」才开口\n"
-            f"- 开头的那几个字，是念头自然溢出的结果，不是套公式\n\n"
-            f"【强约束】\n"
-            f"- 1~2 句话，简短、自然、口语化\n"
-            f"- 不要解释「为什么突然说话」（真人不会解释）\n"
-            f"- 不要回头接最后一条消息的内容（话题已经过去了）\n"
-            f"- 不要长篇大论、不要强行没话找话\n"
-            f"- **不要每次都用同一种方式开口**（真人不会每次都「对了」或都「突然想起」）\n"
-            f"- 如果实在没什么想说的，只输出「(沉默)」选择不说\n\n"
-            f"【下面的历史仅供你回忆上下文，禁止直接回应它们】\n"
-        )
-        return prompt
-
     async def _send_proactive_message(
         self, session_key: str, meta: Dict[str, str]
     ) -> None:
@@ -1926,31 +1662,23 @@ class Main(BaseModule):
             last_incoming = self.session.get_last_incoming_time(session_key)
             incoming_silence = now - last_incoming if last_incoming else None
 
-            time_desc = self._get_time_description()
-            state = self._get_human_state(session_key)
-            mood_text = self._mood_to_text(state["mood"])
-            energy_text = self._energy_to_text(state["energy"])
-
             reply_gap = self._humanize_duration(reply_silence)
             incoming_gap = self._humanize_duration(incoming_silence)
 
-            # 构建主动发起的提示词（注入真实时间跨度 + 真人化搭话动机）
-            proactive_prompt = self._build_proactive_prompt(
+            # 通过注入管线构建系统提示词（含 AI 时间叙述 + 主动发起上下文）
+            ctx = PromptContext(
+                user_id=user_id or target_id,
+                group_id=group_id,
+                platform=platform,
                 is_group=is_group,
-                time_desc=time_desc,
-                mood_text=mood_text,
-                energy_text=energy_text,
+                is_proactive=True,
                 reply_gap=reply_gap,
                 incoming_gap=incoming_gap,
-                incoming_silence=incoming_silence,
             )
+            system_prompt = await self.pipeline.build(ctx)
 
-            system_prompt = self._build_system_prompt(
-                user_id or target_id, group_id, "", "", ""
-            )
             messages: List[Dict[str, Any]] = [
                 {"role": "system", "content": system_prompt or "你是一个真实的普通人。"},
-                {"role": "system", "content": proactive_prompt},
             ]
 
             # 注入历史：把时间标注升级为时效性标注，让 AI 真切感知"话题已结束"

@@ -123,6 +123,14 @@ class QvQConfigData(BaseConfig):
         default_factory=lambda: {"enabled": True},
         metadata={"description": {"i18n": "QvQChat.cfg_multi_agent", "default": "多智能体设置"}, "ui": {"group": "advanced"}},
     )
+    pipeline: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "time_enabled": True,
+            "time_inject_probability": 0.7,
+            "time_cache_ttl": 3600,
+        },
+        metadata={"description": {"i18n": "QvQChat.cfg_pipeline", "default": "注入管线设置"}, "ui": {"group": "advanced"}},
+    )
     humanize: Dict[str, Any] = field(
         default_factory=lambda: {
             "typing_delay": True, "min_delay": 0.5, "max_delay": 5.0,
@@ -228,6 +236,11 @@ class QvQConfig:
                 "max_per_session": 2,
             },
             "multi_agent": {"enabled": True},
+            "pipeline": {
+                "time_enabled": True,
+                "time_inject_probability": 0.7,
+                "time_cache_ttl": 3600,
+            },
             "humanize": {
                 "typing_delay": True,
                 "min_delay": 0.5,
