@@ -94,11 +94,9 @@ class RenderManager:
 
         stylesheets = [css] if css else None
 
-        # 自动高度：测量内容高度（takumi 的 height 是裁切高度，不会自动撑高）
+        # 自动高度：height=None 让 takumi 按内容自动适配（不裁切）
         if self.config.get("render.auto_height", True):
-            measured = self._measure_height(takumi, html, stylesheets, width)
-            if measured:
-                height = measured + 16  # 底部留白保险
+            height = None
 
         kwargs = dict(
             html=html,
@@ -116,20 +114,6 @@ class RenderManager:
             return path
 
         self.logger.warning("Takumi 渲染返回空结果")
-        return None
-
-    def _measure_height(self, takumi, html: str, stylesheets, width: int) -> Optional[int]:
-        """用 measure_html 测量内容高度，失败返回 None"""
-        try:
-            measured = self._call_sync(
-                takumi, "measure_html", html=html, stylesheets=stylesheets,
-                width=width, lang="zh-CN",
-            )
-            h = getattr(measured, "height", None)
-            if h and int(h) > 0:
-                return int(h)
-        except Exception as e:
-            self.logger.debug(f"测量高度失败: {e}")
         return None
 
     @staticmethod
