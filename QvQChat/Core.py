@@ -432,6 +432,22 @@ class Main(BaseModule):
                 f"开始回复 - {session_desc} - {truncate_message(alt_message, 80)}"
             )
 
+            # 记忆意图拦截（记住/忘记指令，不消耗 AI）
+            intent_reply = await self.memory.handle_memory_intent(
+                user_id, alt_message, group_id
+            )
+            if intent_reply:
+                delay = _calc_typing_delay(intent_reply, self.config)
+                if delay > 0:
+                    await asyncio.sleep(delay)
+                await self._send_response(data, intent_reply, platform)
+                self._stats["total_replies"] += 1
+                self.session.update_last_reply_time(user_id, group_id)
+                self.logger.info(
+                    f"记忆指令拦截 - {session_desc} - {truncate_message(intent_reply, 60)}"
+                )
+                return
+
             # 独立输出行为检查（表情包/图片等，不消耗 AI）
             output_result = self._check_output_behaviors(
                 alt_message, user_id, group_id, user_nickname
@@ -1077,8 +1093,10 @@ class Main(BaseModule):
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
 
-            # 记忆上下文
-            memory_ctx = await self._build_memory_context(user_id, history, group_id)
+            # 记忆上下文（按当前消息相关性检索）
+            memory_ctx = await self._build_memory_context(
+                user_id, history, group_id, user_input
+            )
             if memory_ctx:
                 messages.append({"role": "system", "content": memory_ctx})
 
@@ -1364,27 +1382,30 @@ class Main(BaseModule):
         return prompt
 
     async def _build_memory_context(
-        self, user_id: str, history: List[Dict[str, str]], group_id: Optional[str]
+        self, user_id: str, history: List[Dict[str, str]], group_id: Optional[str],
+        user_input: str = "",
     ) -> str:
-        """构建记忆上下文"""
+        """构建记忆上下文（按相关性检索，替代旧的取最后N条）"""
         try:
-            user_memory = await self.memory.get_user_memory(user_id)
-            long_term = user_memory.get("long_term", [])
-            if not long_term:
+            result = await self.memory.retrieve_relevant(
+                user_id, user_input, group_id, top_k=8
+            )
+            user_mems = result.get("user", [])
+            sender_mems = result.get("sender", [])
+
+            if not user_mems and not sender_mems:
                 return ""
 
-            memories = [m["content"] for m in long_term[-10:]]
-            ctx = "你记得关于对方的事情:\n" + "\n".join(f"- {m}" for m in memories)
+            parts = []
+            if user_mems:
+                mem_lines = [f"- {m.get('content', '')}" for m in user_mems]
+                parts.append("你记得关于对方的事情:\n" + "\n".join(mem_lines))
 
-            if group_id:
-                group_memory = await self.memory.get_group_memory(group_id)
-                sender_mem = group_memory.get("sender_memory", {}).get(user_id, [])
-                if sender_mem:
-                    ctx += "\n\n你记得这个人说过的:\n" + "\n".join(
-                        f"- {m['content']}" for m in sender_mem[-5:]
-                    )
+            if sender_mems:
+                sender_lines = [f"- {m.get('content', '')}" for m in sender_mems]
+                parts.append("你记得这个人说过的:\n" + "\n".join(sender_lines))
 
-            return ctx
+            return "\n\n".join(parts)
         except Exception:
             return ""
 
@@ -1529,7 +1550,7 @@ class Main(BaseModule):
     async def _extract_memory_async(
         self, user_id: str, group_id: Optional[str]
     ) -> None:
-        """异步提取记忆（带并发控制 + 超时）"""
+        """异步提取记忆（带并发控制，委托给 MemoryExtractor）"""
         session_key = self.session.get_session_key(user_id, group_id)
 
         if Main._memory_locks.get(session_key):
@@ -1538,60 +1559,9 @@ class Main(BaseModule):
         Main._memory_locks[session_key] = True
 
         try:
-            history = await self.memory.get_session_history(user_id, group_id)
-            if len(history) < 4:
-                return
-
-            # 只取最近几轮对话，减少 prompt 大小（避免超时）
-            recent = history[-8:]
-            # 截断过长的单条消息
-            dialogue_lines = []
-            for m in recent:
-                content = m.get("content", "")
-                if len(content) > 200:
-                    content = content[:200] + "..."
-                role = "我" if m.get("role") == "assistant" else "对方"
-                dialogue_lines.append(f"{role}: {content}")
-            dialogue_text = "\n".join(dialogue_lines)
-
-            prompt = (
-                "从以下对话中提取值得长期记忆的关键信息"
-                "（个人信息、偏好、重要事件、关系等）。\n"
-                "如果没有值得记忆的就回复'无'。\n"
-                "每条记忆一行，用 - 开头。\n\n"
-                f"{dialogue_text}"
-            )
-
-            memory_timeout = float(self.config.get("memory.timeout", 60.0))
-            result = await asyncio.wait_for(
-                self.ai_engine.memory_process(prompt),
-                timeout=memory_timeout,
-            )
-
-            if result and result.strip() and result.strip() != "无":
-                lines = [
-                    line.strip().lstrip("-").strip()
-                    for line in result.split("\n")
-                    if line.strip() and line.strip() != "无"
-                ]
-                for line in lines:
-                    await self.memory.add_long_term_memory(user_id, line)
-                    if group_id:
-                        group_cfg = self.config.get_group_config(group_id)
-                        if group_cfg.get("memory_mode", "mixed") in (
-                            "mixed",
-                            "sender_only",
-                        ):
-                            await self.memory.add_group_memory(group_id, user_id, line)
-
-                self.logger.info(f"行为[memory]完成 - 提取{len(lines)}条记忆")
-            else:
-                self.logger.debug("行为[memory]完成 - 无值得记忆的内容")
-
-        except asyncio.TimeoutError:
-            self.logger.warning(f"行为[memory]超时({int(self.config.get('memory.timeout', 60.0))}s)，跳过")
+            await self.memory.extract_from_history(user_id, group_id)
         except Exception as e:
-            self.logger.debug(f"记忆提取跳过: {e}")
+            self.logger.debug(f"记忆提取异常: {e}")
         finally:
             Main._memory_locks[session_key] = False
 

@@ -145,6 +145,44 @@ class QvQI18n(BaseI18n):
         ru="Высокая активность темы ({heat:.2f}), AI-оценка",
     )
 
+    # ==================== 显式记忆指令 ====================
+
+    memory_explicit_saved: I18nKey = I18nKey(
+        default="Remembered: {content}",
+        zh_CN="记住了：{content}",
+        zh_TW="記住了：{content}",
+        en="Remembered: {content}",
+        ja="覚えました：{content}",
+        ru="Запомнено: {content}",
+    )
+
+    memory_explicit_duplicate: I18nKey = I18nKey(
+        default="I already have this noted",
+        zh_CN="这条我已经记过了",
+        zh_TW="這條我已經記過了",
+        en="I already have this noted",
+        ja="それは既に覚えています",
+        ru="Это уже записано",
+    )
+
+    memory_explicit_deleted: I18nKey = I18nKey(
+        default="Forgot {count} memory item(s) about \"{content}\"",
+        zh_CN="已忘记{count}条关于「{content}」的记忆",
+        zh_TW="已忘記{count}條關於「{content}」的記憶",
+        en="Forgot {count} memory item(s) about \"{content}\"",
+        ja="「{content}」に関する記憶を{count}件忘れました",
+        ru="Забыто {count} записей о «{content}»",
+    )
+
+    memory_explicit_not_found: I18nKey = I18nKey(
+        default="No memory found about \"{content}\"",
+        zh_CN="没有找到关于「{content}」的记忆",
+        zh_TW="沒有找到關於「{content}」的記憶",
+        en="No memory found about \"{content}\"",
+        ja="「{content}」に関する記憶は見つかりませんでした",
+        ru="Память о «{content}» не найдена",
+    )
+
     # ==================== 配置字段描述 ====================
 
     cfg_enabled: I18nKey = I18nKey(
