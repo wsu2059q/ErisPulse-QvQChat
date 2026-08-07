@@ -571,6 +571,115 @@ class QvQI18n(BaseI18n):
         ru="Состояние человека",
     )
 
+    tab_render: I18nKey = I18nKey(
+        default='Rendering',
+        zh_CN='渲染能力',
+        zh_TW='渲染能力',
+        en='Rendering',
+        ja='Rendering',
+        ru='Rendering',
+    )
+
+    render_available: I18nKey = I18nKey(
+        default='Rendering enabled',
+        zh_CN='渲染已启用',
+        zh_TW='渲染已启用',
+        en='Rendering enabled',
+        ja='Rendering enabled',
+        ru='Rendering enabled',
+    )
+
+    render_not_available: I18nKey = I18nKey(
+        default='Rendering unavailable (Takumi module required)',
+        zh_CN='渲染不可用（需安装 Takumi 模块）',
+        zh_TW='渲染不可用（需安装 Takumi 模块）',
+        en='Rendering unavailable (Takumi module required)',
+        ja='Rendering unavailable (Takumi module required)',
+        ru='Rendering unavailable (Takumi module required)',
+    )
+
+    render_no_templates: I18nKey = I18nKey(
+        default='No templates',
+        zh_CN='暂无模板',
+        zh_TW='暂无模板',
+        en='No templates',
+        ja='No templates',
+        ru='No templates',
+    )
+
+    badge_custom: I18nKey = I18nKey(
+        default='Custom',
+        zh_CN='自定义',
+        zh_TW='自定义',
+        en='Custom',
+        ja='Custom',
+        ru='Custom',
+    )
+
+    btn_edit: I18nKey = I18nKey(
+        default='Edit',
+        zh_CN='编辑',
+        zh_TW='编辑',
+        en='Edit',
+        ja='Edit',
+        ru='Edit',
+    )
+
+    btn_delete: I18nKey = I18nKey(
+        default='Delete',
+        zh_CN='删除',
+        zh_TW='删除',
+        en='Delete',
+        ja='Delete',
+        ru='Delete',
+    )
+
+    toast_render_load_failed: I18nKey = I18nKey(
+        default='Failed to load render config',
+        zh_CN='加载渲染配置失败',
+        zh_TW='加载渲染配置失败',
+        en='Failed to load render config',
+        ja='Failed to load render config',
+        ru='Failed to load render config',
+    )
+
+    toast_render_template_saved: I18nKey = I18nKey(
+        default='Template saved',
+        zh_CN='模板已保存',
+        zh_TW='模板已保存',
+        en='Template saved',
+        ja='Template saved',
+        ru='Template saved',
+    )
+
+    toast_render_template_deleted: I18nKey = I18nKey(
+        default='Template deleted',
+        zh_CN='模板已删除',
+        zh_TW='模板已删除',
+        en='Template deleted',
+        ja='Template deleted',
+        ru='Template deleted',
+    )
+
+    modal_render_template: I18nKey = I18nKey(
+        default='Render Template',
+        zh_CN='渲染模板',
+        zh_TW='渲染模板',
+        en='Render Template',
+        ja='Render Template',
+        ru='Render Template',
+    )
+
+    confirm_render_delete: I18nKey = I18nKey(
+        default='Delete this template?',
+        zh_CN='确定删除该模板？',
+        zh_TW='确定删除该模板？',
+        en='Delete this template?',
+        ja='Delete this template?',
+        ru='Delete this template?',
+    )
+
+
     ov_mood: I18nKey = I18nKey(
         default='情绪',
         zh_CN='情绪',

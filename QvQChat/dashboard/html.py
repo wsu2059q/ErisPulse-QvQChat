@@ -32,6 +32,9 @@ HTML = """
         <div class="qvc-tab" data-tab="pipeline" onclick="qvcTab('pipeline')">
             __ICON_SETTINGS__ <span id="qvc-tab-pipeline">注入管线</span>
         </div>
+        <div class="qvc-tab" data-tab="render" onclick="qvcTab('render')">
+            __ICON_TOOL__ <span id="qvc-tab-render">渲染能力</span>
+        </div>
         <div class="qvc-tab" data-tab="agents" onclick="qvcTab('agents')">
             __ICON_AGENTS__ <span id="qvc-tab-agents">多智能体</span>
         </div>
@@ -129,6 +132,19 @@ HTML = """
         </div>
         <div style="margin-top:16px;text-align:right">
             <button class="qvc-btn-sm primary" onclick="qvcSavePipeline()">__ICON_SAVE__ <span id="qvc-pipeline-save-label">保存</span></button>
+        </div>
+    </div>
+
+    <!-- 渲染能力面板 -->
+    <div class="qvc-panel" id="qvc-panel-render">
+        <div class="qvc-section-title">渲染模板</div>
+        <div class="qvc-desc">AI 可用 <span style="font-family:monospace">&lt;|render|&gt;</span> 标签渲染模板或自由 HTML 图片。需要已安装 Takumi 模块。</div>
+        <div id="qvc-render-status"></div>
+        <div style="margin-bottom:12px;text-align:right">
+            <button class="qvc-btn-sm primary" onclick="qvcRenderTemplateEdit(null)">__ICON_PLUS__ 添加模板</button>
+        </div>
+        <div id="qvc-render-list">
+            <div class="qvc-empty">正在加载...</div>
         </div>
     </div>
 

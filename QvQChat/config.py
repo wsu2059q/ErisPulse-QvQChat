@@ -131,6 +131,17 @@ class QvQConfigData(BaseConfig):
         },
         metadata={"description": {"i18n": "QvQChat.cfg_pipeline", "default": "注入管线设置"}, "ui": {"group": "advanced"}},
     )
+    render: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "enabled": True,
+            "inject_probability": 0.5,
+            "default_width": 800,
+            "default_height": 600,
+            "output_format": "png",
+            "save_dir": "data/QvQChat/renders",
+        },
+        metadata={"description": {"i18n": "QvQChat.cfg_render", "default": "渲染能力设置"}, "ui": {"group": "advanced"}},
+    )
     humanize: Dict[str, Any] = field(
         default_factory=lambda: {
             "typing_delay": True, "min_delay": 0.5, "max_delay": 5.0,
@@ -240,6 +251,14 @@ class QvQConfig:
                 "time_enabled": True,
                 "time_inject_probability": 0.7,
                 "time_cache_ttl": 3600,
+            },
+            "render": {
+                "enabled": True,
+                "inject_probability": 0.5,
+                "default_width": 800,
+                "default_height": 600,
+                "output_format": "png",
+                "save_dir": "data/QvQChat/renders",
             },
             "humanize": {
                 "typing_delay": True,

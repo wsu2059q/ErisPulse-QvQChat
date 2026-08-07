@@ -117,6 +117,19 @@ class DashboardManager:
         "pipeline.move_up": ("QvQChat.pipeline_move_up", "上移"),
         "pipeline.move_down": ("QvQChat.pipeline_move_down", "下移"),
 
+        "tab.render": ("QvQChat.tab_render", "渲染能力"),
+        "render.available": ("QvQChat.render_available", "渲染已启用"),
+        "render.not_available": ("QvQChat.render_not_available", "渲染不可用（需安装 Takumi 模块）"),
+        "render.no_templates": ("QvQChat.render_no_templates", "暂无模板"),
+        "badge.custom": ("QvQChat.badge_custom", "自定义"),
+        "btn.edit": ("QvQChat.btn_edit", "编辑"),
+        "btn.delete": ("QvQChat.btn_delete", "删除"),
+        "toast.render_load_failed": ("QvQChat.toast_render_load_failed", "加载渲染配置失败"),
+        "toast.render_template_saved": ("QvQChat.toast_render_template_saved", "模板已保存"),
+        "toast.render_template_deleted": ("QvQChat.toast_render_template_deleted", "模板已删除"),
+        "modal.render_template": ("QvQChat.modal_render_template", "渲染模板"),
+        "confirm.render_delete": ("QvQChat.confirm_render_delete", "确定删除该模板？"),
+
         "ov.mood": ("QvQChat.ov_mood", "情绪"),
         "ov.energy": ("QvQChat.ov_energy", "精力"),
         "toast.overview_failed": ("QvQChat.toast_overview_failed", "加载概览失败"),
@@ -357,6 +370,9 @@ class DashboardManager:
         ("/api/pipeline", "GET", "_api_get_pipeline"),
         ("/api/pipeline", "POST", "_api_save_pipeline"),
         ("/api/i18n", "GET", "_api_get_i18n"),
+        ("/api/render", "GET", "_api_get_render"),
+        ("/api/render/templates", "POST", "_api_save_render_template"),
+        ("/api/render/templates/delete", "POST", "_api_delete_render_template"),
     ]
 
     def __init__(self, core):
@@ -391,6 +407,10 @@ class DashboardManager:
     @property
     def pipeline(self):
         return self.core.pipeline
+
+    @property
+    def render_manager(self):
+        return self.core.render_manager
 
     @property
     def mcp_manager(self):
@@ -1519,7 +1539,7 @@ class DashboardManager:
             "enabled": state_cfg.get("enabled", True),
         }
 
-    # ----- 注入管线 -----
+    # ----- 注入管线 / 渲染 / i18n -----
 
     def _build_i18n_dict(self) -> Dict[str, str]:
         """构建前端 i18n 翻译字典（实时从框架 i18n 读取）"""
@@ -1534,6 +1554,44 @@ class DashboardManager:
     async def _api_get_i18n(self, request) -> Dict[str, Any]:
         """获取前端翻译字典（实时跟随框架语言切换）"""
         return self._build_i18n_dict()
+
+    # ----- 渲染能力 -----
+
+    async def _api_get_render(self, request) -> Dict[str, Any]:
+        """获取渲染状态 + 模板列表"""
+        try:
+            templates = self.render_manager.get_all_templates()
+            return {
+                "available": self.render_manager.is_available(),
+                "templates": templates,
+                "config": self.config.get("render", {}),
+            }
+        except Exception as e:
+            return {"available": False, "templates": [], "config": {}, "error": str(e)}
+
+    async def _api_save_render_template(self, request) -> Dict[str, Any]:
+        """保存/更新自定义渲染模板"""
+        try:
+            body = await self._parse_body(request)
+            name = body.get("name", "")
+            html = body.get("html", "")
+            css = body.get("css", "")
+            description = body.get("description", "")
+            if not name or not html:
+                return {"ok": False, "error": "模板名和 HTML 不能为空"}
+            self.render_manager.save_template(name, html, css, description)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    async def _api_delete_render_template(self, request) -> Dict[str, Any]:
+        try:
+            body = await self._parse_body(request)
+            name = body.get("name", "")
+            ok = self.render_manager.delete_template(name)
+            return {"ok": ok}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     async def _api_get_pipeline(self, request) -> Dict[str, Any]:
         """获取注入管线状态"""

@@ -28,6 +28,8 @@ from .chat.memory import QvQMemory
 from .chat.session import SessionManager
 from .chat.sticker import StickerManager
 from .dashboard import DashboardManager
+from .render import RenderManager
+from .render.injector import RenderInjector
 from .utils import MessageSender, get_session_description, truncate_message
 
 # ==================== 拟人化工具 ====================
@@ -97,10 +99,15 @@ class Main(BaseModule):
             self.sdk.adapter, self.config.config, self.logger
         )
 
+        # 渲染子系统（AI 渲染能力，软依赖 Takumi）
+        self.render_manager = RenderManager(self.config, self.logger)
+
         # 提示词注入管线
         self.pipeline = PromptPipeline(self)
         for inj in create_default_injectors(self):
             self.pipeline.register(inj)
+        # 注册渲染能力注入器
+        self.pipeline.register(RenderInjector(self))
 
         # AI 启用状态
         self._ai_disabled: Dict[str, bool] = {}
@@ -882,6 +889,11 @@ class Main(BaseModule):
         )
         response = re.sub(
             r"<\|\s*wait\s+time\s*=\s*[\"']?\d+[\"']?\s*>", "", response, flags=re.IGNORECASE
+        )
+        # 渲染标签 → 移除（防止 AI 学到渲染语法后在功能关闭时仍尝试）
+        response = re.sub(
+            r"<\|?\s*render\s*\|?>.*?<\|?\s*/\s*\|?\s*render\s*\|?>",
+            "", response, flags=re.IGNORECASE | re.DOTALL
         )
         # [img] / [sticker] BBCode 标签
         response = re.sub(
@@ -1787,8 +1799,30 @@ class Main(BaseModule):
                 "", response, flags=re.IGNORECASE
             ).strip()
 
-            # 纯表情包场景：只发了表情包没有文本，不发送空消息
-            if sent_sticker_count > 0 and not response:
+            # 渲染标签解析（AI 渲染能力）
+            sent_render_count = 0
+            if self.render_manager.is_available():
+                from .render.tag_parser import parse_render_tags, RENDER_TAG_RE
+                render_reqs = parse_render_tags(response)
+                for req in render_reqs:
+                    path = await self.render_manager.render(req)
+                    if path:
+                        await self._send_image(data, platform, path)
+                        sent_render_count += 1
+                        response = RENDER_TAG_RE.sub(
+                            "", response, count=1
+                        )
+                    else:
+                        # 渲染失败，保留标签内文本，移除标签语法
+                        response = RENDER_TAG_RE.sub(
+                            lambda m: m.group(1).strip(),
+                            response, count=1
+                        )
+                if sent_render_count > 0:
+                    response = response.strip()
+
+            # 纯表情包/纯渲染场景：只发了图片没有文本，不发送空消息
+            if response == "" and (sent_sticker_count > 0 or sent_render_count > 0):
                 return
 
             if response:
