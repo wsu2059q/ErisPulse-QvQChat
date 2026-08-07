@@ -134,7 +134,9 @@ class QvQConfigData(BaseConfig):
     render: Dict[str, Any] = field(
         default_factory=lambda: {
             "enabled": True,
+            "style_inject": True,
             "inject_probability": 0.5,
+            "auto_height": True,
             "default_width": 800,
             "default_height": 600,
             "output_format": "png",
@@ -254,7 +256,9 @@ class QvQConfig:
             },
             "render": {
                 "enabled": True,
+                "style_inject": True,
                 "inject_probability": 0.5,
+                "auto_height": True,
                 "default_width": 800,
                 "default_height": 600,
                 "output_format": "png",

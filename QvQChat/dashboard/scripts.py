@@ -971,69 +971,37 @@ async function qvcLoadRender() {
         } else {
             statusEl.innerHTML = '<div class="qvc-badge qvc-badge-ok">' + qvcT('render.available', '渲染已启用') + '</div>';
         }
-        var templates = data.templates || [];
-        var el = document.getElementById('qvc-render-list');
-        if (!templates.length) {
-            el.innerHTML = '<div class="qvc-empty">' + qvcT('render.no_templates', '暂无模板') + '</div>';
-        } else {
-            var html = '';
-            templates.forEach(function(t) {
-                var badge = t.builtin ? 'qvc-badge-off' : 'qvc-badge-ok';
-                var btext = t.builtin ? qvcT('badge.builtin', '内置') : qvcT('badge.custom', '自定义');
-                html += '<div class="qvc-list-item">' +
-                    '<div class="qvc-list-item-info">' +
-                        '<div class="qvc-list-item-title">' + qvcEsc(t.name) + ' <span class="qvc-badge ' + badge + '">' + btext + '</span></div>' +
-                        '<div class="qvc-list-item-desc">' + qvcEsc(t.description || '') + '</div>' +
-                    '</div>' +
-                    '<div class="qvc-list-item-actions">' +
-                        (t.builtin ? '' : '<button class="qvc-btn-sm" onclick="qvcRenderTemplateEdit(' + JSON.stringify(t.name) + ')">__ICON_EDIT__ ' + qvcT('btn.edit', '编辑') + '</button>') +
-                        (t.builtin ? '' : '<button class="qvc-btn-sm danger" onclick="qvcRenderTemplateDelete(' + JSON.stringify(t.name) + ')">__ICON_TRASH__ ' + qvcT('btn.delete', '删除') + '</button>') +
-                    '</div>' +
-                '</div>';
-            });
-            el.innerHTML = html;
-        }
+        var cfg = data.config || {};
+        var setEl = function(id, val) {
+            var el = document.getElementById(id);
+            if (el) el.checked = !!val;
+        };
+        setEl('qvc-render-enabled', cfg.enabled !== false);
+        setEl('qvc-render-style-inject', cfg.style_inject !== false);
+        setEl('qvc-render-auto-height', cfg.auto_height !== false);
+        var guide = document.getElementById('qvc-render-style-guide');
+        if (guide) guide.textContent = data.style_guide || '';
     } catch (e) {
         qvcToast(qvcT('toast.render_load_failed', '加载渲染配置失败') + ': ' + e.message, 'error');
     }
 }
 
-function qvcRenderTemplateEdit(name) {
-    // 仅支持自定义模板编辑（内置模板只读）
-    var fields = [
-        { name: 'name', label: '名称', type: 'text', value: name || '' },
-        { name: 'description', label: '描述', type: 'text', value: '' },
-        { name: 'html', label: 'HTML 模板（{参数} 占位符）', type: 'textarea', value: '' },
-        { name: 'css', label: 'CSS 样式', type: 'textarea', value: '' }
-    ];
-    qvcShowModal(qvcT('modal.render_template', '渲染模板'), fields, async function(data) {
-        try {
-            var resp = await qvcApi('/api/render/templates', 'POST', data);
-            if (resp.ok) {
-                qvcHideModal();
-                qvcToast(qvcT('toast.render_template_saved', '模板已保存'), 'ok');
-                qvcLoadRender();
-            } else {
-                qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + (resp.error || ''), 'error');
-            }
-        } catch (e) {
-            qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + e.message, 'error');
+async function qvcSaveRenderConfig() {
+    try {
+        var config = {
+            enabled: !!document.getElementById('qvc-render-enabled').checked,
+            style_inject: !!document.getElementById('qvc-render-style-inject').checked,
+            auto_height: !!document.getElementById('qvc-render-auto-height').checked
+        };
+        var resp = await qvcApi('/api/render/config', 'POST', config);
+        if (resp.ok) {
+            qvcToast(qvcT('toast.config_saved', '配置已保存'), 'ok');
+        } else {
+            qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + (resp.error || ''), 'error');
         }
-    });
-}
-
-function qvcRenderTemplateDelete(name) {
-    qvcConfirm(qvcT('confirm.render_delete', '确定删除该模板？'), async function() {
-        try {
-            var resp = await qvcApi('/api/render/templates/delete', 'POST', { name: name });
-            if (resp.ok) {
-                qvcToast(qvcT('toast.render_template_deleted', '模板已删除'), 'ok');
-                qvcLoadRender();
-            }
-        } catch (e) {
-            qvcToast(qvcT('toast.delete_failed', '删除失败') + ': ' + e.message, 'error');
-        }
-    });
+    } catch (e) {
+        qvcToast(qvcT('toast.save_failed', '保存失败') + ': ' + e.message, 'error');
+    }
 }
 
 // ==================== 多智能体 ====================

@@ -3,20 +3,20 @@
 
 负责：
 - 软依赖 ErisPulse-Takumi（通过 sdk.module.get("Takumi") 获取，未装则禁用）
-- 模板渲染（内置 + 自定义）
-- 自由 HTML 渲染
+- 自由 HTML 渲染（AI 用 <|render|> 标签提供 HTML+CSS）
+- 自动高度：用 measure_html 测量内容高度，避免被裁切
 - 输出保存到 data/QvQChat/renders/
 """
 
+import inspect
 import os
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ErisPulse import sdk
 
 from .tag_parser import RenderRequest
-from .templates import build_template_html, get_builtin_template, get_template_catalog_text
 
 
 class RenderManager:
@@ -28,7 +28,6 @@ class RenderManager:
         self.storage = sdk.storage
         self._takumi = None
         self._render_dir = self._ensure_render_dir()
-        self._custom_templates: Dict[str, Dict[str, Any]] = self._load_custom_templates()
 
     # ==================== 能力检测 ====================
 
@@ -51,10 +50,7 @@ class RenderManager:
         """渲染能力是否可用"""
         return bool(self.takumi) and self.config.get("render.enabled", True)
 
-    def list_available(self) -> bool:
-        return self.is_available()
-
-    # ==================== 目录与存储 ====================
+    # ==================== 目录 ====================
 
     def _ensure_render_dir(self) -> str:
         try:
@@ -67,7 +63,6 @@ class RenderManager:
             return os.path.join(os.getcwd(), "data", "QvQChat", "renders")
 
     def _save_output(self, image_bytes: bytes, ext: str = "png") -> str:
-        """保存渲染输出，返回文件路径"""
         if not os.path.exists(self._render_dir):
             os.makedirs(self._render_dir, exist_ok=True)
         fname = f"render_{int(time.time())}_{uuid.uuid4().hex[:6]}.{ext}"
@@ -75,64 +70,6 @@ class RenderManager:
         with open(path, "wb") as f:
             f.write(image_bytes)
         return path
-
-    # ==================== 模板管理 ====================
-
-    def _load_custom_templates(self) -> Dict[str, Dict[str, Any]]:
-        data = self.storage.get("QvQChat.render_templates", {})
-        return data if isinstance(data, dict) else {}
-
-    def _save_custom_templates(self) -> None:
-        self.storage.set("QvQChat.render_templates", self._custom_templates)
-
-    def get_template_names(self) -> List[str]:
-        from .templates import BUILTIN_TEMPLATES
-        return list(BUILTIN_TEMPLATES.keys()) + list(self._custom_templates.keys())
-
-    def get_all_templates(self) -> List[Dict[str, Any]]:
-        """返回所有模板（内置 + 自定义）"""
-        from .templates import BUILTIN_TEMPLATES
-        result = []
-        for name, tpl in BUILTIN_TEMPLATES.items():
-            result.append({
-                "name": name,
-                "description": tpl.get("description", ""),
-                "params": tpl.get("params", {}),
-                "builtin": True,
-                "html": tpl.get("html", ""),
-                "css": tpl.get("css", ""),
-            })
-        for name, tpl in self._custom_templates.items():
-            result.append({
-                "name": name,
-                "description": tpl.get("description", ""),
-                "params": tpl.get("params", {}),
-                "builtin": False,
-                "html": tpl.get("html", ""),
-                "css": tpl.get("css", ""),
-            })
-        return result
-
-    def save_template(self, name: str, html: str, css: str, description: str = "") -> None:
-        """保存/更新自定义模板"""
-        if not name or not html:
-            return
-        self._custom_templates[name] = {
-            "description": description or name,
-            "html": html,
-            "css": css,
-            "params": {},
-        }
-        self._save_custom_templates()
-        self.logger.info(f"保存自定义渲染模板: {name}")
-
-    def delete_template(self, name: str) -> bool:
-        """删除自定义模板"""
-        if name in self._custom_templates:
-            del self._custom_templates[name]
-            self._save_custom_templates()
-            return True
-        return False
 
     # ==================== 渲染 ====================
 
@@ -144,81 +81,85 @@ class RenderManager:
 
         takumi = self.takumi
         try:
-            if req.kind == "template":
-                html = self._build_template(req.template_name, req.params)
-                if not html:
-                    self.logger.warning(f"模板渲染失败: 未知模板 {req.template_name}")
-                    return None
-                css = self._get_template_css(req.template_name)
-                return await self._render_html(takumi, html, css)
-            else:
-                return await self._render_html(takumi, req.html, req.css)
+            return await self._render_html(takumi, req.html, req.css)
         except Exception as e:
             self.logger.warning(f"渲染失败: {e}")
             return None
 
-    def _build_template(self, name: str, params: Dict[str, Any]) -> Optional[str]:
-        """构建模板 HTML（内置 + 自定义）"""
-        if get_builtin_template(name):
-            return build_template_html(name, params)
-        tpl = self._custom_templates.get(name)
-        if not tpl:
-            return None
-        html = tpl.get("html", "")
-        for k, v in (params or {}).items():
-            html = html.replace("{" + k + "}", str(v))
-        return html
-
-    def _get_template_css(self, name: str) -> str:
-        tpl = get_builtin_template(name)
-        if tpl:
-            return tpl.get("css", "")
-        tpl = self._custom_templates.get(name)
-        return tpl.get("css", "") if tpl else ""
-
     async def _render_html(self, takumi, html: str, css: str) -> Optional[str]:
         """通过 Takumi 渲染 HTML → 保存 → 返回路径"""
         fmt = self.config.get("render.output_format", "png")
-        width = self.config.get("render.default_width", 800)
-        height = self.config.get("render.default_height", 600)
+        width = int(self.config.get("render.default_width", 800))
+        height = int(self.config.get("render.default_height", 600))
 
         stylesheets = [css] if css else None
 
-        try:
-            img_bytes = await takumi.render_html(
-                html,
-                stylesheets=stylesheets,
-                width=width,
-                height=height,
-                format=fmt,
-                lang="zh-CN",
-            )
-            if isinstance(img_bytes, bytes) and img_bytes:
-                path = self._save_output(img_bytes, fmt)
-                self.logger.info(f"渲染完成: {path}")
-                return path
-        except Exception as e:
-            self.logger.warning(f"Takumi 渲染异常: {e}")
+        # 自动高度：测量内容高度（takumi 的 height 是裁切高度，不会自动撑高）
+        if self.config.get("render.auto_height", True):
+            measured = self._measure_height(takumi, html, stylesheets, width)
+            if measured:
+                height = measured + 16  # 底部留白保险
 
-        # Takumi 模块可能是同步接口，尝试直接调用
-        try:
-            img_bytes = takumi.render_html(
-                html,
-                stylesheets=stylesheets,
-                width=width,
-                height=height,
-                format=fmt,
-                lang="zh-CN",
-            )
-            if isinstance(img_bytes, bytes) and img_bytes:
-                path = self._save_output(img_bytes, fmt)
-                self.logger.info(f"渲染完成(sync): {path}")
-                return path
-        except Exception as e:
-            self.logger.warning(f"Takumi 同步渲染异常: {e}")
+        kwargs = dict(
+            html=html,
+            stylesheets=stylesheets,
+            width=width,
+            height=height,
+            format=fmt,
+            lang="zh-CN",
+        )
 
+        img_bytes = self._call_sync(takumi, "render_html", **kwargs)
+        if isinstance(img_bytes, bytes) and img_bytes:
+            path = self._save_output(img_bytes, fmt)
+            self.logger.info(f"渲染完成: {path} ({width}x{height})")
+            return path
+
+        self.logger.warning("Takumi 渲染返回空结果")
         return None
 
-    def get_catalog_text(self) -> str:
-        """获取模板目录（供 AI 提示词注入）"""
-        return get_template_catalog_text()
+    def _measure_height(self, takumi, html: str, stylesheets, width: int) -> Optional[int]:
+        """用 measure_html 测量内容高度，失败返回 None"""
+        try:
+            measured = self._call_sync(
+                takumi, "measure_html", html=html, stylesheets=stylesheets,
+                width=width, lang="zh-CN",
+            )
+            h = getattr(measured, "height", None)
+            if h and int(h) > 0:
+                return int(h)
+        except Exception as e:
+            self.logger.debug(f"测量高度失败: {e}")
+        return None
+
+    @staticmethod
+    def _call_sync(obj, method: str, *args, **kwargs):
+        """调用 Takumi 模块方法（模块方法是同步的；若返回 awaitable 则同步执行）"""
+        fn = getattr(obj, method)
+        result = fn(*args, **kwargs)
+        if inspect.isawaitable(result):
+            import asyncio
+            try:
+                asyncio.get_running_loop()
+                raise RuntimeError(f"{method} 返回 awaitable，但已在异步上下文中")
+            except RuntimeError as e:
+                if "no running event loop" in str(e) or "No running event loop" in str(e):
+                    return asyncio.run(result)
+                raise
+        return result
+
+    # ==================== 风格建议 ====================
+
+    def get_style_guide(self) -> str:
+        """获取渲染风格建议（注入 AI 提示词，可在配置中关闭）"""
+        return (
+            "【渲染风格建议】使用 <|render|><div>内容</div>||css||CSS</|render|> "
+            "渲染图片时，遵循以下设计原则：\n"
+            "1. 配色：先定 2-4 个协调色（深底+高对比强调色，或浅底+柔和强调色），"
+            "用 hex 值。避免默认的米色底+陶土色衬线这类 AI 模板感。\n"
+            "2. 字体：用 Noto Sans SC；标题和正文区分字号/字重，排版有主次。\n"
+            "3. 布局：紧凑、留白克制；卡片用圆角+内边距；别堆砌装饰。\n"
+            "4. 文字必须用 HTML（div/span），绝不要用 SVG <text>（takumi 不渲染）。\n"
+            "5. 高度不要写死（会自动适配），长内容用分段/列表/醒目标题。\n"
+            "一句话：宁可简洁有风格，不要复杂没审美。"
+        )

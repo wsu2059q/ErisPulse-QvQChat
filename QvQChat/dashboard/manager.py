@@ -120,15 +120,9 @@ class DashboardManager:
         "tab.render": ("QvQChat.tab_render", "渲染能力"),
         "render.available": ("QvQChat.render_available", "渲染已启用"),
         "render.not_available": ("QvQChat.render_not_available", "渲染不可用（需安装 Takumi 模块）"),
-        "render.no_templates": ("QvQChat.render_no_templates", "暂无模板"),
-        "badge.custom": ("QvQChat.badge_custom", "自定义"),
         "btn.edit": ("QvQChat.btn_edit", "编辑"),
         "btn.delete": ("QvQChat.btn_delete", "删除"),
         "toast.render_load_failed": ("QvQChat.toast_render_load_failed", "加载渲染配置失败"),
-        "toast.render_template_saved": ("QvQChat.toast_render_template_saved", "模板已保存"),
-        "toast.render_template_deleted": ("QvQChat.toast_render_template_deleted", "模板已删除"),
-        "modal.render_template": ("QvQChat.modal_render_template", "渲染模板"),
-        "confirm.render_delete": ("QvQChat.confirm_render_delete", "确定删除该模板？"),
 
         "ov.mood": ("QvQChat.ov_mood", "情绪"),
         "ov.energy": ("QvQChat.ov_energy", "精力"),
@@ -371,8 +365,7 @@ class DashboardManager:
         ("/api/pipeline", "POST", "_api_save_pipeline"),
         ("/api/i18n", "GET", "_api_get_i18n"),
         ("/api/render", "GET", "_api_get_render"),
-        ("/api/render/templates", "POST", "_api_save_render_template"),
-        ("/api/render/templates/delete", "POST", "_api_delete_render_template"),
+        ("/api/render/config", "POST", "_api_save_render_config"),
     ]
 
     def __init__(self, core):
@@ -1558,38 +1551,24 @@ class DashboardManager:
     # ----- 渲染能力 -----
 
     async def _api_get_render(self, request) -> Dict[str, Any]:
-        """获取渲染状态 + 模板列表"""
+        """获取渲染状态 + 配置 + 风格建议预览"""
         try:
-            templates = self.render_manager.get_all_templates()
             return {
                 "available": self.render_manager.is_available(),
-                "templates": templates,
                 "config": self.config.get("render", {}),
+                "style_guide": self.render_manager.get_style_guide(),
             }
         except Exception as e:
-            return {"available": False, "templates": [], "config": {}, "error": str(e)}
+            return {"available": False, "config": {}, "style_guide": "", "error": str(e)}
 
-    async def _api_save_render_template(self, request) -> Dict[str, Any]:
-        """保存/更新自定义渲染模板"""
+    async def _api_save_render_config(self, request) -> Dict[str, Any]:
+        """保存渲染配置"""
         try:
             body = await self._parse_body(request)
-            name = body.get("name", "")
-            html = body.get("html", "")
-            css = body.get("css", "")
-            description = body.get("description", "")
-            if not name or not html:
-                return {"ok": False, "error": "模板名和 HTML 不能为空"}
-            self.render_manager.save_template(name, html, css, description)
+            if isinstance(body, dict):
+                for key, val in body.items():
+                    self.config.set(f"render.{key}", val)
             return {"ok": True}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    async def _api_delete_render_template(self, request) -> Dict[str, Any]:
-        try:
-            body = await self._parse_body(request)
-            name = body.get("name", "")
-            ok = self.render_manager.delete_template(name)
-            return {"ok": ok}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 

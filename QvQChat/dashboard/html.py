@@ -137,15 +137,24 @@ HTML = """
 
     <!-- 渲染能力面板 -->
     <div class="qvc-panel" id="qvc-panel-render">
-        <div class="qvc-section-title">渲染模板</div>
-        <div class="qvc-desc">AI 可用 <span style="font-family:monospace">&lt;|render|&gt;</span> 标签渲染模板或自由 HTML 图片。需要已安装 Takumi 模块。</div>
+        <div class="qvc-section-title">渲染能力</div>
+        <div class="qvc-desc">AI 可用 <span style="font-family:monospace">&lt;|render|&gt;</span> 标签渲染自由 HTML 图片。需要已安装 Takumi 模块。</div>
         <div id="qvc-render-status"></div>
-        <div style="margin-bottom:12px;text-align:right">
-            <button class="qvc-btn-sm primary" onclick="qvcRenderTemplateEdit(null)">__ICON_PLUS__ 添加模板</button>
+        <div class="qvc-section-title" style="margin-top:20px">设置</div>
+        <div class="qvc-form-group">
+            <label><input type="checkbox" id="qvc-render-enabled" class="qvc-checkbox-input"> 启用渲染能力</label>
         </div>
-        <div id="qvc-render-list">
-            <div class="qvc-empty">正在加载...</div>
+        <div class="qvc-form-group">
+            <label><input type="checkbox" id="qvc-render-style-inject" class="qvc-checkbox-input"> 注入风格建议到 AI 提示词</label>
         </div>
+        <div class="qvc-form-group">
+            <label><input type="checkbox" id="qvc-render-auto-height" class="qvc-checkbox-input"> 自动适配高度</label>
+        </div>
+        <div style="margin-top:16px;text-align:right">
+            <button class="qvc-btn-sm primary" onclick="qvcSaveRenderConfig()">__ICON_SAVE__ <span>保存设置</span></button>
+        </div>
+        <div class="qvc-section-title" style="margin-top:20px">风格建议预览</div>
+        <div id="qvc-render-style-guide" class="qvc-desc" style="white-space:pre-wrap;font-size:12px"></div>
     </div>
 
     <!-- 多智能体面板 -->

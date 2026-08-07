@@ -152,6 +152,15 @@ STYLES = r"""
     accent-color: var(--accent);
 }
 
+.qvc-checkbox-input {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    cursor: pointer;
+    accent-color: var(--accent);
+    vertical-align: middle;
+}
+
 /* ==================== 列表项 ==================== */
 .qvc-list-item {
     display: flex;

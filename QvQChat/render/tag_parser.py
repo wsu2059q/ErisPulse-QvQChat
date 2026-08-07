@@ -1,16 +1,15 @@
 """
 <|render|> 标签解析
 
-格式（AI 输出中内嵌）：
-- 模板渲染: <|render|>tpl:quote_card||text=你好||author=小明</|render|>
-- 自由 HTML: <|render|><div>你好</div>||css||.x{color:red}</|render|>
+格式（AI 输出中内嵌，只支持自由 HTML）：
+- <|render|><div>内容</div>||css||.x{color:red}</|render|>
 
 解析后返回 RenderRequest，交由 RenderManager 渲染。
 """
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 RENDER_TAG_RE = re.compile(
     r"<\|?\s*render\s*\|?>(.*?)<\|?\s*/\s*\|?\s*render\s*\|?>",
@@ -22,9 +21,6 @@ RENDER_TAG_RE = re.compile(
 class RenderRequest:
     """解析出的渲染请求"""
 
-    kind: str  # "template" | "html"
-    template_name: str = ""
-    params: Dict[str, str] = field(default_factory=dict)
     html: str = ""
     css: str = ""
 
@@ -43,29 +39,13 @@ def parse_render_tags(text: str) -> List[RenderRequest]:
 
 
 def _parse_content(content: str) -> Optional[RenderRequest]:
-    """解析标签内容"""
-    # 模板模式: tpl:名称||k=v||k2=v2
-    if content.startswith("tpl:"):
-        rest = content[4:].strip()
-        parts = rest.split("||")
-        name = parts[0].strip()
-        params = {}
-        for p in parts[1:]:
-            p = p.strip()
-            if "=" in p:
-                k, v = p.split("=", 1)
-                params[k.strip()] = v.strip()
-        if name:
-            return RenderRequest(kind="template", template_name=name, params=params)
-        return None
-
-    # 自由 HTML 模式: HTML 或 HTML||css||CSS
+    """解析标签内容（自由 HTML，可选 ||css|| 段）"""
     html = content
     css = ""
     if "||css||" in content:
         html, _, css = content.partition("||css||")
     if html.strip():
-        return RenderRequest(kind="html", html=html.strip(), css=css.strip())
+        return RenderRequest(html=html.strip(), css=css.strip())
     return None
 
 
