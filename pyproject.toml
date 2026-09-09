@@ -35,12 +35,12 @@ include = ["QvQChat*"]
 QvQChat = ["py.typed"]
 
 # uv 配置
-[tool.uv]
-dev-dependencies = [
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple"
+default = true
+
+[dependency-groups]
+dev = [
     "build>=1.0",
     "twine>=4.0",
 ]
-
-[[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-default = true
