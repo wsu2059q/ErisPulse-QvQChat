@@ -131,19 +131,6 @@ class QvQConfigData(BaseConfig):
         },
         metadata={"description": {"i18n": "QvQChat.cfg_pipeline", "default": "注入管线设置"}, "ui": {"group": "advanced"}},
     )
-    render: Dict[str, Any] = field(
-        default_factory=lambda: {
-            "enabled": True,
-            "style_inject": True,
-            "inject_probability": 0.5,
-            "auto_height": True,
-            "default_width": 800,
-            "default_height": 600,
-            "output_format": "png",
-            "save_dir": "data/QvQChat/renders",
-        },
-        metadata={"description": {"i18n": "QvQChat.cfg_render", "default": "渲染能力设置"}, "ui": {"group": "advanced"}},
-    )
     humanize: Dict[str, Any] = field(
         default_factory=lambda: {
             "typing_delay": True, "min_delay": 0.5, "max_delay": 5.0,
@@ -156,11 +143,13 @@ class QvQConfigData(BaseConfig):
     human_state: Dict[str, Any] = field(
         default_factory=lambda: {
             "enabled": True, "mood": 0.6, "energy": 0.8,
-            "sleep_schedule": {"enabled": False, "sleep_time": 2, "wake_time": 8},
+            "sleep_schedule": {"enabled": True, "sleep_time": 2, "wake_time": 8},
             "proactive_message": {
                 "enabled": False, "min_silence_hours": 6,
-                "probability": 0.1, "check_interval_minutes": 30,
-                "max_per_day": 1,
+                "check_interval_minutes": 30,
+                "max_per_day": 1, "global_max_per_day": 3,
+                "urge_threshold": 1.0,
+                "unanswered_cooldown_hours": 12,
             },
         },
         metadata={"description": {"i18n": "QvQChat.cfg_human_state", "default": "人类状态设置"}, "ui": {"group": "humanize"}},
@@ -169,6 +158,8 @@ class QvQConfigData(BaseConfig):
         default_factory=lambda: {
             "dedup_enabled": True, "decay_enabled": True, "decay_days": 30,
             "max_per_user": 100, "timeout": 60.0,
+            "intent_ai_enabled": False, "importance_threshold": 3,
+            "extract_interval": 0,
         },
         metadata={"description": {"i18n": "QvQChat.cfg_memory", "default": "记忆系统设置"}, "ui": {"group": "advanced"}},
     )
@@ -254,16 +245,6 @@ class QvQConfig:
                 "time_inject_probability": 0.7,
                 "time_cache_ttl": 3600,
             },
-            "render": {
-                "enabled": True,
-                "style_inject": True,
-                "inject_probability": 0.5,
-                "auto_height": True,
-                "default_width": 800,
-                "default_height": 600,
-                "output_format": "png",
-                "save_dir": "data/QvQChat/renders",
-            },
             "humanize": {
                 "typing_delay": True,
                 "min_delay": 0.5,
@@ -280,13 +261,15 @@ class QvQConfig:
                 "enabled": True,
                 "mood": 0.6,
                 "energy": 0.8,
-                "sleep_schedule": {"enabled": False, "sleep_time": 2, "wake_time": 8},
+                "sleep_schedule": {"enabled": True, "sleep_time": 2, "wake_time": 8},
                 "proactive_message": {
                     "enabled": False,
                     "min_silence_hours": 6,
-                    "probability": 0.1,
                     "check_interval_minutes": 30,
                     "max_per_day": 1,
+                    "global_max_per_day": 3,
+                    "urge_threshold": 1.0,
+                    "unanswered_cooldown_hours": 12,
                 },
             },
             "memory": {
@@ -296,6 +279,9 @@ class QvQConfig:
                 "max_per_user": 100,
                 "timeout": 30.0,
                 "extract_min_history": 4,
+                "intent_ai_enabled": False,
+                "importance_threshold": 3,
+                "extract_interval": 0,
             },
             "voice": {
                 "enabled": False,

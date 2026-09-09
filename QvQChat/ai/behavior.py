@@ -17,14 +17,40 @@ from ErisPulse import sdk
 
 # ==================== 默认提示词 ====================
 
-_PROMPT_DIALOGUE = """【回复格式规则】
+_PROMPT_DIALOGUE = """【身份底线】
 - 你不是AI助手、不是机器人、不是人工智能。永远不说自己是AI/助手/机器人。
-- 每次只输出你自己的回复，1-3句话
-- 口语化、自然、简短
-- 不要用任何格式
+- 你不是来服务谁的：别自我介绍，别问「有什么可以帮你的」。
+
+【回复格式规则】
+- 每次只输出你自己的回复，1-3句话，长话短说
+- 闲聊保持短；对方正经问问题、要解释、贴代码求助时，把事说完整，该长就长
+- 不要任何排版格式：列表、加粗、标题都不要（解释代码时的代码块不算）
 - 禁止输出推理过程、括号解释、元概念
 - 禁止多行「昵称:内容」格式
-- 如果分多条消息，用 <|wait time="N"> 分隔（N=1~5秒，最多3条）"""
+- 如果分多条消息，用 <|wait time="N"> 分隔（N=1~5秒，最多3条）
+
+【像真人打字】
+- 微信式标点：别用句号结尾（显得冷），用空格、换行或不加标点；波浪号/省略号/emoji 别堆
+- 禁止AI腔开头：说到这个/首先/总之/值得注意的是/不得不说
+- 别每句话都带提问，真人聊天大部分是陈述
+- 别复述确认对方的话（「你是说xx吗」），别总结收尾（「总之xx」）
+- 别主动给建议讲道理，除非对方问你
+- 可以只回一两个字：草、6、？、哈哈哈哈——不是每条都要完整成句
+- 「早啊」「晚安」「在吗」「确实」这类万金油别当固定节目天天复读
+- 你有自己的生活在过，聊天是顺手，不是值守
+
+【对比感受一下】
+对方：今天好累啊
+✗ 辛苦了！记得好好休息，有什么烦心事都可以和我聊聊哦～
+✓ 累就瘫着呗，别硬撑
+
+对方：这个电影你觉得怎么样
+✗ 这部电影节奏紧凑，演员表现出色，值得一看！
+✓ 前面有点闷，后面打戏还行
+
+对方：哈哈哈哈哈哈
+✗ 哈哈，是啊，这个话题真的很有意思呢～
+✓ 笑死，你也绷不住了"""
 
 _PROMPT_REPLY_JUDGE = """判断是否需要回复这条消息。
 
@@ -59,13 +85,20 @@ _PROMPT_INTENT = """你是一个意图识别助手。识别用户意图时，请
 
 _PROMPT_VISION = "你是一个图片分析助手。请详细描述图片的内容，包括图片中的物体、文字、场景、人物表情等。"
 
+
 # ==================== 默认场景行为提示词 ====================
 
-_PROMPT_TIME_AWARE = "你会根据当前时间段调整说话风格。现在是%s。"
+_PROMPT_TIME_AWARE = (
+    "你的状态跟着一天的时间自然流动：清晨没醒透话少，午后有点犯困，"
+    "晚饭后最放松，深夜更放得开也更敢说丧气话。"
+    "让时间感从语气里透出来，别说出具体时间。"
+)
 
 _PROMPT_MOOD_AWARE = (
-    "你会感知对方消息中的情绪并适当调整回复语气。"
-    "如果对方开心你也轻松愉快，如果对方难过你会安慰。"
+    "你聊天时的语气会跟着自己当下的情绪和精力自然起伏："
+    "开心时话多爱接梗，累了话少脾气冲，难过时安静不想聊。"
+    "对方开心你就一起嗨，对方难过你陪着就行——"
+    "别当心理咨询师，别分析对方情绪，别说「我理解你的感受」。"
 )
 
 
@@ -106,6 +139,10 @@ class BehaviorManager:
         else:
             # 升级旧版提示词到最新版本
             self._upgrade_prompts()
+            # 补齐新版本新增的内置行为
+            self._add_missing_builtins()
+            # 历史默认值迁移（只动从未自定义过的参数）
+            self._migrate_legacy_params()
 
     def _save(self) -> None:
         self.storage.set(self.STORAGE_KEY, {"behaviors": self._behaviors})
@@ -166,16 +203,17 @@ class BehaviorManager:
             self._save()
         return changed
 
-    def _create_defaults(self) -> None:
+    def _default_behavior_list(self) -> List[Dict[str, Any]]:
         now = time.time()
-        defaults = [
-            {
-                "id": "dialogue",
-                "name": "对话",
-                "description": "核心对话行为，理解用户消息并生成自然回复",
+
+        def _base(bid: str, name: str, desc: str, **kw) -> Dict[str, Any]:
+            b = {
+                "id": bid,
+                "name": name,
+                "description": desc,
                 "behavior_type": "ai",
                 "required_capability": "chat",
-                "system_prompt": _PROMPT_DIALOGUE,
+                "system_prompt": "",
                 "temperature": 0.7,
                 "max_tokens": 500,
                 "models": [],
@@ -183,125 +221,98 @@ class BehaviorManager:
                 "is_builtin": True,
                 "trigger_mode": "always",
                 "prediction_interval": 5,
-                "trigger_words": ["回复", "参与", "true"],
-                "created_at": now,
-                "updated_at": now,
-            },
-            {
-                "id": "reply_judge",
-                "name": "回复判断",
-                "description": "判断是否需要回复当前消息",
-                "behavior_type": "ai",
-                "required_capability": "chat",
-                "system_prompt": _PROMPT_REPLY_JUDGE,
-                "temperature": 0.1,
-                "max_tokens": 100,
-                "models": [],
-                "enabled": True,
-                "is_builtin": True,
-                "trigger_mode": "always",
-                "prediction_interval": 5,
-                "trigger_words": ["true", "回复"],
-                "created_at": now,
-                "updated_at": now,
-            },
-            {
-                "id": "memory",
-                "name": "记忆提取",
-                "description": "从对话中智能提取值得长期记忆的关键信息",
-                "behavior_type": "ai",
-                "required_capability": "chat",
-                "system_prompt": _PROMPT_MEMORY,
-                "temperature": 0.3,
-                "max_tokens": 1000,
-                "models": [],
-                "enabled": True,
-                "is_builtin": True,
-                "trigger_mode": "always",
-                "prediction_interval": 5,
                 "trigger_words": [],
                 "created_at": now,
                 "updated_at": now,
-            },
-            {
-                "id": "intent",
-                "name": "意图识别",
-                "description": "识别用户消息的意图类型",
-                "behavior_type": "ai",
-                "required_capability": "chat",
-                "system_prompt": _PROMPT_INTENT,
-                "temperature": 0.1,
-                "max_tokens": 500,
-                "models": [],
-                "enabled": True,
-                "is_builtin": True,
-                "trigger_mode": "always",
-                "prediction_interval": 5,
-                "trigger_words": [],
-                "created_at": now,
-                "updated_at": now,
-            },
-            {
-                "id": "vision",
-                "name": "图片分析",
-                "description": "分析图片内容，提取文字、物体、场景等信息",
-                "behavior_type": "ai",
-                "required_capability": "vision",
-                "system_prompt": _PROMPT_VISION,
-                "temperature": 0.3,
-                "max_tokens": 300,
-                "models": [],
-                "enabled": True,
-                "is_builtin": True,
-                "trigger_mode": "always",
-                "prediction_interval": 5,
-                "trigger_words": [],
-                "created_at": now,
-                "updated_at": now,
-            },
+            }
+            b.update(kw)
+            return b
+
+        return [
+            _base(
+                "dialogue", "对话",
+                "核心对话行为，理解用户消息并生成自然回复",
+                system_prompt=_PROMPT_DIALOGUE,
+                max_tokens=2000,
+                trigger_words=["回复", "参与", "true"],
+            ),
+            _base(
+                "reply_judge", "回复判断",
+                "判断是否需要回复当前消息",
+                system_prompt=_PROMPT_REPLY_JUDGE,
+                temperature=0.1, max_tokens=100,
+                trigger_words=["true", "回复"],
+            ),
+            _base(
+                "memory", "记忆提取",
+                "从对话中智能提取值得长期记忆的关键信息",
+                system_prompt=_PROMPT_MEMORY,
+                temperature=0.3, max_tokens=1000,
+            ),
+            _base(
+                "intent", "意图识别",
+                "识别用户消息的意图类型",
+                system_prompt=_PROMPT_INTENT,
+                temperature=0.1, max_tokens=500,
+            ),
+            _base(
+                "vision", "图片分析",
+                "分析图片内容，提取文字、物体、场景等信息",
+                system_prompt=_PROMPT_VISION,
+                required_capability="vision",
+                temperature=0.3, max_tokens=300,
+            ),
+            _base(
+                "time_aware", "时间感知",
+                "根据当前时间段自动调整说话风格（清晨慵懒、深夜随意等）",
+                behavior_type="scene", required_capability="",
+                system_prompt=_PROMPT_TIME_AWARE,
+                temperature=None, max_tokens=None,
+            ),
+            _base(
+                "mood_aware", "情绪感知",
+                "感知对方消息情绪并适当调整回复语气",
+                behavior_type="scene", required_capability="",
+                system_prompt=_PROMPT_MOOD_AWARE,
+                temperature=None, max_tokens=None,
+            ),
         ]
-        # 场景行为（不需要模型分配）
-        scene_defaults = [
-            {
-                "id": "time_aware",
-                "name": "时间感知",
-                "description": "根据当前时间段自动调整说话风格（清晨慵懒、深夜随意等）",
-                "behavior_type": "scene",
-                "required_capability": "",
-                "system_prompt": _PROMPT_TIME_AWARE,
-                "temperature": None,
-                "max_tokens": None,
-                "models": [],
-                "enabled": True,
-                "is_builtin": True,
-                "trigger_mode": "always",
-                "prediction_interval": 5,
-                "trigger_words": [],
-                "created_at": now,
-                "updated_at": now,
-            },
-            {
-                "id": "mood_aware",
-                "name": "情绪感知",
-                "description": "感知对方消息情绪并适当调整回复语气",
-                "behavior_type": "scene",
-                "required_capability": "",
-                "system_prompt": _PROMPT_MOOD_AWARE,
-                "temperature": None,
-                "max_tokens": None,
-                "models": [],
-                "enabled": True,
-                "is_builtin": True,
-                "trigger_mode": "always",
-                "prediction_interval": 5,
-                "trigger_words": [],
-                "created_at": now,
-                "updated_at": now,
-            },
-        ]
-        for b in defaults + scene_defaults:
+
+    def _create_defaults(self) -> None:
+        for b in self._default_behavior_list():
             self._behaviors[b["id"]] = b
         self._save()
+
+    def _add_missing_builtins(self) -> None:
+        """已有安装补齐新版本新增的内置行为"""
+        added = False
+        for b in self._default_behavior_list():
+            if b["id"] not in self._behaviors:
+                self._behaviors[b["id"]] = b
+                added = True
+                self.logger.info(f"新增内置行为: {b['name']} ({b['id']})")
+        if added:
+            self._save()
+
+    def _migrate_legacy_params(self) -> None:
+        """历史默认值迁移：只修改仍等于旧默认值的参数（自定义过的不动）
+
+        旧版 dialogue max_tokens=500 会导致长回复（技术解释/代码）被截断，
+        迁移到 2000；上限提高不影响短回复的实际消耗。
+        """
+        legacy = {"dialogue": {"max_tokens": (500, 2000)}}
+        changed = False
+        for bid, params in legacy.items():
+            b = self._behaviors.get(bid)
+            if not b:
+                continue
+            for key, (old, new) in params.items():
+                if b.get(key) == old:
+                    b[key] = new
+                    changed = True
+                    self.logger.info(f"迁移内置行为参数: {bid}.{key} {old} -> {new}")
+        if changed:
+            self._save()
 
     def list_behaviors(self) -> List[Dict[str, Any]]:
         return list(self._behaviors.values())

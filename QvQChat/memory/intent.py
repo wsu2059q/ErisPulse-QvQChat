@@ -63,7 +63,14 @@ class IntentRouter:
             return result
 
         # AI 意图分类（走行为系统，有短超时保护防止阻塞）
-        if self.ai_engine and self.ai_engine.is_available("intent"):
+        # 默认关闭（memory.intent_ai_enabled=false），正则已覆盖明确指令；
+        # 开启后每条非正则命中的消息都会增加一次 AI 调用延迟。
+        ai_enabled = (
+            bool(self.config.get("memory.intent_ai_enabled", False))
+            if self.config
+            else False
+        )
+        if ai_enabled and self.ai_engine and self.ai_engine.is_available("intent"):
             result = await self._ai_classify(user_id, message, group_id)
             if result:
                 return result

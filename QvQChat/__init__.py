@@ -7,11 +7,12 @@ QvQChat - 智能对话模块
 - 知识库自动注入
 - MCP 工具（stdio 服务器 + HTTP 端点）
 - 表情包系统（用户上传，AI 自主选择发送）
+- 冲动值驱动的主动发起（睡眠作息联动）
 - Dashboard 全功能管理面板
 - 预测模式（低token模式）
 """
 
 from .Core import Main
 
-__version__ = "3.0.0"
+__version__ = "3.2.0"
 __all__ = ["Main"]

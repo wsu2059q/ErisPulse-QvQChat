@@ -423,13 +423,18 @@ async function qvcLoadBasic() {
         moodHtml += qvcNumField('human_state.sleep_schedule.wake_time', '起床时间(时)', qvcGetPath(cfg, 'human_state.sleep_schedule.wake_time', 8));
         moodHtml += '</div>';
         moodHtml += qvcCheckField('human_state.proactive_message.enabled', '启用主动发起对话', qvcGetPath(cfg, 'human_state.proactive_message.enabled', false));
+        moodHtml += '<p style="font-size:12px;color:var(--tx-s);margin:0 0 10px">冲动值驱动：聊天越热闹越想开口，沉寂达到门槛且冲动攒够才说话，宁可沉默不尬聊。</p>';
         moodHtml += '<div class="qvc-form-row">';
         moodHtml += qvcNumField('human_state.proactive_message.min_silence_hours', '最小沉寂小时', qvcGetPath(cfg, 'human_state.proactive_message.min_silence_hours', 6));
-        moodHtml += qvcNumField('human_state.proactive_message.probability', '主动发起概率(0~1)', qvcGetPath(cfg, 'human_state.proactive_message.probability', 0.1));
+        moodHtml += qvcNumField('human_state.proactive_message.urge_threshold', '冲动值门槛', qvcGetPath(cfg, 'human_state.proactive_message.urge_threshold', 1.0));
         moodHtml += '</div>';
         moodHtml += '<div class="qvc-form-row">';
         moodHtml += qvcNumField('human_state.proactive_message.check_interval_minutes', '检查间隔(分钟)', qvcGetPath(cfg, 'human_state.proactive_message.check_interval_minutes', 30));
-        moodHtml += qvcNumField('human_state.proactive_message.max_per_day', '每日上限', qvcGetPath(cfg, 'human_state.proactive_message.max_per_day', 1));
+        moodHtml += qvcNumField('human_state.proactive_message.max_per_day', '单会话每日上限', qvcGetPath(cfg, 'human_state.proactive_message.max_per_day', 1));
+        moodHtml += '</div>';
+        moodHtml += '<div class="qvc-form-row">';
+        moodHtml += qvcNumField('human_state.proactive_message.global_max_per_day', '全局每日上限', qvcGetPath(cfg, 'human_state.proactive_message.global_max_per_day', 3));
+        moodHtml += qvcNumField('human_state.proactive_message.unanswered_cooldown_hours', '没人理冷却(小时)', qvcGetPath(cfg, 'human_state.proactive_message.unanswered_cooldown_hours', 12));
         moodHtml += '</div>';
         humHtml += qvcCollapse('情绪/精力/作息/主动发起', moodHtml, false);
 

@@ -46,6 +46,13 @@ class SessionManager:
         self._last_incoming: Dict[str, float] = {}          # session_key -> 最后一条他人消息时间
         self._proactive_count: Dict[str, int] = {}          # session_key -> 今日主动发起次数
         self._proactive_count_date: Dict[str, str] = {}     # session_key -> 计数对应的日期
+        self._last_proactive: Dict[str, float] = {}         # session_key -> 上次主动发起时间
+
+        # 冲动值（主动发起的内驱力：聊天越热越想说话，随时间自然消退）
+        self._urge: Dict[str, float] = {}                   # session_key -> 冲动值
+        self._urge_ts: Dict[str, float] = {}                # session_key -> 上次累积时间
+        self._global_proactive_count: int = 0               # 今日全局主动发起次数
+        self._global_proactive_date: str = ""
 
     # ==================== 会话标识 ====================
 
@@ -312,11 +319,20 @@ class SessionManager:
     # ==================== 主动发起对话支持 ====================
 
     def update_last_incoming(self, session_key: str) -> None:
-        """记录该会话收到一条他人消息的时间（用于活跃度判断）"""
+        """
+        记录会话最后一条他人消息时间
+
+        :param session_key: 会话标识
+        """
         self._last_incoming[session_key] = time.time()
 
     def get_last_incoming_time(self, session_key: str) -> float:
-        """获取该会话最后一条他人消息的时间（无记录返回0）"""
+        """
+        获取会话最后一条他人消息时间
+
+        :param session_key: 会话标识
+        :return: float Unix 时间戳，无记录返回 0
+        """
         # 优先用 _last_incoming（覆盖群聊+私聊）
         t = self._last_incoming.get(session_key, 0)
         if t > 0:
@@ -328,7 +344,13 @@ class SessionManager:
         return 0
 
     def check_proactive_daily_limit(self, session_key: str, max_per_day: int) -> bool:
-        """检查今日主动发起次数是否已达上限"""
+        """
+        检查会话今日主动发起次数是否已达上限（按自然日计数）
+
+        :param session_key: 会话标识
+        :param max_per_day: 每日上限次数
+        :return: bool 未达上限返回 True
+        """
         from datetime import datetime
 
         today = datetime.now().strftime("%Y-%m-%d")
@@ -338,10 +360,145 @@ class SessionManager:
         return self._proactive_count.get(session_key, 0) < max_per_day
 
     def increment_proactive_count(self, session_key: str) -> None:
-        """主动发起成功后递增计数"""
+        """
+        会话主动发起计数递增
+
+        :param session_key: 会话标识
+        """
         self._proactive_count[session_key] = (
             self._proactive_count.get(session_key, 0) + 1
         )
+
+    def check_global_proactive_limit(self, max_per_day: int) -> bool:
+        """
+        检查今日全局主动发起次数是否已达上限（按自然日计数）
+
+        :param max_per_day: 每日全局上限次数
+        :return: bool 未达上限返回 True
+        """
+        from datetime import datetime
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self._global_proactive_date != today:
+            self._global_proactive_date = today
+            self._global_proactive_count = 0
+        return self._global_proactive_count < max_per_day
+
+    def increment_global_proactive(self) -> None:
+        """全局主动发起计数递增"""
+        self._global_proactive_count += 1
+
+    # ==================== 冲动值 ====================
+
+    # 冲动值半衰期（秒）
+    URGE_HALF_LIFE = 7200.0
+    # 冲动值上限
+    URGE_MAX = 2.0
+
+    def _decayed_urge(self, session_key: str, now: float) -> float:
+        """
+        {!--< internal-use >!--} 计算按半衰期衰减后的冲动值
+
+        :param session_key: 会话标识
+        :param now: 当前 Unix 时间戳
+        :return: float 衰减后的冲动值
+        """
+        urge = self._urge.get(session_key, 0.0)
+        ts = self._urge_ts.get(session_key, 0)
+        if urge <= 0 or ts <= 0:
+            return max(urge, 0.0)
+        elapsed = now - ts
+        if elapsed <= 0:
+            return urge
+        return urge * (0.5 ** (elapsed / self.URGE_HALF_LIFE))
+
+    def add_urge(self, session_key: str, message: str) -> float:
+        """
+        根据新消息累积会话冲动值（主动发起的内驱力指标）
+
+        权重：基础 0.06；提问 +0.12；感叹号 +0.05；长消息(>=20字) +0.04。
+        触发阈值为 1.0，由 human_state.proactive_message.urge_threshold 配置。
+
+        :param session_key: 会话标识
+        :param message: 消息文本
+        :return: float 累积后的冲动值（上限 2.0）
+        """
+        now = time.time()
+        urge = self._decayed_urge(session_key, now)
+
+        t = (message or "").strip()
+        if t:
+            urge += 0.06
+            if self._is_question(t):
+                urge += 0.12
+            if "!" in t or "！" in t:
+                urge += 0.05
+            if len(t) >= 20:
+                urge += 0.04
+
+        urge = min(urge, self.URGE_MAX)
+        self._urge[session_key] = urge
+        self._urge_ts[session_key] = now
+        return urge
+
+    def get_urge(self, session_key: str) -> float:
+        """
+        获取会话当前冲动值（含时间衰减）
+
+        :param session_key: 会话标识
+        :return: float 当前冲动值
+        """
+        return self._decayed_urge(session_key, time.time())
+
+    def reset_urge(self, session_key: str) -> None:
+        """
+        冲动值清零（主动发送成功后调用）
+
+        :param session_key: 会话标识
+        """
+        self._urge[session_key] = 0.0
+        self._urge_ts[session_key] = time.time()
+
+    def decay_urge(self, session_key: str, factor: float = 0.5) -> None:
+        """
+        冲动值按系数衰减（AI 选择沉默后调用，避免下一轮检查立即重复触发）
+
+        :param session_key: 会话标识
+        :param factor: 衰减系数，0~1
+        """
+        now = time.time()
+        urge = self._decayed_urge(session_key, now) * factor
+        self._urge[session_key] = urge
+        self._urge_ts[session_key] = now
+
+    def mark_proactive_sent(self, session_key: str) -> None:
+        """
+        记录主动发起时间（未回复冷却的判断依据）
+
+        :param session_key: 会话标识
+        """
+        self._last_proactive[session_key] = time.time()
+
+    def is_proactive_pending_reply(
+        self, session_key: str, cooldown_hours: float
+    ) -> bool:
+        """
+        判断上次主动发起是否仍未被回复且处于冷却期内
+
+        主动消息发出后无任何来消息视为未回复，冷却期内该会话不再
+        参与主动发起；期间对方有来消息则不冷却。
+
+        :param session_key: 会话标识
+        :param cooldown_hours: 冷却时长（小时）
+        :return: bool 处于冷却期返回 True
+        """
+        sent_at = self._last_proactive.get(session_key, 0)
+        if not sent_at:
+            return False
+        last_incoming = self.get_last_incoming_time(session_key)
+        if last_incoming > sent_at:
+            return False
+        return time.time() - sent_at < cooldown_hours * 3600
 
     # ==================== 预测模式 ====================
 

@@ -5,6 +5,7 @@ AI 客户端封装
 """
 
 import asyncio
+import json
 from typing import Any, Dict, List, Optional
 
 from openai import APIError, APITimeoutError, AsyncOpenAI, RateLimitError
@@ -51,17 +52,20 @@ class AIClient:
         """
         发送聊天请求
 
-        Args:
-            messages: 消息列表
-            temperature: 温度覆盖
-            max_tokens: 最大token覆盖
-            timeout: 超时秒数
-            tools: 工具定义列表
-            model: 模型名覆盖
-            system_prompt: 系统提示词覆盖
+        连续 system 消息会合并为单条（部分 API 如 SiliconFlow 仅允许一条）。
 
-        Returns:
-            AI回复字符串，或包含 tool_calls 的 message 对象
+        :param messages: OpenAI 格式消息列表
+        :param temperature: [float] 采样温度 (默认: 配置值 0.7)
+        :param max_tokens: [int] 补全上限 (默认: 配置值 2000)
+        :param timeout: [float] 请求超时秒数 (默认: 60)
+        :param tools: [List[Dict]] OpenAI 格式工具定义
+        :param model: [str] 模型名覆盖 (默认: 配置值)
+        :param system_prompt: [str] 系统提示词，非空时插入消息首部
+        :return: str AI 回复文本（空回复归一化为空串）；模型返回 tool_calls 时
+            返回原始 message 对象，由调用方执行工具
+        :raises APITimeoutError: 请求超时
+        :raises RateLimitError: 触发 API 限流
+        :raises APIError: 其他 API 错误
         """
         if not self.client:
             raise RuntimeError("AI客户端未初始化")
@@ -120,6 +124,17 @@ class AIClient:
                     f"--- system[{i}] ({len(sm['content'])}字符) ---\n{sm['content'][:500]}"
                 )
 
+            # 输出最后一条 user 消息（调试用，确认上下文是否真的传给模型）
+            user_msgs = [m for m in use_messages if m.get("role") == "user"]
+            if user_msgs:
+                um = user_msgs[-1]
+                ucontent = um.get("content", "")
+                if isinstance(ucontent, list):
+                    ucontent = json.dumps(ucontent, ensure_ascii=False)
+                self.logger.debug(
+                    f"--- user[-1] ({len(ucontent)}字符) ---\n{ucontent[:500]}"
+                )
+
             response = await asyncio.wait_for(
                 self.client.chat.completions.create(**kwargs),
                 timeout=timeout,
@@ -127,11 +142,18 @@ class AIClient:
 
             message = response.choices[0].message
 
-            # 处理 tool_calls
+            # 含 tool_calls 时返回原始 message 对象，由调用方执行工具
             if hasattr(message, "tool_calls") and message.tool_calls:
                 return message
 
-            return message.content
+            # content 为 None 的情况：推理模型耗尽补全额度、响应截断等，归一化为空串
+            content = message.content or ""
+            if not content:
+                finish = getattr(response.choices[0], "finish_reason", None)
+                self.logger.warning(
+                    f"AI返回空回复 - 模型: {use_model} (finish_reason={finish})"
+                )
+            return content
 
         except asyncio.TimeoutError:
             raise APITimeoutError(f"请求超时({timeout}秒)")

@@ -8,9 +8,12 @@ QvQChat 主模块
 """
 
 import asyncio
+import json
 import random
+import re
 import time
 import traceback
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from ErisPulse import i18n, sdk
@@ -24,30 +27,20 @@ from .agent.knowledge import KnowledgeBase
 from .agent.multi import MultiAgentManager
 from .agent.tools import MCPManager
 from .ai import AIEngine, BehaviorManager, ModelPool
+from .chat.humanize import Humanizer
 from .chat.memory import QvQMemory
+from .chat.proactive import ProactiveManager
 from .chat.session import SessionManager
 from .chat.sticker import StickerManager
 from .dashboard import DashboardManager
 from .utils import MessageSender, get_session_description, truncate_message
 
-# ==================== 拟人化工具 ====================
-
-
-def _calc_typing_delay(text: str, config=None) -> float:
-    """根据回复长度计算拟人化打字延迟（秒）"""
-    if config and not config.get("humanize.typing_delay", True):
-        return 0
-    min_d = config.get("humanize.min_delay", 0.5) if config else 0.5
-    max_d = config.get("humanize.max_delay", 5.0) if config else 5.0
-    length = len(text)
-    if length <= 10:
-        return random.uniform(min_d, min_d + 1.0)
-    elif length <= 30:
-        return random.uniform(min_d + 0.5, min_d + 2.0)
-    elif length <= 80:
-        return random.uniform(max_d - 2.0, max_d)
-    else:
-        return max_d
+# 单轮回复允许的最大 MCP 工具调用次数
+MAX_TOOL_CALLS = 10
+# 工具调用循环的最大轮数
+MAX_TOOL_ROUNDS = 15
+# 单个工具结果写入上下文的最大字符数
+TOOL_RESULT_MAX_CHARS = 4000
 
 
 class Main(BaseModule):
@@ -56,7 +49,7 @@ class Main(BaseModule):
 
     子系统：
     - AI 引擎：模型池 + 行为管理 + 执行引擎（故障转移）
-    - 对话处理：记忆 + 会话管理（速率限制/活跃模式/回复判断）
+    - 对话处理：记忆 + 会话管理（速率限制/活跃模式/回复判断）+ 拟人化 + 主动发起
     - 智能体：多智能体人格 + 知识库 + MCP工具
     - Dashboard：Web 管理面板
     """
@@ -83,6 +76,8 @@ class Main(BaseModule):
         self.memory = QvQMemory(self.config, self.ai_engine)
         self.session = SessionManager(self.config, self.logger)
         self.sticker_manager = StickerManager(self.config, self.logger)
+        self.humanizer = Humanizer(self.config, self.logger)
+        self.proactive = ProactiveManager(self)
 
         # 智能体管理子系统
         self.multi_agent = MultiAgentManager(self.config, self.logger)
@@ -137,11 +132,18 @@ class Main(BaseModule):
 
     @staticmethod
     def get_load_strategy():
+        """声明模块加载策略（立即加载，priority=50）"""
         from ErisPulse.loaders import ModuleLoadStrategy
 
         return ModuleLoadStrategy(lazy_load=False, priority=50)
 
     async def on_load(self, event: Dict[str, Any]) -> bool:
+        """
+        模块加载回调：注册事件处理器、注册 Dashboard、异步连接 MCP、启动主动发起循环
+
+        :param event: 框架加载事件数据
+        :return: bool 加载成功返回 True
+        """
         try:
             self._register_event_handlers()
             self.dashboard.register()
@@ -150,7 +152,7 @@ class Main(BaseModule):
                 asyncio.create_task(self._connect_mcp_servers())
             # 主动发起对话循环
             if self.config.get("human_state.proactive_message.enabled", False):
-                asyncio.create_task(self._proactive_loop())
+                asyncio.create_task(self.proactive.loop())
             self.logger.info(i18n.t("QvQChat.module_loaded"))
             return True
         except Exception as e:
@@ -158,6 +160,12 @@ class Main(BaseModule):
             return False
 
     async def on_unload(self, event: Dict[str, Any]) -> bool:
+        """
+        模块卸载回调：断开 MCP 连接、注销 Dashboard
+
+        :param event: 框架卸载事件数据
+        :return: bool 卸载成功返回 True
+        """
         try:
             await self.mcp_manager.disconnect_all_servers()
             self.dashboard.unregister()
@@ -168,10 +176,11 @@ class Main(BaseModule):
             return False
 
     def _register_event_handlers(self) -> None:
+        """{!--< internal-use >!--} 注册消息事件处理器"""
         message.on_message(priority=999)(self._handle_message)
 
     async def _connect_mcp_servers(self) -> None:
-        """异步连接所有已配置的 MCP 服务器"""
+        """{!--< internal-use >!--} 异步连接所有已配置的 MCP 服务器"""
         try:
             await self.mcp_manager.connect_all_servers()
         except Exception as e:
@@ -180,11 +189,25 @@ class Main(BaseModule):
     # ==================== AI 控制 ====================
 
     def is_ai_enabled(self, user_id: str, group_id: Optional[str] = None) -> bool:
+        """
+        查询指定会话的 AI 启用状态
+
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID，群聊会话以群配置为准
+        :return: bool AI 是否启用
+        """
         if group_id:
             return self.config.get_group_config(group_id).get("enable_ai", True)
         return self.session.get_session_key(user_id, group_id) not in self._ai_disabled
 
     def enable_ai(self, user_id: str, group_id: Optional[str] = None) -> str:
+        """
+        启用指定会话的 AI
+
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID，提供时修改群配置
+        :return: str 操作结果描述
+        """
         if group_id:
             cfg = self.config.get_group_config(group_id)
             cfg["enable_ai"] = True
@@ -194,6 +217,13 @@ class Main(BaseModule):
         return "AI已启用"
 
     def disable_ai(self, user_id: str, group_id: Optional[str] = None) -> str:
+        """
+        禁用指定会话的 AI
+
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID，提供时修改群配置
+        :return: str 操作结果描述
+        """
         if group_id:
             cfg = self.config.get_group_config(group_id)
             cfg["enable_ai"] = False
@@ -205,6 +235,11 @@ class Main(BaseModule):
     # ==================== 运行统计 ====================
 
     def get_stats(self) -> Dict[str, Any]:
+        """
+        获取运行统计数据
+
+        :return: Dict 包含消息/回复计数、运行时长、回复率的统计字典
+        """
         uptime = int(time.time() - self._stats["started_at"])
         hours, rem = divmod(uptime, 3600)
         mins, secs = divmod(rem, 60)
@@ -219,7 +254,11 @@ class Main(BaseModule):
     # ==================== 消息处理 ====================
 
     async def _handle_message(self, data: Dict[str, Any]) -> None:
-        """消息处理主入口（含消息聚合）"""
+        """
+        {!--< internal-use >!--} 消息处理主入口：提取字段、累积冲动值、按聚合配置分发处理
+
+        :param data: 适配器标准化的消息事件数据
+        """
         try:
             self._stats["total_messages"] += 1
 
@@ -279,6 +318,9 @@ class Main(BaseModule):
             # 记录该会话收到一条他人消息的时间（活跃度判断用）
             self.session.update_last_incoming(session_key)
 
+            # 累积会话冲动值（主动发起的内驱力：聊天越热闹越想说话）
+            self.session.add_urge(session_key, alt_message)
+
             # 消息聚合判断
             agg_cfg = self.config.get("message_aggregation", {})
             if agg_cfg.get("enabled", True):
@@ -317,7 +359,19 @@ class Main(BaseModule):
         window: float,
         max_buffer: int,
     ) -> None:
-        """缓冲消息用于聚合（debounce 窗口）"""
+        """{!--< internal-use >!--} 缓冲消息用于聚合，达到最大缓冲数时立即刷新
+
+        :param data: 消息事件数据
+        :param alt_message: 消息文本
+        :param image_urls: 消息携带的图片 URL 列表
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID，私聊为 None
+        :param user_nickname: 用户昵称
+        :param group_name: 群名称
+        :param platform: 平台标识
+        :param window: 聚合窗口秒数
+        :param max_buffer: 最大缓冲条数
+        """
         session_key = self.session.get_session_key(user_id, group_id)
 
         buf = self._msg_buffers.get(session_key)
@@ -356,7 +410,11 @@ class Main(BaseModule):
         )
 
     async def _buffer_timer_task(self, session_key: str, window: float) -> None:
-        """聚合定时器任务"""
+        """{!--< internal-use >!--} 聚合定时器任务，窗口到期后刷新缓冲
+
+        :param session_key: 会话标识
+        :param window: 聚合窗口秒数
+        """
         try:
             await asyncio.sleep(window)
             # 处理已开始：从计时器表中移除，避免被新消息 cancel 杀死正在执行的处理
@@ -368,7 +426,10 @@ class Main(BaseModule):
             self.logger.error(f"聚合定时器出错: {e}")
 
     async def _flush_buffer(self, session_key: str) -> None:
-        """冲刷缓冲区，处理聚合消息"""
+        """{!--< internal-use >!--} 刷新聚合缓冲区，合并消息并交给 _process_message
+
+        :param session_key: 会话标识
+        """
         buf = self._msg_buffers.pop(session_key, None)
         timer = self._msg_timers.pop(session_key, None)
         if timer and not timer.done():
@@ -408,7 +469,18 @@ class Main(BaseModule):
         group_name: str,
         platform: str,
     ) -> None:
-        """处理单条/聚合后的消息（生成回复并发送）"""
+        """
+        {!--< internal-use >!--} 处理单条/聚合后的消息：记忆 → 回复判定 → 生成 → 发送 → 行为链
+
+        :param data: 消息事件数据
+        :param alt_message: 消息文本（聚合时为多行合并文本）
+        :param image_urls: 图片 URL 列表
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID，私聊为 None
+        :param user_nickname: 用户昵称
+        :param group_name: 群名称
+        :param platform: 平台标识
+        """
         try:
             # 累积到短期记忆
             await self.memory.add_short_term_memory(
@@ -427,7 +499,7 @@ class Main(BaseModule):
 
             # 已读不回（低概率跳过，模拟真人偶尔看了不回）
             # 私聊场景不触发：用户主动私聊本身就是强意图，"已读不回"会严重伤害体验
-            if group_id is not None and self._should_read_receipt_skip():
+            if group_id is not None and self.humanizer.should_read_receipt_skip():
                 return
 
             # 检测是否被提及（用于注入提示词）
@@ -445,7 +517,7 @@ class Main(BaseModule):
                 user_id, alt_message, group_id
             )
             if intent_reply:
-                delay = _calc_typing_delay(intent_reply, self.config)
+                delay = self.humanizer.calc_typing_delay(intent_reply)
                 if delay > 0:
                     await asyncio.sleep(delay)
                 await self._send_response(data, intent_reply, platform)
@@ -461,7 +533,7 @@ class Main(BaseModule):
                 alt_message, user_id, group_id, user_nickname
             )
             if output_result:
-                delay = _calc_typing_delay(output_result, self.config)
+                delay = self.humanizer.calc_typing_delay(output_result)
                 if delay > 0:
                     await asyncio.sleep(delay)
                 await self._send_response(data, output_result, platform)
@@ -508,17 +580,17 @@ class Main(BaseModule):
                 return
 
             # 拟人化后处理（错字纠正、打字中断等）
-            response = self._apply_humanize_postprocess(response)
+            response = self.humanizer.apply_postprocess(response)
 
             # 拟人化打字延迟
-            delay = _calc_typing_delay(response, self.config)
+            delay = self.humanizer.calc_typing_delay(response)
             if delay > 0:
                 self.logger.debug(f"打字延迟: {delay:.1f}s")
                 await asyncio.sleep(delay)
 
             # 群聊随机@对方
             if group_id and self.config.get("humanize.random_at_probability", 0.15) > 0:
-                response = self._maybe_at_mention(data, response, user_nickname)
+                response = self.humanizer.maybe_at_mention(response, user_nickname)
 
             # 发送回复（返回清理后的文本）
             sent_text = await self._send_response(data, response, platform)
@@ -534,7 +606,7 @@ class Main(BaseModule):
             # 保存AI回复到记忆（用清理后的文本，避免历史污染）
             bot_names = self.config.get("bot_nicknames", [])
             bot_name = bot_names[0] if bot_names else ""
-            clean_for_memory = self._clean_response_for_history(sent_text or response)
+            clean_for_memory = self.humanizer.clean_response_for_history(sent_text or response)
             await self.memory.add_short_term_memory(
                 user_id, "assistant", clean_for_memory, group_id, bot_name
             )
@@ -549,7 +621,10 @@ class Main(BaseModule):
             if self.ai_engine.is_available("memory") or self.ai_engine.is_available("dialogue"):
                 if not self.ai_engine.is_available("memory"):
                     self.logger.warning(i18n.t("QvQChat.memory_fallback_to_dialogue"))
-                asyncio.create_task(self._extract_memory_async(user_id, group_id))
+                if Humanizer.is_trivial_message(alt_message):
+                    self.logger.debug("消息无记忆价值，跳过提取")
+                else:
+                    asyncio.create_task(self._extract_memory_async(user_id, group_id))
 
         except asyncio.CancelledError:
             self.logger.warning(f"处理被取消(可能被新消息聚合抢占): {truncate_message(alt_message, 40)}")
@@ -564,7 +639,15 @@ class Main(BaseModule):
         user_id: str,
         group_id: Optional[str],
     ) -> bool:
-        """检查是否应该回复"""
+        """
+        {!--< internal-use >!--} 群聊回复判定链：@感知 → 活跃模式 → 夜间模式 → 预测/窥屏策略
+
+        :param data: 消息事件数据
+        :param alt_message: 消息文本
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID，私聊为 None
+        :return: bool 是否回复
+        """
         bot_nicknames = self.config.get("bot_nicknames", [])
 
         # 检查 @机器人（仅使用事件 self.user_id）
@@ -646,7 +729,13 @@ class Main(BaseModule):
         )
 
     async def _run_prediction(self, messages_batch: List[str], bot_name: str) -> str:
-        """执行预测（低token模式）"""
+        """
+        {!--< internal-use >!--} 执行预测模式判定（reply_judge 行为，低 token 消耗）
+
+        :param messages_batch: 聚合的群聊消息列表
+        :param bot_name: 机器人昵称，用于提示词
+        :return: str 预测结果文本（含触发词或「跳过」）
+        """
         try:
             batch_text = "\n".join(f"- {m}" for m in messages_batch[-10:])
             prompt = (
@@ -675,8 +764,11 @@ class Main(BaseModule):
         遍历 behavior_type == "output" 的行为，按触发概率/触发词检查。
         命中时返回模板内容（含 [img]/[sticker] 标签），不消耗 AI 调用。
 
-        Returns:
-            Optional[str]: 触发的输出内容，未触发返回 None
+        :param alt_message: 消息文本
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID
+        :param user_nickname: 用户昵称，用于模板 {at_user} 占位符
+        :return: Optional[str] 触发的输出内容，未触发返回 None
         """
         for behavior in self.behavior_manager.list_behaviors():
             if not behavior.get("enabled", True):
@@ -707,13 +799,16 @@ class Main(BaseModule):
 
     def _apply_behavior_templates(self, response, user_id, group_id, user_nickname):
         """
-        应用行为的输出模板
+        {!--< internal-use >!--} 概率性应用场景行为的输出模板
 
-        遍历所有已启用的场景/输出行为，概率性应用其 response_template。
-        模板支持占位符：
-        - {ai_response}: AI生成的文本
-        - {at_user}: @{user_nickname}
-        - [img]url[/img]: 发送图片（通过多消息发送器）
+        模板占位符：{ai_response}（AI 回复文本）、{at_user}（@昵称）、
+        [img]url[/img]（图片，由发送器处理）。
+
+        :param response: AI 回复文本
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID
+        :param user_nickname: 用户昵称
+        :return: str 应用模板后的回复
         """
         result = response
         for behavior in self.behavior_manager.list_behaviors():
@@ -742,174 +837,18 @@ class Main(BaseModule):
                 break  # 只应用第一个触发的模板
         return result
 
-    def _maybe_at_mention(self, data, response, user_nickname):
-        """随机@对方（群聊时增加互动感）"""
-        prob = self.config.get("humanize.random_at_probability", 0.15)
-        if random.random() < prob and user_nickname:
-            if f"@{user_nickname}" not in response:
-                return f"@{user_nickname} {response}"
-        return response
-
-    # ==================== 拟人化后处理 ====================
-
-    def _apply_humanize_postprocess(self, response: str) -> str:
-        """拟人化后处理：错字纠正、打字中断、半句发出等"""
-        humanize = self.config.get("humanize", {})
-
-        # 错字纠正（先执行，因为可能产生多消息）
-        typo_prob = float(humanize.get("typo_probability", 0)) if humanize else 0
-        if typo_prob > 0 and random.random() < typo_prob:
-            response = self._inject_typo_correction(response)
-
-        # 打字中断（半句发出）
-        half_prob = float(humanize.get("half_send_probability", 0)) if humanize else 0
-        if half_prob > 0 and random.random() < half_prob:
-            response = self._inject_half_send(response)
-
-        return response
-
-    def _inject_typo_correction(self, text: str) -> str:
-        """模拟打错字后下一条消息纠正
-
-        策略：随机交换两个相邻中文字符，然后用 <|wait|> 分隔发纠正消息
-        效果示例：
-          消息1: 我天今好开心
-          消息2: 打错了 是 今天
-        """
-        chinese_indices = [
-            i for i, c in enumerate(text) if "\u4e00" <= c <= "\u9fff"
-        ]
-        if len(chinese_indices) < 4 or len(text) < 6:
-            return text
-
-        adjacent_pairs = []
-        for idx in range(len(chinese_indices) - 1):
-            p1, p2 = chinese_indices[idx], chinese_indices[idx + 1]
-            if p2 == p1 + 1 and text[p1] != text[p2]:
-                adjacent_pairs.append((p1, p2))
-
-        if not adjacent_pairs:
-            return text
-
-        pos1, pos2 = random.choice(adjacent_pairs)
-        char1, char2 = text[pos1], text[pos2]
-
-        typo_text = text[:pos1] + char2 + char1 + text[pos2 + 1:]
-        correct_word = char1 + char2
-
-        corrections = [
-            correct_word,
-            f"打错了，{correct_word}",
-            f"打错了 是{correct_word}",
-            f"{correct_word}*",
-            f"是{correct_word}",
-        ]
-        correction = random.choice(corrections)
-
-        wait_time = random.randint(1, 3)
-        self.logger.debug(f"拟人化[错字纠正]: {char1}{char2} -> {char2}{char1}")
-        return f"{typo_text} <|wait time=\"{wait_time}\"|> {correction}"
-
-    def _inject_half_send(self, text: str) -> str:
-        """模拟打字打到一半不小心发出，后半句下一条才出来
-
-        策略：在标点符号处或句子中间截断
-        效果示例：
-          消息1: 今天去吃了
-          消息2: 一家超好吃的火锅
-        """
-        if len(text) < 8:
-            return text
-
-        break_chars = ["，", "。", "；", "、", "！", "？", ",", " ", "~", "～"]
-        break_positions = []
-        for i, c in enumerate(text):
-            if c in break_chars and 3 < i < len(text) - 3:
-                break_positions.append(i)
-
-        if break_positions:
-            pos = random.choice(break_positions)
-            first_half = text[: pos + 1].strip()
-            second_half = text[pos + 1 :].strip()
-        else:
-            mid = len(text) // 2 + random.randint(-2, 2)
-            mid = max(4, min(mid, len(text) - 3))
-            first_half = text[:mid].strip()
-            second_half = text[mid:].strip()
-
-        if not first_half or not second_half:
-            return text
-
-        wait_time = random.randint(1, 3)
-        self.logger.debug(f"拟人化[半句发出]: 在位置 {len(first_half)} 处截断")
-        return f"{first_half} <|wait time=\"{wait_time}\"|> {second_half}"
-
-    def _should_read_receipt_skip(self) -> bool:
-        """已读不回判断（低概率跳过回复，模拟真人偶尔看了不回）"""
-        skip_prob = float(self.config.get("humanize.read_receipt_skip", 0))
-        if skip_prob > 0 and random.random() < skip_prob:
-            self.logger.debug("已读不回（拟人化）")
-            return True
-        return False
-
-    @staticmethod
-    def _clean_response_for_history(response: str) -> str:
-        """清理回复中的特殊标签，避免历史记录污染
-
-        移除以下标签（防止 AI 从历史中学到格式后在功能关闭时仍尝试使用）：
-        - <|sticker|xxx</sticker|> → 移除（表情包标签）
-        - <|voice style=".."|>xxx<|/voice|> → 只保留语音正文
-        - <|wait time="N"|> → 移除（多消息分隔符）
-        - [img]url[/img] / [sticker]file[/sticker] → 移除
-        """
-        import re
-
-        # 表情包标签（含内容一起移除）
-        response = re.sub(
-            r"<\|?\s*(?:sticker|send_sticker)\s*\|?>?"
-            r"(?:\s*<parameter[^>]*>\s*)?"
-            r"[^<>《\n]{0,30}"
-            r"(?:\s*</parameter>\s*)?"
-            r"\s*(?:<\|?\s*/?\s*(?:sticker|send_sticker)\s*\|?>)?",
-            "", response, flags=re.IGNORECASE
-        )
-        # 语音标签 → 只保留正文
-        response = re.sub(
-            r"<\|?\s*voice\s+style\s*=\s*[\"']?[^\"'>]*[\"']?\s*\|?>",
-            "", response, flags=re.IGNORECASE
-        )
-        response = re.sub(
-            r"<\|?\s*/\s*voice\s*\|?>", "", response, flags=re.IGNORECASE
-        )
-        # wait 分隔符
-        response = re.sub(
-            r"<\|\s*wait\s+time\s*=\s*[\"']?\d+[\"']?\s*\|?>", "", response, flags=re.IGNORECASE
-        )
-        response = re.sub(
-            r"<\|\s*wait\s+time\s*=\s*[\"']?\d+[\"']?\s*>", "", response, flags=re.IGNORECASE
-        )
-        # 渲染标签 → 移除（防止 AI 学到渲染语法后在功能关闭时仍尝试）
-        response = re.sub(
-            r"<\|?\s*render\s*\|?>.*?<\|?\s*/\s*\|?\s*render\s*\|?>",
-            "", response, flags=re.IGNORECASE | re.DOTALL
-        )
-        # [img] / [sticker] BBCode 标签
-        response = re.sub(
-            r"\[(?:img|sticker)\].*?\[/(?:img|sticker)\]", "", response, flags=re.IGNORECASE | re.DOTALL
-        )
-        # 清理多余空格
-        response = re.sub(r"  +", " ", response).strip()
-        return response if response else "(表情包/语音回复)"
-
     # ==================== 人类状态（情绪/精力） ====================
 
     def _get_human_state(self, session_key: str) -> Dict[str, float]:
-        """获取当前情绪/精力状态"""
+        """
+        {!--< internal-use >!--} 计算当前情绪/精力状态（含作息与时间段修正）
+
+        :param session_key: 会话标识（当前为全局状态，参数保留扩展用）
+        :return: Dict 包含 mood/energy 的状态字典，取值范围 0.1~1.0
+        """
         state_cfg = self.config.get("human_state", {})
         if not state_cfg.get("enabled", True):
             return {"mood": 0.6, "energy": 0.8}
-
-        from datetime import datetime
 
         hour = datetime.now().hour
         energy = float(state_cfg.get("energy", 0.8))
@@ -936,11 +875,16 @@ class Main(BaseModule):
         }
 
     def get_human_state(self) -> Dict[str, Any]:
-        """获取人类状态（供 Dashboard 显示）"""
+        """
+        获取当前人类状态（供 Dashboard 显示）
+
+        :return: Dict mood/energy 状态字典
+        """
         return self._get_human_state("global")
 
     @staticmethod
     def _mood_to_text(mood: float) -> str:
+        """{!--< internal-use >!--} 情绪值转随机中文描述"""
         if mood >= 0.8:
             return random.choice(["心情特别好", "今天超开心", "心情很愉快"])
         elif mood >= 0.6:
@@ -954,6 +898,7 @@ class Main(BaseModule):
 
     @staticmethod
     def _energy_to_text(energy: float) -> str:
+        """{!--< internal-use >!--} 精力值转随机中文描述"""
         if energy >= 0.8:
             return random.choice(["精力充沛", "精神很好", "充满活力"])
         elif energy >= 0.6:
@@ -966,7 +911,11 @@ class Main(BaseModule):
             return random.choice(["困死了", "已经迷糊了", "随时会睡着"])
 
     def get_status(self) -> Dict[str, Any]:
-        """获取模块完整状态（供调试）"""
+        """
+        获取模块完整状态（供 Dashboard 与调试）
+
+        :return: Dict 包含模型/行为/智能体/知识库/工具统计与功能开关的字典
+        """
         active_agents = self.multi_agent.list_agents()
         default_agent = self.multi_agent.get_agent("default")
         bindings = self.multi_agent.list_bindings()
@@ -1000,10 +949,15 @@ class Main(BaseModule):
         bot_nicknames: List[str],
         message: str,
     ) -> bool:
-        """检查是否被@或叫名字
+        """
+        {!--< internal-use >!--} 检测消息是否指向自己（mention 段或昵称命中）
 
-        仅使用事件中的 self.user_id 判断 mention 段是否指向自己，
-        无需手动配置 bot_ids。
+        仅使用事件中的 self.user_id 判断 mention 段，无需配置 bot_ids。
+
+        :param data: 消息事件数据
+        :param bot_nicknames: 机器人昵称列表
+        :param message: 消息文本
+        :return: bool 是否被提及
         """
         self_user_id = str(data.get("self", {}).get("user_id", ""))
 
@@ -1017,72 +971,6 @@ class Main(BaseModule):
                 return True
         return False
 
-    # AI 可能输出的"不回复"标记（需要过滤）
-    _SKIP_MARKERS = [
-        "保持安静",
-        "不回复",
-        "没提到我",
-        "没有问到",
-        "(沉默)",
-        "（沉默）",
-        "[不回复]",
-        "【不回复】",
-        "(保持安静)",
-        "（保持安静）",
-        "[沉默]",
-        "【沉默】",
-        "(跳过)",
-        "（跳过）",
-        "(不回复)",
-        "（不回复）",
-        "不参与",
-        "不需要回复",
-        "SKIP",
-        "skip",
-        "NOREPLY",
-        "noreply",
-    ]
-    # 正则：带括号的不回复推理
-    _SKIP_REGEX = [
-        r"（[^）]*不[^）]*回复[^）]*）",
-        r"\([^)]*不[^)]*回复[^)]*\)",
-        r"\[[^\]]*:\s*$",
-        # 多行「昵称:内容」格式（AI在输出聊天记录）
-        r"^[^:\n]{1,10}:\s.*\n[^:\n]{1,10}:\s",
-    ]
-
-    def _is_skip_response(self, text: str, is_private: bool = False) -> bool:
-        """检测AI是否输出了无效回复
-
-        Args:
-            text: 待检测的回复文本
-            is_private: 是否为私聊场景。私聊下不应用 _SKIP_REGEX 多行格式检测
-                       （多行检测会误判正常的"昵称:内容"风格回复），仅检明确标记。
-        """
-        stripped = text.strip()
-        if len(stripped) <= 60:
-            for marker in self._SKIP_MARKERS:
-                if marker in stripped:
-                    return True
-        import re
-
-        # 私聊场景：只跑第一条括号推理检测，跳过多行聊天记录格式检测
-        # （多行检测会把 AI 的正常多行回复误判为"输出聊天记录"）
-        if is_private:
-            if re.search(self._SKIP_REGEX[0], stripped):
-                return True
-            return False
-
-        for pattern in self._SKIP_REGEX:
-            if re.search(pattern, stripped):
-                return True
-        # 多行，每行都是"名字: 内容"格式（AI在输出聊天记录）
-        lines = [l for l in stripped.split("\n") if l.strip()]
-        if len(lines) >= 2:
-            chat_count = sum(1 for l in lines if re.match(r"^[^:\n]{1,15}\s*:\s*", l))
-            if chat_count >= len(lines) * 0.6:
-                return True
-        return False
 
     async def _generate_response(
         self,
@@ -1096,7 +984,20 @@ class Main(BaseModule):
         data: Dict[str, Any],
         is_mentioned: bool = False,
     ) -> Optional[str]:
-        """生成AI回复"""
+        """
+        {!--< internal-use >!--} 生成 AI 回复：管线提示词 → 记忆/图片/工具注入 → 对话行为 → 工具循环
+
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID，私聊为 None
+        :param user_input: 用户消息文本
+        :param image_urls: 图片 URL 列表
+        :param user_nickname: 用户昵称
+        :param group_name: 群名称
+        :param platform: 平台标识
+        :param data: 消息事件数据（工具调用转发用）
+        :param is_mentioned: 是否被 @ 或叫名字
+        :return: Optional[str] 生成的回复文本；判定为无效/失败时返回 None
+        """
         try:
             history = await self.memory.get_session_history(user_id, group_id)
 
@@ -1165,9 +1066,8 @@ class Main(BaseModule):
             response = await self.ai_engine.dialogue(messages, tools=tools)
 
             # 多轮 MCP 工具调用处理（tool_call → tool_result → 再调用 AI → 直到返回文本）
-            max_tool_rounds = 15
             total_tool_cost = 0
-            for _ in range(max_tool_rounds):
+            for _ in range(MAX_TOOL_ROUNDS):
                 if not response or isinstance(response, str):
                     break
                 # 执行工具调用
@@ -1176,12 +1076,12 @@ class Main(BaseModule):
                     response = getattr(response, "content", None) or ""
                     break
                 total_tool_cost += len(tool_results)
-                # 超过 10 次工具调用 → 强制结束
-                if total_tool_cost > 10:
-                    self.logger.warning(f"工具调用次数过多 ({total_tool_cost})，强制结束")
-                    response = getattr(response, "content", None) or ""
-                    if not response:
-                        response = "已经查了足够多信息了，让我总结一下。"
+                # 超过调用次数上限 → 强制基于已有结果作答
+                if total_tool_cost > MAX_TOOL_CALLS:
+                    self.logger.warning(
+                        f"工具调用次数过多 ({total_tool_cost})，强制结束"
+                    )
+                    response = await self._force_final_answer(messages)
                     break
                 # 追加 assistant 消息（转 dict）
                 if hasattr(response, "model_dump"):
@@ -1201,12 +1101,16 @@ class Main(BaseModule):
                 self.logger.info(f"工具结果已反馈，继续调用 AI，消息数: {len(messages)}")
                 response = await self.ai_engine.dialogue(messages, tools=tools)
 
+            # 工具查完了但模型没给出正文（推理额度被推理耗尽/截断等）→ 无工具重试强制作答
+            if (not isinstance(response, str) or not response.strip()) and total_tool_cost > 0:
+                response = await self._force_final_answer(messages)
+
             if not response or not isinstance(response, str):
                 return None
             response = response.strip()
 
             # 过滤无效回复
-            if self._is_skip_response(response, is_private=group_id is None):
+            if self.humanizer.is_skip_response(response, is_private=group_id is None):
                 self.logger.info(f"回复无效，不发送: {truncate_message(response, 40)}")
                 return None
 
@@ -1224,10 +1128,41 @@ class Main(BaseModule):
             self.logger.error(f"生成回复失败: {e}")
             return None
 
-    async def _handle_tool_calls(self, message, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """处理 AI 返回的 MCP 工具调用，返回 tool result 消息列表"""
-        import json
+    async def _force_final_answer(self, messages: List[Dict[str, Any]]) -> str:
+        """
+        {!--< internal-use >!--} 工具调用后未获得正文时，追加提醒并无工具重试强制作答
 
+        适用场景：推理模型将 max_tokens 耗尽在推理阶段、响应被截断等导致
+        content 为空。messages 以完整工具结果结尾，追加 user 提醒是合法序列。
+
+        :param messages: 当前对话消息列表（以工具结果结尾）
+        :return: str 模型最终回答，失败返回空字符串
+        """
+        self.logger.warning("工具调用后未获得正文，追加提醒并无工具重试强制作答")
+        try:
+            messages.append({
+                "role": "user",
+                "content": (
+                    "（系统提示）工具调用到此为止。"
+                    "基于上面已经查到的结果，直接把回答写给用户，不要再调用工具。"
+                ),
+            })
+            result = await self.ai_engine.dialogue(messages, tools=None)
+            return result if isinstance(result, str) else ""
+        except Exception as e:
+            self.logger.warning(f"强制作答失败: {e}")
+            return ""
+
+    async def _handle_tool_calls(self, message, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        {!--< internal-use >!--} 执行 AI 返回的 MCP 工具调用
+
+        超长结果按 TOOL_RESULT_MAX_CHARS 截断，防止撑爆上下文。
+
+        :param message: 含 tool_calls 的 assistant message 对象
+        :param data: 消息事件数据（保留）
+        :return: List[Dict] tool 角色结果消息列表（含失败占位结果）
+        """
         tool_calls = getattr(message, "tool_calls", None) or []
         results = []
         for tc in tool_calls:
@@ -1241,6 +1176,11 @@ class Main(BaseModule):
             try:
                 result = await self.mcp_manager.call_tool(func.name, arguments)
                 self.logger.debug(f"工具 {func.name} 返回: {truncate_message(result, 100)}")
+                if isinstance(result, str) and len(result) > TOOL_RESULT_MAX_CHARS:
+                    result = result[:TOOL_RESULT_MAX_CHARS] + "\n…(结果过长已截断)"
+                    self.logger.info(
+                        f"工具 {func.name} 结果过长，已截断至 {TOOL_RESULT_MAX_CHARS} 字符"
+                    )
                 results.append({
                     "role": "tool",
                     "tool_call_id": getattr(tc, "id", "call_") or "call_",
@@ -1256,7 +1196,12 @@ class Main(BaseModule):
         return results
 
     def _find_sticker(self, name: str) -> Optional[dict]:
-        """模糊匹配表情包名称"""
+        """
+        {!--< internal-use >!--} 匹配表情包：精确 → 双向包含/描述 → 截断模糊
+
+        :param name: AI 输出的表情包名称
+        :return: Optional[dict] 命中的表情包定义，未命中返回 None
+        """
         name = name.strip().lower()
         if not name:
             return None
@@ -1280,12 +1225,14 @@ class Main(BaseModule):
         return None
 
     async def _send_image(self, data: Dict[str, Any], platform: str, image_path: str) -> None:
-        """发送单张图片
+        """
+        {!--< internal-use >!--} 发送单张图片，统一转为 bytes 以规避跨容器路径问题
 
-        统一转为 bytes 发送（避免跨容器路径不通的问题）：
-        - HTTP(S) URL：下载为 bytes
-        - 本地文件路径：读取为 bytes
-        - base64:// 前缀：直接透传（适配器已支持）
+        支持 HTTP(S) URL（下载）、本地路径（读取）、base64:// 前缀（透传）。
+
+        :param data: 消息事件数据（提取发送目标）
+        :param platform: 平台标识
+        :param image_path: 图片来源（URL/路径/base64）
         """
         detail_type = data.get("detail_type", "private")
         target_type = "group" if detail_type == "group" else "user"
@@ -1365,7 +1312,12 @@ class Main(BaseModule):
 
     @staticmethod
     def _platform_supports_voice(platform: str) -> bool:
-        """检查平台是否支持语音发送"""
+        """
+        {!--< internal-use >!--} 检查平台适配器是否支持语音发送
+
+        :param platform: 平台标识
+        :return: bool 是否支持 Voice 发送方法
+        """
         try:
             return "Voice" in sdk.adapter.list_sends(platform)
         except Exception:
@@ -1374,7 +1326,13 @@ class Main(BaseModule):
     async def _inject_images(
         self, messages: List[Dict[str, Any]], image_urls: List[str], user_input: str
     ) -> None:
-        """将图片注入消息"""
+        """
+        {!--< internal-use >!--} 分析图片并将文字描述注入最后一条用户消息
+
+        :param messages: 对话消息列表（就地修改）
+        :param image_urls: 图片 URL 列表，最多取前 3 张
+        :param user_input: 用户消息文本（单图分析时作为提示）
+        """
         try:
             descriptions = []
             for url in image_urls[:3]:
@@ -1409,7 +1367,12 @@ class Main(BaseModule):
     async def _extract_memory_async(
         self, user_id: str, group_id: Optional[str]
     ) -> None:
-        """异步提取记忆（带并发控制，委托给 MemoryExtractor）"""
+        """
+        {!--< internal-use >!--} 异步提取长期记忆（会话级并发锁防重入）
+
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID，私聊为 None
+        """
         session_key = self.session.get_session_key(user_id, group_id)
 
         if Main._memory_locks.get(session_key):
@@ -1429,10 +1392,15 @@ class Main(BaseModule):
     async def _continue_conversation(
         self, user_id: str, group_id: str, platform: str
     ) -> None:
-        """AI回复后的持续监听
+        """
+        {!--< internal-use >!--} 回复后的群聊持续监听：话题继续时可能追加回复
 
-        在群聊中，机器人回复后继续监听新消息，
-        如果话题仍在继续，可能会再次回复。
+        在 continue_conversation 配置的消息数/时长限制内轮询新消息，
+        由 reply_judge 行为判定是否继续参与。
+
+        :param user_id: 用户 ID
+        :param group_id: 群组 ID
+        :param platform: 平台标识
         """
         try:
             cfg = self.config.get("continue_conversation", {})
@@ -1492,12 +1460,12 @@ class Main(BaseModule):
                     return
 
                 # 拟人化延迟
-                delay = _calc_typing_delay(response, self.config)
+                delay = self.humanizer.calc_typing_delay(response)
                 if delay > 0:
                     await asyncio.sleep(delay)
 
                 await self.message_sender.send(platform, "group", group_id, response)
-                clean_resp = self._clean_response_for_history(response)
+                clean_resp = self.humanizer.clean_response_for_history(response)
                 await self.memory.add_short_term_memory(
                     user_id, "assistant", clean_resp, group_id, bot_name
                 )
@@ -1510,247 +1478,22 @@ class Main(BaseModule):
         except Exception as e:
             self.logger.debug(f"持续监听结束: {e}")
 
-    # ==================== 主动发起对话 ====================
-
-    async def _proactive_loop(self) -> None:
-        """主动发起对话循环（间隔可配置）"""
-        await asyncio.sleep(60)  # 启动后等待1分钟
-        while True:
-            try:
-                await self._check_proactive_messages()
-            except Exception as e:
-                self.logger.debug(f"主动发起循环出错: {e}")
-            interval = int(
-                self.config.get(
-                    "human_state.proactive_message.check_interval_minutes", 30
-                )
-            )
-            await asyncio.sleep(max(interval, 5) * 60)
-
-    @staticmethod
-    def _humanize_duration(seconds: Optional[float]) -> str:
-        """把秒数转成「x分钟/x小时/x天」的可读时长"""
-        if seconds is None or seconds < 0:
-            return "未知"
-        mins = int(seconds / 60)
-        if mins < 1:
-            return "不到1分钟"
-        if mins < 60:
-            return f"{mins}分钟"
-        hours = mins / 60
-        if hours < 24:
-            return f"{hours:.1f}小时"
-        days = hours / 24
-        return f"{days:.1f}天"
-
-    @staticmethod
-    def _relative_time_from_iso(ts_iso: str, now_ts: float) -> str:
-        """把 ISO 时间戳转成相对当前的可读描述"""
-        if not ts_iso:
-            return ""
-        from datetime import datetime
-
-        try:
-            t = datetime.fromisoformat(ts_iso).timestamp()
-        except Exception:
-            return ""
-        gap = now_ts - t
-        if gap < 60:
-            return "刚刚"
-        if gap < 3600:
-            return f"{int(gap / 60)}分钟前"
-        if gap < 86400:
-            return f"{gap / 3600:.1f}小时前"
-        return f"{gap / 86400:.1f}天前"
-
-    async def _check_proactive_messages(self) -> None:
-        """检查是否有需要主动发起的会话
-
-        判定顺序：
-        1. 沉寂门槛（距上次 AI 回复）
-        2. 每日上限
-        3. 概率命中
-        """
-        proactive_cfg = self.config.get("human_state.proactive_message", {})
-        if not proactive_cfg.get("enabled", False):
-            return
-
-        min_hours = float(proactive_cfg.get("min_silence_hours", 6))
-        probability = float(proactive_cfg.get("probability", 0.1))
-        min_threshold = min_hours * 3600
-        max_per_day = int(proactive_cfg.get("max_per_day", 1))
-
-        if not self.ai_engine.is_available("dialogue"):
-            return
-
-        now = time.time()
-
-        for session_key in self.session.get_all_session_keys():
-            meta = self.session.get_session_meta(session_key)
-            if not meta:
-                continue
-
-            # 1. 沉寂门槛（距上次 AI 回复）
-            last_reply = self.session.get_last_reply_time_by_key(session_key)
-            reply_silence = now - last_reply if last_reply else 999999
-            if reply_silence < min_threshold:
-                continue
-
-            # 2. 每日上限
-            if not self.session.check_proactive_daily_limit(
-                session_key, max_per_day
-            ):
-                self.logger.debug(
-                    f"{session_key} 主动发起已达每日上限({max_per_day})，跳过"
-                )
-                continue
-
-            # 3. 概率命中
-            if random.random() >= probability:
-                continue
-
-            await self._send_proactive_message(session_key, meta)
-
-    @staticmethod
-    def _iso_to_age_seconds(ts_iso: str, now_ts: float) -> Optional[float]:
-        """把 ISO 时间戳转成「距今多少秒」，失败返回 None"""
-        if not ts_iso:
-            return None
-        from datetime import datetime
-
-        try:
-            return now_ts - datetime.fromisoformat(ts_iso).timestamp()
-        except Exception:
-            return None
-
-    @staticmethod
-    def _format_history_label(age_seconds: Optional[float], role: str) -> str:
-        """给历史消息生成时效性标签（让 AI 感知话题已陈旧）
-
-        - 短（< 5 分钟）：[刚刚]
-        - 中（5 分钟 ~ 1 小时）：[x分钟前]
-        - 长（> 1 小时）：[x小时前 · 话题已结束]
-        - 极长（> 1 天）：[x天前 · 已过时]
-        """
-        if age_seconds is None or age_seconds < 0:
-            return ""
-        mins = age_seconds / 60
-        if mins < 5:
-            tag = "刚刚"
-        elif mins < 60:
-            tag = f"{int(mins)}分钟前"
-        elif mins < 1440:
-            tag = f"{mins / 60:.1f}小时前 · 话题已结束"
-            if role == "user":
-                tag += " · 不要直接回应这条"
-        else:
-            tag = f"{mins / 1440:.1f}天前 · 已过时"
-        return f"【{tag}】"
-
-    async def _send_proactive_message(
-        self, session_key: str, meta: Dict[str, str]
-    ) -> None:
-        """对指定会话主动发起对话（让 AI 感知真实时间跨度）"""
-        platform = meta.get("platform", "")
-        target_type = meta.get("target_type", "user")
-        target_id = meta.get("target_id", "")
-        if not platform or not target_id:
-            return
-
-        try:
-            is_group = target_type == "group"
-            user_id = "" if is_group else target_id
-            group_id = target_id if is_group else None
-
-            # 拉取带时间戳的完整历史
-            detailed = await self.memory.get_session_history_detailed(
-                user_id or target_id, group_id
-            )
-
-            # 计算真实时间跨度
-            now = time.time()
-            last_reply = self.session.get_last_reply_time_by_key(session_key)
-            reply_silence = now - last_reply if last_reply else None
-            last_incoming = self.session.get_last_incoming_time(session_key)
-            incoming_silence = now - last_incoming if last_incoming else None
-
-            reply_gap = self._humanize_duration(reply_silence)
-            incoming_gap = self._humanize_duration(incoming_silence)
-
-            # 通过注入管线构建系统提示词（含 AI 时间叙述 + 主动发起上下文）
-            ctx = PromptContext(
-                user_id=user_id or target_id,
-                group_id=group_id,
-                platform=platform,
-                is_group=is_group,
-                is_proactive=True,
-                reply_gap=reply_gap,
-                incoming_gap=incoming_gap,
-            )
-            system_prompt = await self.pipeline.build(ctx)
-
-            messages: List[Dict[str, Any]] = [
-                {"role": "system", "content": system_prompt or "你是一个真实的普通人。"},
-            ]
-
-            # 注入历史：把时间标注升级为时效性标注，让 AI 真切感知"话题已结束"
-            if detailed:
-                now_ts = time.time()
-                for msg in detailed[-5:]:
-                    role = msg.get("role", "user")
-                    content = msg.get("content", "")
-                    msg_ts_iso = msg.get("timestamp", "")
-                    msg_age = self._iso_to_age_seconds(msg_ts_iso, now_ts)
-                    label = self._format_history_label(msg_age, role)
-                    if label:
-                        content = f"{label} {content}".strip()
-                    messages.append({"role": role, "content": content})
-
-            response = await self.ai_engine.dialogue(messages)
-            if not response or not isinstance(response, str):
-                return
-            response = response.strip()
-
-            # AI 选择沉默 / 无效回复
-            if self._is_skip_response(response) or not response:
-                self.logger.info(
-                    f"主动发起选择沉默 - {session_key} - {truncate_message(response, 40)}"
-                )
-                return
-
-            delay = _calc_typing_delay(response, self.config)
-            if delay > 0:
-                await asyncio.sleep(delay)
-
-            await self.message_sender.send(platform, target_type, target_id, response)
-            self._stats["total_replies"] += 1
-
-            # 主动发起成功 → 递增每日计数
-            self.session.increment_proactive_count(session_key)
-            # 更新该会话的「最后回复时间」
-            self.session.update_last_reply_time(
-                user_id or target_id, group_id
-            )
-
-            bot_names = self.config.get("bot_nicknames", [])
-            bot_name = bot_names[0] if bot_names else ""
-            clean_resp = self._clean_response_for_history(response)
-            await self.memory.add_short_term_memory(
-                user_id or target_id, "assistant", clean_resp, group_id, bot_name
-            )
-            self.logger.info(
-                f"主动发起对话 - {session_key} - {truncate_message(response, 60)}"
-            )
-        except Exception as e:
-            self.logger.debug(f"主动发起对话失败: {e}")
-
-    # ==================== 工具方法 ====================
+    # ==================== 发送 ====================
 
     async def _send_response(
         self, data: Dict[str, Any], response: str, platform: str
     ) -> str:
-        """发送回复（自动处理文本中的标签），返回清理后的文本"""
-        """发送回复（自动处理文本中的 <|send_sticker|> 标签）"""
+        """
+        {!--< internal-use >!--} 发送回复：解析表情包标签出图、清理标签碎片后发送文本
+
+        表情包标签匹配支持标准/开标签带右尖括号/function calling 兼容/
+        未闭合等多种格式，未命中的表情包名保留为纯文本。
+
+        :param data: 消息事件数据（提取发送目标）
+        :param response: 回复文本（可含 <|sticker|> 等内嵌标签）
+        :param platform: 平台标识
+        :return: str 清理标签后的文本内容
+        """
         try:
             if not platform:
                 return
@@ -1763,7 +1506,6 @@ class Main(BaseModule):
                 return
 
             # 解析文本中的表情包内嵌标签（统一正则，一次性匹配所有格式）
-            import re
             # 格式1: <|sticker|名称</sticker|>  标准（注意：开标签无 >）
             # 格式2: <|sticker|>名称</sticker|>  开标签有 >
             # 格式3: <send_sticker><parameter...>名称</parameter></send_sticker>  兼容function calling
@@ -1812,7 +1554,12 @@ class Main(BaseModule):
             return response
 
     def _extract_images(self, data: Dict[str, Any]) -> List[str]:
-        """提取消息中的图片URL（兼容多种消息段格式）"""
+        """
+        {!--< internal-use >!--} 提取消息中的图片 URL（兼容 url/file/path/src 字段）
+
+        :param data: 消息事件数据
+        :return: List[str] 图片 URL 列表
+        """
         urls = []
         for seg in data.get("message", []):
             if seg.get("type") in ("image", "img"):

@@ -571,35 +571,6 @@ class QvQI18n(BaseI18n):
         ru="Состояние человека",
     )
 
-    tab_render: I18nKey = I18nKey(
-        default='Rendering',
-        zh_CN='渲染能力',
-        zh_TW='渲染能力',
-        en='Rendering',
-        ja='Rendering',
-        ru='Rendering',
-    )
-
-    render_available: I18nKey = I18nKey(
-        default='Rendering enabled',
-        zh_CN='渲染已启用',
-        zh_TW='渲染已启用',
-        en='Rendering enabled',
-        ja='Rendering enabled',
-        ru='Rendering enabled',
-    )
-
-    render_not_available: I18nKey = I18nKey(
-        default='Rendering unavailable (Takumi module required)',
-        zh_CN='渲染不可用（需安装 Takumi 模块）',
-        zh_TW='渲染不可用（需安装 Takumi 模块）',
-        en='Rendering unavailable (Takumi module required)',
-        ja='Rendering unavailable (Takumi module required)',
-        ru='Rendering unavailable (Takumi module required)',
-    )
-
-
-
     btn_edit: I18nKey = I18nKey(
         default='Edit',
         zh_CN='编辑',
@@ -617,20 +588,6 @@ class QvQI18n(BaseI18n):
         ja='Delete',
         ru='Delete',
     )
-
-    toast_render_load_failed: I18nKey = I18nKey(
-        default='Failed to load render config',
-        zh_CN='加载渲染配置失败',
-        zh_TW='加载渲染配置失败',
-        en='Failed to load render config',
-        ja='Failed to load render config',
-        ru='Failed to load render config',
-    )
-
-
-
-
-
 
     ov_mood: I18nKey = I18nKey(
         default='情绪',
@@ -1664,31 +1621,49 @@ class QvQI18n(BaseI18n):
         ru='Мин. часов тишины',
     )
 
-    cfg_human_state_proactive_message_probability: I18nKey = I18nKey(
-        default='主动发起概率(0~1)',
-        zh_CN='主动发起概率(0~1)',
-        zh_TW='主动发起概率(0~1)',
-        en='Proactive probability (0~1)',
-        ja='積極発話確率（0〜1）',
-        ru='Вероятность проактивности (0~1)',
+    cfg_human_state_proactive_message_urge_threshold: I18nKey = I18nKey(
+        default='冲动值门槛',
+        zh_CN='冲动值门槛',
+        zh_TW='衝動值門檻',
+        en='Urge threshold',
+        ja='衝動値のしきい値',
+        ru='Порог импульса',
     )
 
     cfg_human_state_proactive_message_check_interval_minutes: I18nKey = I18nKey(
         default='检查间隔(分钟)',
         zh_CN='检查间隔(分钟)',
-        zh_TW='检查间隔(分钟)',
+        zh_TW='檢查間隔(分鐘)',
         en='Check interval (minutes)',
         ja='チェック間隔（分）',
         ru='Интервал проверки (мин)',
     )
 
     cfg_human_state_proactive_message_max_per_day: I18nKey = I18nKey(
-        default='每日上限',
-        zh_CN='每日上限',
-        zh_TW='每日上限',
-        en='Daily limit',
-        ja='1日の上限',
-        ru='Дневной лимит',
+        default='单会话每日上限',
+        zh_CN='单会话每日上限',
+        zh_TW='單會話每日上限',
+        en='Daily limit per session',
+        ja='セッション毎の1日上限',
+        ru='Лимит в день на сессию',
+    )
+
+    cfg_human_state_proactive_message_global_max_per_day: I18nKey = I18nKey(
+        default='全局每日上限',
+        zh_CN='全局每日上限',
+        zh_TW='全域每日上限',
+        en='Global daily limit',
+        ja='全体の1日上限',
+        ru='Глобальный дневной лимит',
+    )
+
+    cfg_human_state_proactive_message_unanswered_cooldown_hours: I18nKey = I18nKey(
+        default='没人理冷却(小时)',
+        zh_CN='没人理冷却(小时)',
+        zh_TW='沒人理冷卻(小時)',
+        en='Unanswered cooldown (hours)',
+        ja='無応答クールダウン（時間）',
+        ru='Кулдаун без ответа (час)',
     )
 
     cfg_stalker_mode_enabled: I18nKey = I18nKey(

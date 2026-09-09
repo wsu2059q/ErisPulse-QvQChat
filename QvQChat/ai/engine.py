@@ -70,21 +70,14 @@ class AIEngine:
         **kwargs,
     ) -> Any:
         """
-        执行行为
+        按行为定义执行 AI 调用，沿行为分配的模型顺序故障转移
 
-        按行为分配的模型顺序尝试，失败则切换下一个模型。
-
-        Args:
-            behavior_id: 行为ID
-            messages: 消息列表
-            tools: 工具定义（可选）
-            **kwargs: 额外参数覆盖
-
-        Returns:
-            AI回复内容
-
-        Raises:
-            RuntimeError: 行为不可用或所有模型均失败
+        :param behavior_id: 行为 ID
+        :param messages: OpenAI 格式消息列表
+        :param tools: OpenAI 格式工具定义
+        :param kwargs: 额外参数覆盖（temperature/max_tokens 等）
+        :return: str AI 回复文本；模型返回 tool_calls 时为原始 message 对象
+        :raises RuntimeError: 行为不存在/禁用/未分配模型，或所有模型均调用失败
         """
         behavior = self.behavior_manager.get_behavior(behavior_id)
         if not behavior:
@@ -145,10 +138,15 @@ class AIEngine:
         max_tokens: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> Any:
-        """对话行为
+        """
+        对话行为（dialogue）
 
-        当 AI 返回 tool_calls 时，返回原始 message 对象（含 tool_calls 属性），
-        由调用方处理。否则返回字符串。
+        :param messages: OpenAI 格式消息列表
+        :param temperature: [float] 温度覆盖
+        :param max_tokens: [int] 补全上限覆盖
+        :param tools: [List[Dict]] 工具定义
+        :return: str AI 回复文本；模型返回 tool_calls 时为原始 message 对象，
+            由调用方执行工具
         """
         kwargs = {}
         if temperature is not None:
@@ -160,7 +158,12 @@ class AIEngine:
         )
 
     async def identify_intent(self, user_input: str) -> str:
-        """意图识别行为"""
+        """
+        意图识别行为
+
+        :param user_input: 用户消息文本
+        :return: str 意图类型名，识别失败返回 "dialogue"
+        """
         try:
             result = await self.execute_behavior(
                 "intent",
@@ -171,7 +174,15 @@ class AIEngine:
             return "dialogue"
 
     async def memory_process(self, prompt: str) -> str:
-        """记忆提取行为（memory 行为无模型时自动复用 dialogue 模型）"""
+        """
+        记忆提取行为（memory 行为无模型时自动复用 dialogue 模型）
+
+        :param prompt: 记忆提取提示词
+        :return: str 模型输出文本
+        """
+        self.logger.debug(
+            f"memory_process prompt ({len(prompt)}字符) ---\n{prompt[:800]}"
+        )
         try:
             result = await self.execute_behavior(
                 "memory",
@@ -280,7 +291,13 @@ class AIEngine:
         return url
 
     async def analyze_image(self, image_url: str, user_text: str = "") -> str:
-        """图片分析行为"""
+        """
+        图片分析行为（vision）
+
+        :param image_url: 图片 URL/路径
+        :param user_text: 用户附带的问题文本
+        :return: str 图片描述，失败返回空字符串
+        """
         try:
             # 转为 base64 data URL，确保 VLM 可以访问
             processed_url = await self._ensure_data_url(image_url)
@@ -313,7 +330,14 @@ class AIEngine:
         current_message: str,
         bot_name: str = "",
     ) -> bool:
-        """回复判断行为"""
+        """
+        回复判断行为（reply_judge）
+
+        :param recent_messages: 最近对话消息列表
+        :param current_message: 当前待判定消息
+        :param bot_name: 机器人昵称，命中时附加提示
+        :return: bool 是否需要回复
+        """
         try:
             context = "\n".join(
                 f"{m.get('role', 'user')}: {m.get('content', '')}"
@@ -343,7 +367,13 @@ class AIEngine:
         recent_messages: List[Dict[str, str]],
         bot_name: str = "",
     ) -> bool:
-        """对话连续性判断"""
+        """
+        对话连续性判断行为（reply_judge）
+
+        :param recent_messages: 最近对话消息列表
+        :param bot_name: 机器人昵称
+        :return: bool 是否继续参与话题
+        """
         try:
             context = "\n".join(
                 f"{m.get('role', 'user')}: {m.get('content', '')}"
@@ -364,7 +394,12 @@ class AIEngine:
             return False
 
     async def test_model(self, model_id: str) -> bool:
-        """测试指定模型的连接"""
+        """
+        测试指定模型的 API 连通性
+
+        :param model_id: 模型 ID
+        :return: bool 连接成功返回 True
+        """
         config = self.model_pool.get_client_config(model_id)
         if not config:
             return False

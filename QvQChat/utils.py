@@ -192,12 +192,18 @@ def parse_multi_messages(text: str) -> List[Dict[str, Any]]:
         if i + 1 < len(parts):
             next_delay = int(parts[i + 1])
 
-    # 最多返回3条消息
+    # 最多发送3条消息：超出的部分并入最后一条，不丢内容
     if len(messages) > 3:
         from ErisPulse.Core import logger
 
-        logger.warning("消息超过3条，只发送前3条")
-        messages = messages[:3]
+        logger.warning(
+            f"消息超过3条，剩余 {len(messages) - 3} 段并入最后一条发送"
+        )
+        overflow = messages[2:]
+        merged = " ".join(m["content"] for m in overflow if m["content"])
+        messages = messages[:2] + [
+            {"content": merged, "delay": overflow[0]["delay"]}
+        ]
 
     return messages
 
