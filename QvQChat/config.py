@@ -8,7 +8,7 @@ sdk.env 是 sdk.storage 的别名（存储管理器），并非配置管理器�
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, ClassVar, Dict, List
 
 from ErisPulse import sdk
 
@@ -25,16 +25,16 @@ class QvQConfigData(BaseConfig):
     复杂嵌套子结构暂用 Dict 字段承接，后续阶段逐步细化。
     """
 
-    _schema_meta: dict = field(
-        default_factory=lambda: {
-            "group_labels": {
-                "basic": {"i18n": "QvQChat.cfg_group_basic", "default": "基础"},
-                "reply": {"i18n": "QvQChat.cfg_group_reply", "default": "回复策略"},
-                "humanize": {"i18n": "QvQChat.cfg_group_humanize", "default": "拟人化"},
-                "advanced": {"i18n": "QvQChat.cfg_group_advanced", "default": "高级"},
-            }
+    # 类级元数据（非配置字段）：必须声明为 ClassVar，
+    # 否则 dataclass 会将其视为普通配置字段，导致 WebUI 出现 _schema_meta 表单项
+    _schema_meta: ClassVar[dict] = {
+        "group_labels": {
+            "basic": {"i18n": "QvQChat.cfg_group_basic", "default": "基础"},
+            "reply": {"i18n": "QvQChat.cfg_group_reply", "default": "回复策略"},
+            "humanize": {"i18n": "QvQChat.cfg_group_humanize", "default": "拟人化"},
+            "advanced": {"i18n": "QvQChat.cfg_group_advanced", "default": "高级"},
         }
-    )
+    }
 
     # 基础
     max_history_length: int = field(
