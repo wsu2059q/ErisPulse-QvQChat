@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ErisPulse-QvQChat"
+version = "4.0.0"
+description = "ErisPulse 通用智能体：消息收发、生态服务调用、代码执行、电脑操作、定时任务 —— Universal agent module for ErisPulse"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [ { name = "wsu2059q", email = "wsu2059@qq.com" } ]
+dependencies = [
+    "openai>=1.0.0",
+    "ErisPulse>=2.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.0",
+    "twine>=4.0",
+]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ErisPulse-Testing",
+]
+
+[project.urls]
+"homepage" = "https://github.com/wsu2059q/ErisPulse-QvQChat"
+"Issues" = "https://github.com/wsu2059q/ErisPulse-QvQChat/issues"
+
+[project.entry-points."erispulse.module"]
+"QvQChat" = "QvQChat:Main"
+
+[tool.setuptools.packages.find]
+include = ["QvQChat*"]
+
+[tool.setuptools.package-data]
+QvQChat = ["dashboard/templates/*"]
+
+# uv 配置
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple"
+default = true
+
+[dependency-groups]
+dev = [
+    "build>=1.0",
+    "twine>=4.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
