@@ -1,0 +1,305 @@
+<div class="qvq-app" id="qvq-app">
+  <div class="qvq-topbar">
+    <button class="qvq-burger" id="qvq-burger" type="button" aria-label="menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+    </button>
+    <span class="qvq-topbar-title">QvQ<span>Chat</span></span>
+  </div>
+  <div class="qvq-mask" id="qvq-mask"></div>
+  <aside class="qvq-side" id="qvq-side">
+    <div class="qvq-brand">
+      <div class="qvq-logo">QvQ<span>Chat</span></div>
+    </div>
+    <nav class="qvq-nav" id="qvq-nav">
+      <div class="qvq-nav-group" data-i18n="nav_group_core">核心</div>
+      <button class="qvq-nav-btn active" data-tab="overview">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2" /><rect x="14" y="3" width="7" height="7" rx="2" /><rect x="3" y="14" width="7" height="7" rx="2" /><rect x="14" y="14" width="7" height="7" rx="2" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_overview">概览</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="chat">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_chat">对话</span>
+      </button>
+      <div class="qvq-nav-sessions" id="qvq-nav-sessions"></div>
+      <div class="qvq-nav-group" data-i18n="nav_group_config">能力</div>
+      <button class="qvq-nav-btn" data-tab="models">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M12 2.5l9 5-9 5-9-5 9-5z" /><path d="M3 12l9 5 9-5" /><path d="M3 17l9 5 9-5" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_models">模型池</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="personas">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.2a4.6 4.6 0 0 0 7 0" /><path d="M9 9.6h.01M15 9.6h.01" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_personas">人格</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="skills">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M13 2L4.5 13.5H11L9.5 22 19 9.5h-6.5L13 2z" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_skills">技能</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="tools">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_tools">工具</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="extensions">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M3.3 7L12 12l8.7-5M12 22V12" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_extensions">扩展</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="mcp">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_mcp">MCP</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="tasks">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5.2l3.4 2" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_tasks">定时任务</span>
+      </button>
+      <div class="qvq-nav-group" data-i18n="nav_group_data">数据</div>
+      <button class="qvq-nav-btn" data-tab="memory">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="3" /><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13" /><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_memory">记忆</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="sessions">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_sessions">会话</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="audit">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_audit">审计</span>
+      </button>
+      <button class="qvq-nav-btn" data-tab="settings">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_settings">设置</span>
+      </button>
+    </nav>
+  </aside>
+
+  <main class="qvq-main">
+    <section class="qvq-tab active" data-section="overview">
+      <h1 class="qvq-h1">QvQ<span class="qvq-h1-dot">.</span></h1>
+      <p class="qvq-desc" data-i18n="overview_desc">在聊天平台直接完成一切</p>
+      <div class="qvq-hero">
+        <div class="qvq-hero-face"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="2" stroke-dasharray="3 2" /><circle cx="9" cy="13" r="1.2" fill="currentColor" /><circle cx="15" cy="13" r="1.2" fill="currentColor" /><path d="M12 7V4" stroke-dasharray="2 2" /><circle cx="12" cy="3" r="1" fill="currentColor" /><path d="M4 17l-2 2M20 17l2 2" stroke-dasharray="2 2" /></svg></div>
+        <div class="qvq-hero-main">
+          <div class="qvq-hero-title" id="qvq-hero-title">QvQChat</div>
+          <div class="qvq-hero-sub" id="qvq-hero-sub"></div>
+        </div>
+        <div class="qvq-hero-usage">
+          <div class="num" id="qvq-hero-tokens">0</div>
+          <div class="cap" data-i18n="stat_usage">今日用量</div>
+          <div class="qvq-hero-bar"><i id="qvq-hero-bar"></i></div>
+          <div class="qvq-hero-limit" id="qvq-hero-limit"></div>
+        </div>
+      </div>
+      <div class="qvq-card">
+        <h3 class="qvq-card-title" data-i18n="usage_title">用量趋势</h3>
+        <div id="qvq-home-chart"></div>
+      </div>
+      <div class="qvq-stats" id="qvq-stats"></div>
+      <div class="qvq-split">
+        <div class="qvq-card">
+          <h3 class="qvq-card-title" data-i18n="recent_sessions">最近会话</h3>
+          <div id="qvq-home-sessions"></div>
+        </div>
+        <div class="qvq-card">
+          <h3 class="qvq-card-title" data-i18n="upcoming_tasks">即将执行</h3>
+          <div id="qvq-home-tasks"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="chat">
+      <div class="qvq-chat-app">
+        <div class="qvq-chat-main">
+          <header class="qvq-chat-top">
+            <span class="qvq-chat-title" id="qvq-chat-title"></span>
+            <span class="qvq-chat-spacer"></span>
+            <select class="qvq-select" id="qvq-chat-persona" title="persona"></select>
+            <button class="qvq-icon-btn" id="qvq-chat-share" type="button" data-i18n-title="chat_share" title="分享会话">
+              <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+            </button>
+            <button class="qvq-icon-btn" id="qvq-chat-settings" type="button" data-i18n-title="chat_settings" title="会话设置">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+          </header>
+          <div class="qvq-chat-box" id="qvq-chat-box"></div>
+          <div class="qvq-chat-chips" id="qvq-chat-chips" style="display:none"></div>
+          <div class="qvq-chat-queue" id="qvq-chat-queue" style="display:none"></div>
+          <div class="qvq-composer">
+            <div class="qvq-chat-attach" id="qvq-chat-attach"></div>
+            <textarea class="qvq-chat-text" id="qvq-chat-input" rows="1" data-i18n-ph="chat_placeholder" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
+            <div class="qvq-composer-bar">
+              <button class="qvq-icon-btn" id="qvq-chat-attach-btn" type="button" data-i18n-title="chat_attach" title="添加附件">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+              <input type="file" id="qvq-chat-file" multiple style="display:none" />
+              <button class="qvq-icon-btn" id="qvq-chat-mention" type="button" data-i18n-title="chat_mention" title="提名工具/技能（AI 优先使用）">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1"/></svg>
+                <i class="qvq-mention-badge" id="qvq-mention-badge" style="display:none"></i>
+              </button>
+              <span class="qvq-composer-spacer"></span>
+              <button type="button" class="qvq-mm-btn" id="qvq-chat-mm" data-i18n-title="chat_model" title="模型与思考强度">
+                <span id="qvq-chat-mm-label">自动 · 默认</span>
+                <i class="qvq-dd-chev"></i>
+              </button>
+              <button class="qvq-composer-send" id="qvq-chat-send" type="button" data-i18n-title="chat_send" title="发送">
+                <svg class="ico-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                <svg class="ico-stop" viewBox="0 0 24 24" style="display:none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="models">
+      <h1 class="qvq-h1" data-i18n="nav_models">模型池</h1>
+      <p class="qvq-desc" data-i18n="models_desc">OpenAI 兼容端点，按池顺序故障转移</p>
+      <div class="qvq-card">
+        <div class="qvq-toolbar">
+          <button class="qvq-btn" id="qvq-model-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="models_add">添加模型</span></button>
+        </div>
+        <div id="qvq-models-list"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="personas">
+      <h1 class="qvq-h1" data-i18n="nav_personas">人格</h1>
+      <p class="qvq-desc" data-i18n="personas_desc">人格 = 系统提示词 + 工具白名单</p>
+      <div class="qvq-card">
+        <div class="qvq-toolbar">
+          <button class="qvq-btn" id="qvq-persona-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="personas_new">新建人格</span></button>
+        </div>
+        <div id="qvq-personas-list"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="skills">
+      <h1 class="qvq-h1" data-i18n="nav_skills">技能</h1>
+      <p class="qvq-desc" data-i18n="skills_desc">可复用指令模板：对话中可手动选用，任务匹配时智能体自动加载</p>
+      <div class="qvq-card">
+        <div class="qvq-toolbar">
+          <button class="qvq-btn" id="qvq-skill-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="skills_add">新建技能</span></button>
+          <button class="qvq-btn ghost" id="qvq-skill-export" data-i18n="skills_export">导出</button>
+          <button class="qvq-btn ghost" id="qvq-skill-import" data-i18n="skills_import">导入</button>
+          <input type="file" id="qvq-skill-file" accept="application/json" style="display:none" />
+        </div>
+        <div id="qvq-skills-list"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="tools">
+      <h1 class="qvq-h1" data-i18n="nav_tools">工具</h1>
+      <p class="qvq-desc" data-i18n="tools_desc">内置 + 生态服务桥 + MCP，装了生态模块即得能力</p>
+      <div class="qvq-toolbar">
+        <button class="qvq-btn ghost" id="qvq-tools-refresh" data-i18n="tools_refresh">刷新生态桥</button>
+        <input class="qvq-input qvq-input-sm" id="qvq-tools-filter" type="text" data-i18n-ph="tools_filter" placeholder="过滤…" />
+      </div>
+      <div class="qvq-card">
+        <div id="qvq-tools-list"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="extensions">
+      <h1 class="qvq-h1" data-i18n="nav_extensions">扩展</h1>
+      <p class="qvq-desc" data-i18n="extensions_desc">外部 ErisPulse 模块为智能体提供工具与人格</p>
+      <div class="qvq-card">
+        <div id="qvq-extensions-list"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="mcp">
+      <h1 class="qvq-h1">MCP</h1>
+      <p class="qvq-desc" data-i18n="mcp_desc">Model Context Protocol 服务器与工具接入</p>
+      <div class="qvq-toolbar">
+        <button class="qvq-btn" id="qvq-mcp-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="mcp_add">添加服务器</span></button>
+        <button class="qvq-btn ghost" id="qvq-mcp-connect-all" data-i18n="mcp_connect_all">连接全部</button>
+      </div>
+      <div class="qvq-grid asymmetric">
+        <div class="qvq-card qvq-span7">
+          <h3 class="qvq-card-title" data-i18n="mcp_servers">服务器</h3>
+          <div id="qvq-mcp-list"></div>
+        </div>
+        <div class="qvq-card qvq-span5">
+          <h3 class="qvq-card-title" data-i18n="mcp_tools">MCP 工具</h3>
+          <div id="qvq-mcp-tools"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="tasks">
+      <h1 class="qvq-h1" data-i18n="nav_tasks">定时任务</h1>
+      <p class="qvq-desc" data-i18n="tasks_desc">由智能体通过 create_scheduled_task 创建</p>
+      <div class="qvq-card">
+        <div id="qvq-tasks-list"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="memory">
+      <h1 class="qvq-h1" data-i18n="nav_memory">记忆</h1>
+      <p class="qvq-desc" data-i18n="memory_desc">长期记忆作用域</p>
+      <div class="qvq-grid asymmetric">
+        <div class="qvq-card qvq-span5" id="qvq-memory-scopes"></div>
+        <div class="qvq-card qvq-span7" id="qvq-memory-entries"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="sessions">
+      <h1 class="qvq-h1" data-i18n="nav_sessions">会话</h1>
+      <p class="qvq-desc" data-i18n="sessions_desc">对话窗口与人格绑定</p>
+      <div class="qvq-card">
+        <div id="qvq-sessions-list"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="audit">
+      <h1 class="qvq-h1" data-i18n="nav_audit">审计</h1>
+      <p class="qvq-desc" data-i18n="audit_desc">电脑操作与确认记录</p>
+      <div class="qvq-stats" id="qvq-audit-stats"></div>
+      <div class="qvq-toolbar">
+        <input class="qvq-input qvq-input-sm" id="qvq-audit-filter" type="text" data-i18n-ph="audit_filter" placeholder="过滤工具/用户…" />
+      </div>
+      <div class="qvq-card">
+        <div id="qvq-audit-list"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="settings">
+      <h1 class="qvq-h1" data-i18n="nav_settings">设置</h1>
+      <p class="qvq-desc" data-i18n="settings_desc">运行时配置，保存即生效</p>
+      <div class="qvq-toolbar">
+        <button class="qvq-btn ghost" id="qvq-backup-export" data-i18n="backup_export">导出配置</button>
+        <button class="qvq-btn ghost" id="qvq-backup-import" data-i18n="backup_import">导入配置</button>
+        <input type="file" id="qvq-backup-file" accept="application/json" style="display:none" />
+      </div>
+      <div class="qvq-cats" id="qvq-settings-cats"></div>
+      <div class="qvq-card" id="qvq-usage-card" style="display:none">
+        <h3 class="qvq-card-title" data-i18n="usage_title">用量趋势</h3>
+        <div id="qvq-usage-chart"></div>
+      </div>
+      <div class="qvq-card">
+        <div id="qvq-settings-form"></div>
+        <div class="qvq-actions">
+          <button class="qvq-btn" id="qvq-settings-save" data-i18n="save">保存</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="qvq-modal" id="qvq-modal" style="display:none">
+    <div class="qvq-modal-mask" id="qvq-modal-mask"></div>
+    <div class="qvq-modal-card">
+      <div class="qvq-modal-head">
+        <span id="qvq-modal-title"></span>
+        <button class="qvq-modal-close" id="qvq-modal-close" type="button" aria-label="close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
+      </div>
+      <div class="qvq-modal-body" id="qvq-modal-body"></div>
+    </div>
+  </div>
+
+  <div class="qvq-login" id="qvq-login" style="display:none">
+    <div class="qvq-login-card">
+      <div class="qvq-logo">QvQ<span>Chat</span></div>
+      <div class="qvq-logo-sub" data-i18n="login_hint">输入访问令牌</div>
+      <input class="qvq-input" id="qvq-login-token" type="password" data-i18n-ph="login_placeholder" placeholder="access token" />
+      <button class="qvq-btn" id="qvq-login-btn" data-i18n="login_btn">进入</button>
+      <div class="qvq-login-err" id="qvq-login-err"></div>
+    </div>
+  </div>
+</div>
