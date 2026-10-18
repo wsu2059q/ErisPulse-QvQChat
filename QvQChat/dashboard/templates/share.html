@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QvQChat</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #0f1115; color: #e8ecf1;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 14px; line-height: 1.7;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 28px 18px 60px; }
+  .head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .brand { font-weight: 800; font-size: 18px; color: #74d0f5; letter-spacing: -0.01em; }
+  .brand i { font-style: normal; color: #e8ecf1; }
+  .meta { font-size: 12px; color: #8b96a5; }
+  .expired {
+    margin: 60px auto 0; max-width: 380px; text-align: center; border: 1px dashed #333a45;
+    border-radius: 14px; padding: 30px 20px; color: #8b96a5;
+  }
+  .expired b { display: block; font-size: 15px; color: #e8ecf1; margin-bottom: 6px; }
+  .msgs { display: flex; flex-direction: column; gap: 14px; margin-top: 22px; }
+  .m.user { align-self: flex-end; max-width: 60%; background: #2f93cd; color: #fff; border-radius: 14px; border-bottom-right-radius: 5px; padding: 9px 14px; white-space: pre-wrap; word-break: break-word; }
+  .m.bot { align-self: stretch; border-left: 2px solid #2a323d; padding: 2px 0 2px 14px; word-break: break-word; }
+  .m .role { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #8b96a5; margin-bottom: 3px; text-transform: uppercase; }
+  .m.user .role { text-align: right; color: rgba(255,255,255,0.75); }
+  .m.ctx { border: 1px dashed #333a45; border-radius: 10px; padding: 8px 12px; font-size: 12px; color: #8b96a5; }
+  .m.ctx summary { cursor: pointer; }
+  .m.ctx pre { white-space: pre-wrap; word-break: break-word; margin: 6px 0 0; font-size: 12px; }
+  .md p { margin: 0 0 6px; } .md :last-child { margin-bottom: 0; }
+  .md ul, .md ol { margin: 4px 0; padding-left: 20px; }
+  .md code { font-family: ui-monospace, Consolas, monospace; font-size: 0.88em; background: rgba(127,137,148,0.16); padding: 1px 5px; border-radius: 6px; }
+  .md .pre { margin: 6px 0; border: 1px solid #2a323d; border-radius: 10px; overflow: hidden; background: #161a20; }
+  .md .pre .lang { display: flex; justify-content: space-between; padding: 3px 10px; font-size: 11px; color: #8b96a5; border-bottom: 1px solid #2a323d; }
+  .md .pre pre { margin: 0; padding: 9px 12px; overflow-x: auto; font-size: 12.5px; font-family: ui-monospace, Consolas, monospace; }
+  .md a { color: #74d0f5; }
+  .md table { border-collapse: collapse; margin: 6px 0; width: 100%; font-size: 12.5px; }
+  .md th, .md td { border: 1px solid #2a323d; padding: 5px 9px; text-align: left; }
+  .md th { background: #161a20; }
+  .md blockquote { margin: 4px 0; padding: 2px 10px; border-left: 3px solid #74d0f5; opacity: 0.85; }
+  .more { text-align: center; color: #8b96a5; font-size: 12px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="brand">QvQ<i>Chat</i></div>
+    <div class="meta" id="meta"></div>
+  </div>
+  <div id="content"><div class="expired" id="loading"><b></b></div></div>
+</div>
+<script>
+(function () {
+  var L = (navigator.language || "en").toLowerCase().indexOf("zh") === 0
+    ? { title: "会话分享", loading: "加载中…", empty: "没有可显示的消息", empty_hint: "分享内容为空或超出预算。",
+        summary: "上下文摘要", user: "用户", invalid: "链接无效或已过期", invalid_hint: "请向分享者索取新的链接。",
+        valid_until: "有效至", budget_note: "仅显示预算内的最近消息", tool: "工具" }
+    : { title: "Shared session", loading: "Loading…", empty: "Nothing to show", empty_hint: "The shared content is empty or over budget.",
+        summary: "Context summary", user: "User", invalid: "Link invalid or expired", invalid_hint: "Please ask the sender for a fresh link.",
+        valid_until: "valid until", budget_note: "Showing only the most recent messages within budget", tool: "Tool" };
+  document.title = "QvQChat · " + L.title;
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function md(src) {
+    var text = String(src == null ? "" : src).replace(/\r\n/g, "\n").trim();
+    if (!text) return "";
+    var parts = text.split("```");
+    var out = '<div class="md">';
+    for (var pi = 0; pi < parts.length; pi++) {
+      if (pi % 2 === 1) {
+        var code = parts[pi], nl = code.indexOf("\n");
+        var lang = nl >= 0 ? code.slice(0, nl).trim() : "";
+        var body = nl >= 0 ? code.slice(nl + 1) : code;
+        out += '<div class="pre"><div class="lang"><span>' + esc(lang || "code") + "</span></div><pre>" + esc(body.replace(/\n$/, "")) + "</pre></div>";
+        continue;
+      }
+      var lines = parts[pi].split("\n");
+      var para = [], list = null, quote = [];
+      var flush = function () { if (para.length) { out += "<p>" + para.map(inline).join("<br>") + "</p>"; para = []; } };
+      var flushList = function () { if (list) { out += "</" + list + ">"; list = null; } };
+      var flushQuote = function () { if (quote.length) { out += "<blockquote>" + quote.map(inline).join("<br>") + "</blockquote>"; quote = []; } };
+      for (var li = 0; li < lines.length; li++) {
+        var tline = lines[li].trim();
+        if (!tline) { flush(); flushList(); flushQuote(); continue; }
+        var hm = tline.match(/^(#{1,6})\s+(.*)$/);
+        if (hm) { flush(); flushList(); flushQuote(); out += "<h" + hm[1].length + ">" + inline(esc(hm[2])) + "</h" + hm[1].length + ">"; continue; }
+        if (/^(-{3,}|\*{3,})$/.test(tline)) { flush(); flushList(); flushQuote(); out += "<hr/>"; continue; }
+        if (tline.indexOf("|") === 0 && li + 1 < lines.length && /^\|[\s:|-]+$/.test(lines[li + 1].trim())) {
+          flush(); flushList(); flushQuote();
+          var splitRow = function (line) {
+            return line.replace(/^\||\|$/g, "").split("|").map(function (c) { return c.trim(); });
+          };
+          var headCells = splitRow(tline);
+          li += 2;
+          var bodyRows = [];
+          while (li < lines.length && /^\|/.test(lines[li].trim())) { bodyRows.push(splitRow(lines[li].trim())); li++; }
+          li--;
+          out += "<table><thead><tr>" + headCells.map(function (c) { return "<th>" + inline(esc(c)) + "</th>"; }).join("") +
+            "</tr></thead><tbody>" + bodyRows.map(function (r) {
+              return "<tr>" + r.map(function (c) { return "<td>" + inline(esc(c)) + "</td>"; }).join("") + "</tr>";
+            }).join("") + "</tbody></table>";
+          continue;
+        }
+        if (tline.indexOf(">") === 0) { flush(); flushList(); quote.push(esc(tline.replace(/^>\s?/, ""))); continue; }
+        var ulm = tline.match(/^[-*+]\s+(.*)$/);
+        var olm = tline.match(/^\d+[.)]\s+(.*)$/);
+        if (ulm || olm) {
+          flush(); flushQuote();
+          var want = ulm ? "ul" : "ol";
+          if (list !== want) { flushList(); out += "<" + want + ">"; list = want; }
+          out += "<li>" + inline(esc((ulm || olm)[1])) + "</li>";
+          continue;
+        }
+        flushList(); flushQuote();
+        para.push(esc(tline));
+      }
+      flush(); flushList(); flushQuote();
+    }
+    return out + "</div>";
+  }
+  function inline(s) {
+    return s
+      .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+      .replace(/\[([^\]\n]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+  function contentText(c) {
+    if (typeof c === "string") return c;
+    if (Array.isArray(c)) return c.filter(function (p) { return p && p.type === "text"; }).map(function (p) { return p.text || ""; }).join("\n");
+    return String(c || "");
+  }
+  document.querySelector("#loading b").textContent = L.loading;
+  fetch("/QvQChat/api/qvq/share/messages?token=" + encodeURIComponent("__TOKEN__"))
+    .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
+    .then(function (data) {
+      var msgs = data.messages || [];
+      var box = document.getElementById("content");
+      var exp = data.expires ? new Date((data.expires || 0) * 1000) : null;
+      document.getElementById("meta").textContent =
+        (data.chat_key || "") + (exp ? " · " + L.valid_until + " " + exp.toLocaleString() : "");
+      if (!msgs.length) {
+        box.innerHTML = '<div class="expired"><b>' + L.empty + '</b>' + L.empty_hint + '</div>';
+        return;
+      }
+      var html = "";
+      if (data.summary) {
+        html += '<details class="m ctx"><summary>' + L.summary + '</summary><pre>' + esc(data.summary) + "</pre></details>";
+      }
+      html += '<div class="msgs">';
+      msgs.forEach(function (m) {
+        if (!m || typeof m !== "object") return;
+        var role = m.role || "user";
+        var raw = contentText(m.content);
+        if (role === "user") {
+          html += '<div class="m user"><div class="role">' + L.user + '</div>' + esc(raw) + "</div>";
+        } else if (role === "assistant") {
+          html += '<div class="m bot"><div class="role">AI</div>' + (md(raw) || esc(raw)) + "</div>";
+        } else {
+          html += '<details class="m ctx"><summary>' + esc(role) + "</summary><pre>" + esc(raw) + "</pre></details>";
+        }
+      });
+      html += "</div>";
+      if (data.truncated) html += '<div class="more">' + L.budget_note + '</div>';
+      box.innerHTML = html;
+    })
+    .catch(function () {
+      document.getElementById("content").innerHTML =
+        '<div class="expired"><b>' + L.invalid + '</b>' + L.invalid_hint + '</div>';
+    });
+})();
+</script>
+</body>
+</html>
