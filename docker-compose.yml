@@ -1,0 +1,20 @@
+services:
+  qvqchat:
+    image: ghcr.io/wsu2059q/erispulse-qvqchat:latest
+    container_name: qvqchat
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "8000:8000"
+    networks:
+      - qvc-net
+
+networks:
+  qvc-net:
+    driver: bridge
