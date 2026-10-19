@@ -168,7 +168,7 @@ class AgentRunner:
         max_calls = int(getattr(self.config, "max_tool_calls", 30))
         total_calls = 0
         rounds: list = []
-        for _ in range(max_rounds):
+        for loop_index in range(max_rounds):
             request = ChatRequest(
                 messages=[{"role": "system", "content": system}] + contexts,
                 tools=schemas or None,
@@ -212,6 +212,9 @@ class AgentRunner:
                     for i, tc in enumerate(response.tool_calls)
                 ]
             )
+            remaining = max_rounds - (loop_index + 1)
+            if remaining in (3, 2, 1) and remaining > 0:
+                contexts.append({"role": "user", "content": texts.t("tool_budget_hint", n=remaining)})
             step_counter["n"] += len(response.tool_calls)
             if rounds:
                 rounds[-1]["tools"] = trace[trace_before:]

@@ -61,8 +61,8 @@ class QvQConfig(BaseConfig):
     memory_recall: int = field(default=6, metadata=_desc("memory_recall", "每次对话注入的相关记忆条数上限", "memory", 2, "number"))
 
     tool_timeout: int = field(default=120, metadata=_desc("tool_timeout", "单次工具调用超时（秒）", "tools", 1, "number"))
-    max_tool_rounds: int = field(default=15, metadata=_desc("max_tool_rounds", "工具循环最大轮数", "tools", 2, "number"))
-    max_tool_calls: int = field(default=30, metadata=_desc("max_tool_calls", "单次对话工具调用总次数上限", "tools", 3, "number"))
+    max_tool_rounds: int = field(default=50, metadata=_desc("max_tool_rounds", "工具循环最大轮数（硬上限；剩 3 轮时自动提醒模型收敛，不会中途强制收尾）", "tools", 2, "number"))
+    max_tool_calls: int = field(default=150, metadata=_desc("max_tool_calls", "单次对话工具调用总次数上限", "tools", 3, "number"))
     disabled_tools: list[str] = field(default_factory=list, metadata=_desc("disabled_tools", "禁用的工具名列表（支持 eco_/mcp_/插件名. 前缀通配）", "tools", 4, "list"))
 
     eco_exclude: list[str] = field(default_factory=lambda: ["QvQChat"], metadata=_desc("eco_exclude", "不桥接服务目录的模块名单", "eco", 1, "list"))
