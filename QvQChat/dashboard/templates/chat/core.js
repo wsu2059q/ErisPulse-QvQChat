@@ -1,0 +1,475 @@
+(function () {
+  var I18N = {
+    "zh-CN": {
+      nav_group_core: "核心", nav_group_config: "能力", nav_group_data: "数据", nav_mcp: "MCP", mcp_desc: "MCP 服务器与工具接入", mcp_servers: "服务器", mcp_tools: "MCP 工具", mcp_connect_all: "连接全部", mcp_connect: "连接", mcp_disconnect: "断开", mcp_status_on: "已连接", mcp_status_off: "未连接", mcp_none: "尚未配置 MCP 服务器，点击此处添加", queue_send_now: "立即发送", queue_added: "已暂存，当前回复完成后自动发送", chat_stop: "停止生成", chat_cancelled: "（已停止生成）", chat_settings: "会话设置", settings_save_session: "保存到本会话", settings_apply_all: "应用到全局", share_export: "导出 Markdown", chat_persona_binding: "人格绑定", chat_export: "导出会话", chat_share: "分享会话", share_expires: "链接有效期", share_max_tokens: "最大允许 token（约可见的上下文预算）", share_create: "生成分享链接", share_url: "分享链接", share_hint: "任何人通过此链接可只读查看该会话（受 token 预算与有效期限制），可随时撤销。", role_user: "用户", model_s_auto: "自动", effort_s_auto: "默认", effort_s_low: "低", effort_s_mid: "中", effort_s_high: "高", chat_mention: "提名工具/技能（AI 优先使用）", chat_model: "切换模型", chat_effort: "思考强度", model_auto: "自动选择模型", effort_auto: "强度默认", effort_low: "强度低", effort_mid: "强度中", effort_high: "强度高", mention_ok: "完成", mention_none: "暂无可提名的技能或 MCP 工具", confirm_title: "确认操作", confirm_yes: "确定", chat_pasted: "已粘贴附件", chat_pin: "置顶", chat_unpin: "取消置顶", chat_archive: "归档", chat_unarchive: "取消归档", chat_archived: "已归档", chat_hero_sub: "有什么想聊的？或者从下面挑一个开始", chat_chip_1: "帮我写个 Python 小脚本", chat_chip_2: "把今天的聊天总结成周报", chat_chip_3: "解释一段报错信息", chat_chip_4: "每天晚上九点提醒我写日记", chat_new: "新对话", chat_new_name: "网页对话 {n}", chat_busy: "当前会话正在回复中", chat_density: "信息密度", density_brief: "简洁", density_detail: "详细", steps_count: "{n} 步工具调用", steps_running: "运行中…", copy: "复制", copied: "已复制", msgs_count: "{n} 条消息", session_summary: "上下文摘要",
+      stat_usage: "今日用量", backup_export: "导出配置", backup_import: "导入配置", audit_filter: "过滤工具/用户…", col_preview: "最近消息",
+      subtitle: "通用智能体",
+      nav_overview: "概览", nav_chat: "对话", nav_models: "模型池", nav_personas: "人格",
+      nav_tools: "工具", nav_extensions: "扩展", nav_tasks: "定时任务", nav_memory: "记忆", nav_sessions: "会话",
+      nav_audit: "审计", nav_settings: "设置",
+      overview_desc: "智能体运行一览", overview_detail: "运行详情",
+      stat_models: "模型", stat_tools: "工具", stat_eco: "生态工具", stat_sessions: "会话",
+      stat_tasks: "任务", stat_mcp: "MCP", stat_extensions: "扩展", stat_security: "安全",
+      on: "开", off: "关", takeovers: "接管中会话", trust_on: "完全信任",
+      chat_desc: "直接测试智能体", chat_placeholder: "说点什么…", chat_send: "发送",
+      chat_thinking: "思考中…", chat_empty: "还没有对话",
+      models_desc: "任意 OpenAI 兼容服务商，按顺序故障转移", models_add: "添加 / 更新模型",
+      models_name: "名称", models_id: "模型名", models_temp: "温度", models_maxtok: "最大 token",
+      save: "保存", actions: "操作", test: "测试", edit: "编辑", del: "删除",
+      models_empty: "模型池为空，先添加一个吧", model_test_ok: "模型可用", model_test_fail: "模型不可用",
+      saved: "已保存", deleted: "已删除", confirm_del: "确认删除？",
+      personas_desc: "系统提示词 + 工具白名单", personas_edit: "编辑人格",
+      personas_pid: "人格 id", personas_pname: "名称", personas_system: "系统提示词",
+      personas_tools: "工具白名单（逗号分隔，留空全部可用，支持 eco_* 通配）",
+      personas_builtin: "内置", personas_empty: "还没有自定义人格",
+      bindings: "会话绑定", bind_btn: "绑定", bind_hint: "chat_key（如 onebot11:group:123）",
+      tools_desc: "内置 + 生态桥 + MCP 工具", tools_refresh: "刷新生态桥",
+      tools_filter: "过滤…", tools_empty: "没有匹配的工具",
+      extensions_desc: "外部模块提供的工具与人格", ext_none: "暂无扩展模块：模块声明 meta.services 即自动接入", ext_personas_col: "人格", ext_schemas_col: "Schema",
+      tasks_desc: "智能体创建的定时任务", tasks_empty: "当前没有定时任务",
+      col_next: "下次触发", col_target: "目标", col_prompt: "内容", col_schedule: "计划",
+      memory_desc: "长期记忆作用域", memory_pick: "点击作用域查看条目", memory_clear: "清空",
+      memory_empty: "该作用域暂无记忆",
+      sessions_desc: "会话与人格绑定", sessions_empty: "暂无会话",
+      col_turns: "轮数", col_updated: "更新时间", reset_btn: "重置", col_persona: "人格",
+      audit_desc: "操作与确认记录", audit_empty: "暂无审计记录",
+      col_tool: "工具", col_detail: "详情",
+      settings_desc: "运行时配置，保存即生效", settings_saved: "配置已保存",
+      group_model: "模型", group_trigger: "触发", group_security: "安全", group_chat: "对话", group_memory: "记忆",
+      group_tools: "工具", group_eco: "生态", group_mcp: "MCP", group_task: "任务", group_access: "权限", group_usage: "用量",
+      usage_title: "用量趋势", usage_tokens: "token", usage_calls: "调用", usage_total: "14 天总量",
+      usage_avg: "日均", usage_today: "今日", usage_limit: "日上限", usage_empty: "最近 14 天没有用量数据",
+      hero_title: "嗨，我在", hero_no_limit: "未设置每日上限",
+      recent_sessions: "最近会话", upcoming_tasks: "即将执行",
+      login_hint: "输入访问令牌", login_placeholder: "access token", login_btn: "进入", login_failed: "令牌无效",
+      col_time: "时间", col_user: "用户", col_origin: "来源", col_chatkey: "会话", col_count: "条数", col_id: "ID",
+      ext_module: "模块", mcp_transport: "传输",
+      audit_total: "审计记录", audit_tools_n: "工具种类", audit_users_n: "涉及用户", audit_last24h: "近 24 小时",
+      audit_copy: "复制 JSON", audit_copied: "已复制",
+      chat_attach: "上传附件", chat_skills: "技能", chat_mcp: "指定 MCP 工具", chat_clear: "清空会话",
+      chat_clear_confirm: "清空当前会话的上下文？", chat_file_bad: "文件无法读取：", chat_file_big: "文件过大：", chat_img_limit: "图片最多 3 张",
+      chat_err: "发送失败", chat_follow: "跟随会话绑定", chat_default_session: "网页对话",
+      models_preset: "接入商预设", models_baseurl: "Base URL", models_apikey: "API Key",
+      models_fetch: "拉取模型列表", models_fetching: "拉取中…", models_fetch_fail: "拉取失败", models_remote_empty: "未获取到模型",
+      nav_skills: "技能", skills_desc: "可复用指令模板：对话中可手动选用，任务匹配时智能体自动加载",
+      skills_add: "新建技能", skills_edit: "编辑技能", skills_name: "名称", skills_description: "描述", skills_body: "内容",
+      skills_export: "导出", skills_import: "导入", skills_empty: "还没有技能，新建一个或把 .md 放入技能目录",
+      skills_source: "来源",
+      personas_reset: "恢复默认", personas_modified: "已自定义", sessions_msgs: "消息", yesterday: "昨天", tomorrow: "明天",
+      personas_new: "新建人格", mcp_add: "添加服务器", cancel: "取消", mcp_command: "命令", mcp_args: "参数（每行一个）", mcp_headers: "请求头（JSON）", mcp_server: "服务器", hero_dawn_1: "早呀，今天从点什么开始？", hero_dawn_2: "早安，我已就位", hero_dawn_3: "刚醒就来找我聊？", hero_morning_1: "上午好，有什么想聊的？", hero_morning_2: "在的，随时开聊", hero_morning_3: "今天有什么打算？说给我听听", hero_noon_1: "中午好，吃饭了吗？", hero_noon_2: "午休一下，我盯着呢", hero_noon_3: "吃饱了才有力气干活", hero_afternoon_1: "下午好，有点困就聊聊天", hero_afternoon_2: "下午茶时间，歇会儿？", hero_afternoon_3: "别硬撑，累了就歇", hero_evening_1: "晚上好，今天过得怎么样？", hero_evening_2: "回来啦，辛苦了", hero_evening_3: "夜聊模式，随时开麦", hero_late_1: "还没睡呀？", hero_late_2: "夜深了，早点休息", hero_late_3: "睡不着就聊会儿天",
+      loading: "加载中…"
+    },
+    "zh-TW": {
+      nav_group_core: "核心", nav_group_config: "能力", nav_group_data: "資料", nav_mcp: "MCP", mcp_desc: "MCP 伺服器與工具接入", mcp_servers: "伺服器", mcp_tools: "MCP 工具", mcp_connect_all: "連接全部", mcp_connect: "連接", mcp_disconnect: "斷開", mcp_status_on: "已連接", mcp_status_off: "未連接", mcp_none: "尚未配置 MCP 伺服器，點擊此處新增", queue_send_now: "立即傳送", queue_added: "已暫存，目前回覆完成後自動傳送", chat_stop: "停止產生", chat_cancelled: "（已停止產生）", chat_settings: "會話設置", settings_save_session: "儲存到此會話", settings_apply_all: "套用到全域", share_export: "匯出 Markdown", chat_persona_binding: "人格綁定", chat_export: "匯出會話", chat_share: "分享會話", share_expires: "連結有效期", share_max_tokens: "最大允許 token（約可見的上下文預算）", share_create: "產生分享連結", share_url: "分享連結", share_hint: "任何人透過此連結可唯讀檢視該會話（受 token 預算與有效期限制），可隨時撤銷。", role_user: "使用者", model_s_auto: "自動", effort_s_auto: "預設", effort_s_low: "低", effort_s_mid: "中", effort_s_high: "高", chat_mention: "提名工具/技能（AI 優先使用）", chat_model: "切換模型", chat_effort: "思考強度", model_auto: "自動選擇模型", effort_auto: "強度預設", effort_low: "強度低", effort_mid: "強度中", effort_high: "強度高", mention_ok: "完成", mention_none: "暫無可提名的技能或 MCP 工具", confirm_title: "確認操作", confirm_yes: "確定", chat_pasted: "已貼上附件", chat_pin: "置頂", chat_unpin: "取消置頂", chat_archive: "歸檔", chat_unarchive: "取消歸檔", chat_archived: "已歸檔", chat_hero_sub: "有什麼想聊的？或從下面挑一個開始", chat_chip_1: "幫我寫個 Python 小腳本", chat_chip_2: "把今天的聊天整理成週報", chat_chip_3: "解釋一段錯誤訊息", chat_chip_4: "每天晚上九點提醒我寫日記", chat_new: "新對話", chat_new_name: "網頁對話 {n}", chat_busy: "目前會話正在回覆中", chat_density: "資訊密度", density_brief: "簡潔", density_detail: "詳細", steps_count: "{n} 次工具呼叫", steps_running: "執行中…", copy: "複製", copied: "已複製", msgs_count: "{n} 條訊息", session_summary: "上下文摘要",
+      stat_usage: "今日用量", backup_export: "匯出配置", backup_import: "匯入配置", audit_filter: "過濾工具/使用者…", col_preview: "最近訊息",
+      subtitle: "通用智慧代理",
+      nav_overview: "概覽", nav_chat: "對話", nav_models: "模型池", nav_personas: "人格",
+      nav_tools: "工具", nav_extensions: "擴展", nav_tasks: "定時任務", nav_memory: "記憶", nav_sessions: "會話",
+      nav_audit: "審計", nav_settings: "設定",
+      overview_desc: "智慧代理運行一覽", overview_detail: "運行詳情",
+      stat_models: "模型", stat_tools: "工具", stat_eco: "生態工具", stat_sessions: "會話",
+      stat_tasks: "任務", stat_mcp: "MCP", stat_extensions: "擴展", stat_security: "安全",
+      on: "開", off: "關", takeovers: "接管中會話", trust_on: "完全信任",
+      chat_desc: "直接測試智慧代理", chat_placeholder: "說點什麼…", chat_send: "傳送",
+      chat_thinking: "思考中…", chat_empty: "還沒有對話",
+      models_desc: "任意 OpenAI 相容服務商，依順序故障轉移", models_add: "新增 / 更新模型",
+      models_name: "名稱", models_id: "模型名", models_temp: "溫度", models_maxtok: "最大 token",
+      save: "儲存", actions: "操作", test: "測試", edit: "編輯", del: "刪除",
+      models_empty: "模型池為空，先新增一個吧", model_test_ok: "模型可用", model_test_fail: "模型不可用",
+      saved: "已儲存", deleted: "已刪除", confirm_del: "確認刪除？",
+      personas_desc: "系統提示詞 + 工具白名單", personas_edit: "編輯人格",
+      personas_pid: "人格 id", personas_pname: "名稱", personas_system: "系統提示詞",
+      personas_tools: "工具白名單（逗號分隔，留空全部，支援 eco_* 萬用）",
+      personas_builtin: "內建", personas_empty: "還沒有自訂人格",
+      bindings: "會話綁定", bind_btn: "綁定", bind_hint: "chat_key（如 onebot11:group:123）",
+      tools_desc: "內建 + 生態橋 + MCP 工具", tools_refresh: "重新整理生態橋",
+      tools_filter: "過濾…", tools_empty: "沒有符合的工具",
+      extensions_desc: "外部模組的工具與人格", ext_none: "暫無擴展模組：模組宣告 meta.services 即自動接入", ext_personas_col: "人格", ext_schemas_col: "Schema",
+      tasks_desc: "智慧代理建立的定時任務", tasks_empty: "目前沒有定時任務",
+      col_next: "下次觸發", col_target: "目標", col_prompt: "內容", col_schedule: "計畫",
+      memory_desc: "長期記憶作用域", memory_pick: "點擊作用域查看條目", memory_clear: "清空",
+      memory_empty: "該作用域暫無記憶",
+      sessions_desc: "會話與人格綁定", sessions_empty: "暫無會話",
+      col_turns: "輪數", col_updated: "更新時間", reset_btn: "重置", col_persona: "人格",
+      audit_desc: "操作與確認記錄", audit_empty: "暫無審計記錄",
+      col_tool: "工具", col_detail: "詳情",
+      settings_desc: "運行時配置，儲存即生效", settings_saved: "配置已儲存",
+      group_model: "模型", group_trigger: "觸發", group_security: "安全", group_chat: "對話", group_memory: "記憶",
+      group_tools: "工具", group_eco: "生態", group_mcp: "MCP", group_task: "任務", group_access: "權限", group_usage: "用量",
+      usage_title: "用量趨勢", usage_tokens: "token", usage_calls: "呼叫", usage_total: "14 天總量",
+      usage_avg: "日均", usage_today: "今日", usage_limit: "日上限", usage_empty: "最近 14 天沒有用量資料",
+      hero_title: "嗨，我在", hero_no_limit: "未設定每日上限",
+      recent_sessions: "最近会话", upcoming_tasks: "即將執行",
+      login_hint: "輸入存取令牌", login_placeholder: "access token", login_btn: "進入", login_failed: "令牌無效",
+      col_time: "時間", col_user: "使用者", col_origin: "來源", col_chatkey: "會話", col_count: "條數", col_id: "ID",
+      ext_module: "模組", mcp_transport: "傳輸",
+      audit_total: "審計記錄", audit_tools_n: "工具種類", audit_users_n: "涉及使用者", audit_last24h: "近 24 小時",
+      audit_copy: "複製 JSON", audit_copied: "已複製",
+      chat_attach: "上傳附件", chat_skills: "技能", chat_mcp: "指定 MCP 工具", chat_clear: "清空會話",
+      chat_clear_confirm: "清空目前會話的上下文？", chat_file_bad: "檔案無法讀取：", chat_file_big: "檔案過大：", chat_img_limit: "圖片最多 3 張",
+      chat_err: "傳送失敗", chat_follow: "跟隨會話綁定", chat_default_session: "網頁對話",
+      models_preset: "接入商預設", models_baseurl: "Base URL", models_apikey: "API Key",
+      models_fetch: "拉取模型列表", models_fetching: "拉取中…", models_fetch_fail: "拉取失敗", models_remote_empty: "未取得模型",
+      nav_skills: "技能", skills_desc: "可複用指令範本：對話中可手動選用，任務匹配時智慧代理自動載入",
+      skills_add: "新增技能", skills_edit: "編輯技能", skills_name: "名稱", skills_description: "描述", skills_body: "內容",
+      skills_export: "匯出", skills_import: "匯入", skills_empty: "還沒有技能，新增一個或把 .md 放入技能目錄",
+      skills_source: "來源",
+      personas_reset: "恢復預設", personas_modified: "已自訂", sessions_msgs: "訊息", yesterday: "昨天", tomorrow: "明天",
+      personas_new: "新增人格", mcp_add: "新增伺服器", cancel: "取消", mcp_command: "命令", mcp_args: "參數（每行一個）", mcp_headers: "請求頭（JSON）", mcp_server: "伺服器", hero_dawn_1: "早啊，今天從哪開始？", hero_dawn_2: "早安，我已就位", hero_dawn_3: "剛醒就來找我聊？", hero_morning_1: "上午好，有什麼想聊的？", hero_morning_2: "在的，隨時開聊", hero_morning_3: "今天有什麼計畫？說給我聽聽", hero_noon_1: "中午好，吃飯了嗎？", hero_noon_2: "午休一下，我盯著呢", hero_noon_3: "吃飽了才有力氣做事", hero_afternoon_1: "下午好，有點睏就聊聊天", hero_afternoon_2: "下午茶時間，歇會兒？", hero_afternoon_3: "別硬撐，累了就休息", hero_evening_1: "晚上好，今天過得怎樣？", hero_evening_2: "回來啦，辛苦了", hero_evening_3: "夜聊模式，隨時開麥", hero_late_1: "還沒睡呀？", hero_late_2: "夜深了，早點休息", hero_late_3: "睡不著就聊會兒天",
+      loading: "載入中…"
+    },
+    "en": {
+      nav_group_core: "Core", nav_group_config: "Capabilities", nav_group_data: "Data", nav_mcp: "MCP", mcp_desc: "Model Context Protocol servers and tool access", mcp_servers: "Servers", mcp_tools: "MCP tools", mcp_connect_all: "Connect all", mcp_connect: "Connect", mcp_disconnect: "Disconnect", mcp_status_on: "connected", mcp_status_off: "disconnected", mcp_none: "No MCP servers yet — click here to add one", queue_send_now: "Send now", queue_added: "Queued — will send after the current reply", chat_stop: "Stop generating", chat_cancelled: "(generation stopped)", chat_settings: "Session settings", settings_save_session: "Save to this session", settings_apply_all: "Apply to all sessions", share_export: "Export Markdown", chat_persona_binding: "Persona binding", chat_export: "Export session", chat_share: "Share session", share_expires: "Link expires in", share_max_tokens: "Max tokens allowed (visible context budget)", share_create: "Create share link", share_url: "Share link", share_hint: "Anyone with this link can view the session read-only, limited by the token budget and expiry. Revoke anytime.", role_user: "User", model_s_auto: "auto", effort_s_auto: "Auto", effort_s_low: "Low", effort_s_mid: "Mid", effort_s_high: "High", chat_mention: "Mention tools/skills (AI prioritizes them)", chat_model: "Switch model", chat_effort: "Effort level", model_auto: "Auto model", effort_auto: "Effort auto", effort_low: "Effort low", effort_mid: "Effort mid", effort_high: "Effort high", mention_ok: "Done", mention_none: "No skills or MCP tools to mention yet", confirm_title: "Confirm", confirm_yes: "OK", chat_pasted: "Attachment pasted", chat_pin: "Pin", chat_unpin: "Unpin", chat_archive: "Archive", chat_unarchive: "Unarchive", chat_archived: "Archived", chat_hero_sub: "What shall we talk about? Or pick a starter below", chat_chip_1: "Write me a small Python script", chat_chip_2: "Summarize today's chat into a report", chat_chip_3: "Explain this error message", chat_chip_4: "Remind me to journal at 9pm daily", chat_new: "New chat", chat_new_name: "Web chat {n}", chat_busy: "This session is still replying", chat_density: "Detail level", density_brief: "Brief", density_detail: "Detailed", steps_count: "{n} tool calls", steps_running: "running…", copy: "Copy", copied: "Copied", msgs_count: "{n} messages", session_summary: "Context summary",
+      stat_usage: "Today usage", backup_export: "Export config", backup_import: "Import config", audit_filter: "Filter tool/user…", col_preview: "Last message",
+      subtitle: "universal agent",
+      nav_overview: "Overview", nav_chat: "Chat", nav_models: "Models", nav_personas: "Personas",
+      nav_tools: "Tools", nav_extensions: "Extensions", nav_tasks: "Tasks", nav_memory: "Memory", nav_sessions: "Sessions",
+      nav_audit: "Audit", nav_settings: "Settings",
+      overview_desc: "agent runtime at a glance", overview_detail: "Details",
+      stat_models: "Models", stat_tools: "Tools", stat_eco: "Eco tools", stat_sessions: "Sessions",
+      stat_tasks: "Tasks", stat_mcp: "MCP", stat_extensions: "Extensions", stat_security: "Security",
+      on: "on", off: "off", takeovers: "Takeovers", trust_on: "Full trust",
+      chat_desc: "test the agent directly", chat_placeholder: "Say something…", chat_send: "Send",
+      chat_thinking: "thinking…", chat_empty: "No conversation yet",
+      models_desc: "Any OpenAI-compatible provider, with failover", models_add: "Add / update model",
+      models_name: "Name", models_id: "Model", models_temp: "Temperature", models_maxtok: "Max tokens",
+      save: "Save", actions: "Actions", test: "Test", edit: "Edit", del: "Delete",
+      models_empty: "Model pool is empty, add one", model_test_ok: "model works", model_test_fail: "model failed",
+      saved: "Saved", deleted: "Deleted", confirm_del: "Delete this?",
+      personas_desc: "System prompt + tool whitelist", personas_edit: "Edit persona",
+      personas_pid: "Persona id", personas_pname: "Name", personas_system: "System prompt",
+      personas_tools: "Tool whitelist (comma separated, empty = all, eco_* allowed)",
+      personas_builtin: "builtin", personas_empty: "No custom personas yet",
+      bindings: "Session bindings", bind_btn: "Bind", bind_hint: "chat_key (e.g. onebot11:group:123)",
+      tools_desc: "Built-in, eco bridge and MCP tools", tools_refresh: "Refresh eco bridge",
+      tools_filter: "Filter…", tools_empty: "No matching tools",
+      extensions_desc: "Tools and personas from external modules", ext_none: "No extensions yet: a module declaring meta.services is wired in automatically", ext_personas_col: "Personas", ext_schemas_col: "Schemas",
+      tasks_desc: "Tasks created by the agent", tasks_empty: "No scheduled tasks",
+      col_next: "Next run", col_target: "Target", col_prompt: "Prompt", col_schedule: "Schedule",
+      memory_desc: "long-term memory scopes", memory_pick: "click a scope to list entries", memory_clear: "Clear",
+      memory_empty: "No memories in this scope",
+      sessions_desc: "Sessions and persona bindings", sessions_empty: "No sessions",
+      col_turns: "Turns", col_updated: "Updated", reset_btn: "Reset", col_persona: "Persona",
+      audit_desc: "Operation and confirmation log", audit_empty: "No audit records",
+      col_tool: "Tool", col_detail: "Detail",
+      settings_desc: "runtime configuration, applied on save", settings_saved: "Config saved",
+      group_model: "Model", group_trigger: "Trigger", group_security: "Security", group_chat: "Chat", group_memory: "Memory",
+      group_tools: "Tools", group_eco: "Eco", group_mcp: "MCP", group_task: "Task", group_access: "Access", group_usage: "Usage",
+      usage_title: "Usage trend", usage_tokens: "tokens", usage_calls: "Calls", usage_total: "Total (14d)",
+      usage_avg: "Daily avg", usage_today: "Today", usage_limit: "Daily limit", usage_empty: "No usage data in the last 14 days",
+      hero_title: "Hey, I'm here", hero_no_limit: "No daily limit set",
+      recent_sessions: "Recent sessions", upcoming_tasks: "Upcoming tasks",
+      login_hint: "Enter the access token", login_placeholder: "access token", login_btn: "Enter", login_failed: "Invalid token",
+      col_time: "Time", col_user: "User", col_origin: "Origin", col_chatkey: "Session", col_count: "Count", col_id: "ID",
+      ext_module: "Module", mcp_transport: "Transport",
+      audit_total: "Records", audit_tools_n: "Tools", audit_users_n: "Users", audit_last24h: "Last 24h",
+      audit_copy: "Copy JSON", audit_copied: "Copied",
+      chat_attach: "Attach files", chat_skills: "Skills", chat_mcp: "Pick MCP tools", chat_clear: "Clear session",
+      chat_clear_confirm: "Clear the context of this session?", chat_file_bad: "File could not be read:", chat_file_big: "File too large:", chat_img_limit: "Up to 3 images",
+      chat_err: "Send failed", chat_follow: "Follow session binding", chat_default_session: "Web chat",
+      models_preset: "Provider preset", models_baseurl: "Base URL", models_apikey: "API Key",
+      models_fetch: "Fetch models", models_fetching: "Fetching…", models_fetch_fail: "Fetch failed", models_remote_empty: "No models found",
+      nav_skills: "Skills", skills_desc: "Reusable instruction templates: pick them in chat, auto-loaded when a task matches",
+      skills_add: "New skill", skills_edit: "Edit skill", skills_name: "Name", skills_description: "Description", skills_body: "Body",
+      skills_export: "Export", skills_import: "Import", skills_empty: "No skills yet — create one or drop .md files into the skills dir",
+      skills_source: "Source",
+      personas_reset: "Reset to default", personas_modified: "customized", sessions_msgs: "Messages", yesterday: "Yesterday", tomorrow: "Tomorrow", personas_new: "New persona", mcp_add: "Add server", cancel: "Cancel", mcp_command: "Command", mcp_args: "Arguments (one per line)", mcp_headers: "Headers (JSON)", mcp_server: "Server",
+      hero_dawn_1: "Morning! Where shall we start today?", hero_dawn_2: "Good morning, I'm all set", hero_dawn_3: "Up early — want to chat?", hero_morning_1: "Good morning! What's on your mind?", hero_morning_2: "I'm here whenever you're ready", hero_morning_3: "Any plans today? Tell me about them", hero_noon_1: "Lunch yet? Don't skip it", hero_noon_2: "Take a break, I'll hold the fort", hero_noon_3: "Good food, good mood, good work", hero_afternoon_1: "Afternoon! A little chat beats more coffee", hero_afternoon_2: "Tea time? You've earned it", hero_afternoon_3: "Don't push too hard — pause when you need", hero_evening_1: "Evening! How was your day?", hero_evening_2: "You're back — good work today", hero_evening_3: "Night mode: thoughts unloading welcome", hero_late_1: "Still up?", hero_late_2: "It's late — rest soon, okay?", hero_late_3: "Can't sleep? Talk to me",
+      loading: "Loading…"
+    },
+    "ja": {
+      nav_group_core: "コア", nav_group_config: "機能", nav_group_data: "データ", nav_mcp: "MCP", mcp_desc: "Model Context Protocol サーバーとツール接続", mcp_servers: "サーバー", mcp_tools: "MCP ツール", mcp_connect_all: "全て接続", mcp_connect: "接続", mcp_disconnect: "切断", mcp_status_on: "接続済", mcp_status_off: "未接続", mcp_none: "MCP サーバー未登録 — ここをクリックして追加", queue_send_now: "今すぐ送信", queue_added: "一時保存しました。現在の返信後に自動送信します", chat_stop: "生成を停止", chat_cancelled: "（生成を停止しました）", chat_settings: "セッション設定", settings_save_session: "このセッションに保存", settings_apply_all: "全セッションに適用", share_export: "Markdown をエクスポート", chat_persona_binding: "ペルソナ固定", chat_export: "セッションをエクスポート", chat_share: "セッションを共有", share_expires: "リンク有効期限", share_max_tokens: "最大トークン（見える文脈の予算）", share_create: "共有リンクを作成", share_url: "共有リンク", share_hint: "このリンクを知る人は誰でもセッションを読み取り専用で閲覧できます（トークン予算と有効期限で制限）。いつでも取り消せます。", role_user: "ユーザー", model_s_auto: "自動", effort_s_auto: "既定", effort_s_low: "低", effort_s_mid: "中", effort_s_high: "高", chat_mention: "ツール/スキルを指名（AI が優先使用）", chat_model: "モデル切替", chat_effort: "思考レベル", model_auto: "モデル自動選択", effort_auto: "レベル既定", effort_low: "レベル低", effort_mid: "レベル中", effort_high: "レベル高", mention_ok: "完了", mention_none: "指名できるスキルや MCP ツールがありません", confirm_title: "操作の確認", confirm_yes: "OK", chat_pasted: "添付を貼り付けました", chat_pin: "固定", chat_unpin: "固定解除", chat_archive: "アーカイブ", chat_unarchive: "アーカイブ解除", chat_archived: "アーカイブ済み", chat_hero_sub: "何を話す？下から選んでもいいよ", chat_chip_1: "Python の小さなスクリプトを書いて", chat_chip_2: "今日のチャットを日報にまとめて", chat_chip_3: "このエラーメッセージを解説して", chat_chip_4: "毎晩9時に日記をリマインドして", chat_new: "新しいチャット", chat_new_name: "ウェブチャット {n}", chat_busy: "このセッションは返信中です", chat_density: "表示密度", density_brief: "簡潔", density_detail: "詳細", steps_count: "ツール呼び出し {n}件", steps_running: "実行中…", copy: "コピー", copied: "コピーしました", msgs_count: "{n} 件のメッセージ", session_summary: "コンテキスト要約",
+      stat_usage: "今日の使用量", backup_export: "設定をエクスポート", backup_import: "設定をインポート", audit_filter: "絞り込み…", col_preview: "最新メッセージ",
+      subtitle: "汎用エージェント",
+      nav_overview: "概要", nav_chat: "チャット", nav_models: "モデル", nav_personas: "ペルソナ",
+      nav_tools: "ツール", nav_extensions: "拡張", nav_tasks: "タスク", nav_memory: "記憶", nav_sessions: "セッション",
+      nav_audit: "監査", nav_settings: "設定",
+      overview_desc: "エージェントの実行状況", overview_detail: "詳細",
+      stat_models: "モデル", stat_tools: "ツール", stat_eco: "生態ツール", stat_sessions: "セッション",
+      stat_tasks: "タスク", stat_mcp: "MCP", stat_extensions: "拡張", stat_security: "セキュリティ",
+      on: "オン", off: "オフ", takeovers: "接管中のセッション", trust_on: "完全信頼",
+      chat_desc: "エージェントを直接テスト", chat_placeholder: "何か話しかけて…", chat_send: "送信",
+
+      chat_thinking: "思考中…", chat_empty: "まだ会話がありません",
+      models_desc: "OpenAI 互換エンドポイント、プール順にフェイルオーバー", models_add: "モデル追加 / 更新",
+      models_name: "名前", models_id: "モデル名", models_temp: "温度", models_maxtok: "最大トークン",
+      save: "保存", actions: "操作", test: "テスト", edit: "編集", del: "削除",
+      models_empty: "モデルプールが空です", model_test_ok: "モデル OK", model_test_fail: "モデル NG",
+      saved: "保存しました", deleted: "削除しました", confirm_del: "削除しますか？",
+      personas_desc: "ペルソナ = システムプロンプト + ツール白名單", personas_edit: "ペルソナ編集",
+      personas_pid: "ペルソナ id", personas_pname: "名前", personas_system: "システムプロンプト",
+      personas_tools: "ツール白名單（カンマ区切り、空 = 全部、eco_* 可）",
+      personas_builtin: "內置", personas_empty: "カスタムペルソナはまだありません",
+      bindings: "セッション binding", bind_btn: "binding", bind_hint: "chat_key（例 onebot11:group:123）",
+      tools_desc: "內置 + 生態サービス橋 + MCP", tools_refresh: "生態橋を更新",
+      tools_filter: "絞り込み…", tools_empty: "該当ツールなし",
+      extensions_desc: "外部モジュールのツールとペルソナ", ext_none: "拡張モジュールなし：meta.services を宣言すれば自動接続", ext_personas_col: "ペルソナ", ext_schemas_col: "Schema",
+      tasks_desc: "create_scheduled_task で作成", tasks_empty: "タスクはありません",
+      col_next: "次回", col_target: "対象", col_prompt: "内容", col_schedule: "スケジュール",
+      memory_desc: "長期記憶のスコープ", memory_pick: "スコープをクリックで表示", memory_clear: "クリア",
+      memory_empty: "記憶がありません",
+      sessions_desc: "会話ウィンドウとペルソナ binding", sessions_empty: "セッションなし",
+      col_turns: "ターン", col_updated: "更新", reset_btn: "リセット", col_persona: "ペルソナ",
+      audit_desc: "PC 操作と確認の記錄", audit_empty: "監査記錄なし",
+      col_tool: "ツール", col_detail: "詳細",
+      settings_desc: "實行時設定、保存で即反映", settings_saved: "設定を保存しました",
+      group_model: "モデル", group_trigger: "トリガー", group_security: "セキュリティ", group_chat: "チャット", group_memory: "記憶",
+      group_tools: "ツール", group_eco: "エコ", group_mcp: "MCP", group_task: "タスク", group_access: "アクセス", group_usage: "使用量",
+      usage_title: "使用量の推移", usage_tokens: "token", usage_calls: "呼び出し", usage_total: "14 日間の合計",
+      usage_avg: "1 日平均", usage_today: "今日", usage_limit: "1 日の上限", usage_empty: "直近 14 日間の使用量データはありません",
+      hero_title: "やあ、ここにいるよ", hero_no_limit: "1 日の上限は未設定",
+      recent_sessions: "最近のセッション", upcoming_tasks: "実行予定のタスク",
+      login_hint: "アクセストークンを入力", login_placeholder: "access token", login_btn: "進入", login_failed: "トークンが無効です",
+      col_time: "時刻", col_user: "ユーザー", col_origin: "発信元", col_chatkey: "セッション", col_count: "件数", col_id: "ID",
+      ext_module: "モジュール", mcp_transport: "トランスポート",
+      audit_total: "監査レコード", audit_tools_n: "ツール種別", audit_users_n: "ユーザー数", audit_last24h: "直近 24 時間",
+      audit_copy: "JSON をコピー", audit_copied: "コピーしました",
+      chat_attach: "添付ファイル", chat_skills: "スキル", chat_mcp: "MCP ツールを指定", chat_clear: "セッション消去",
+      chat_clear_confirm: "このセッションのコンテキストを消去しますか？", chat_file_bad: "ファイルを読み込めません：", chat_file_big: "ファイルが大きすぎます：", chat_img_limit: "画像は最大 3 枚",
+      chat_err: "送信失敗", chat_follow: "セッション binding に従う", chat_default_session: "ウェブチャット",
+      models_preset: "プロバイダ プリセット", models_baseurl: "Base URL", models_apikey: "API Key",
+      models_fetch: "モデル一覧を取得", models_fetching: "取得中…", models_fetch_fail: "取得失敗", models_remote_empty: "モデルが見つかりません",
+      nav_skills: "スキル", skills_desc: "再利用可能な指示テンプレート：チャットで選択可能、タスク一致時に自動読込",
+      skills_add: "スキル追加", skills_edit: "スキル編集", skills_name: "名前", skills_description: "説明", skills_body: "内容",
+      skills_export: "エクスポート", skills_import: "インポート", skills_empty: "スキルがありません。作成するか .md をスキルディレクトリへ",
+      skills_source: "提供元",
+      personas_reset: "デフォルトに戻す", personas_modified: "変更済み", sessions_msgs: "メッセージ", yesterday: "昨日", tomorrow: "明日", personas_new: "ペルソナ追加", mcp_add: "サーバー追加", cancel: "キャンセル", mcp_command: "コマンド", mcp_args: "引数（1行ずつ）", mcp_headers: "ヘッダー（JSON）", mcp_server: "サーバー",
+      hero_dawn_1: "おはよう！今日は何から始める？", hero_dawn_2: "おはよう、もう準備できてるよ", hero_dawn_3: "早起だね、話でもする？", hero_morning_1: "おはよう！何か話したいことある？", hero_morning_2: "いつでも付き合うよ", hero_morning_3: "今日の予定、聞かせて", hero_noon_1: "昼ごはん食べた？", hero_noon_2: "少し休んで、ここは任せて", hero_noon_3: "昼寝の時間かもね", hero_afternoon_1: "やあ！眠い時はおしゃべりが一番", hero_afternoon_2: "お茶でも飲む？", hero_afternoon_3: "無理しないでね", hero_evening_1: "こんばんは、今日どうだった？", hero_evening_2: "おかえり、お疲れさま", hero_evening_3: "夜トーク、始めようか", hero_late_1: "まだ起きてるの？", hero_late_2: "もう遅いよ、そろそろ寝よう", hero_late_3: "眠れないなら話相手になるよ",
+      loading: "読み込み中…"
+    },
+    "ru": {
+      nav_group_core: "Ядро", nav_group_config: "Возможности", nav_group_data: "Данные", nav_mcp: "MCP", mcp_desc: "Серверы и инструменты Model Context Protocol", mcp_servers: "Серверы", mcp_tools: "MCP-инструменты", mcp_connect_all: "Подключить все", mcp_connect: "Подключить", mcp_disconnect: "Отключить", mcp_status_on: "подключен", mcp_status_off: "отключен", mcp_none: "MCP-серверов пока нет — нажмите, чтобы добавить", queue_send_now: "Отправить сейчас", queue_added: "В очереди — отправится после текущего ответа", chat_stop: "Остановить генерацию", chat_cancelled: "(генерация остановлена)", chat_settings: "Настройки сессии", settings_save_session: "Сохранить в эту сессию", settings_apply_all: "Применить ко всем", share_export: "Экспорт Markdown", chat_persona_binding: "Привязка персоны", chat_export: "Экспорт сессии", chat_share: "Поделиться сессией", share_expires: "Срок действия ссылки", share_max_tokens: "Максимум токенов (бюджет видимого контекста)", share_create: "Создать ссылку", share_url: "Ссылка для обмена", share_hint: "Любой с этой ссылкой может читать сессию (лимиты: бюджет токенов и срок). Можно отозвать в любой момент.", role_user: "Пользователь", model_s_auto: "Авто", effort_s_auto: "Авто", effort_s_low: "Низк", effort_s_mid: "Сред", effort_s_high: "Высок", chat_mention: "Упомянуть инструменты/навыки (ИИ приоритизирует)", chat_model: "Сменить модель", chat_effort: "Уровень усилий", model_auto: "Авто-выбор модели", effort_auto: "Усилия: авто", effort_low: "Усилия: низкие", effort_mid: "Усилия: средние", effort_high: "Усилия: высокие", mention_ok: "Готово", mention_none: "Нет навыков или MCP-инструментов для упоминания", confirm_title: "Подтверждение", confirm_yes: "OK", chat_pasted: "Вложение вставлено", chat_pin: "Закрепить", chat_unpin: "Открепить", chat_archive: "В архив", chat_unarchive: "Из архива", chat_archived: "В архиве", chat_hero_sub: "О чём поболтаем? Или выбери тему ниже", chat_chip_1: "Напиши мне небольшой скрипт на Python", chat_chip_2: "Собери из чата отчёт за день", chat_chip_3: "Объясни эту ошибку", chat_chip_4: "Напоминай мне вести дневник в 21:00", chat_new: "Новый чат", chat_new_name: "Веб-чат {n}", chat_busy: "Эта сессия ещё отвечает", chat_density: "Детализация", density_brief: "Кратко", density_detail: "Подробно", steps_count: "{n} вызовов инструмента", steps_running: "выполняется…", copy: "Копировать", copied: "Скопировано", msgs_count: "{n} сообщений", session_summary: "Сводка контекста",
+      stat_usage: "Расход сегодня", backup_export: "Экспорт конфига", backup_import: "Импорт конфига", audit_filter: "Фильтр инструмента/пользователя…", col_preview: "Последнее сообщение",
+      subtitle: "универсальный агент",
+      nav_overview: "Обзор", nav_chat: "Чат", nav_models: "Модели", nav_personas: "Личности",
+      nav_tools: "Инструменты", nav_extensions: "Расширения", nav_tasks: "Задачи", nav_memory: "Память", nav_sessions: "Сессии",
+      nav_audit: "Аудит", nav_settings: "Настройки",
+      overview_desc: "Обзор состояния агента", overview_detail: "Подробности",
+      stat_models: "Модели", stat_tools: "Инструменты", stat_eco: "Эко-инстр.", stat_sessions: "Сессии",
+      stat_tasks: "Задачи", stat_mcp: "MCP", stat_extensions: "Расширения", stat_security: "Безопасность",
+      on: "вкл", off: "выкл", takeovers: "Под контролем", trust_on: "Полное доверие",
+      chat_desc: "прямой тест агента, инструменты доступны", chat_placeholder: "Скажите что-нибудь…", chat_send: "Отправить",
+      chat_thinking: "думаю…", chat_empty: "Диалогов пока нет",
+      models_desc: "OpenAI-совместимые endpoint'ы с failover по пулу", models_add: "Добавить / обновить модель",
+      models_name: "Имя", models_id: "Модель", models_temp: "Температура", models_maxtok: "Макс. токенов",
+      save: "Сохранить", actions: "Действия", test: "Тест", edit: "Правка", del: "Удалить",
+      models_empty: "Пул моделей пуст, добавьте", model_test_ok: "модель работает", model_test_fail: "модель недоступна",
+      saved: "Сохранено", deleted: "Удалено", confirm_del: "Удалить?",
+      personas_desc: "личность = system prompt + белый список инструментов", personas_edit: "Правка личности",
+      personas_pid: "id личности", personas_pname: "Имя", personas_system: "System prompt",
+      personas_tools: "Белый список инструментов (через запятую, пусто = все, eco_* можно)",
+      personas_builtin: "встроенная", personas_empty: "Своих личностей пока нет",
+      bindings: "Привязки сессий", bind_btn: "Привязать", bind_hint: "chat_key (напр. onebot11:group:123)",
+      tools_desc: "встроенные + службы экосистемы + MCP", tools_refresh: "Обновить эко-мост",
+      tools_filter: "Фильтр…", tools_empty: "Нет подходящих инструментов",
+      extensions_desc: "Инструменты и личности внешних модулей", ext_none: "Расширений нет: модуль с meta.services подключается сам", ext_personas_col: "Личности", ext_schemas_col: "Схемы",
+      tasks_desc: "создаются агентом через create_scheduled_task", tasks_empty: "Задач нет",
+      col_next: "След. запуск", col_target: "Цель", col_prompt: "Промпт", col_schedule: "Расписание",
+      memory_desc: "области долговременной памяти", memory_pick: "кликните область для списка", memory_clear: "Очистить",
+      memory_empty: "В этой области памяти нет",
+      sessions_desc: "окна диалогов и привязки личностей", sessions_empty: "Сессий нет",
+      col_turns: "Ходы", col_updated: "Обновлено", reset_btn: "Сброс", col_persona: "Личность",
+      audit_desc: "операции на ПК и подтверждения", audit_empty: "Записей аудита нет",
+      col_tool: "Инструмент", col_detail: "Детали",
+      settings_desc: "конфигурация, применяется сразу", settings_saved: "Конфиг сохранен",
+      group_model: "Модель", group_trigger: "Триггеры", group_security: "Безопасность", group_chat: "Чат", group_memory: "Память",
+      group_tools: "Инструменты", group_eco: "Эко", group_mcp: "MCP", group_task: "Задачи", group_access: "Доступ", group_usage: "Расход",
+      usage_title: "Расход", usage_tokens: "токенов", usage_calls: "Вызовы", usage_total: "Всего за 14 дн.",
+      usage_avg: "В среднем", usage_today: "Сегодня", usage_limit: "Дневной лимит", usage_empty: "Нет данных о расходе за 14 дней",
+      hero_title: "Привет, я здесь", hero_no_limit: "Дневной лимит не задан",
+      recent_sessions: "Последние сессии", upcoming_tasks: "Ближайшие задачи",
+      login_hint: "Введите токен доступа", login_placeholder: "access token", login_btn: "Войти", login_failed: "Неверный токен",
+      col_time: "Время", col_user: "Пользователь", col_origin: "Источник", col_chatkey: "Сессия", col_count: "Кол-во", col_id: "ID",
+      ext_module: "Модуль", mcp_transport: "Транспорт",
+      audit_total: "Записей", audit_tools_n: "Инструментов", audit_users_n: "Пользователей", audit_last24h: "За 24 часа",
+      audit_copy: "Копировать JSON", audit_copied: "Скопировано",
+      chat_attach: "Прикрепить файлы", chat_skills: "Навыки", chat_mcp: "Выбрать MCP-инструменты", chat_clear: "Очистить сессию",
+      chat_clear_confirm: "Очистить контекст этой сессии?", chat_file_bad: "Не удалось прочитать файл:", chat_file_big: "Файл слишком большой:", chat_img_limit: "Максимум 3 изображения",
+      chat_err: "Ошибка отправки", chat_follow: "Как в привязке сессии", chat_default_session: "Веб-чат",
+      models_preset: "Провайдер", models_baseurl: "Base URL", models_apikey: "API Key",
+      models_fetch: "Получить модели", models_fetching: "Получение…", models_fetch_fail: "Не удалось получить", models_remote_empty: "Модели не найдены",
+      nav_skills: "Навыки", skills_desc: "Многоразовые шаблоны инструкций: выбираются в чате, подключаются при совпадении задачи",
+      skills_add: "Новый навык", skills_edit: "Правка навыка", skills_name: "Имя", skills_description: "Описание", skills_body: "Содержимое",
+      skills_export: "Экспорт", skills_import: "Импорт", skills_empty: "Навыков пока нет — создайте или положите .md в каталог навыков",
+      skills_source: "Источник",
+      personas_reset: "Сбросить к стандартной", personas_modified: "изменена", sessions_msgs: "Сообщения", yesterday: "Вчера", tomorrow: "Завтра", personas_new: "Новая личность", mcp_add: "Добавить сервер", cancel: "Отмена", mcp_command: "Команда", mcp_args: "Аргументы (по одному в строке)", mcp_headers: "Заголовки (JSON)", mcp_server: "Сервер",
+      hero_dawn_1: "Доброе утро! С чего начнём?", hero_dawn_2: "Утро! Я уже тут", hero_dawn_3: "Рано встал — поболтаем?", hero_morning_1: "Привет! О чём подумаем?", hero_morning_2: "Я на связи, как всегда", hero_morning_3: "Какие планы? Расскажи", hero_noon_1: "Обедал? Не пропускай", hero_noon_2: "Отдохни, я присмотрю", hero_noon_3: "Пора на маленький перерыв", hero_afternoon_1: "Добрый день! Разговор лучше кофе", hero_afternoon_2: "Чаю? Ты заслужил", hero_afternoon_3: "Не перегибай — отдыхай, когда надо", hero_evening_1: "Добрый вечер! Как день прошёл?", hero_evening_2: "С возвращением, ты молодец", hero_evening_3: "Вечерний разговор — святое дело", hero_late_1: "Ещё не спишь?", hero_late_2: "Уже поздно — пойди отдохни", hero_late_3: "Не спится? Поболтаем",
+      loading: "Загрузка…"
+    }
+  };
+
+  var lang = (function () {
+    try {
+      var stored = localStorage.getItem("ep_lang");
+      if (stored && I18N[stored]) return stored;
+    } catch (e) {}
+    if (window.lang && I18N[window.lang]) return window.lang;
+    var nav = (navigator.language || "en").toLowerCase();
+    if (nav.indexOf("zh") === 0) return (nav.indexOf("tw") >= 0 || nav.indexOf("hk") >= 0 || nav.indexOf("hant") >= 0) ? "zh-TW" : "zh-CN";
+    if (nav.indexOf("ja") === 0) return "ja";
+    if (nav.indexOf("ru") === 0) return "ru";
+    return "en";
+  })();
+
+  function t(k) {
+    return (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k;
+  }
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function fmtTime(ts) {
+    if (!ts) return "-";
+    var d = new Date(ts * 1000);
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+
+  function fmtTimeFull(ts) {
+    var d = new Date(ts * 1000);
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  // 今天只显示时间；昨天/明天显示「昨天 HH:MM」；更早/更晚显示日期
+  function fmtSmart(ts) {
+    if (!ts) return "-";
+    var d = new Date(ts * 1000);
+    var now = new Date();
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    var hm = p(d.getHours()) + ":" + p(d.getMinutes());
+    var todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    var thatStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    var diffDays = Math.round((todayStart - thatStart) / 86400000);
+    if (diffDays === 0) return hm;
+    if (diffDays === 1) return t("yesterday") + " " + hm;
+    if (diffDays === -1) return t("tomorrow") + " " + hm;
+    return (d.getMonth() + 1) + "-" + p(d.getDate()) + " " + hm;
+  }
+
+  // hero 文案：按时间段随机
+  function heroTitle() {
+    var h = new Date().getHours();
+    var bucket = h < 5 ? "late" : h < 9 ? "dawn" : h < 12 ? "morning" : h < 14 ? "noon" : h < 18 ? "afternoon" : h < 23 ? "evening" : "late";
+    var pool = [];
+    for (var i = 1; i <= 3; i++) {
+      var key = "hero_" + bucket + "_" + i;
+      var v = t(key);
+      if (v !== key) pool.push(v);
+    }
+    if (!pool.length) pool.push(t("hero_title"));
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function toast(msg, isErr) {
+    var box = document.createElement("div");
+    box.className = "qvq-toast" + (isErr ? " err" : "");
+    box.textContent = msg;
+    document.body.appendChild(box);
+    setTimeout(function () { box.remove(); }, 2600);
+  }
+
+  var urlToken = (function () {
+    try {
+      return new URLSearchParams(window.location.search).get("token") || "";
+    } catch (e) {
+      return "";
+    }
+  })();
+
+  function getToken() {
+    if (activeToken) return activeToken;
+    try {
+      return localStorage.getItem("__ep_tk__") || urlToken || localStorage.getItem("qvq_token") || "";
+    } catch (e) {
+      return urlToken;
+    }
+  }
+
+  (function syncTheme() {
+    try {
+      var parentDoc = window.parent && window.parent.document;
+      if (!parentDoc || !parentDoc.documentElement) return;
+      var attrs = ["data-theme", "data-oled"];
+      var apply = function () {
+        attrs.forEach(function (name) {
+          var value = parentDoc.documentElement.getAttribute(name);
+          if (value === null || value === "auto") {
+            document.documentElement.removeAttribute(name);
+          } else {
+            document.documentElement.setAttribute(name, value);
+          }
+        });
+      };
+      apply();
+      new MutationObserver(apply).observe(parentDoc.documentElement, {
+        attributes: true,
+        attributeFilter: attrs,
+      });
+    } catch (e) {}
+  })();
+
+  function api(path, method, body) {
+    var headers = { "Content-Type": "application/json" };
+    var token = getToken();
+    if (token) headers["Authorization"] = "Bearer " + token;
+    return fetch("/QvQChat" + path, {
+      method: method || "GET",
+      headers: headers,
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (resp) {
+      return resp.json().catch(function () { return {}; });
+    });
+  }
+
+  var activeToken = "";
+
+  function authWith(token) {
+    var headers = {};
+    if (token) headers["Authorization"] = "Bearer " + token;
+    return fetch("/QvQChat/api/qvq/auth", { headers: headers }).then(function (r) {
+      return r.status === 200;
+    }).catch(function () { return false; });
+  }
+
+  // 依次尝试 __ep_tk__ → url ?token= → qvq_token，取第一个能通过鉴权的
+  function resolveToken() {
+    var candidates = [];
+    try {
+      var ep = localStorage.getItem("__ep_tk__");
+      if (ep) candidates.push(ep);
+    } catch (e) {}
+    if (urlToken) candidates.push(urlToken);
+    try {
+      var qt = localStorage.getItem("qvq_token");
+      if (qt) candidates.push(qt);
+    } catch (e) {}
+    var chain = Promise.resolve(false);
+    var chosen = "";
+    candidates.forEach(function (tk) {
+      chain = chain.then(function (ok) {
+        if (ok) return true;
+        chosen = tk;
+        return authWith(tk);
+      });
+    });
+    return chain.then(function (ok) { return ok ? chosen : ""; });
+  }
+
+  // 导航点击早期委托：不依赖 initApp 绑定时序，auth 链完成前的点击也不丢
+  (function bindNavEarly() {
+    var nav = document.getElementById("qvq-nav");
+    if (!nav) return;
+    nav.addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest(".qvq-nav-btn") : null;
+      if (btn) switchTab(btn.getAttribute("data-tab"));
+    });
+  })();
+

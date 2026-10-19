@@ -54,7 +54,7 @@ async def run_python(ctx: ToolContext, code: str, timeout: int = 30) -> str:
 
 
 async def run_python_sdk(ctx: ToolContext, code: str, timeout: int = 30) -> str:
-    """在主进程内执行代码：可访问 sdk/main/config 等运行时对象。"""
+
     if getattr(ctx.config, "security_level", "standard") == "strict":
         return texts.t("code_denied")
     if not ctx.main.is_admin(ctx.user_id, ctx.origin, ctx.platform):
@@ -84,11 +84,10 @@ async def run_python_sdk(ctx: ToolContext, code: str, timeout: int = 30) -> str:
 
     def _define() -> None:
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-            exec(compile(code, "<qvq-sdk>", "exec"), globs)  # noqa: S102 - 受权限门控的进程内执行
+            exec(compile(code, "<qvq-sdk>", "exec"), globs)
 
     try:
         await asyncio.wait_for(asyncio.get_running_loop().run_in_executor(None, _define), timeout=limit)
-        # 用户代码里定义的 main() 会覆盖注入的模块实例；按身份区分
         entry = None
         candidate = globs.get("main")
         if candidate is not None and candidate is not ctx.main:

@@ -12,7 +12,7 @@ RECAP_RE = re.compile(r"^(已[经把完成向]|好[的了]|已发送|已发出|d
 
 
 def strip_output_tag(reply: str) -> tuple[str, bool | None]:
-    """[[转发]]/[[直发]] 前缀解析；返回 (正文, force)。"""
+
     tag = OUTPUT_TAG_RE.match(reply)
     if not tag:
         return reply, None
@@ -20,7 +20,7 @@ def strip_output_tag(reply: str) -> tuple[str, bool | None]:
 
 
 def split_paragraphs(text: str, min_length: int = 120, max_parts: int = 6) -> list[str]:
-    """纯对话分段：按空行切段，过短的相邻段合并，总量不足或只有一段则不分。"""
+
     parts = [p.strip() for p in re.split(r"\n{2,}", str(text or "")) if p.strip()]
     if len(parts) <= 1:
         return []
@@ -40,7 +40,7 @@ def split_paragraphs(text: str, min_length: int = 120, max_parts: int = 6) -> li
 
 
 class Delivery:
-    """回复投递唯一出口：转发打包 / 分段连发 / 直发降级，全在这里决定。"""
+
 
     def __init__(self, main):
         self.main = main
@@ -79,7 +79,6 @@ class Delivery:
         except Exception:
             sends = []
         if force is not True:
-            # 打包与否看运行方式，不看文本长度：用了工具的长任务回复转合并转发，纯对话不转
             if not getattr(self.config, "forward_enabled", True):
                 return False
             if not tool_trace:
@@ -138,7 +137,7 @@ class Delivery:
             await self._send_plain(event, part)
 
     async def deliver_reply(self, event, reply: str, tool_trace: list, force: bool | None = None) -> None:
-        """平台回复投递：recap 抑制 → 合并转发 → 分段/单条直发。"""
+
         if self._is_recap(reply, tool_trace):
             self.main.logger.info("reply suppressed as send recap")
             return

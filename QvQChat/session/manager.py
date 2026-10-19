@@ -98,7 +98,6 @@ class SessionManager:
         state = self._state(chat_key)
         entry: dict = {"role": role, "content": content}
         if trace:
-            # 以下仅用于回放展示；送入模型前 sanitize_contexts 会剥掉这些字段
             entry["trace"] = list(trace)
         if rounds:
             entry["rounds"] = list(rounds)
@@ -106,7 +105,7 @@ class SessionManager:
         self._save(chat_key, state)
 
     def append_user(self, chat_key: str, content, sender_id: str = "") -> None:
-        """content 可为纯文本或多模态段列表（text/image_url），历史保留图片供回放与编辑。"""
+
         state = self._state(chat_key)
         entry: dict = {"role": "user", "content": content}
         if sender_id:
@@ -125,7 +124,7 @@ class SessionManager:
         self._save(chat_key, state)
 
     def set_flags(self, chat_key: str, pinned: bool | None = None, archived: bool | None = None) -> None:
-        """置顶/归档标记；不刷新会话的 updated 时间。"""
+
         state = self._state(chat_key)
         if pinned is not None:
             state["pinned"] = bool(pinned)
@@ -136,7 +135,7 @@ class SessionManager:
         self.sdk.storage.set(CONV_PREFIX + chat_key, state)
 
     def set_ui(self, chat_key: str, ui: dict) -> dict:
-        """会话级 UI 设置（密度/模型/强度等）；不刷新 updated。"""
+
         state = self._state(chat_key)
         cur = state.get("ui") if isinstance(state.get("ui"), dict) else {}
         cur.update({k: v for k, v in (ui or {}).items() if v is not None})

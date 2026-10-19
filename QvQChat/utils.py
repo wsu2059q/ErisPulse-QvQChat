@@ -13,12 +13,6 @@ from typing import Any
 TEXT_LIMIT = 4000
 OUTPUT_LIMIT = 8000
 
-# 合并转发 / 富文本折叠的通用约定：适配器 Send 类可选实现 Forward(nodes) 方法
-# （nodes 为 OneBot v11 生态 go-cqhttp 扩展的合并转发节点格式；v12 标准并无 node 段），
-# 内部自行决定平台最佳呈现——
-# OneBot11 走 send_group/private_forward_msg 专用端点，云湖等富文本平台渲染 HTML 折叠卡片。
-# QvQChat 通过 list_sends 反射探测 "Forward" 能力：实现了就自动打包，没实现就纯文本回退，
-# 新适配器无需改动 QvQChat。
 
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _DELAY_RE = re.compile(r"^(\d+)\s*([smhd])$", re.IGNORECASE)
@@ -382,17 +376,13 @@ def build_forward_nodes(sections: list[str], nickname: str = "QvQChat", user_id:
 
 
 def _send_failed(result) -> bool:
-    """OneBot11 等 call_api 对 retcode!=0 只返回 status=failed 而不抛异常，需显式判断。"""
+
     return isinstance(result, dict) and str(result.get("status") or "") == "failed"
 
 
 async def deliver_forward(adapter, target_type: str, target_id: str, sections: list, sends) -> str:
-    """长内容自适应打包：适配器实现 Send.Forward(nodes) 即支持，
-    合并转发还是富文本折叠由适配器按平台能力决定。
 
-    返回 "forward" 表示已发送；"" 表示平台不支持或发送失败，
-    调用方应回退普通文本发送（不丢失内容）。
-    """
+
     cleaned = [str(s).strip() for s in sections if s and str(s).strip()]
     if not cleaned or adapter is None or "MergeForward" not in set(sends or ()):
         return ""

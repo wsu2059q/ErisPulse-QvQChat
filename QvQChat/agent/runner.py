@@ -17,7 +17,7 @@ class AgentResult:
     text: str
     tool_trace: list = field(default_factory=list)
     usage: dict = field(default_factory=dict)
-    rounds: list = field(default_factory=list)  # [{text, tools:[trace]}] 按轮次串行，供回放渲染
+    rounds: list = field(default_factory=list)
     model: str = ""
 
 
@@ -186,7 +186,6 @@ class AgentRunner:
             trace_before = len(trace)
             rounds.append({"text": (response.content or "").strip(), "tools": []})
             contexts.append(self._assistant_message(response.content, response.tool_calls))
-            # 中间发言回调：模型在调用工具前输出的叙述（开场/阶段播报）
             if on_intermediate is not None:
                 speech = (response.content or "").strip()
                 if speech:
@@ -233,7 +232,6 @@ class AgentRunner:
                     image_parts += [{"type": "image_url", "image_url": {"url": url}} for url in pending_images[:3]]
                     contexts.append({"role": "user", "content": image_parts})
                 else:
-                    # 主模型无视觉：视觉模型代看，文字描述交给主模型
                     described = await self.pool.describe_images(pending_images)
                     lines = [
                         f"[image {i + 1}] {d}" for i, d in enumerate(described) if d

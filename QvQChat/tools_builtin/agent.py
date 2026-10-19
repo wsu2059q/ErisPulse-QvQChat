@@ -18,7 +18,7 @@ def _schema(properties: dict, required: list[str]) -> dict:
 
 
 async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = None, max_rounds: int = 8) -> str:
-    """派生一个子智能体：独立会话独立上下文，完成后把结论交回，过程历史可在会话页查看。"""
+
     if str(ctx.chat_key or "").startswith("sub:"):
         return texts.t("subagent_no_nest")
     main = ctx.main

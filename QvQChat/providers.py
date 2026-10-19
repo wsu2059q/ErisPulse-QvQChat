@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-# 常见 OpenAI 兼容提供商预设（参考 opencode / models.dev 的目录结构整理）。
-# base_url 均为 OpenAI 兼容 /v1 根。模型列表不写死——运行时通过
-# GET {base_url}/models 拉取（见 engine/pool.py fetch_remote_models），
-# 能力/上下文长度由 models.dev 目录富化。
 PROVIDER_PRESETS: list[dict] = [
     {"id": "openai", "name": "OpenAI", "base_url": "https://api.openai.com/v1"},
     {"id": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1"},

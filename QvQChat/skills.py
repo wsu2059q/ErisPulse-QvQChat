@@ -8,7 +8,6 @@ from . import texts
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 
-# 内置技能：随模块出厂、随 self_config 开关下线，用户文件/存储里的同名技能优先
 BUILTIN_SKILLS: list[dict] = [
     {
         "name": "self-config",
@@ -19,7 +18,6 @@ BUILTIN_SKILLS: list[dict] = [
         ),
         "body": """The manage_* tools are your configuration interface (admin/master only). Use them when the user asks in natural language — no dashboard needed.
 
-## Models — manage_models
 - action="list": providers with masked keys, enabled models, current default.
 - action="presets": preset base URLs (openai, deepseek, zhipu, ollama, custom, ...).
 - action="save" with provider={id?, name, base_url, api_key, models:[{id, enabled, temperature?, max_tokens?}]}.
@@ -29,13 +27,11 @@ BUILTIN_SKILLS: list[dict] = [
 - action="set_default" with model_id="provider:model" (empty clears back to pool order).
 - action="delete" with provider_id. Confirm before deleting.
 
-## MCP servers — manage_mcp
 - action="list" / "status": configured servers and live clients with their tool names.
 - action="save": name plus either stdio (command, args, env) or http (url, headers). Saves and connects immediately; the result reports the tool count or the connection error.
 - action="connect" / "disconnect" / "remove" with name. Confirm before removing.
 - Newly connected tools register as mcp_<server>_<tool> and follow the normal permission rules.
 
-## Module settings — manage_config
 - action="get": all QvQChat settings, or one key.
 - action="set" with updates={key: value}: valid QvQChat config keys only (unknown keys are rejected). E.g. reply triggers, aggregate_window, forward_enabled, tool_notice_mode.
 
@@ -131,7 +127,6 @@ class SkillManager:
         ]
 
     def list_skills(self) -> list[dict]:
-        # 优先级：存储（Dashboard）> 文件 > 内置，同名高层覆盖
         merged = {s["name"]: s for s in self._builtin_skills()}
         for s in self._file_skills():
             merged.setdefault(s["name"], s)
