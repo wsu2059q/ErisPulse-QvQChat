@@ -60,6 +60,7 @@ def register(registry: ToolRegistry, main) -> None:
         return
     registry.register(Tool(
         name="render_image",
+        access="admin",
         description="Render HTML/CSS into an image file via the Takumi extension — best for long text as a picture (cards, posters, tables, reports). Returns image_path: the model also receives the rendered image for review, and you can send it with send_message's image_url.",
         parameters=_schema(
             {

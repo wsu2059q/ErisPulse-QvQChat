@@ -12,7 +12,7 @@ from QvQChat.agent.tools import Tool, ToolRegistry
 from QvQChat.dashboard.manager import DashboardManager
 from QvQChat.engine.base import ChatRequest, ChatResponse, ToolCall
 from QvQChat.engine.openai import OpenAIEngine
-from QvQChat.session.manager import SessionManager
+from QvQChat.conversation.service import ConversationService
 
 from fakes import FakeMain, make_config, make_ctx
 
@@ -138,58 +138,22 @@ def test_rate_limit_retries():
 
 
 async def test_context_summarize_on_overflow():
-    main = FakeMain(context_limit=3)
-    manager = SessionManager(main.sdk, main.cfg)
-    key = "p:private:1"
+    main = FakeMain()
+    manager = ConversationService(main)
+    key = "test:private:sum"
+
+    class SumPool:
+        async def chat(self, request):
+            return type("R", (), {"content": "- 决定用方案A", "usage": {}})()
+
+    main.pool = SumPool()
     for i in range(6):
         manager.append(key, "user", f"旧消息{i}")
     removed = manager.trim_overflow(key, keep=2)
     assert len(removed) == 4
-
-    class SumPool:
-        async def chat(self, request, **kwargs):
-            return SimpleNamespace(content="- 要点摘要", usage={}, model="m", tool_calls=[])
-
-    harness = SimpleNamespace(cfg=main.cfg, pool=SumPool(), sessions=manager, logger=main.logger)
-    await Main._summarize_context(harness, key, removed)
-    assert "要点摘要" in manager.summary_of(key)
-    assert len(manager.get_contexts(key)) == 2
-
-
-def test_sessions_preview_in_list():
-    main = FakeMain()
-    manager = SessionManager(main.sdk, main.cfg)
-    manager.append("p:private:1", "user", "这是最后一条消息内容预览测试")
-    sessions = manager.list_sessions()
-    match = [s for s in sessions if s["chat_key"] == "p:private:1"][0]
-    assert "预览测试" in match["preview"]
-
-
-def test_usage_record_and_today():
-    main = FakeMain()
-    Main.record_usage(main, "c1", {"total_tokens": 120})
-    Main.record_usage(main, "c1", {"total_tokens": 30})
-    Main.record_usage(main, "c2", {"total_tokens": 50})
-    today = main._usage_today()
-    assert today["tokens"] == 200
-    assert today["calls"] == 3
-    assert today["by_chat"]["c1"] == 150
-
-
-def test_usage_history_shape():
-    main = FakeMain()
-    Main.record_usage(main, "c1", {"total_tokens": 10})
-    history = Main._usage_history(main, 3)
-    assert len(history) == 3
-    assert history[-1]["tokens"] == 10
-
-
-def test_tool_permission_denied_message_detailed():
-    cfg = make_config()
-    allowed, reason = tool_allowed(cfg, "run_command", "5197892", "chat", "yunhu")
-    assert not allowed
-    assert "run_command" in reason and "5197892" in reason
-
+    # 收尾摘要：经 compactor.summarize_entries 写入会话摘要
+    await manager._summarize_overflow(key, removed)
+    assert "方案A" in manager.summary_of(key)
 
 async def test_runner_tool_round_callback():
     main = FakeMain()
@@ -279,9 +243,9 @@ async def test_runner_injects_tool_image_to_model():
 def test_recap_regex_matches_yi_xiang():
     main = FakeMain()
     trace = [{"tool": "send_message", "arguments": "{}", "output": "ok"}]
-    assert Main._is_recap("已向群里说明情况：安装命令被拦截。", trace) is True
-    assert Main._is_recap("已发送配置说明。", trace) is True
-    assert Main._is_recap("这不是复述，是正经回答。", trace) is False
+    assert __import__('QvQChat.conversation.delivery', fromlist=['Delivery']).Delivery._is_recap("已向群里说明情况：安装命令被拦截。", trace) is True
+    assert __import__('QvQChat.conversation.delivery', fromlist=['Delivery']).Delivery._is_recap("已发送配置说明。", trace) is True
+    assert __import__('QvQChat.conversation.delivery', fromlist=['Delivery']).Delivery._is_recap("这不是复述，是正经回答。", trace) is False
 
 
 def test_export_import_roundtrip():

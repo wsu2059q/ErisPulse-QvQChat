@@ -166,6 +166,7 @@ def register(registry: ToolRegistry, main) -> None:
         return
     registry.register(Tool(
         name="manage_models",
+        access="admin",
         description="Self-configure the model pool: list providers & models, presets, save a provider (empty api_key keeps the stored one), delete, fetch the remote model list, set the default model. Admin only.",
         parameters=_schema(
             {
@@ -181,6 +182,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="manage_mcp",
+        access="admin",
         description="Self-configure MCP servers: list/status servers and their live tool sets, save (adds or updates and connects immediately), remove, connect, disconnect. Admin only.",
         parameters=_schema(
             {
@@ -201,6 +203,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="manage_config",
+        access="admin",
         description="Read or change this module's own settings: get all fields or one key, set key-value updates (valid QvQChat config keys only). Covers triggers, aggregate window, forward behaviour, notice modes, etc. Admin only.",
         parameters=_schema(
             {

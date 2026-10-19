@@ -35,12 +35,14 @@ async def list_skills(ctx) -> str:
 def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="load_skill",
+        access="admin",
         description="Load the full instructions of a skill by name. Skills and their descriptions are listed in your system prompt; use this when a task matches a skill.",
         parameters=_schema({"name": _s(type="string", description="Skill name")}, ["name"]),
         handler=load_skill,
     ))
     registry.register(Tool(
         name="list_skills",
+        access="admin",
         description="List currently enabled skills with their descriptions.",
         parameters={"type": "object", "properties": {}, "required": []},
         handler=list_skills,

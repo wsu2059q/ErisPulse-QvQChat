@@ -142,7 +142,7 @@ async def test_run_prompt_skips_final_send_when_ai_delivered():
     async def fake_send(platform, detail_type, target_id, segments, from_tools=False):
         sends.append((platform, detail_type, target_id))
 
-    main._send_segments = fake_send
+    main.delivery = type('D', (), {'send_segments': staticmethod(fake_send)})()
     await Main.run_prompt(main, "onebot11:private:u1", "发日报", origin="task")
     assert sends == []
 
@@ -156,6 +156,6 @@ async def test_run_prompt_tool_run_delivers_as_forward():
     async def fake_send(platform, detail_type, target_id, segments, from_tools=False):
         sends.append((platform, detail_type, target_id, from_tools))
 
-    main._send_segments = fake_send
+    main.delivery = type('D', (), {'send_segments': staticmethod(fake_send)})()
     await Main.run_prompt(main, "onebot11:private:u1", "纯回答", origin="task")
     assert sends == [("onebot11", "private", "u1", False)]

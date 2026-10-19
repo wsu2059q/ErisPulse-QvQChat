@@ -101,14 +101,14 @@ async def test_parse_chat_body_saves_image_upload():
 async def test_rebuild_user_content_with_attachments():
     mgr = _manager()
     try:
-        content = mgr._rebuild_user_content("改过的文字", [
+        content = mgr.main.conversations.rebuild_user_content("改过的文字", [
             {"name": "pic.png", "mime": "image/png", "data": TINY_PNG},
         ])
         assert isinstance(content, list)
         assert content[0] == {"type": "text", "text": "改过的文字"}
         assert content[1]["type"] == "image_url"
 
-        content2 = mgr._rebuild_user_content("带文件", [
+        content2 = mgr.main.conversations.rebuild_user_content("带文件", [
             {"name": "doc.zip", "mime": "application/zip", "data": TINY_PNG},
         ])
         # 只有文件没有图片时回落为纯文本（说明文字并入文本段）
@@ -116,7 +116,7 @@ async def test_rebuild_user_content_with_attachments():
         assert "doc.zip" in body_text and "uploads" in body_text
 
         # 清空附件：只余文本
-        assert mgr._rebuild_user_content("纯文本", []) == "纯文本"
+        assert mgr.main.conversations.rebuild_user_content("纯文本", []) == "纯文本"
     finally:
         shutil.rmtree("data/QvQChat/uploads", ignore_errors=True)
 

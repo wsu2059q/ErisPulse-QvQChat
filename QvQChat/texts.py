@@ -134,6 +134,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "[ツールが返した画像、確認用]",
         "ru": "[Изображения от инструментов, для просмотра]",
     },
+    "vision_delegate_note": {
+        "zh-CN": "[消息中的图片由视觉模型代看，描述如下]",
+        "zh-TW": "[訊息中的圖片由視覺模型代看，描述如下]",
+        "en": "[Images in this message were reviewed by a vision model; descriptions below]",
+        "ja": "[このメッセージの画像は視覚モデルが代読みし、説明は下記]",
+        "ru": "[Изображения сообщения просмотрены зрительной моделью; описания ниже]",
+    },
     "scene_speaker_note": {
         "zh-CN": "发言者以「昵称(id): 内容」标注，括号内为用户唯一 id。",
         "zh-TW": "發言者以「暱稱(id): 內容」標註，括號內為使用者唯一 id。",
@@ -308,16 +315,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "(sub-agent session {session} · {tools} tool calls · {ms}ms; full history viewable in the sessions page)",
         "ja": "（サブエージェントセッション {session} · ツール呼び出し {tools} 回 · {ms}ms。履歴はセッションページで閲覧可）",
         "ru": "(сессия суб-агента {session} · {tools} вызовов инструментов · {ms}ms; история доступна на странице сессий)",
-    },
-    "tool.spawn_agent.name": {
-        "zh-CN": "派出子智能体", "zh-TW": "派出子智能體", "en": "Spawn sub-agent", "ja": "サブエージェント派出", "ru": "Породить суб-агента",
-    },
-    "tool.spawn_agent.desc": {
-        "zh-CN": "派生一个拥有独立会话与上下文的子智能体去独立探索任务，只把结论交回，避免污染主对话记忆；子智能体的完整过程历史会作为独立会话（sub: 前缀）保留，可在会话页查看。",
-        "zh-TW": "派生一個擁有獨立會話與上下文的子智能體去獨立探索任務，只把結論交回，避免污染主對話記憶；子智能體的完整過程歷史會作為獨立會話（sub: 前綴）保留，可在會話頁查看。",
-        "en": "Spawn a sub-agent with its own isolated session/context to explore a task independently and report back only the conclusion, keeping the main conversation memory clean. The sub-agent's full process history is preserved as its own session (prefix 'sub:') for review.",
-        "ja": "独立したセッションと文脈を持つサブエージェントを派出し、タスクを独立に探索させて結論だけを返す。メイン会話の記憶を汚染しない。サブエージェントの完全な履歴は独立セッション（sub: 接頭辞）として保持され、セッションページで閲覧できる。",
-        "ru": "Породить суб-агента с изолированной сессией/контекстом для независимого исследования задачи; возвращается только вывод, память основного диалога остаётся чистой. Полная история суб-агента сохраняется как отдельная сессия (префикс 'sub:') и доступна на странице сессий.",
     },
     "platform_method_unsupported": {
         "zh-CN": "平台 {platform} 不支持 {method}，可用方法：{methods}",
@@ -571,6 +568,39 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "タスクが見つかりません: {id}",
         "ru": "Задача не найдена: {id}",
     },
+    "compact_done": {
+        "zh-CN": "会话压缩完成：{actions}",
+        "zh-TW": "會話壓縮完成：{actions}",
+        "en": "Conversation compacted: {actions}",
+        "ja": "会話を圧縮しました：{actions}",
+        "ru": "Диалог сжат: {actions}",
+    },
+    "session_deleted": {
+        "zh-CN": "会话已删除",
+        "zh-TW": "會話已刪除",
+        "en": "Session deleted",
+        "ja": "セッションを削除しました",
+        "ru": "Сессия удалена",
+    },
+    "session_delete_confirm": {
+        "zh-CN": "删除该会话？历史、记忆与人设绑定将一并清除，不可恢复。",
+        "zh-TW": "刪除該會話？歷史、記憶與人設綁定將一併清除，不可恢復。",
+        "en": "Delete this session? History, memories and persona binding will be removed permanently.",
+        "ja": "このセッションを削除しますか？履歴・記憶・ペルソナ紐付けも消え、元に戻せません。",
+        "ru": "Удалить сессию? История, память и привязка личности будут удалены безвозвратно.",
+    },
+    "chat_delete": {
+        "zh-CN": "删除会话", "zh-TW": "刪除會話", "en": "Delete session", "ja": "セッション削除", "ru": "Удалить сессию",
+    },
+    "chat_compact": {
+        "zh-CN": "立即压缩", "zh-TW": "立即壓縮", "en": "Compact now", "ja": "今すぐ圧縮", "ru": "Сжать сейчас",
+    },
+    "chat_purge_archived": {
+        "zh-CN": "清空已归档", "zh-TW": "清空已歸檔", "en": "Purge archived", "ja": "アーカイブを一括削除", "ru": "Очистить архив",
+    },
+    "compact_done_short": {
+        "zh-CN": "已压缩", "zh-TW": "已壓縮", "en": "Compacted", "ja": "圧縮済み", "ru": "Сжато",
+    },
     "task_list_empty": {
         "zh-CN": "当前没有定时任务",
         "zh-TW": "目前沒有定時任務",
@@ -614,11 +644,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "ru": "Личность не найдена: {id}",
     },
     "cmd_help": {
-        "zh-CN": "QvQChat 智能体\n/agent 重置 - 重置当前会话对话\n/agent 人格 [id] - 查看/切换人格\n/agent 任务 - 查看定时任务\n/agent 状态 - 运行状态\n/agent 接管 [分钟] - 接管当前会话\n/agent 释放 - 释放接管",
-        "zh-TW": "QvQChat 智慧代理\n/agent 重置 - 重置目前會話對話\n/agent 人格 [id] - 查看/切換人格\n/agent 任務 - 查看定時任務\n/agent 狀態 - 執行狀態\n/agent 接管 [分鐘] - 接管目前會話\n/agent 釋放 - 釋放接管",
-        "en": "QvQChat agent\n/agent reset - reset this session's conversation\n/agent persona [id] - list/switch persona\n/agent tasks - list scheduled tasks\n/agent status - runtime status\n/agent takeover [minutes] - take over this session\n/agent release - release takeover",
-        "ja": "QvQChat エージェント\n/agent リセット - このセッションの会話をリセット\n/agent ペルソナ [id] - 一覧/切替\n/agent タスク - 定時タスク一覧\n/agent 状態 - 実行状態\n/agent 接管 [分] - このセッションを接管\n/agent 解放 - 接管を解放",
-        "ru": "Агент QvQChat\n/agent reset - сбросить диалог сессии\n/agent persona [id] - список/смена личности\n/agent tasks - список задач\n/agent status - состояние\n/agent takeover [мин] - перехват сессии\n/agent release - освободить",
+        "zh-CN": "QvQChat 智能体\n/qvq 重置 - 重置当前会话对话\n/qvq 人格 [id] - 查看/切换人格\n/qvq 任务 - 查看定时任务\n/qvq 压缩 - 立即压缩当前会话上下文\n/qvq 状态 - 运行状态\n/qvq 接管 [分钟] - 接管当前会话\n/qvq 释放 - 释放接管\n（/agent 为同一命令的兼容别名）",
+        "zh-TW": "QvQChat 智慧代理\n/qvq 重置 - 重置目前會話對話\n/qvq 人格 [id] - 查看/切換人格\n/qvq 任務 - 查看定時任務\n/qvq 壓縮 - 立即壓縮當前會話上下文\n/qvq 狀態 - 執行狀態\n/qvq 接管 [分鐘] - 接管目前會話\n/qvq 釋放 - 釋放接管\n（/agent 為同一命令的相容別名）",
+        "en": "QvQChat agent\n/qvq reset - reset this session's conversation\n/qvq persona [id] - list/switch persona\n/qvq tasks - list scheduled tasks\n/qvq compact - compact this session's context now\n/qvq status - runtime status\n/qvq takeover [minutes] - take over this session\n/qvq release - release takeover\n(/agent works as a compatibility alias)",
+        "ja": "QvQChat エージェント\n/qvq リセット - このセッションの会話をリセット\n/qvq ペルソナ [id] - 一覧/切替\n/qvq タスク - 定時タスク一覧\n/qvq 圧縮 - このセッションの文脈を即圧縮\n/qvq 状態 - 実行状態\n/qvq 接管 [分] - このセッションを接管\n/qvq 解放 - 接管を解放\n（/agent は互換エイリアス）",
+        "ru": "Агент QvQChat\n/qvq reset - сбросить диалог сессии\n/qvq persona [id] - список/смена личности\n/qvq tasks - список задач\n/qvq compact - сжать контекст сессии сейчас\n/qvq status - состояние\n/qvq takeover [мин] - перехват сессии\n/qvq release - освободить\n(/agent — совместимый псевдоним)",
     },
     "home.entry": {
         "zh-CN": "QvQChat",
@@ -640,6 +670,56 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Models {models} | Tools {tools} (eco {eco}) | Sessions {sessions} | Tasks {tasks}",
         "ja": "モデル {models}｜ツール {tools}（生態 {eco}）｜セッション {sessions}｜タスク {tasks}",
         "ru": "Моделей {models} | Инструментов {tools} (эко {eco}) | Сессий {sessions} | Задач {tasks}",
+    },
+    "image_type_unsupported": {
+        "zh-CN": "不是可识别的图片文件: {path}（支持 png/jpg/jpeg/gif/webp/bmp）",
+        "zh-TW": "不是可識別的圖片檔案: {path}（支援 png/jpg/jpeg/gif/webp/bmp）",
+        "en": "Not a recognized image file: {path} (png/jpg/jpeg/gif/webp/bmp supported)",
+        "ja": "認識できる画像ファイルではありません: {path}（png/jpg/jpeg/gif/webp/bmp に対応）",
+        "ru": "Файл не распознан как изображение: {path} (поддерживаются png/jpg/jpeg/gif/webp/bmp)",
+    },
+    "image_too_large": {
+        "zh-CN": "图片过大（超过 8MB）: {path}",
+        "zh-TW": "圖片過大（超過 8MB）: {path}",
+        "en": "Image too large (over 8MB): {path}",
+        "ja": "画像が大きすぎます（8MB 超）: {path}",
+        "ru": "Изображение слишком велико (более 8МБ): {path}",
+    },
+    "render_unavailable": {
+        "zh-CN": "未安装 Takumi 渲染扩展，无法把 HTML 渲染为图片。可改用合并转发承载长文本。",
+        "zh-TW": "未安裝 Takumi 渲染擴充，無法把 HTML 渲染為圖片。可改用合併轉發承載長文字。",
+        "en": "The Takumi rendering extension is not installed; cannot render HTML to an image. Use a merged-forward message for long text instead.",
+        "ja": "Takumi レンダリング拡張が未インストールのため、HTML を画像にできません。長文はまとめ転送をご利用ください。",
+        "ru": "Расширение рендеринга Takumi не установлено; HTML нельзя преобразовать в изображение. Для длинного текста используйте пересылаемое сообщение.",
+    },
+    "render_need_html": {
+        "zh-CN": "html 参数不能为空",
+        "zh-TW": "html 參數不能為空",
+        "en": "html parameter is required",
+        "ja": "html パラメータは必須です",
+        "ru": "Параметр html обязателен",
+    },
+    "origin.builtin": {
+        "zh-CN": "内置", "zh-TW": "內建", "en": "builtin", "ja": "內蔵", "ru": "встроенный",
+    },
+    "origin.eco": {
+        "zh-CN": "生态", "zh-TW": "生態", "en": "eco", "ja": "生態", "ru": "эко",
+    },
+    "origin.mcp": {
+        "zh-CN": "MCP", "zh-TW": "MCP", "en": "MCP", "ja": "MCP", "ru": "MCP",
+    },
+    "origin.plugin": {
+        "zh-CN": "插件", "zh-TW": "外掛", "en": "plugin", "ja": "プラグイン", "ru": "плагин",
+    },
+    "tool.spawn_agent.name": {
+        "zh-CN": "派出子智能体", "zh-TW": "派出子智能體", "en": "Spawn sub-agent", "ja": "サブエージェント派出", "ru": "Породить суб-агента",
+    },
+    "tool.spawn_agent.desc": {
+        "zh-CN": "派生一个拥有独立会话与上下文的子智能体去独立探索任务，只把结论交回，避免污染主对话记忆；子智能体的完整过程历史会作为独立会话（sub: 前缀）保留，可在会话页查看。",
+        "zh-TW": "派生一個擁有獨立會話與上下文的子智能體去獨立探索任務，只把結論交回，避免污染主對話記憶；子智能體的完整過程歷史會作為獨立會話（sub: 前綴）保留，可在會話頁查看。",
+        "en": "Spawn a sub-agent with its own isolated session/context to explore a task independently and report back only the conclusion, keeping the main conversation memory clean. The sub-agent's full process history is preserved as its own session (prefix 'sub:') for review.",
+        "ja": "独立したセッションと文脈を持つサブエージェントを派出し、タスクを独立に探索させて結論だけを返す。メイン会話の記憶を汚染しない。サブエージェントの完全な履歴は独立セッション（sub: 接頭辞）として保持され、セッションページで閲覧できる。",
+        "ru": "Породить суб-агента с изолированной сессией/контекстом для независимого исследования задачи; возвращается только вывод, память основного диалога остаётся чистой. Полная история суб-агента сохраняется как отдельная сессия (префикс 'sub:') и доступна на странице сессий.",
     },
     "tool.send_message.name": {
         "zh-CN": "发送消息", "zh-TW": "發送訊息", "en": "Send message", "ja": "メッセージ送信", "ru": "Отправить сообщение",
@@ -760,34 +840,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Open a local image file as visual input and view it (use the image path given with attachment messages). Requires a vision-capable model.",
         "ja": "ローカル画像ファイルを視覚入力として開いて確認する（添付メッセージの画像パスをそのまま使える）。視覚能力のないモデルでは見えない。",
         "ru": "Открыть локальный файл изображения как визуальный ввод (используйте путь из сообщения с вложением). Требуется модель с зрением.",
-    },
-    "image_type_unsupported": {
-        "zh-CN": "不是可识别的图片文件: {path}（支持 png/jpg/jpeg/gif/webp/bmp）",
-        "zh-TW": "不是可識別的圖片檔案: {path}（支援 png/jpg/jpeg/gif/webp/bmp）",
-        "en": "Not a recognized image file: {path} (png/jpg/jpeg/gif/webp/bmp supported)",
-        "ja": "認識できる画像ファイルではありません: {path}（png/jpg/jpeg/gif/webp/bmp に対応）",
-        "ru": "Файл не распознан как изображение: {path} (поддерживаются png/jpg/jpeg/gif/webp/bmp)",
-    },
-    "image_too_large": {
-        "zh-CN": "图片过大（超过 8MB）: {path}",
-        "zh-TW": "圖片過大（超過 8MB）: {path}",
-        "en": "Image too large (over 8MB): {path}",
-        "ja": "画像が大きすぎます（8MB 超）: {path}",
-        "ru": "Изображение слишком велико (более 8МБ): {path}",
-    },
-    "render_unavailable": {
-        "zh-CN": "未安装 Takumi 渲染扩展，无法把 HTML 渲染为图片。可改用合并转发承载长文本。",
-        "zh-TW": "未安裝 Takumi 渲染擴充，無法把 HTML 渲染為圖片。可改用合併轉發承載長文字。",
-        "en": "The Takumi rendering extension is not installed; cannot render HTML to an image. Use a merged-forward message for long text instead.",
-        "ja": "Takumi レンダリング拡張が未インストールのため、HTML を画像にできません。長文はまとめ転送をご利用ください。",
-        "ru": "Расширение рендеринга Takumi не установлено; HTML нельзя преобразовать в изображение. Для длинного текста используйте пересылаемое сообщение.",
-    },
-    "render_need_html": {
-        "zh-CN": "html 参数不能为空",
-        "zh-TW": "html 參數不能為空",
-        "en": "html parameter is required",
-        "ja": "html パラメータは必須です",
-        "ru": "Параметр html обязателен",
     },
     "tool.render_image.name": {
         "zh-CN": "渲染图片", "zh-TW": "渲染圖片", "en": "Render image", "ja": "画像レンダリング", "ru": "Рендер изображения",
@@ -968,18 +1020,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Read or change this module's config: action=get all fields or one key (key param) / set key-value updates (updates param, valid config keys of this module only). Covers triggers, aggregate window, forward threshold, etc. Admin only.",
         "ja": "本モジュールの設定を取得・変更：action=get 全件または指定キー（key）/ set キー値で更新（updates、本モジュールの有効キーのみ）。トリガー、集約ウィンドウ、転送閾値などを調整可能。管理者のみ。",
         "ru": "Чтение и изменение настроек модуля: action=get всё или один ключ (key) / set обновления ключ-значение (updates, только валидные ключи модуля). Триггеры, окно агрегации, порог пересылки и т.д. Только админ.",
-    },
-    "origin.builtin": {
-        "zh-CN": "内置", "zh-TW": "內建", "en": "builtin", "ja": "內蔵", "ru": "встроенный",
-    },
-    "origin.eco": {
-        "zh-CN": "生态", "zh-TW": "生態", "en": "eco", "ja": "生態", "ru": "эко",
-    },
-    "origin.mcp": {
-        "zh-CN": "MCP", "zh-TW": "MCP", "en": "MCP", "ja": "MCP", "ru": "MCP",
-    },
-    "origin.plugin": {
-        "zh-CN": "插件", "zh-TW": "外掛", "en": "plugin", "ja": "プラグイン", "ru": "плагин",
     },
     "tool.risk": {
         "zh-CN": "风险", "zh-TW": "風險", "en": "risk", "ja": "リスク", "ru": "риск",

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from QvQChat.Main import Main
+from QvQChat.conversation.delivery import Delivery, split_paragraphs
 
 from fakes import FakeLogger, FakeSendChain, FakeSDK, make_config
 
@@ -46,22 +46,20 @@ def forward_calls(harness, platform="onebot11"):
 async def test_disabled_never_forwards():
     harness = make_harness(forward_enabled=False)
     event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, long_text(500), tool_trace()) is False
+    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is False
     assert forward_calls(harness) == []
 
 
 async def test_threshold_zero_irrelevant_for_reply():
-    """回复打包只看是否为工具运行，不看长度，threshold=0 也不影响。"""
     harness = make_harness(forward_threshold=0)
     event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, long_text(500), tool_trace()) is True
+    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is True
 
 
 async def test_tool_run_reply_forwards_regardless_of_length():
-    """合并转发与否看运行方式：工具任务的短回复同样打包，并带执行过程段。"""
     harness = make_harness()
     event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, "很短", tool_trace()) is True
+    assert await Delivery(harness)._try_forward(event, "很短", tool_trace()) is True
     calls = forward_calls(harness)
     assert calls and len(calls[0][0]) >= 2
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
@@ -72,11 +70,10 @@ async def test_tool_run_reply_forwards_regardless_of_length():
 
 
 async def test_plain_chat_never_forwards():
-    """纯对话（无工具）无论多长都不打包合并转发。"""
     harness = make_harness()
     event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, long_text(30), []) is False
-    assert await Main._try_forward(harness, event, long_text(60), []) is False
+    assert await Delivery(harness)._try_forward(event, long_text(30), []) is False
+    assert await Delivery(harness)._try_forward(event, long_text(60), []) is False
     assert forward_calls(harness) == []
 
 
@@ -84,23 +81,22 @@ async def test_platform_without_forward_method_skips():
     harness = make_harness()
     harness.sdk.adapter.add("onebot11", FakeSendChain(), sends=("Text",))
     event = FakeForwardEvent(sends=("Text",))
-    assert await Main._try_forward(harness, event, long_text(500), tool_trace()) is False
+    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is False
     assert forward_calls(harness) == []
 
 
 async def test_any_platform_with_forward_method_works():
-    """转发能力跟随适配器的 MergeForward 方法（list_sends 探测），不再限定平台白名单。"""
     harness = make_harness()
     harness.sdk.adapter.add("yunhu", FakeSendChain(sends=("MergeForward", "Text")), sends=("MergeForward", "Text"))
     event = FakeForwardEvent(platform="yunhu", sends=("MergeForward", "Text"))
-    assert await Main._try_forward(harness, event, long_text(500), tool_trace()) is True
+    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is True
     assert forward_calls(harness, "yunhu")
 
 
 async def test_force_forward_tag_overrides_short_and_disabled():
     harness = make_harness(forward_enabled=False)
     event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, "短回复", [], force=True) is True
+    assert await Delivery(harness)._try_forward(event, "短回复", [], force=True) is True
     calls = forward_calls(harness)
     assert calls and calls[0][0][-1]["data"]["content"][0]["data"]["text"].endswith("短回复")
 
@@ -108,7 +104,7 @@ async def test_force_forward_tag_overrides_short_and_disabled():
 async def test_force_plain_blocks_forward():
     harness = make_harness()
     event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, long_text(500), tool_trace(), force=False) is False
+    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace(), force=False) is False
     assert forward_calls(harness) == []
 
 
@@ -116,4 +112,52 @@ async def test_force_forward_still_needs_forward_method():
     harness = make_harness()
     harness.sdk.adapter.add("yunhu", FakeSendChain(), sends=("Text",))
     event = FakeForwardEvent(platform="yunhu", sends=("Text",))
-    assert await Main._try_forward(harness, event, "短", [], force=True) is False
+    assert await Delivery(harness)._try_forward(event, "短", [], force=True) is False
+
+
+def test_split_paragraphs():
+    text = "第一段内容足够长一些一些一些一些。\n\n第二段也很长很长很长很长很长。\n\n第三段收尾。"
+    parts = split_paragraphs(text, min_length=10)
+    assert len(parts) == 3
+    assert split_paragraphs("只有一段", min_length=10) == []
+
+
+def _split_event(sent):
+    class FakeEvent:
+        def get_platform(self):
+            return "onebot11"
+
+        def is_group_message(self):
+            return False
+
+        def get_user_id(self):
+            return "1"
+
+        def get_group_id(self):
+            return ""
+
+        def supports(self, method):
+            return method == "Text"
+
+        async def reply(self, content, method="Text"):
+            sent.append(content)
+
+    return FakeEvent()
+
+
+async def test_deliver_reply_splits_plain_chat():
+    sent = []
+    harness = SimpleNamespace(cfg=make_config(split_min_length=5, split_delay=0), logger=FakeLogger(), sdk=FakeSDK())
+    delivery = Delivery(harness)
+    text = "甲段内容长一点。" + "\n\n" + "乙段也长一点。"
+    await delivery.deliver_reply(_split_event(sent), text, [], force=None)
+    assert len(sent) == 2 and sent[0].startswith("甲段")
+
+
+async def test_deliver_reply_tool_run_never_splits():
+    sent = []
+    harness = SimpleNamespace(cfg=make_config(split_min_length=10, forward_enabled=False), logger=FakeLogger(), sdk=FakeSDK())
+    delivery = Delivery(harness)
+    text = "甲段内容长一点。" + "\n\n" + "乙段也长一点。"
+    await delivery.deliver_reply(_split_event(sent), text, [{"tool": "x", "arguments": "", "output": ""}])
+    assert len(sent) == 1

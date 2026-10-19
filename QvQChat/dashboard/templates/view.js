@@ -800,6 +800,7 @@
   var chatShowArchived = false;
 
   var PIN_SVG = "<svg viewBox='0 0 24 24'><path d='M12 17v5M9 3h6l-1 7 3 2v2H7v-2l3-2z'/></svg>";
+  var DEL_SVG = "<svg viewBox='0 0 24 24'><path d='M3 6h18M8 6V4h8v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6'/></svg>";
   var ARC_SVG = "<svg viewBox='0 0 24 24'><path d='M3 6h18v3H3zM5 9v11h14V9M9 13h6'/></svg>";
 
   function chatSessionTitle(key) {
@@ -818,6 +819,7 @@
       var acts = '<span class="qvq-chat-sacts">' +
         '<button type="button" data-act="pin" data-key="' + esc(s.chat_key) + '" data-on="' + (pinned ? "1" : "0") + '" title="' + esc(t(pinned ? "chat_unpin" : "chat_pin")) + '">' + PIN_SVG + "</button>" +
         '<button type="button" data-act="archive" data-key="' + esc(s.chat_key) + '" data-on="' + (s.archived ? "1" : "0") + '" title="' + esc(t(s.archived ? "chat_unarchive" : "chat_archive")) + '">' + ARC_SVG + "</button>" +
+        '<button type="button" data-act="delete" data-key="' + esc(s.chat_key) + '" title="' + esc(t("chat_delete")) + '">' + DEL_SVG + "</button>" +
         "</span>";
       var liveCls = s.live ? " liverun" : "";
       return '<div class="qvq-chat-srow' + (active ? " active" : "") + (pinned ? " pinned" : "") + liveCls + '" data-key="' + esc(s.chat_key) + '">' +
@@ -841,6 +843,21 @@
         var act = btn.getAttribute("data-act");
         var patch = { chat_key: key };
         patch[act === "pin" ? "pinned" : "archived"] = !on;
+        if (act === "delete") {
+          confirmDialog(t("session_delete_confirm")).then(function (ok) {
+            if (!ok) return;
+            api("/api/qvq/sessions/delete", "POST", { chat_key: key }).then(function () {
+              if (key === chatSession) {
+                var nextKey = chatMeta.sessions.filter(function (s3) { return !s3.archived && s3.chat_key !== key; })[0];
+                chatSession = "pending";
+                switchChatSession(nextKey ? nextKey.chat_key : "dashboard:private:web");
+              }
+              loadChatMeta();
+              toast(t("session_deleted"));
+            });
+          });
+          return;
+        }
         api("/api/qvq/session/flags", "POST", patch).then(function () {
           // 归档当前会话：切到下一个可见会话（否则豁免逻辑让它看起来没归档）
           if (act === "archive" && !on && key === chatSession) {
@@ -869,7 +886,10 @@
         : items.filter(function (s) { return !s.archived || s.chat_key === chatSession; });
       var newBtn = '<div class="qvq-chat-srow qvq-nav-new" data-new="1"><span class="qvq-chat-sname">+ ' + esc(t("chat_new")) + "</span></div>";
       var foot = '<div class="qvq-chat-sfoot' + (chatShowArchived ? " on" : "") + '" data-archived-toggle="1">' +
-        esc(t("chat_archived")) + (archivedCount ? " · " + archivedCount : "") + "</div>";
+        esc(t("chat_archived")) + (archivedCount ? " · " + archivedCount : "") + "</div>" +
+        (archivedCount && chatShowArchived
+          ? '<div class="qvq-chat-sfoot" data-purge-archived="1">' + esc(t("chat_purge_archived")) + "</div>"
+          : "");
       // 滚动区（行）与已归档按钮（独立占位）分离
       var navHtml = '<div class="qvq-nav-srows" data-srows="1">' + newBtn + (sessionRowsHtml(shown) || "") + "</div>" + foot;
       if (navBox.getAttribute("data-html") !== navHtml) {
@@ -882,6 +902,20 @@
         if (footEl) footEl.onclick = function () {
           chatShowArchived = !chatShowArchived;
           renderChatSessions();
+        };
+        var purgeEl = navBox.querySelector("[data-purge-archived]");
+        if (purgeEl) purgeEl.onclick = function () {
+          confirmDialog(t("session_delete_confirm")).then(function (ok) {
+            if (!ok) return;
+            api("/api/qvq/sessions/delete-archived", "POST", {}).then(function (data) {
+              toast(t("session_deleted") + " × " + ((data && data.removed) || 0));
+              if (chatMeta.sessions.some(function (s3) { return s3.archived && s3.chat_key === chatSession; })) {
+                chatSession = "pending";
+                switchChatSession("dashboard:private:web");
+              }
+              loadChatMeta();
+            });
+          });
         };
       }
     }
@@ -1173,7 +1207,8 @@
         "<select class='qvq-select' id='qs-persona'>" + pOpts + "</select>" +
         "<div class='qvq-actions'><button class='qvq-btn' data-qs-save>" + esc(t("settings_save_session")) + "</button>" +
         "<button class='qvq-btn ghost' data-qs-all>" + esc(t("settings_apply_all")) + "</button></div>" +
-        "<div class='qvq-settings-danger'><button type='button' class='qvq-quiet-danger' data-qs-clear>" + esc(t("chat_clear")) + "</button></div>";
+        "<div class='qvq-actions'><button class='qvq-btn ghost' data-qs-compact>" + esc(t("chat_compact")) + "</button></div>" +
+      "<div class='qvq-settings-danger'><button type='button' class='qvq-quiet-danger' data-qs-clear>" + esc(t("chat_clear")) + "</button></div>";
       openModal(t("chat_settings"), html);
       var body = el("qvq-modal-body");
       body.querySelector("#qs-density").value = chatDensity;
@@ -1218,6 +1253,11 @@
         api("/api/qvq/settings/defaults", "POST", { settings: vals }).then(function () {
           toast(t("saved"));
           closeModal();
+        });
+      };
+      body.querySelector("[data-qs-compact]").onclick = function () {
+        api("/api/qvq/session/compact", "POST", { chat_key: chatSession }).then(function (data) {
+          toast(t("compact_done_short") + ": " + (((data || {}).report || {}).actions || ["noop"]).join(", "));
         });
       };
       body.querySelector("[data-qs-clear]").onclick = function () {
@@ -1376,14 +1416,10 @@
   }
 
   function newChat() {
-    var used = {};
-    chatMeta.sessions.forEach(function (s) { used[s.chat_key] = true; });
-    var n = 2;
-    while (used["dashboard:private:web" + n]) n++;
-    switchChatSession("dashboard:private:web" + n);
-    api("/api/qvq/sessions").then(function (data) {
-      chatMeta.sessions = (data && data.sessions) || [];
-      renderChatSessions();
+    api("/api/qvq/sessions/create", "POST", { platform: "dashboard" }).then(function (data) {
+      if (!data || !data.chat_key) return;
+      switchChatSession(data.chat_key);
+      loadChatMeta();
     });
   }
 

@@ -42,6 +42,8 @@ class Tool:
     origin: str = "builtin"
     danger: bool = False
     meta: dict = field(default_factory=dict)
+    # safe=所有人可用 / admin=仅框架主人与管理员；config.safe_tools/admin_tools 可覆盖
+    access: str = "admin"
 
 
 def _allowed(name: str, whitelist: list[str] | None) -> bool:

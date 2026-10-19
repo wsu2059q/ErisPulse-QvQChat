@@ -18,6 +18,7 @@ class AgentResult:
     tool_trace: list = field(default_factory=list)
     usage: dict = field(default_factory=dict)
     rounds: list = field(default_factory=list)  # [{text, tools:[trace]}] 按轮次串行，供回放渲染
+    model: str = ""
 
 
 class AgentRunner:
@@ -157,6 +158,7 @@ class AgentRunner:
         trace: list = []
         pending_images: list = []
         usage_total: dict = {}
+        used_model = ""
         step_counter = {"n": 0}
         schemas = self.registry.llm_schemas(
             whitelist=persona_tools,
@@ -176,10 +178,11 @@ class AgentRunner:
             response = await self.pool.chat(request, on_delta=on_delta, on_reset=on_reset)
             for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
                 usage_total[key] = usage_total.get(key, 0) + response.usage.get(key, 0)
+            used_model = response.model or used_model
             if not response.tool_calls:
                 final_text = (response.content or "").strip()
                 rounds.append({"text": final_text, "tools": []})
-                return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds)
+                return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds, model=used_model)
             trace_before = len(trace)
             rounds.append({"text": (response.content or "").strip(), "tools": []})
             contexts.append(self._assistant_message(response.content, response.tool_calls))
@@ -225,9 +228,18 @@ class AgentRunner:
                     if len(pending_images) < 3:
                         pending_images.append(image)
             if pending_images:
-                image_parts: list = [{"type": "text", "text": texts.t("tool_image_note")}]
-                image_parts += [{"type": "image_url", "image_url": {"url": url}} for url in pending_images[:3]]
-                contexts.append({"role": "user", "content": image_parts})
+                if self._pool_has_vision():
+                    image_parts: list = [{"type": "text", "text": texts.t("tool_image_note")}]
+                    image_parts += [{"type": "image_url", "image_url": {"url": url}} for url in pending_images[:3]]
+                    contexts.append({"role": "user", "content": image_parts})
+                else:
+                    # 主模型无视觉：视觉模型代看，文字描述交给主模型
+                    described = await self.pool.describe_images(pending_images)
+                    lines = [
+                        f"[image {i + 1}] {d}" for i, d in enumerate(described) if d
+                    ]
+                    block = texts.t("tool_image_note") + ("\n" + "\n".join(lines) if lines else "")
+                    contexts.append({"role": "user", "content": block})
                 pending_images = []
             total_calls += len(response.tool_calls)
             if total_calls >= max_calls:
@@ -247,4 +259,11 @@ class AgentRunner:
             usage_total[key] = usage_total.get(key, 0) + final.usage.get(key, 0)
         final_text = (final.content or "").strip()
         rounds.append({"text": final_text, "tools": []})
-        return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds)
+        return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds, model=used_model or final.model)
+
+    def _pool_has_vision(self) -> bool:
+        try:
+            caps = self.pool.primary_capabilities()
+        except Exception:
+            return True
+        return caps.get("vision") is not False

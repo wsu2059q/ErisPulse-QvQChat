@@ -91,6 +91,10 @@ class DashboardManager:
             ("POST", "/api/qvq/session/context/edit", self.session_context_edit),
             ("POST", "/api/qvq/session/flags", self.session_flags),
             ("POST", "/api/qvq/session/settings", self.session_settings),
+            ("POST", "/api/qvq/sessions/delete", self.sessions_delete),
+            ("POST", "/api/qvq/sessions/delete-archived", self.sessions_delete_archived),
+            ("POST", "/api/qvq/session/compact", self.session_compact),
+            ("POST", "/api/qvq/sessions/create", self.sessions_create),
             ("GET", "/api/qvq/settings/defaults", self.settings_defaults_get),
             ("POST", "/api/qvq/settings/defaults", self.settings_defaults_set),
             ("POST", "/api/qvq/session/share", self.session_share),
@@ -264,7 +268,7 @@ class DashboardManager:
         }
 
     async def export_data(self, request):
-        from ..session.store import MEM_PREFIX
+        from ..conversation.memory import MEM_PREFIX
 
         memory = {}
         for key in self.sdk.storage.keys():
@@ -331,7 +335,7 @@ class DashboardManager:
                 self.main.scheduler._save(existing)
             applied.append("tasks")
         if isinstance(data.get("memory"), dict):
-            from ..session.store import MEM_PREFIX
+            from ..conversation.memory import MEM_PREFIX
 
             for chat_key, entries in data["memory"].items():
                 if isinstance(entries, list):
@@ -487,6 +491,7 @@ class DashboardManager:
                     "origin": tool.origin,
                     "origin_label": texts.t(f"origin.{tool.origin}", default=tool.origin),
                     "danger": tool.danger,
+                    "access": getattr(tool, "access", "admin"),
                 }
             )
         tools.sort(key=lambda t: (t["origin"], t["name"]))
@@ -591,7 +596,7 @@ class DashboardManager:
             if str(session.get("platform") or "") == "dashboard" and not session.get("name"):
                 session["name"] = texts.t("dashboard_session_name")
         try:
-            self.main.spawn(self.main.resolve_session_names(sessions))
+            self.main.spawn(self.main.conversations.resolve_session_names(sessions))
         except Exception:
             pass
         live_keys = set()
@@ -624,48 +629,9 @@ class DashboardManager:
         body = await request.json()
         chat_key = str((body or {}).get("chat_key") or "")
         index = int((body or {}).get("index", -1))
-        contexts = self.main.sessions.get_contexts(chat_key)
-        if 0 <= index < len(contexts):
-            contexts.pop(index)
-            self.main.sessions.replace_contexts(chat_key, contexts)
+        if self.main.conversations.delete_message(chat_key, index):
             return {"ok": True}
         return ({"error": "index out of range"}, 400)
-
-    def _rebuild_user_content(self, text: str, attachments: list):
-        """编辑消息时按附件清单重建多模态内容：文本段 + 图片段 + 落盘文件说明。"""
-        parts: list = []
-        notes: list[str] = []
-        if text:
-            parts.append({"type": "text", "text": text})
-        for att in attachments or []:
-            if not isinstance(att, dict):
-                continue
-            name = str(att.get("name") or "file")
-            mime = str(att.get("mime") or "").lower()
-            data = str(att.get("data") or "")
-            if not data:
-                continue
-            if mime.startswith("image/") and len(parts) < 4 and len(data) <= 7_000_000:
-                url = data if data.startswith("data:") else f"data:{mime};base64,{data}"
-                parts.append({"type": "image_url", "image_url": {"url": url}})
-                continue
-            saved = self._save_upload(name, data)
-            if saved:
-                size = Path(saved).stat().st_size
-                notes.append(texts.t("attachment_saved", name=name, path=saved, size=size))
-            else:
-                notes.append(f"[attachment {name}]（保存失败，内容不可用）")
-        if notes:
-            tail = "\n\n".join(notes)
-            if parts and parts[0].get("type") == "text":
-                parts[0]["text"] = (parts[0]["text"] + "\n\n" + tail).strip()
-            else:
-                parts.insert(0, {"type": "text", "text": tail})
-        if not parts:
-            return text or ""
-        if len(parts) == 1 and parts[0].get("type") == "text":
-            return parts[0]["text"]
-        return parts
 
     async def session_context_edit(self, request):
         body = await request.json()
@@ -673,22 +639,36 @@ class DashboardManager:
         index = int((body or {}).get("index", -1))
         content = str((body or {}).get("content") or "")
         attachments = (body or {}).get("attachments")
-        contexts = self.main.sessions.get_contexts(chat_key)
-        if 0 <= index < len(contexts):
-            orig = contexts[index].get("content")
-            if isinstance(attachments, list):
-                # 编辑带附件清单：按清单整体重建（可增删图片/文件）
-                contexts[index]["content"] = self._rebuild_user_content(content, attachments)
-            elif isinstance(orig, list):
-                # 编辑仅替换文本段，保留图片等多模态段
-                kept = [p for p in orig if isinstance(p, dict) and p.get("type") != "text"]
-                merged = ([{"type": "text", "text": content}] + kept) if content else kept
-                contexts[index]["content"] = merged or content
-            else:
-                contexts[index]["content"] = content
-            self.main.sessions.replace_contexts(chat_key, contexts)
+        if self.main.conversations.edit_message(chat_key, index, content, attachments):
             return {"ok": True}
         return ({"error": "index out of range"}, 400)
+
+    async def sessions_delete(self, request):
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        if not chat_key:
+            return ({"error": "chat_key required"}, 400)
+        return {"ok": self.main.conversations.delete(chat_key)}
+
+    async def sessions_create(self, request):
+        body = await request.json()
+        chat_key = self.main.conversations.create(
+            platform=str((body or {}).get("platform") or "dashboard"),
+            detail_type=str((body or {}).get("detail_type") or "private"),
+            target_id=str((body or {}).get("target_id") or ""),
+        )
+        return {"ok": True, "chat_key": chat_key}
+
+    async def sessions_delete_archived(self, request):
+        return {"ok": True, "removed": self.main.conversations.delete_archived()}
+
+    async def session_compact(self, request):
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        if not chat_key:
+            return ({"error": "chat_key required"}, 400)
+        report = await self.main.conversations.compact_now(chat_key)
+        return {"ok": True, "report": report}
 
     async def sessions_reset(self, request):
         body = await request.json()
@@ -889,38 +869,7 @@ class DashboardManager:
     UPLOAD_DIR = Path("data/QvQChat/uploads")
 
     def _save_upload(self, name: str, data: str) -> str | None:
-        """附件落地为真实文件（按内容 hash 复用），把路径交给 AI 自行读取/解压使用。"""
-        import base64 as _base64
-        import hashlib as _hashlib
-        import re as _re
-        from urllib.parse import unquote as _unquote
-
-        payload: bytes | None = None
-        m = _re.match(r"^data:([^;,]+)?(;base64)?,(.*)$", data, _re.DOTALL)
-        if m and m.group(2):
-            try:
-                payload = _base64.b64decode(m.group(3))
-            except Exception:
-                return None
-        elif m:
-            payload = _unquote(m.group(3)).encode("utf-8", "replace")
-        else:
-            payload = data.encode("utf-8", "replace")
-        if payload is None:
-            return None
-        digest = _hashlib.sha256(payload).hexdigest()[:16]
-        safe = _re.sub(r"[^\w.\-]+", "_", name, flags=_re.UNICODE).strip("_") or "file"
-        try:
-            self.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-            # 同内容复用：忽略旧文件名，命中即返回既有路径
-            for existing in self.UPLOAD_DIR.iterdir():
-                if existing.is_file() and existing.name.startswith(digest + "_"):
-                    return str(existing)
-            target = self.UPLOAD_DIR / f"{digest}_{safe}"
-            target.write_bytes(payload)
-        except OSError:
-            return None
-        return str(target)
+        return self.main.conversations.save_upload(name, data)
 
     def _parse_chat_body(self, body: dict):
         """解析对话请求体 → (text, images, session, skills, mcp_tools, persona_id, model, temperature)；出错返回 (dict, status)。"""
