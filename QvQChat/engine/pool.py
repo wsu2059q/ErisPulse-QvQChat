@@ -176,9 +176,18 @@ class ModelPool:
                 "id": model_id,
                 "context_length": item.get("context_length") if isinstance(item, dict) else None,
                 "vision": None,
+                "files": None,
+                "video": None,
                 "reasoning": None,
                 "tool_call": None,
             }
+            if isinstance(item, dict):
+                modalities = item.get("modalities")
+                if isinstance(modalities, dict):
+                    inputs = modalities.get("input") or []
+                    entry["vision"] = "image" in inputs
+                    entry["files"] = "pdf" in inputs
+                    entry["video"] = "video" in inputs
             extra = self._models_dev_lookup(catalog, base_url, model_id)
             for key, value in extra.items():
                 if entry.get(key) is None and value is not None:
@@ -187,6 +196,32 @@ class ModelPool:
         return result
 
     # ════════════════ 模型 ════════════════
+
+    CAPABILITY_KEYS = ("vision", "files", "video", "tool_call", "reasoning")
+
+    def model_capabilities(self, model: dict) -> dict:
+        """模型能力：人工覆盖优先，models.dev 富化作默认。"""
+        caps = {}
+        for key in self.CAPABILITY_KEYS:
+            value = model.get(key)
+            if value is None and isinstance(model.get("capabilities"), dict):
+                value = model["capabilities"].get(key)
+            caps[key] = bool(value) if value is not None else None
+        return caps
+
+    def _meets_needs(self, model: dict, needs: list | None) -> bool:
+        if not needs:
+            return True
+        caps = self.model_capabilities(model)
+        return all(caps.get(n) is True for n in needs)
+
+    def primary_capabilities(self) -> dict:
+        """当前默认模型的能力（无模型池时返回全 None）。"""
+        try:
+            primary = self.resolve_model(None)
+        except Exception:
+            return {k: None for k in self.CAPABILITY_KEYS}
+        return self.model_capabilities(primary)
 
     def list_models(self) -> list[dict]:
         models: list[dict] = []
@@ -204,12 +239,20 @@ class ModelPool:
                         "model": model.get("id", ""),
                         "temperature": model.get("temperature"),
                         "max_tokens": model.get("max_tokens"),
+                        "capabilities": self.model_capabilities(model),
                     }
                 )
         return models
 
-    def resolve_model(self, model_id: str | None = None) -> dict:
+    def resolve_model(self, model_id: str | None = None, needs: list | None = None) -> dict:
         models = self.list_models()
+        if needs:
+            capable = [m for m in models if self._meets_needs(m, needs)]
+            if capable:
+                models = capable
+            else:
+                # 没有任何模型满足能力要求时回落全池（由调用方感知能力缺失）
+                self.sdk.logger.warning(f"no model meets needs {needs}, falling back to full pool")
         if model_id:
             for model in models:
                 if model["id"] == model_id:
@@ -227,11 +270,11 @@ class ModelPool:
         raise EngineError(texts.t("provider_no_models"))
 
     async def chat(self, request: ChatRequest, on_delta=None, on_reset=None) -> ChatResponse:
-        primary = self.resolve_model(request.model)
+        primary = self.resolve_model(request.model, request.needs)
         chain = [primary]
         if getattr(self.config, "model_failover", True):
             for model in self.list_models():
-                if model["id"] != primary["id"]:
+                if model["id"] != primary["id"] and self._meets_needs(model, request.needs):
                     chain.append(model)
         errors: list[str] = []
         for index, model in enumerate(chain):
@@ -270,6 +313,29 @@ class ModelPool:
             response.model = model["id"]
             return response
         raise EngineError(texts.t("engine_all_failed", errors=" | ".join(errors)))
+
+    async def describe_images(self, image_urls: list, prompt: str = "") -> list[str]:
+        """主模型不具备视觉能力时的"代看"：用 vision 模型产出文字描述（needs 路由自动选模型）。"""
+        descriptions: list[str] = []
+        for url in image_urls[:3]:
+            parts: list = [
+                {
+                    "type": "text",
+                    "text": prompt
+                    or "Describe this image in detail in its likely language: subjects, text, layout and anything notable.",
+                },
+                {"type": "image_url", "image_url": {"url": url}},
+            ]
+            try:
+                response = await self.chat(
+                    ChatRequest(messages=[{"role": "user", "content": parts}], needs=["vision"], max_tokens=800)
+                )
+                text = (response.content or "").strip()
+            except Exception as e:
+                self.sdk.logger.warning(f"vision delegate failed: {e}")
+                text = ""
+            descriptions.append(text)
+        return descriptions
 
     async def test_model(self, model_id: str) -> ChatResponse:
         return await self.chat(ChatRequest(messages=[{"role": "user", "content": "ping"}], model=model_id or None))

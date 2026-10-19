@@ -2,7 +2,7 @@ import asyncio
 import inspect
 
 from QvQChat.Main import Main
-from QvQChat.session.manager import SessionManager
+from QvQChat.conversation.service import ConversationService
 
 from fakes import FakeChatEvent, FakeMain
 
@@ -15,13 +15,12 @@ def make_main(**overrides):
     main._chat_locks = {}
     for name in (
         "_process_locked", "_chat_ctx", "_sender_name", "_resolve_group_name",
-        "_build_system", "_seed_history", "_reply_methods", "_is_recap",
-        "_try_forward", "is_admin", "check_tool_permission", "_master_checker",
+        "_seed_history",
+        "is_admin", "check_tool_permission", "_master_checker",
         "record_usage", "_usage_today", "_prune_usage", "_usage_history",
         "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
         "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
-        "_chat_key_of", "_chat_confirmer", "_compress_context_if_needed", "_context_tokens",
-        "_estimate_tokens", "_title_task", "_summarize_context",
+        "_chat_key_of", "_chat_confirmer",
     ):
         static_attr = inspect.getattr_static(Main, name)
         if isinstance(static_attr, staticmethod):

@@ -1493,6 +1493,12 @@ input[type="radio"] {
   animation: qvq-breathe 1.5s ease-in-out infinite;
 }
 /* ── 消息原地编辑：composer 同观感，隐藏原气泡与操作行 ── */
+.qvq-msg-wrap.editing {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+  align-self: stretch;
+}
 .qvq-msg-wrap.editing > .qvq-msg,
 .qvq-msg-wrap.editing > .qvq-msg-acts {
   display: none;

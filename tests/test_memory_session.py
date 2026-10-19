@@ -1,5 +1,5 @@
-from QvQChat.session.manager import SessionManager, make_chat_key, parse_chat_key
-from QvQChat.session.store import MemoryStore
+from QvQChat.conversation.service import ConversationService, make_chat_key, parse_chat_key
+from QvQChat.conversation.memory import MemoryStore
 
 from fakes import FakeMain
 
@@ -13,7 +13,7 @@ def test_chat_key_roundtrip():
 
 def test_session_append_trim_and_reset():
     main = FakeMain(context_limit=3)
-    manager = SessionManager(main.sdk, main.cfg)
+    manager = ConversationService(main)
     key = "test:private:1"
     for i in range(10):
         manager.append(key, "user", f"m{i}")
@@ -26,7 +26,7 @@ def test_session_append_trim_and_reset():
 
 def test_session_persona_pointer_and_list():
     main = FakeMain()
-    manager = SessionManager(main.sdk, main.cfg)
+    manager = ConversationService(main)
     manager.set_persona("a:b:c", "custom")
     assert manager.persona_of("a:b:c") == "custom"
     sessions = manager.list_sessions()
@@ -73,7 +73,7 @@ def test_memory_scopes_and_clear():
 
 def test_label_incoming_group_format():
     main = FakeMain()
-    manager = SessionManager(main.sdk, main.cfg)
+    manager = ConversationService(main)
     assert manager.label_incoming("大家好", sender_id="u1", sender_name="群主") == "群主(u1): 大家好"
     assert manager.label_incoming("大家好", sender_id="u1") == "(u1): 大家好"
     assert manager.label_incoming("大家好") == "大家好"
@@ -81,7 +81,7 @@ def test_label_incoming_group_format():
 
 def test_group_name_cache_roundtrip():
     main = FakeMain()
-    manager = SessionManager(main.sdk, main.cfg)
+    manager = ConversationService(main)
     assert manager.group_name_of("g") == ""
     manager.set_group_name("g", "测试群")
     assert manager.group_name_of("g") == "测试群"
@@ -89,7 +89,7 @@ def test_group_name_cache_roundtrip():
 
 def test_recent_user_messages_cross_session():
     main = FakeMain()
-    manager = SessionManager(main.sdk, main.cfg)
+    manager = ConversationService(main)
     group_key = "onebot11:group:1"
     manager.set_group_name(group_key, "测试群")
     labeled1 = manager.label_incoming("安装云湖适配器", sender_id="u1", sender_name="群主")
@@ -111,7 +111,7 @@ def test_recent_user_messages_cross_session():
 
 def test_seed_contexts_persists_once():
     main = FakeMain()
-    manager = SessionManager(main.sdk, main.cfg)
+    manager = ConversationService(main)
     seed = [{"role": "user", "content": "历史"}]
     first = manager.seed_contexts("s", seed)
     assert first == seed

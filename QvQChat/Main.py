@@ -19,6 +19,9 @@ except ImportError:
     ModuleMeta = None
 
 from . import texts, utils
+from .conversation.delivery import Delivery, strip_output_tag
+from .conversation.memory import MemoryStore
+from .conversation.service import ConversationService, make_chat_key, parse_chat_key
 from .dashboard.live import bind as live_bind
 from .Config import QvQConfig
 from .I18n import QvQI18n
@@ -30,8 +33,6 @@ from .bridge.mcp import MCPManager
 from .engine.base import ChatRequest
 from .engine.pool import ModelPool
 from .scheduler import Scheduler
-from .session.manager import SessionManager, make_chat_key, parse_chat_key
-from .session.store import MemoryStore
 from .skills import SkillManager
 from .tools_builtin import agent, code, computer, erispulse, memory, schedule, selfconfig, skilltools, takumi
 from .version import __version__
@@ -39,39 +40,7 @@ from .version import __version__
 AUDIT_KEY = "QvQChat:audit"
 AUDIT_LIMIT = 500
 
-OUTPUT_TAG_RE = re.compile(r"^\[\[(转发|直发)\]\]\s*")
-
 CONFIRM_WORDS = {"确认", "確認", "确定", "確定", "是", "confirm", "yes", "y", "ok"}
-
-BASE_SAFE_TOOLS = {
-    "send_message",
-    "send_dsl",
-    "list_platforms",
-    "list_takeovers",
-    "remember",
-    "recall",
-    "forget",
-    "list_memory",
-    "read_file",
-    "view_image",
-    "list_dir",
-    "list_services",
-    "create_scheduled_task",
-    "list_scheduled_tasks",
-    "cancel_scheduled_task",
-}
-
-DEFAULT_ADMIN_TOOLS = [
-    "run_command",
-    "run_python",
-    "write_file",
-    "call_adapter_api",
-    "call_module",
-    "takeover_session",
-    "release_takeover",
-    "eco_*",
-    "mcp_*",
-]
 
 LOCAL_ORIGINS = ("dashboard", "rpc")
 
@@ -101,29 +70,23 @@ def _match_tool_rules(name: str, rules) -> bool:
     return False
 
 
-def tool_allowed(config, tool_name: str, user_id: str, origin: str = "chat",
+def tool_allowed(config, tool, user_id: str, origin: str = "chat",
                  platform: str = "", master_checker=None) -> tuple[bool, str]:
     if is_admin_user(config, user_id, origin, platform, master_checker):
         return True, ""
-    if tool_name in BASE_SAFE_TOOLS:
-        return True, ""
-    safe_extra = [str(s) for s in (getattr(config, "safe_tools", []) or [])]
-    if _match_tool_rules(tool_name, safe_extra):
-        return True, ""
-    admin_rules = [str(a) for a in (getattr(config, "admin_tools", None) or DEFAULT_ADMIN_TOOLS)]
-    if _match_tool_rules(tool_name, admin_rules):
-        return False, texts.t(
-            "tool_permission_denied",
-            tool=tool_name,
-            user_id=str(user_id) or "unknown",
-            platform=platform or "unknown",
-        )
-    return False, texts.t(
+    deny = (False, texts.t(
         "tool_permission_denied",
-        tool=tool_name,
+        tool=getattr(tool, "name", str(tool)),
         user_id=str(user_id) or "unknown",
         platform=platform or "unknown",
-    )
+    ))
+    if _match_tool_rules(getattr(tool, "name", str(tool)), getattr(config, "admin_tools", None) or []):
+        return deny
+    if getattr(tool, "access", "admin") == "safe":
+        return True, ""
+    if _match_tool_rules(getattr(tool, "name", str(tool)), getattr(config, "safe_tools", []) or []):
+        return True, ""
+    return deny
 
 CAPABILITY_PROMPT = (
     "Sending messages: platforms differ in capabilities. When the user names a target platform "
@@ -198,13 +161,16 @@ class Main(BaseModule):
         self.pool = ModelPool(self.sdk, self.cfg)
         self.registry = ToolRegistry()
         self.personas = PersonaManager(self.sdk)
-        self.sessions = SessionManager(self.sdk, self.cfg)
+        # 会话子系统唯一归属：conversations（sessions 为同一对象的沿用别名）
+        self.conversations = ConversationService(self)
+        self.sessions = self.conversations
         self.memory = MemoryStore(self.sdk, self.cfg)
         self.skills = SkillManager(self.sdk, self.cfg)
         self.runner = AgentRunner(self.pool, self.registry, self.cfg)
         self.eco = EcosystemBridge(self)
         self.mcp = MCPManager(self)
         self.scheduler = Scheduler(self)
+        self.delivery = Delivery(self)
         self._register_builtin_tools()
         self._register_handlers()
         self._register_dashboard()
@@ -265,9 +231,12 @@ class Main(BaseModule):
 
     def _register_handlers(self) -> None:
         message.on_message(priority=50)(self._on_message)
-        command("agent", help="QvQChat")(self._cmd_agent)
-        if "agent" not in getattr(command, "commands", {}):
-            self.logger.warning("command 'agent' was not registered")
+        for name in ("qvq", "agent"):
+            command(name, help="QvQChat")(self._cmd_agent)
+        registered = getattr(command, "commands", {})
+        missing = [n for n in ("qvq", "agent") if n not in registered]
+        if missing:
+            self.logger.warning(f"commands not registered: {', '.join(missing)}")
 
     def _register_dashboard(self) -> None:
         from .dashboard.live import LiveRegistry
@@ -432,18 +401,6 @@ class Main(BaseModule):
         except Exception as e:
             self.logger.warning(f"on_message failed: {e}")
 
-    def _reply_methods(self, event) -> list:
-        methods = []
-        for name in erispulse.REPLY_PREFERENCE:
-            try:
-                if event.supports(name):
-                    methods.append(name)
-            except Exception:
-                continue
-        if "Text" not in methods:
-            methods.append("Text")
-        return methods
-
     @staticmethod
     def _sender_name(event) -> str:
         try:
@@ -482,62 +439,6 @@ class Main(BaseModule):
             self.sessions.set_group_name(chat_key, name)
         return name
 
-    @staticmethod
-    def _is_recap(reply: str, tool_trace: list) -> bool:
-        if not tool_trace or not any(t.get("tool") == "send_message" for t in tool_trace):
-            return False
-        text = reply.strip()
-        if len(text) > 150:
-            return False
-        return bool(re.match(r"^(已[经把完成向]|好[的了]|已发送|已发出|done|sent)", text))
-
-    async def _try_forward(self, event, reply: str, tool_trace: list, force: bool | None = None) -> bool:
-        if force is False:
-            return False
-        platform = event.get_platform() or ""
-        adapter = self.sdk.adapter.get(platform)
-        if adapter is None:
-            return False
-        try:
-            sends = list(self.sdk.adapter.list_sends(platform))
-        except Exception:
-            sends = []
-        if force is not True:
-            # 打包与否看运行方式，不看文本长度：用了工具的长任务回复转合并转发，纯对话不转
-            if not getattr(self.cfg, "forward_enabled", True):
-                return False
-            if not tool_trace:
-                return False
-        sections: list = []
-        if tool_trace:
-            lines = []
-            for entry in tool_trace[:10]:
-                lines.append(f"{entry.get('tool', '')}({utils.truncate(str(entry.get('arguments', '')), 80)})")
-                output = utils.truncate(str(entry.get("output", "")), 200).replace("\n", " ")
-                lines.append(texts.t("forward_result", output=output))
-            if lines:
-                sections.append(texts.t("forward_process_title") + "\n" + "\n".join(lines))
-        sections += utils.split_reply_sections(reply)
-        if not sections:
-            return False
-        detail_type = "group" if event.is_group_message() else "user"
-        if detail_type == "group":
-            target_id = str(event.get_group_id() or "")
-        else:
-            target_id = str(event.get_user_id() or "")
-        if not target_id:
-            return False
-        try:
-            # 自适应打包：适配器实现 Forward(nodes) 即支持（合并转发/富文本折叠由适配器决定），
-            # 未实现或发送失败返回 ""，走普通文本发送兜底
-            used = await utils.deliver_forward(adapter, detail_type, target_id, sections, sends)
-        except Exception as e:
-            self.logger.warning(f"forward send failed, fallback to normal reply: {e}")
-            return False
-        if used:
-            return True
-        return False
-
     def _lock_for(self, chat_key: str) -> asyncio.Lock:
         lock = self._chat_locks.get(chat_key)
         if lock is None:
@@ -549,7 +450,7 @@ class Main(BaseModule):
         data = self.sdk.storage.get(f"QvQChat:usage:{time.strftime('%Y-%m-%d')}", {})
         return data if isinstance(data, dict) else {}
 
-    def record_usage(self, chat_key: str, usage: dict) -> None:
+    def record_usage(self, chat_key: str, usage: dict, model: str = "") -> None:
         try:
             today = time.strftime("%Y-%m-%d")
             key = f"QvQChat:usage:{today}"
@@ -564,6 +465,12 @@ class Main(BaseModule):
                 by_chat = {}
             by_chat[chat_key] = int(by_chat.get(chat_key, 0) or 0) + tokens
             data["by_chat"] = by_chat
+            if model:
+                by_model = data.get("by_model")
+                if not isinstance(by_model, dict):
+                    by_model = {}
+                by_model[model] = int(by_model.get(model, 0) or 0) + tokens
+                data["by_model"] = by_model
             self.sdk.storage.set(key, data)
             self._prune_usage(today)
         except Exception:
@@ -695,15 +602,21 @@ class Main(BaseModule):
                     if len(all_images) < 3:
                         all_images.append(image)
             labeled = "\n".join(labeled_parts)
-            persona = self.personas.resolve(chat_key)
-            system = self._build_system(persona, scene, chat_key=chat_key)
-            recalled = self.memory.recall(chat_key, query=combined_text or labeled, limit=int(getattr(self.cfg, "memory_recall", 6)))
-            if recalled:
-                lines = "\n".join(f"- {entry.get('content', '')}" for entry in recalled)
-                system += "\n\nRelated memories:\n" + lines
+            images = [
+                converted
+                for raw in all_images
+                for converted in [self._to_model_image(raw)]
+                if converted
+            ]
+            # 每日限额：拦在落历史之前，被限流的请求不写进上下文
+            limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
+            if limit:
+                used_today = int(self._usage_today().get("tokens", 0) or 0)
+                if used_today >= limit and not self.is_admin(sender_id, "chat", event.get_platform() or ""):
+                    await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
+                    return
             # 统一管道：平台侧运行也注册进 LiveRegistry，网页端可实时观看/取消
-            # busy 时中断旧任务，新任务带中断上下文 —— 必须先于取上下文完成，
-            # 否则中断提示写不进本次请求
+            # busy 时中断旧任务，新任务带中断上下文
             interrupted_note = ""
             live = None
             registry = getattr(self, "live_registry", None)
@@ -720,44 +633,21 @@ class Main(BaseModule):
                 on_delta, on_reset, on_tool_event = live_bind(live)
             else:
                 on_delta = on_reset = on_tool_event = None
-            await self._compress_context_if_needed(chat_key)
-            contexts = self.sessions.get_contexts(chat_key)
+            # 运行准备唯一入口：压缩 / 冷启动 seed / 人设 / 记忆 / 多模态
+            prepared = await self.sessions.prepare(
+                chat_key,
+                labeled,
+                images=images,
+                scene=scene,
+                seed_provider=lambda: self._seed_history(event),
+                cross_user_id=("" if is_group else sender_id),
+            )
+            system = prepared["system"]
+            contexts = prepared["contexts"]
+            user_msg = prepared["user_msg"]
+            persona = prepared["persona"]
             if interrupted_note:
                 contexts.append({"role": "user", "content": interrupted_note})
-            if not contexts:
-                contexts = await self._seed_history(event)
-                if not is_group and sender_id:
-                    cross = self.sessions.recent_user_messages(sender_id, exclude_chat_key=chat_key)
-                    if cross:
-                        lines: list = []
-                        for item in cross:
-                            lines.append(f"[来自 {item['label']}]")
-                            lines.append(item["content"])
-                        contexts.append(
-                            {
-                                "role": "user",
-                                "content": texts.t("cross_session_header") + "\n" + "\n".join(lines),
-                            }
-                        )
-                contexts = self.sessions.seed_contexts(chat_key, contexts)
-            images = [
-                converted
-                for raw in all_images
-                for converted in [self._to_model_image(raw)]
-                if converted
-            ]
-            user_msg: dict = {"role": "user", "content": labeled}
-            if images:
-                parts: list = [{"type": "text", "text": labeled}]
-                parts += [{"type": "image_url", "image_url": {"url": url}} for url in images]
-                user_msg["content"] = parts
-            self.sessions.append_user(chat_key, user_msg["content"], sender_id=sender_id if is_group else "")
-            limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
-            if limit:
-                used_today = int(self._usage_today().get("tokens", 0) or 0)
-                if used_today >= limit and not self.is_admin(sender_id, "chat", event.get_platform() or ""):
-                    await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
-                    return
             async def on_tool_round(calls):
                 # 仅 all 模式发工具明细；brief 模式以 AI 发言代替，不打断
                 if getattr(self.cfg, "tool_notice_mode", "brief") != "all":
@@ -809,15 +699,10 @@ class Main(BaseModule):
                 live.reply = result.text.strip()
                 live.status = "done"
                 live.publish("done", {"reply": live.reply, "session": chat_key})
-            self.record_usage(chat_key, result.usage)
-            reply = result.text.strip()
-            force_forward: bool | None = None
-            tag = OUTPUT_TAG_RE.match(reply)
-            if tag:
-                force_forward = tag.group(1) == "转发"
-                reply = reply[tag.end():].strip()
+            reply, force_forward = strip_output_tag(result.text.strip())
             reply = reply or texts.t("no_reply_content")
-            self.sessions.append(chat_key, "assistant", reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None))
+            # 统一收尾：落历史 + 用量 + 裁剪摘要
+            self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""))
             try:
                 await self.sdk.lifecycle.emit(
                     "qvq.replied",
@@ -825,103 +710,10 @@ class Main(BaseModule):
                 )
             except Exception:
                 pass
-            if self._is_recap(reply, result.tool_trace):
-                self.logger.info("reply suppressed as send recap")
-                return
-            if await self._try_forward(event, reply, result.tool_trace, force=force_forward):
-                return
-            last_error: Exception | None = None
-            for method in self._reply_methods(event):
-                content = utils.markdown_to_text(reply) if method == "Text" else reply
-                try:
-                    await event.reply(content, method=method)
-                    last_error = None
-                    break
-                except Exception as e:
-                    last_error = e
-            if last_error is not None:
-                self.logger.warning(f"reply failed: {last_error}")
-            overflow = self.sessions.trim_overflow(chat_key, keep=max(2, int(getattr(self.cfg, "context_limit", 30))))
-            if overflow and getattr(self.cfg, "context_summary", True):
-                self.spawn(self._summarize_context(chat_key, overflow))
+            # 投递唯一出口：recap 抑制 → 合并转发 → 分段/单条直发
+            await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward)
         except Exception as e:
             self.logger.warning(f"process failed: {e}")
-
-    @staticmethod
-    def _estimate_tokens(text) -> int:
-        """粗估 token 数：中文约 1.5 字/token，混合文本按 2 字符/token 计。"""
-        return len(str(text or "")) // 2
-
-    def _context_tokens(self, contexts: list) -> int:
-        return sum(self._estimate_tokens(m.get("content") if isinstance(m, dict) else m) for m in contexts)
-
-    async def _compress_context_if_needed(self, chat_key: str) -> None:
-        """请求前压缩：估算上下文超过阈值时，把旧消息压缩为摘要（同步执行，确保本次请求生效）。"""
-        limit = int(getattr(self.cfg, "context_compress_tokens", 12000) or 0)
-        if limit <= 0 or not getattr(self.cfg, "context_summary", True):
-            return
-        contexts = self.sessions.get_contexts(chat_key)
-        if self._context_tokens(contexts) <= limit:
-            return
-        # 从最旧开始裁一半（至少保留最近 8 条），压缩为摘要
-        keep = max(8, len(contexts) // 2)
-        overflow = contexts[:-keep] if keep < len(contexts) else []
-        if not overflow:
-            return
-        try:
-            await self._summarize_context(chat_key, overflow)
-            self.sessions.replace_contexts(chat_key, contexts[-keep:])
-            self.logger.info(f"context compressed: {chat_key} (-{len(overflow)} msgs)")
-        except Exception as e:
-            self.logger.warning(f"context compress failed: {e}")
-
-    async def _summarize_context(self, chat_key: str, removed: list) -> None:
-        try:
-            transcript = "\n".join(
-                f"{m.get('role')}: {str(m.get('content'))[:200]}"
-                for m in removed
-                if isinstance(m, dict)
-            )
-            response = await self.pool.chat(
-                ChatRequest(
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "Summarize the following conversation excerpt into concise bullet "
-                                "points in the same language as the content. Keep names, ids, "
-                                "decisions and unresolved questions."
-                            ),
-                        },
-                        {"role": "user", "content": transcript[:6000]},
-                    ]
-                )
-            )
-            text = (response.content or "").strip()
-            if text:
-                self.sessions.append_summary(chat_key, text)
-        except Exception as e:
-            self.logger.warning(f"context summarize failed: {e}")
-
-    def _build_system(self, persona: dict, scene: str = "", chat_key: str = "") -> str:
-        system = persona["system"] + "\n" + utils.time_line()
-        if scene:
-            system += "\n" + scene
-        if chat_key:
-            summary = self.sessions.summary_of(chat_key)
-            if summary:
-                system += "\nEarlier conversation summary (older than recent messages):\n" + summary
-        system += "\n" + CAPABILITY_PROMPT
-        system += "\n" + texts.t("system_brevity")
-        skills = [s for s in self.skills.list_skills() if s.get("enabled")] if self.skills else []
-        if skills:
-            lines = "\n".join(f"- {s['name']}: {s.get('description') or ''}" for s in skills)
-            system += "\n\n<skills>\n" + texts.t("skills_system_note") + "\n" + lines + "\n</skills>"
-        for line in getattr(self.cfg, "extra_prompts", []) or []:
-            line = str(line).strip()
-            if line:
-                system += "\n" + line
-        return system
 
     async def _seed_history(self, event) -> list:
         try:
@@ -963,19 +755,17 @@ class Main(BaseModule):
             user_id=user_id,
             origin=origin,
         )
-        await self._compress_context_if_needed(chat_key)
-        persona = self.personas.get(persona_id) if persona_id else self.personas.resolve(chat_key)
-        system = self._build_system(persona)
+        prepared = await self.sessions.prepare(chat_key, prompt, persona_id=persona_id, persist=False)
         messages: list = []
         # 定时/后台任务：告诉 AI 内容要用 send_message 自行投递，投递过就不再补发总结
         if send and platform:
             messages.append({"role": "system", "content": texts.t("task_run_note")})
-        messages.append({"role": "user", "content": prompt})
+        messages.extend(prepared["contexts"] + [prepared["user_msg"]])
         result = await self.runner.run(
-            system=system,
+            system=prepared["system"],
             messages=messages,
             ctx=ctx,
-            persona_tools=persona.get("tools"),
+            persona_tools=prepared["persona"].get("tools"),
         )
         reply = result.text.strip() or texts.t("no_reply_content")
         if send and platform:
@@ -986,7 +776,7 @@ class Main(BaseModule):
             )
             if not delivered:
                 # 打包与否看运行方式：用了工具的任务投递转合并转发，纯文本回答普通发送
-                await self._send_segments(
+                await self.delivery.send_segments(
                     platform,
                     detail_type,
                     target_id,
@@ -1022,113 +812,29 @@ class Main(BaseModule):
             user_id="dashboard",
             origin="dashboard",
         )
-        await self._compress_context_if_needed(chat_key)
-        persona = self.personas.get(persona_id) if persona_id else self.personas.resolve(chat_key)
-        system = self._build_system(persona, chat_key=chat_key)
-        recalled = self.memory.recall(chat_key, query=text, limit=int(getattr(self.cfg, "memory_recall", 6)))
-        if recalled:
-            lines = "\n".join(f"- {entry.get('content', '')}" for entry in recalled)
-            system += "\n\nRelated memories:\n" + lines
-        for name in skill_names or []:
-            skill = self.skills.get_skill(str(name))
-            if not skill:
-                continue
-            system += (
-                "\n\n<active-skill name=\"" + str(name) + "\">\n"
-                + utils.truncate(str(skill.get("body") or ""), 8000)
-                + "\n</active-skill>"
-            )
-        tools_hint = [str(t) for t in (mcp_tools or []) if str(t)]
-        if tools_hint:
-            system += "\n\n" + texts.t("dashboard_mcp_hint", tools=", ".join(tools_hint))
-        contexts = self.sessions.get_contexts(chat_key)
-        user_msg: dict = {"role": "user", "content": text}
-        if images:
-            parts: list = [{"type": "text", "text": text}] if text else []
-            parts += [{"type": "image_url", "image_url": {"url": url}} for url in images[:3]]
-            user_msg["content"] = parts
-        self.sessions.append_user(chat_key, user_msg["content"], sender_id="dashboard")
+        prepared = await self.sessions.prepare(
+            chat_key,
+            text,
+            images=images,
+            persona_id=persona_id,
+            active_skills=skill_names,
+            mcp_tools=mcp_tools,
+        )
         result = await self.runner.run(
-            system=system,
-            messages=contexts + [user_msg],
+            system=prepared["system"],
+            messages=prepared["contexts"] + [prepared["user_msg"]],
             ctx=ctx,
-            persona_tools=persona.get("tools"),
+            persona_tools=prepared["persona"].get("tools"),
             model=model or None,
             temperature=temperature,
             on_delta=on_delta,
             on_reset=on_reset,
             on_tool_event=on_tool_event,
         )
-        self.record_usage(chat_key, result.usage)
         reply = result.text.strip() or texts.t("no_reply_content")
-        self.sessions.append(chat_key, "assistant", reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None))
-        overflow = self.sessions.trim_overflow(chat_key, keep=max(2, int(getattr(self.cfg, "context_limit", 30))))
-        if overflow and getattr(self.cfg, "context_summary", True):
-            self.spawn(self._summarize_context(chat_key, overflow))
-        if not self.sessions.group_name_of(chat_key):
-            self.spawn(self._title_task(chat_key, text, reply))
+        # 统一收尾：落历史 + 用量 + 裁剪摘要 + 标题生成
+        self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), title_from=text)
         return reply
-
-    async def _title_task(self, chat_key: str, user_text: str, reply: str) -> None:
-        """为无名字的会话用模型生成一个短标题（失败静默）。"""
-        from .engine.base import ChatRequest
-
-        try:
-            resp = await self.pool.chat(ChatRequest(
-                messages=[
-                    {"role": "system", "content": texts.t("title_system")},
-                    {"role": "user", "content": utils.truncate(user_text, 200) + "\n---\n" + utils.truncate(reply, 300)},
-                ],
-                max_tokens=48,
-                temperature=0.3,
-            ))
-            title = (resp.content or "").strip().strip("\"“”‘’。.!!??")
-            title = title.splitlines()[0][:40] if title else ""
-            if title:
-                self.sessions.set_group_name(chat_key, title)
-        except Exception as e:
-            self.logger.warning(f"title generation failed: {e}")
-
-    async def resolve_session_names(self, sessions: list[dict]) -> None:
-        """后台尽力解析会话显示名（群名/昵称），写入缓存供下次列表使用。"""
-        for session in sessions[:20]:
-            chat_key = str(session.get("chat_key") or "")
-            if session.get("name") or not chat_key:
-                continue
-            platform = str(session.get("platform") or "")
-            detail_type = str(session.get("detail_type") or "")
-            target_id = str(session.get("target_id") or "")
-            if platform == "dashboard" or not platform or not target_id:
-                continue
-            try:
-                adapter = self.sdk.adapter.get(platform)
-            except Exception:
-                adapter = None
-            if adapter is None:
-                continue
-            name = ""
-            try:
-                if detail_type == "group":
-                    info = await asyncio.wait_for(
-                        adapter.call_api("get_group_info", group_id=target_id), 6
-                    )
-                    name = str((info or {}).get("group_name") or "") if isinstance(info, dict) else ""
-                    if name:
-                        self.sessions.set_group_name(chat_key, name)
-                else:
-                    for endpoint in ("get_stranger_info", "get_user_info"):
-                        try:
-                            info = await asyncio.wait_for(adapter.call_api(endpoint, user_id=target_id), 6)
-                        except Exception:
-                            continue
-                        if isinstance(info, dict):
-                            name = str(info.get("nickname") or info.get("card") or "")
-                            if name:
-                                break
-                    if name:
-                        self.sessions.set_user_name(chat_key, name)
-            except Exception:
-                continue
 
     async def run_task(self, task: dict) -> None:
         target_type = str(task.get("target_type") or "user")
@@ -1145,51 +851,6 @@ class Main(BaseModule):
             origin=origin,
             user_id=str(task.get("created_by") or ""),
         )
-
-    async def _send_segments(self, platform: str, detail_type: str, target_id: str, segments,
-                             from_tools: bool = False) -> None:
-        adapter = self.sdk.adapter.get(platform)
-        if adapter is None:
-            self.logger.warning(texts.t("adapter_not_found", platform=platform))
-            return
-        target_type = detail_type if detail_type in ("group", "channel") else "user"
-        try:
-            sends = list(self.sdk.adapter.list_sends(platform))
-        except Exception:
-            sends = []
-        # 打包与否看运行方式，不看文本长度：工具长任务的投递转合并转发，纯文本回答普通发送
-        if getattr(self.cfg, "forward_enabled", True) and from_tools:
-            try:
-                # 自适应打包：onebot11 走专用 forward 端点→Raw_ob12；其它平台 HTML 卡片/Markdown；全败走下方普通文本
-                used = await utils.deliver_forward(
-                    adapter,
-                    target_type,
-                    target_id,
-                    [segment for _, segment in segments],
-                    sends,
-                )
-                if used:
-                    return
-            except Exception as e:
-                self.logger.warning(f"forward send failed, fallback: {e}")
-        for delay, segment in segments:
-            if delay > 0:
-                await asyncio.sleep(delay)
-            methods = [erispulse.pick_send_method(sends)]
-            if "Text" not in methods:
-                methods.append("Text")
-            sent = False
-            for name in methods:
-                content = utils.markdown_to_text(segment) if name == "Text" else segment
-                try:
-                    await getattr(adapter.Send.To(target_type, target_id), name)(content)
-                    sent = True
-                    break
-                except Exception as e:
-                    self.logger.warning(f"send via {name} failed: {e}")
-            if not sent:
-                self.logger.warning(f"send to {platform}/{target_type}/{target_id} failed")
-                return
 
     async def _cmd_agent(self, event) -> None:
         try:
@@ -1216,6 +877,9 @@ class Main(BaseModule):
                         for t in tasks
                     ]
                     await event.reply("\n".join(lines))
+            elif sub in ("compact", "压缩", "壓縮"):
+                report = await self.sessions.compact_now(chat_key)
+                await event.reply(texts.t("compact_done", actions=", ".join(report.get("actions") or ["noop"])))
             elif sub in ("status", "状态", "狀態"):
                 counts = self.registry.count_by_origin()
                 await event.reply(

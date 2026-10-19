@@ -69,11 +69,11 @@ async def test_guard_returns_401_when_unauthorized():
 
 def test_is_recap_suppression():
     trace = [{"tool": "send_message", "arguments": "{}", "output": "ok"}]
-    assert Main._is_recap("已把 15 个适配器列表发到群里。", trace) is True
-    assert Main._is_recap("已经完成安装。", trace) is True
-    assert Main._is_recap("这是正文回答，不是复述。", trace) is False
-    assert Main._is_recap("已把列表发到群里，另外这个问题的根因是……" + "补充" * 100, trace) is False
-    assert Main._is_recap("已把列表发到群里", []) is False
+    assert __import__('QvQChat.conversation.delivery', fromlist=['Delivery']).Delivery._is_recap("已把 15 个适配器列表发到群里。", trace) is True
+    assert __import__('QvQChat.conversation.delivery', fromlist=['Delivery']).Delivery._is_recap("已经完成安装。", trace) is True
+    assert __import__('QvQChat.conversation.delivery', fromlist=['Delivery']).Delivery._is_recap("这是正文回答，不是复述。", trace) is False
+    assert __import__('QvQChat.conversation.delivery', fromlist=['Delivery']).Delivery._is_recap("已把列表发到群里，另外这个问题的根因是……" + "补充" * 100, trace) is False
+    assert __import__('QvQChat.conversation.delivery', fromlist=['Delivery']).Delivery._is_recap("已把列表发到群里", []) is False
 
 
 async def test_run_command_skips_confirm_when_trusted():
