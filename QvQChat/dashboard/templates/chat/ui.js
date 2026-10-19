@@ -1,3 +1,4 @@
+/* 基础组件：i18n 应用、模态框、下拉/确认组件 */
   var chatHistory = [];
   var chatSession = (function () {
     try { return localStorage.getItem("qvq_chat_session") || "dashboard:private:web"; } catch (e) { return "dashboard:private:web"; }

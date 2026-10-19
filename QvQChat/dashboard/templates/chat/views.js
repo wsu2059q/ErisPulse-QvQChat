@@ -1,3 +1,4 @@
+/* 管理视图：模型池/人格/技能/MCP/配置/用量等页面 */
   
   function fv(root, id) {
     var node = root.querySelector("#" + id);

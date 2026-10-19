@@ -1,3 +1,4 @@
+/* 导航与侧栏：标签切换、会话列表、发送队列 */
   function switchTab(name) {
     el("qvq-nav").querySelectorAll(".qvq-nav-btn").forEach(function (btn) {
       btn.classList.toggle("active", btn.getAttribute("data-tab") === name);
