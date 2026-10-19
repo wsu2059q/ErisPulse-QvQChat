@@ -23,6 +23,9 @@ class ToolContext:
     event: Any = None
     origin: str = "chat"
     confirmer: Any = None
+     
+     
+    sent_log: list = field(default_factory=list)
 
     async def confirm(self, text: str, timeout: int = 60) -> bool:
         if self.confirmer is None:

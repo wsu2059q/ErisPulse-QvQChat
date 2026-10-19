@@ -57,6 +57,13 @@ def _chain_modifies(chain, modifies: list | None):
     return chain
 
 
+def _record_sent(ctx: ToolContext, platform: str, target_type: str, target_id: str) -> None:
+    try:
+        ctx.sent_log.append((str(platform), str(target_type), str(target_id)))
+    except Exception:
+        pass
+
+
 async def send_message(ctx: ToolContext, platform: str, target_type: str, target_id: str,
                        text: str = "", image_url: str = "", audio_path: str = "",
                        at: str = "", reply_to: str = "", method: str = "",
@@ -78,7 +85,10 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
     threshold = int(getattr(ctx.config, "forward_threshold", 600) or 0)
      
      
-    if text and (as_forward or (not method and threshold and len(text) >= threshold * 2)):
+     
+    forward_attempted = False
+    if text and (as_forward or (not method and threshold and len(text) >= threshold)):
+        forward_attempted = True
         try:
             used = await utils.deliver_forward(
                 adapter,
@@ -92,6 +102,7 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
             if ctx.main is not None:
                 ctx.main.logger.warning(f"send_message forward failed, fallback: {e}")
         if used:
+            _record_sent(ctx, platform, target_type, target_id)
             return texts.t("sent_as_forward")
 
     chain = adapter.Send.To(target_type, target_id)
@@ -115,6 +126,11 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
         try:
             if content:
                 result = await getattr(chain, name)(content)
+             
+            if utils._send_failed(result):
+                last_error = RuntimeError(f"send returned failed status: {result}")
+                result = None
+                continue
             used = name
             break
         except Exception as e:
@@ -127,9 +143,14 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
         result = await chain.Image(image_url)
     if audio_path:
         result = await chain.Voice(audio_path)
+    if used:
+        _record_sent(ctx, platform, target_type, target_id)
     body = utils.to_text(result)
     if used:
         body += "\n" + texts.t("send_method_used", method=used)
+    if forward_attempted and used:
+         
+        body += "\n" + texts.t("forward_fallback")
     return body
 
 
@@ -153,6 +174,8 @@ async def send_dsl(ctx: ToolContext, platform: str, target_type: str, target_id:
         return texts.t("senddsl_method_missing", error=str(e))
     except Exception as e:
         return texts.t("senddsl_failed", error=str(e))
+    if not utils._send_failed(result):
+        _record_sent(ctx, platform, target_type, target_id)
     return utils.to_text(result)
 
 

@@ -75,6 +75,11 @@ class ModelPool:
             raise EngineError(texts.t("provider_base_url_required"))
         for index, existing in enumerate(providers):
             if existing.get("id") == provider_id:
+                 
+                if not entry["api_key"]:
+                    entry["api_key"] = str(existing.get("api_key") or "")
+                if "models" not in data:
+                    entry["models"] = existing.get("models") or []
                 providers[index] = {**existing, **entry}
                 break
         else:
