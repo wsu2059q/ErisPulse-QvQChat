@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ErisPulse-QvQChat"
-version = "4.0.1"
+version = "4.0.2"
 description = "ErisPulse 通用智能体：消息收发、生态服务调用、代码执行、电脑操作、定时任务 —— Universal agent module for ErisPulse"
 readme = "README.md"
 requires-python = ">=3.10"
