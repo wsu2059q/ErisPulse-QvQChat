@@ -49,7 +49,6 @@ class ModelPool:
         except Exception:
             pass
 
-     
 
     def list_providers(self) -> list[dict]:
         providers = self.sdk.storage.get(POOL_KEY, [])
@@ -75,7 +74,6 @@ class ModelPool:
             raise EngineError(texts.t("provider_base_url_required"))
         for index, existing in enumerate(providers):
             if existing.get("id") == provider_id:
-                 
                 if not entry["api_key"]:
                     entry["api_key"] = str(existing.get("api_key") or "")
                 if "models" not in data:
@@ -101,7 +99,6 @@ class ModelPool:
     def get_preset(self, preset_id: str) -> dict | None:
         return get_preset(preset_id)
 
-     
 
     async def _models_dev_catalog(self) -> dict:
         cached = self.sdk.storage.get(MODELS_DEV_CACHE_KEY, None)
@@ -195,12 +192,11 @@ class ModelPool:
             result.append(entry)
         return result
 
-     
 
     CAPABILITY_KEYS = ("vision", "files", "video", "tool_call", "reasoning")
 
     def model_capabilities(self, model: dict) -> dict:
-        """模型能力：人工覆盖优先，models.dev 富化作默认。"""
+
         caps = {}
         for key in self.CAPABILITY_KEYS:
             value = model.get(key)
@@ -216,7 +212,7 @@ class ModelPool:
         return all(caps.get(n) is True for n in needs)
 
     def primary_capabilities(self) -> dict:
-        """当前默认模型的能力（无模型池时返回全 None）。"""
+
         try:
             primary = self.resolve_model(None)
         except Exception:
@@ -251,7 +247,6 @@ class ModelPool:
             if capable:
                 models = capable
             else:
-                 
                 self.sdk.logger.warning(f"no model meets needs {needs}, falling back to full pool")
         if model_id:
             for model in models:
@@ -301,7 +296,6 @@ class ModelPool:
                 )
             except EngineError as e:
                 errors.append(f"{model['id']}: {e}")
-                 
                 if index + 1 < len(chain) and on_reset is not None:
                     try:
                         result = on_reset()
@@ -315,7 +309,7 @@ class ModelPool:
         raise EngineError(texts.t("engine_all_failed", errors=" | ".join(errors)))
 
     async def describe_images(self, image_urls: list, prompt: str = "") -> list[str]:
-        """主模型不具备视觉能力时的"代看"：用 vision 模型产出文字描述（needs 路由自动选模型）。"""
+
         descriptions: list[str] = []
         for url in image_urls[:3]:
             parts: list = [

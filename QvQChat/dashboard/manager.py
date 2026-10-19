@@ -111,7 +111,6 @@ class DashboardManager:
         ]
         for method, path, handler in routes:
             router.register_http_route("QvQChat", path, self._guard(handler), methods=[method])
-         
         public_routes = [
             ("GET", "/api/qvq/share/messages", self.share_messages),
             ("GET", "/share", self.share_page),
@@ -137,7 +136,6 @@ class DashboardManager:
             group="qvq",
         )
 
-     
 
     def _own_token(self) -> str:
         configured = str(getattr(self.main.cfg, "view_token", "") or "")
@@ -162,7 +160,7 @@ class DashboardManager:
 
     @staticmethod
     def _query(request, name: str) -> str | None:
-        """读取查询参数；兼容包装层把 "k=v" 整段返回的情况。"""
+
         try:
             raw = getattr(request, "raw", request)
             qp = raw.query_params
@@ -227,7 +225,6 @@ class DashboardManager:
 
         return wrapped
 
-     
 
     def _view_html(self) -> str:
         html = (TEMPLATES / "view.html").read_text(encoding="utf-8")
@@ -247,7 +244,6 @@ class DashboardManager:
 
         return HTMLResponse(self._view_html(), headers={"Cache-Control": "no-store"})
 
-     
 
     async def status(self, request):
         data = await self.main.get_status()
@@ -720,7 +716,6 @@ class DashboardManager:
         self.sdk.storage.set(UI_DEFAULTS_KEY, cur)
         return {"ok": True, "ui_defaults": cur}
 
-     
 
     def _shares(self) -> dict:
         shares = self.sdk.storage.get(SHARES_KEY, {})
@@ -736,7 +731,7 @@ class DashboardManager:
         return share
 
     def _share_contexts(self, share: dict) -> list:
-        """按 token 预算从最新往前装填消息（粗估 1 token ≈ 2 字符）。"""
+
         contexts = self.main.sessions.get_contexts(str(share.get("chat_key") or ""))
         budget = int(share.get("max_tokens", 4000) or 4000) * 2
         picked: list = []
@@ -872,7 +867,7 @@ class DashboardManager:
         return self.main.conversations.save_upload(name, data)
 
     def _parse_chat_body(self, body: dict):
-        """解析对话请求体 → (text, images, session, skills, mcp_tools, persona_id, model, temperature)；出错返回 (dict, status)。"""
+
         body = body or {}
         text = str(body.get("text") or "").strip()
         images: list[str] = []
@@ -888,7 +883,6 @@ class DashboardManager:
             if mime.startswith("image/"):
                 if len(images) < 3 and len(data) <= 7_000_000:
                     images.append(data if data.startswith("data:") else f"data:{mime};base64,{data}")
-                 
                 saved = self._save_upload(name, data)
                 if saved:
                     size = Path(saved).stat().st_size
@@ -999,7 +993,6 @@ class DashboardManager:
         async def gen():
             queue: _asyncio.Queue = _asyncio.Queue()
             run_live.subscribers.add(queue)
-             
             task = _asyncio.create_task(run())
             run_live.task = task
             try:
@@ -1014,7 +1007,6 @@ class DashboardManager:
                         break
                     yield f"event: {event}\ndata: {_json.dumps(data, ensure_ascii=False)}\n\n"
             finally:
-                 
                 run_live.subscribers.discard(queue)
 
         return StreamingResponse(

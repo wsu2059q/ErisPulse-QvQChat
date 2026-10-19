@@ -1,9 +1,5 @@
 from __future__ import annotations
 
- 
- 
- 
- 
 PROVIDER_PRESETS: list[dict] = [
     {"id": "openai", "name": "OpenAI", "base_url": "https://api.openai.com/v1"},
     {"id": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1"},

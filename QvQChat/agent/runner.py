@@ -17,7 +17,7 @@ class AgentResult:
     text: str
     tool_trace: list = field(default_factory=list)
     usage: dict = field(default_factory=dict)
-    rounds: list = field(default_factory=list)   
+    rounds: list = field(default_factory=list)
     model: str = ""
 
 
@@ -186,7 +186,6 @@ class AgentRunner:
             trace_before = len(trace)
             rounds.append({"text": (response.content or "").strip(), "tools": []})
             contexts.append(self._assistant_message(response.content, response.tool_calls))
-             
             if on_intermediate is not None:
                 speech = (response.content or "").strip()
                 if speech:
@@ -233,7 +232,6 @@ class AgentRunner:
                     image_parts += [{"type": "image_url", "image_url": {"url": url}} for url in pending_images[:3]]
                     contexts.append({"role": "user", "content": image_parts})
                 else:
-                     
                     described = await self.pool.describe_images(pending_images)
                     lines = [
                         f"[image {i + 1}] {d}" for i, d in enumerate(described) if d

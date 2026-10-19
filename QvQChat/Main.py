@@ -161,7 +161,6 @@ class Main(BaseModule):
         self.pool = ModelPool(self.sdk, self.cfg)
         self.registry = ToolRegistry()
         self.personas = PersonaManager(self.sdk)
-         
         self.conversations = ConversationService(self)
         self.sessions = self.conversations
         self.memory = MemoryStore(self.sdk, self.cfg)
@@ -516,7 +515,6 @@ class Main(BaseModule):
         return lock
 
     def _batch_message(self, event, chat_key: str, text: str, images: list) -> None:
-         
         entry = self._pending.setdefault(chat_key, {"items": [], "event": event, "timer": None})
         entry["items"].append(
             {
@@ -608,15 +606,12 @@ class Main(BaseModule):
                 for converted in [self._to_model_image(raw)]
                 if converted
             ]
-             
             limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
             if limit:
                 used_today = int(self._usage_today().get("tokens", 0) or 0)
                 if used_today >= limit and not self.is_admin(sender_id, "chat", event.get_platform() or ""):
                     await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
                     return
-             
-             
             interrupted_note = ""
             live = None
             registry = getattr(self, "live_registry", None)
@@ -633,7 +628,6 @@ class Main(BaseModule):
                 on_delta, on_reset, on_tool_event = live_bind(live)
             else:
                 on_delta = on_reset = on_tool_event = None
-             
             prepared = await self.sessions.prepare(
                 chat_key,
                 labeled,
@@ -649,7 +643,6 @@ class Main(BaseModule):
             if interrupted_note:
                 contexts.append({"role": "user", "content": interrupted_note})
             async def on_tool_round(calls):
-                 
                 if getattr(self.cfg, "tool_notice_mode", "brief") != "all":
                     return
                 labels = [
@@ -660,7 +653,6 @@ class Main(BaseModule):
                 await event.reply(texts.t("processing_notice", tools="、".join(labels) + suffix))
 
             async def on_intermediate(speech):
-                 
                 if getattr(self.cfg, "tool_notice_mode", "brief") != "all":
                     return
                 text = utils.truncate(str(speech).strip(), 1200)
@@ -680,7 +672,6 @@ class Main(BaseModule):
                     on_tool_event=on_tool_event,
                 )
             except asyncio.CancelledError:
-                 
                 if live is not None:
                     partial = live.text.strip()
                     if partial:
@@ -701,7 +692,6 @@ class Main(BaseModule):
                 live.publish("done", {"reply": live.reply, "session": chat_key})
             reply, force_forward = strip_output_tag(result.text.strip())
             reply = reply or texts.t("no_reply_content")
-             
             self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""))
             try:
                 await self.sdk.lifecycle.emit(
@@ -710,7 +700,6 @@ class Main(BaseModule):
                 )
             except Exception:
                 pass
-             
             await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward)
         except Exception as e:
             self.logger.warning(f"process failed: {e}")
@@ -757,7 +746,6 @@ class Main(BaseModule):
         )
         prepared = await self.sessions.prepare(chat_key, prompt, persona_id=persona_id, persist=False)
         messages: list = []
-         
         if send and platform:
             messages.append({"role": "system", "content": texts.t("task_run_note")})
         messages.extend(prepared["contexts"] + [prepared["user_msg"]])
@@ -769,13 +757,11 @@ class Main(BaseModule):
         )
         reply = result.text.strip() or texts.t("no_reply_content")
         if send and platform:
-             
             delivered = any(
                 sent_platform == platform and sent_type == detail_type and sent_id == target_id
                 for sent_platform, sent_type, sent_id in ctx.sent_log
             )
             if not delivered:
-                 
                 await self.delivery.send_segments(
                     platform,
                     detail_type,
@@ -832,7 +818,6 @@ class Main(BaseModule):
             on_tool_event=on_tool_event,
         )
         reply = result.text.strip() or texts.t("no_reply_content")
-         
         self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), title_from=text)
         return reply
 
@@ -840,7 +825,6 @@ class Main(BaseModule):
         target_type = str(task.get("target_type") or "user")
         detail_type = "group" if target_type == "group" else "private"
         chat_key = make_chat_key(str(task.get("platform") or ""), detail_type, str(task.get("target_id") or ""))
-         
         origin = str(task.get("origin") or "dashboard")
         if origin in ("task", ""):
             origin = "dashboard"

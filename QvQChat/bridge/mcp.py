@@ -175,7 +175,6 @@ class MCPManager:
         self.main = main
         self.clients: dict[str, MCPClient] = {}
 
-     
 
     def list_servers(self) -> list[dict]:
         servers = self.main.sdk.storage.get(SERVERS_KEY, [])
@@ -220,7 +219,6 @@ class MCPManager:
         self.replace_servers(remaining)
         return True
 
-     
 
     async def connect_all(self) -> list[dict]:
         results = []
