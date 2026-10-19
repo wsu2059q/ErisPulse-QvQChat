@@ -105,7 +105,8 @@ class SessionManager:
         state["contexts"].append(entry)
         self._save(chat_key, state)
 
-    def append_user(self, chat_key: str, content: str, sender_id: str = "") -> None:
+    def append_user(self, chat_key: str, content, sender_id: str = "") -> None:
+        """content 可为纯文本或多模态段列表（text/image_url），历史保留图片供回放与编辑。"""
         state = self._state(chat_key)
         entry: dict = {"role": "user", "content": content}
         if sender_id:
