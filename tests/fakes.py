@@ -275,6 +275,8 @@ class FakeSDK:
         self.client = FakeClient()
         self.adapter = FakeAdapterManager()
         self.interaction = SimpleNamespace(make_key=lambda event: "fake:interaction:key")
+        self.config_sets = []
+        self.config = SimpleNamespace(setConfig=lambda key, value: self.config_sets.append((key, value)))
 
 
 def make_config(**overrides):
@@ -294,6 +296,7 @@ def make_config(**overrides):
         security_level="standard",
         trust_agent=False,
         sensitive_paths=["config", ".env", "*.key", "*.pem", "*.db", "*.sqlite*"],
+        self_config=True,
         work_dirs=[],
         command_timeout=30,
         blocked_patterns=[],

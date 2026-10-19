@@ -33,7 +33,7 @@ from .scheduler import Scheduler
 from .session.manager import SessionManager, make_chat_key, parse_chat_key
 from .session.store import MemoryStore
 from .skills import SkillManager
-from .tools_builtin import agent, code, computer, erispulse, memory, schedule, skilltools
+from .tools_builtin import agent, code, computer, erispulse, memory, schedule, selfconfig, skilltools, takumi
 from .version import __version__
 
 AUDIT_KEY = "QvQChat:audit"
@@ -53,6 +53,7 @@ BASE_SAFE_TOOLS = {
     "forget",
     "list_memory",
     "read_file",
+    "view_image",
     "list_dir",
     "list_services",
     "create_scheduled_task",
@@ -130,12 +131,14 @@ CAPABILITY_PROMPT = (
     "supported send methods, then decide yourself which method fits the content and context — "
     "prefer Markdown or Html for formatted text, Image/Voice/Video for media, plain Text otherwise. "
     "Note: on QQ-like platforms Markdown is limited (tables and code blocks usually do NOT render) "
-    "— keep formatting simple; long/complex content is auto-packaged into a forward message. "
+    "— keep formatting simple. "
     "send_message picks and downgrades automatically; send_dsl exposes the full chain "
     "(Using / rules / modifiers / any method) when you need explicit control. "
-    "The system automatically packages long replies and the tool execution trace into a forward "
-    "message for the user — after finishing a task, do NOT send an extra summary/recap message "
-    "via send_message, and do not narrate what you just sent (e.g. \"已把…发到群里\"). "
+    "The system automatically packages the reply of a tool run — any run in which you called "
+    "tools — into a forward message together with the tool trace; casual chat without tools is "
+    "sent as normal messages regardless of length. After finishing a tool run, do NOT send an "
+    "extra summary/recap via send_message, and do not narrate what you just sent "
+    "(e.g. \"已把…发到群里\"). "
     "Output control: you can override the auto choice by STARTING your reply with [[转发]] "
     "(force forward card — for reports/results worth reading as a whole) or [[直发]] "
     "(force normal messages — for casual chat). The tag is stripped before sending; use it "
@@ -257,6 +260,8 @@ class Main(BaseModule):
         schedule.register(self.registry, self)
         skilltools.register(self.registry, self)
         agent.register(self.registry, self)
+        selfconfig.register(self.registry, self)
+        takumi.register(self.registry, self)
 
     def _register_handlers(self) -> None:
         message.on_message(priority=50)(self._on_message)
@@ -498,13 +503,10 @@ class Main(BaseModule):
         except Exception:
             sends = []
         if force is not True:
+            # 打包与否看运行方式，不看文本长度：用了工具的长任务回复转合并转发，纯对话不转
             if not getattr(self.cfg, "forward_enabled", True):
                 return False
-            threshold = int(getattr(self.cfg, "forward_threshold", 600) or 0)
-            if not threshold:
-                return False
-            limit = threshold if tool_trace else threshold * 2
-            if len(reply) < limit:
+            if not tool_trace:
                 return False
         sections: list = []
         if tool_trace:
@@ -699,11 +701,29 @@ class Main(BaseModule):
             if recalled:
                 lines = "\n".join(f"- {entry.get('content', '')}" for entry in recalled)
                 system += "\n\nRelated memories:\n" + lines
+            # 统一管道：平台侧运行也注册进 LiveRegistry，网页端可实时观看/取消
+            # busy 时中断旧任务，新任务带中断上下文 —— 必须先于取上下文完成，
+            # 否则中断提示写不进本次请求
             interrupted_note = ""
+            live = None
+            registry = getattr(self, "live_registry", None)
+            if registry is not None:
+                old_live = registry.get(chat_key)
+                if old_live and old_live.status == "running" and old_live.text.strip():
+                    old_live.cancel()
+                    interrupted_note = texts.t(
+                        "interrupted_note",
+                        content=utils.truncate(old_live.text.strip(), 500),
+                    )
+                live = registry.start(chat_key)
+                live.task = asyncio.current_task()
+                on_delta, on_reset, on_tool_event = live_bind(live)
+            else:
+                on_delta = on_reset = on_tool_event = None
             await self._compress_context_if_needed(chat_key)
             contexts = self.sessions.get_contexts(chat_key)
             if interrupted_note:
-                contexts.append({"role": "user", "content": interrupted_note + "被中断的任务内容：" + (live.text[:500] if live else "")})
+                contexts.append({"role": "user", "content": interrupted_note})
             if not contexts:
                 contexts = await self._seed_history(event)
                 if not is_group and sender_id:
@@ -731,7 +751,7 @@ class Main(BaseModule):
                 parts: list = [{"type": "text", "text": labeled}]
                 parts += [{"type": "image_url", "image_url": {"url": url}} for url in images]
                 user_msg["content"] = parts
-            self.sessions.append_user(chat_key, labeled, sender_id=sender_id if is_group else "")
+            self.sessions.append_user(chat_key, user_msg["content"], sender_id=sender_id if is_group else "")
             limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
             if limit:
                 used_today = int(self._usage_today().get("tokens", 0) or 0)
@@ -757,20 +777,6 @@ class Main(BaseModule):
                 if text:
                     await event.reply(text)
 
-            # 统一管道：平台侧运行也注册进 LiveRegistry，网页端可实时观看/取消
-            # busy 时中断旧任务，新任务带中断上下文
-            live = None
-            registry = getattr(self, "live_registry", None)
-            if registry is not None:
-                old_live = registry.get(chat_key)
-                if old_live and old_live.status == "running" and old_live.text.strip():
-                    old_live.cancel()
-                    interrupted_note = "\n[系统] 上一个任务已被新消息中断，以下是从中断处继续。\n"
-                live = registry.start(chat_key)
-                live.task = asyncio.current_task()
-                on_delta, on_reset, on_tool_event = live_bind(live)
-            else:
-                on_delta = on_reset = on_tool_event = None
             try:
                 result = await self.runner.run(
                     system=system,
@@ -960,15 +966,33 @@ class Main(BaseModule):
         await self._compress_context_if_needed(chat_key)
         persona = self.personas.get(persona_id) if persona_id else self.personas.resolve(chat_key)
         system = self._build_system(persona)
+        messages: list = []
+        # 定时/后台任务：告诉 AI 内容要用 send_message 自行投递，投递过就不再补发总结
+        if send and platform:
+            messages.append({"role": "system", "content": texts.t("task_run_note")})
+        messages.append({"role": "user", "content": prompt})
         result = await self.runner.run(
             system=system,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
             ctx=ctx,
             persona_tools=persona.get("tools"),
         )
         reply = result.text.strip() or texts.t("no_reply_content")
         if send and platform:
-            await self._send_segments(platform, detail_type, target_id, [(0.0, reply)])
+            # AI 已在本运行中向该目标投递过内容（如日报本身）→ 总结段不再补发，避免双发
+            delivered = any(
+                sent_platform == platform and sent_type == detail_type and sent_id == target_id
+                for sent_platform, sent_type, sent_id in ctx.sent_log
+            )
+            if not delivered:
+                # 打包与否看运行方式：用了工具的任务投递转合并转发，纯文本回答普通发送
+                await self._send_segments(
+                    platform,
+                    detail_type,
+                    target_id,
+                    [(0.0, reply)],
+                    from_tools=bool(result.tool_trace),
+                )
         return reply
 
     async def run_dashboard_chat(
@@ -1023,7 +1047,7 @@ class Main(BaseModule):
             parts: list = [{"type": "text", "text": text}] if text else []
             parts += [{"type": "image_url", "image_url": {"url": url}} for url in images[:3]]
             user_msg["content"] = parts
-        self.sessions.append_user(chat_key, text, sender_id="dashboard")
+        self.sessions.append_user(chat_key, user_msg["content"], sender_id="dashboard")
         result = await self.runner.run(
             system=system,
             messages=contexts + [user_msg],
@@ -1122,7 +1146,8 @@ class Main(BaseModule):
             user_id=str(task.get("created_by") or ""),
         )
 
-    async def _send_segments(self, platform: str, detail_type: str, target_id: str, segments) -> None:
+    async def _send_segments(self, platform: str, detail_type: str, target_id: str, segments,
+                             from_tools: bool = False) -> None:
         adapter = self.sdk.adapter.get(platform)
         if adapter is None:
             self.logger.warning(texts.t("adapter_not_found", platform=platform))
@@ -1132,9 +1157,8 @@ class Main(BaseModule):
             sends = list(self.sdk.adapter.list_sends(platform))
         except Exception:
             sends = []
-        threshold = int(getattr(self.cfg, "forward_threshold", 600) or 0)
-        joined = "\n\n".join(segment for _, segment in segments)
-        if getattr(self.cfg, "forward_enabled", True) and threshold and len(joined) >= threshold:
+        # 打包与否看运行方式，不看文本长度：工具长任务的投递转合并转发，纯文本回答普通发送
+        if getattr(self.cfg, "forward_enabled", True) and from_tools:
             try:
                 # 自适应打包：onebot11 走专用 forward 端点→Raw_ob12；其它平台 HTML 卡片/Markdown；全败走下方普通文本
                 used = await utils.deliver_forward(

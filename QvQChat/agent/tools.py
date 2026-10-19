@@ -23,6 +23,9 @@ class ToolContext:
     event: Any = None
     origin: str = "chat"
     confirmer: Any = None
+    # 本次运行中 AI 实际发送过的目标 [(platform, target_type, target_id)]，
+    # 供主动任务判断"已投递过内容"，避免总结段重复发送
+    sent_log: list = field(default_factory=list)
 
     async def confirm(self, text: str, timeout: int = 60) -> bool:
         if self.confirmer is None:

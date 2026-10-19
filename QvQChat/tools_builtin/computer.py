@@ -141,6 +141,28 @@ async def list_dir(ctx: ToolContext, path: str = ".") -> str:
     return utils.to_text(items)
 
 
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+
+
+async def view_image(ctx: ToolContext, path: str) -> str:
+    """把本地图片作为视觉输入回灌给模型（runner 按 image_path 键注入图片段）。"""
+    try:
+        resolved = _resolve_allowed(ctx, path)
+    except PermissionError as e:
+        return str(e)
+    if _is_sensitive(ctx, resolved) and not ctx.main.is_admin(ctx.user_id, ctx.origin, ctx.platform):
+        return texts.t("sensitive_read_denied")
+    target = Path(resolved)
+    if not target.is_file():
+        return texts.t("file_not_found", path=path)
+    if target.suffix.lower() not in _IMAGE_SUFFIXES:
+        return texts.t("image_type_unsupported", path=path)
+    if target.stat().st_size > 8 * 1024 * 1024:
+        return texts.t("image_too_large", path=path)
+    _audit(ctx, "view_image", {"path": resolved})
+    return utils.to_text({"image_path": resolved})
+
+
 async def write_file(ctx: ToolContext, path: str, content: str, append: bool = False) -> str:
     if not ctx.main.is_admin(ctx.user_id, ctx.origin, ctx.platform):
         return texts.t("needs_admin")
@@ -249,4 +271,13 @@ def register(registry: ToolRegistry, main) -> None:
             [],
         ),
         handler=list_dir,
+    ))
+    registry.register(Tool(
+        name="view_image",
+        description="Open a local image file as visual input and view it (use the image path given with attachment messages). Requires a vision-capable model.",
+        parameters=_schema(
+            {"path": _s(type="string", description="Image file path (png/jpg/jpeg/gif/webp/bmp)")},
+            ["path"],
+        ),
+        handler=view_image,
     ))

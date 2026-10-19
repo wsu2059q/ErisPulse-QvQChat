@@ -8,6 +8,41 @@ from . import texts
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 
+# 内置技能：随模块出厂、随 self_config 开关下线，用户文件/存储里的同名技能优先
+BUILTIN_SKILLS: list[dict] = [
+    {
+        "name": "self-config",
+        "description": (
+            "Configure the agent's own infrastructure when asked: model providers and pool, "
+            "MCP servers, and this module's settings — via the manage_models / manage_mcp / "
+            "manage_config tools."
+        ),
+        "body": """The manage_* tools are your configuration interface (admin/master only). Use them when the user asks in natural language — no dashboard needed.
+
+## Models — manage_models
+- action="list": providers with masked keys, enabled models, current default.
+- action="presets": preset base URLs (openai, deepseek, zhipu, ollama, custom, ...).
+- action="save" with provider={id?, name, base_url, api_key, models:[{id, enabled, temperature?, max_tokens?}]}.
+  - An empty api_key keeps the stored key of an existing provider.
+  - Pass the FULL list of enabled models — it replaces the provider's list. If unsure which ids exist, fetch_models first.
+- action="fetch_models" with provider={base_url, api_key?} (or provider_id to reuse stored credentials): lists the remote /models the user can pick from.
+- action="set_default" with model_id="provider:model" (empty clears back to pool order).
+- action="delete" with provider_id. Confirm before deleting.
+
+## MCP servers — manage_mcp
+- action="list" / "status": configured servers and live clients with their tool names.
+- action="save": name plus either stdio (command, args, env) or http (url, headers). Saves and connects immediately; the result reports the tool count or the connection error.
+- action="connect" / "disconnect" / "remove" with name. Confirm before removing.
+- Newly connected tools register as mcp_<server>_<tool> and follow the normal permission rules.
+
+## Module settings — manage_config
+- action="get": all QvQChat settings, or one key.
+- action="set" with updates={key: value}: valid QvQChat config keys only (unknown keys are rejected). E.g. reply triggers, aggregate_window, forward_enabled, tool_notice_mode.
+
+Rules: never read back or repeat api keys in your replies; sanity-check a changed model pool with a quick ping if the user asks; settings that affect safety (security_level, trust_agent, owner_only, admin lists) deserve an explicit confirmation even from an admin.""",
+    },
+]
+
 
 def parse_skill_md(text: str) -> tuple[dict, str]:
     meta: dict = {}
@@ -80,11 +115,29 @@ class SkillManager:
                 )
         return sorted(result, key=lambda s: s["name"])
 
+    def _builtin_skills(self) -> list[dict]:
+        if not bool(getattr(self.config, "self_config", True)):
+            return []
+        disabled = set(self._disabled())
+        return [
+            {
+                "name": s["name"],
+                "description": s["description"],
+                "body": s["body"],
+                "source": "builtin",
+                "enabled": s["name"] not in disabled,
+            }
+            for s in BUILTIN_SKILLS
+        ]
+
     def list_skills(self) -> list[dict]:
-        skills = {s["name"]: s for s in self._stored_skills()}
+        # 优先级：存储（Dashboard）> 文件 > 内置，同名高层覆盖
+        merged = {s["name"]: s for s in self._builtin_skills()}
         for s in self._file_skills():
-            skills.setdefault(s["name"], s)
-        return sorted(skills.values(), key=lambda s: s["name"])
+            merged.setdefault(s["name"], s)
+        for s in self._stored_skills():
+            merged[s["name"]] = s
+        return sorted(merged.values(), key=lambda s: s["name"])
 
     def get_skill(self, name: str) -> dict | None:
         for skill in self.list_skills():

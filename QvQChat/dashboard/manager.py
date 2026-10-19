@@ -631,15 +631,55 @@ class DashboardManager:
             return {"ok": True}
         return ({"error": "index out of range"}, 400)
 
+    def _rebuild_user_content(self, text: str, attachments: list):
+        """编辑消息时按附件清单重建多模态内容：文本段 + 图片段 + 落盘文件说明。"""
+        parts: list = []
+        notes: list[str] = []
+        if text:
+            parts.append({"type": "text", "text": text})
+        for att in attachments or []:
+            if not isinstance(att, dict):
+                continue
+            name = str(att.get("name") or "file")
+            mime = str(att.get("mime") or "").lower()
+            data = str(att.get("data") or "")
+            if not data:
+                continue
+            if mime.startswith("image/") and len(parts) < 4 and len(data) <= 7_000_000:
+                url = data if data.startswith("data:") else f"data:{mime};base64,{data}"
+                parts.append({"type": "image_url", "image_url": {"url": url}})
+                continue
+            saved = self._save_upload(name, data)
+            if saved:
+                size = Path(saved).stat().st_size
+                notes.append(texts.t("attachment_saved", name=name, path=saved, size=size))
+            else:
+                notes.append(f"[attachment {name}]（保存失败，内容不可用）")
+        if notes:
+            tail = "\n\n".join(notes)
+            if parts and parts[0].get("type") == "text":
+                parts[0]["text"] = (parts[0]["text"] + "\n\n" + tail).strip()
+            else:
+                parts.insert(0, {"type": "text", "text": tail})
+        if not parts:
+            return text or ""
+        if len(parts) == 1 and parts[0].get("type") == "text":
+            return parts[0]["text"]
+        return parts
+
     async def session_context_edit(self, request):
         body = await request.json()
         chat_key = str((body or {}).get("chat_key") or "")
         index = int((body or {}).get("index", -1))
         content = str((body or {}).get("content") or "")
+        attachments = (body or {}).get("attachments")
         contexts = self.main.sessions.get_contexts(chat_key)
         if 0 <= index < len(contexts):
             orig = contexts[index].get("content")
-            if isinstance(orig, list):
+            if isinstance(attachments, list):
+                # 编辑带附件清单：按清单整体重建（可增删图片/文件）
+                contexts[index]["content"] = self._rebuild_user_content(content, attachments)
+            elif isinstance(orig, list):
                 # 编辑仅替换文本段，保留图片等多模态段
                 kept = [p for p in orig if isinstance(p, dict) and p.get("type") != "text"]
                 merged = ([{"type": "text", "text": content}] + kept) if content else kept
@@ -899,6 +939,11 @@ class DashboardManager:
             if mime.startswith("image/"):
                 if len(images) < 3 and len(data) <= 7_000_000:
                     images.append(data if data.startswith("data:") else f"data:{mime};base64,{data}")
+                # 图片同样落盘：无视觉模型、超 3 张或事后回看时，AI 可用 view_image 按路径打开
+                saved = self._save_upload(name, data)
+                if saved:
+                    size = Path(saved).stat().st_size
+                    file_blocks.append(texts.t("attachment_saved", name=name, path=saved, size=size))
             elif len(data) <= 20000 and not data.startswith("data:"):
                 file_blocks.append(f"[attachment {name}]\n{data[:20000]}")
             else:

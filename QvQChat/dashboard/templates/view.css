@@ -1492,10 +1492,97 @@ input[type="radio"] {
   color: var(--qvq-tx-t);
   animation: qvq-breathe 1.5s ease-in-out infinite;
 }
-.qvq-msg .qvq-edit-box {
+/* ── 消息原地编辑：composer 同观感，隐藏原气泡与操作行 ── */
+.qvq-msg-wrap.editing > .qvq-msg,
+.qvq-msg-wrap.editing > .qvq-msg-acts {
+  display: none;
+}
+.qvq-msg-editor {
+  border: 1px solid var(--qvq-accent);
+  border-radius: 16px;
+  background: var(--qvq-surface);
+  padding: 8px 10px;
+  box-shadow: 0 0 0 3.5px var(--qvq-accent-soft);
+}
+.qvq-msg-editor .qvq-chat-text {
   display: block;
   width: 100%;
-  margin-top: 6px;
+  border: none;
+  background: transparent;
+  padding: 6px 6px 2px;
+  min-height: 44px;
+  max-height: 220px;
+  resize: none;
+  line-height: 1.5;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--qvq-tx);
+}
+.qvq-msg-editor .qvq-chat-text:focus {
+  outline: none;
+  box-shadow: none;
+}
+.qvq-msg-editor .qvq-composer-bar {
+  margin-top: 4px;
+}
+.qvq-ed-atts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 2px 6px;
+}
+.qvq-ed-att {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--qvq-bd-h);
+  border-radius: 9px;
+  font-size: 12px;
+  color: var(--qvq-tx-s);
+}
+.qvq-ed-att img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+}
+.qvq-ed-att .qvq-file-ico {
+  display: inline-flex;
+}
+.qvq-ed-att .qvq-file-ico svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+.qvq-ed-att button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-t);
+  cursor: pointer;
+}
+.qvq-ed-att button:hover {
+  background: var(--qvq-bd-h);
+  color: var(--qvq-tx);
+}
+.qvq-ed-att button svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
 }
 .qvq-msg .qvq-msg-img {
   display: block;

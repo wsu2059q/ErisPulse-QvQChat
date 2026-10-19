@@ -34,6 +34,10 @@ def long_text(n):
     return "## 段落\n" + "内容" * n
 
 
+def tool_trace():
+    return [{"tool": "call_module", "arguments": "{}", "output": "installed"}]
+
+
 def forward_calls(harness, platform="onebot11"):
     chain = harness.sdk.adapter.get(platform).Send
     return [args for name, args, _ in chain.calls if name == "MergeForward"]
@@ -42,21 +46,22 @@ def forward_calls(harness, platform="onebot11"):
 async def test_disabled_never_forwards():
     harness = make_harness(forward_enabled=False)
     event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, long_text(500), [{"tool": "x", "arguments": "", "output": ""}]) is False
+    assert await Main._try_forward(harness, event, long_text(500), tool_trace()) is False
     assert forward_calls(harness) == []
 
 
-async def test_threshold_zero_disables():
+async def test_threshold_zero_irrelevant_for_reply():
+    """回复打包只看是否为工具运行，不看长度，threshold=0 也不影响。"""
     harness = make_harness(forward_threshold=0)
     event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, long_text(500), []) is False
+    assert await Main._try_forward(harness, event, long_text(500), tool_trace()) is True
 
 
-async def test_task_reply_forwards_at_threshold_with_trace():
+async def test_tool_run_reply_forwards_regardless_of_length():
+    """合并转发与否看运行方式：工具任务的短回复同样打包，并带执行过程段。"""
     harness = make_harness()
     event = FakeForwardEvent()
-    trace = [{"tool": "call_module", "arguments": "{}", "output": "installed"}]
-    assert await Main._try_forward(harness, event, long_text(40), trace) is True
+    assert await Main._try_forward(harness, event, "很短", tool_trace()) is True
     calls = forward_calls(harness)
     assert calls and len(calls[0][0]) >= 2
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
@@ -66,36 +71,29 @@ async def test_task_reply_forwards_at_threshold_with_trace():
     assert any("call_module" in t for t in texts)
 
 
-async def test_task_reply_short_stays_normal():
-    harness = make_harness()
-    event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, "很短", [{"tool": "ping", "arguments": "", "output": "pong"}]) is False
-    assert forward_calls(harness) == []
-
-
-async def test_plain_chat_needs_double_threshold():
+async def test_plain_chat_never_forwards():
+    """纯对话（无工具）无论多长都不打包合并转发。"""
     harness = make_harness()
     event = FakeForwardEvent()
     assert await Main._try_forward(harness, event, long_text(30), []) is False
+    assert await Main._try_forward(harness, event, long_text(60), []) is False
     assert forward_calls(harness) == []
-    assert await Main._try_forward(harness, event, long_text(60), []) is True
-    assert forward_calls(harness)
 
 
 async def test_platform_without_forward_method_skips():
     harness = make_harness()
     harness.sdk.adapter.add("onebot11", FakeSendChain(), sends=("Text",))
     event = FakeForwardEvent(sends=("Text",))
-    assert await Main._try_forward(harness, event, long_text(500), []) is False
+    assert await Main._try_forward(harness, event, long_text(500), tool_trace()) is False
     assert forward_calls(harness) == []
 
 
 async def test_any_platform_with_forward_method_works():
-    """转发能力跟随适配器的 Forward 方法（list_sends 探测），不再限定平台白名单。"""
+    """转发能力跟随适配器的 MergeForward 方法（list_sends 探测），不再限定平台白名单。"""
     harness = make_harness()
     harness.sdk.adapter.add("yunhu", FakeSendChain(sends=("MergeForward", "Text")), sends=("MergeForward", "Text"))
     event = FakeForwardEvent(platform="yunhu", sends=("MergeForward", "Text"))
-    assert await Main._try_forward(harness, event, long_text(500), []) is True
+    assert await Main._try_forward(harness, event, long_text(500), tool_trace()) is True
     assert forward_calls(harness, "yunhu")
 
 
@@ -110,7 +108,7 @@ async def test_force_forward_tag_overrides_short_and_disabled():
 async def test_force_plain_blocks_forward():
     harness = make_harness()
     event = FakeForwardEvent()
-    assert await Main._try_forward(harness, event, long_text(500), [{"tool": "x", "arguments": "", "output": ""}], force=False) is False
+    assert await Main._try_forward(harness, event, long_text(500), tool_trace(), force=False) is False
     assert forward_calls(harness) == []
 
 
