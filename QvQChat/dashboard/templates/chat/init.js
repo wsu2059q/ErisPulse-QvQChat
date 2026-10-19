@@ -37,6 +37,9 @@
       } catch (err) {}
     });
     el("qvq-chat-attach-btn").onclick = function () { el("qvq-chat-file").click(); };
+    el("qvq-chat-box").addEventListener("scroll", function () {
+      if (el("qvq-chat-box").scrollTop < 60) loadOlderMessages();
+    });
     el("qvq-chat-file").onchange = function () {
       handleFiles(this.files);
       this.value = "";

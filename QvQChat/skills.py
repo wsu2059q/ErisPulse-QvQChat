@@ -11,11 +11,7 @@ FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 BUILTIN_SKILLS: list[dict] = [
     {
         "name": "self-config",
-        "description": (
-            "Configure the agent's own infrastructure when asked: model providers and pool, "
-            "MCP servers, and this module's settings — via the manage_models / manage_mcp / "
-            "manage_config tools."
-        ),
+        "description": texts.t("skill.self_config.desc"),
         "body": """The manage_* tools are your configuration interface (admin/master only). Use them when the user asks in natural language — no dashboard needed.
 
 - action="list": providers with masked keys, enabled models, current default.
