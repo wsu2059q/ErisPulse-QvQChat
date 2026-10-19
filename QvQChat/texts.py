@@ -592,6 +592,9 @@ STRINGS: dict[str, dict[str, str]] = {
     "chat_delete": {
         "zh-CN": "删除会话", "zh-TW": "刪除會話", "en": "Delete session", "ja": "セッション削除", "ru": "Удалить сессию",
     },
+    "queue_badge": {
+        "zh-CN": "待发送", "zh-TW": "待傳送", "en": "Queued", "ja": "送信待ち", "ru": "В очереди",
+    },
     "chat_compact": {
         "zh-CN": "立即压缩", "zh-TW": "立即壓縮", "en": "Compact now", "ja": "今すぐ圧縮", "ru": "Сжать сейчас",
     },
