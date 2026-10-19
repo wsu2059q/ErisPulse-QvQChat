@@ -299,6 +299,7 @@ async def list_takeovers(ctx: ToolContext) -> str:
 def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="send_message",
+        access="safe",
         description="Send a message to any user/group on any platform. The send method is chosen by platform capability automatically (Markdown > Html > Text, with plain-text fallback); pass method to force one. Use list_platforms to discover supported methods.",
         parameters=_schema(
             {
@@ -319,6 +320,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="send_dsl",
+        access="safe",
         description="Full SendDSL power: build a complete send chain — Using(account), rules (retry/timeout/defer/priority), modifiers (Reply/At/AtAll/...), then any send method the platform supports. Inspect list_platforms for available methods.",
         parameters=_schema(
             {
@@ -337,6 +339,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="list_services",
+        access="safe",
         description="List ErisPulse module services as module.service(params) - description lines. "
                     "Use it to discover capabilities, then invoke them via call_module "
                     "(covers modules whose services are not bridged as eco_* tools).",
@@ -345,6 +348,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="call_adapter_api",
+        access="admin",
         description="Call a platform adapter's native API directly (management endpoints not covered by Send DSL).",
         parameters=_schema(
             {
@@ -358,6 +362,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="handle_request",
+        access="admin",
         description="Handle a friend/group request event via Request DSL: accept or reject it by request id.",
         parameters=_schema(
             {
@@ -372,6 +377,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="call_module",
+        access="admin",
         description="Call another ErisPulse module's service (also works for modules not in the ecosystem bridge).",
         parameters=_schema(
             {
@@ -385,12 +391,14 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="list_platforms",
+        access="safe",
         description="List online platform adapters and their supported send methods.",
         parameters=OBJECT_PARAMS,
         handler=list_platforms,
     ))
     registry.register(Tool(
         name="takeover_session",
+        access="admin",
         description="Take over the current session: every incoming message is handled by the agent first and claimed. Dangerous, admin only.",
         parameters=_schema(
             {"duration_minutes": _s(type="integer", description="Duration in minutes", default=10)},
@@ -401,12 +409,14 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="release_takeover",
+        access="admin",
         description="Release the takeover of the current session.",
         parameters=OBJECT_PARAMS,
         handler=release_takeover,
     ))
     registry.register(Tool(
         name="list_takeovers",
+        access="safe",
         description="List sessions currently taken over.",
         parameters=OBJECT_PARAMS,
         handler=list_takeovers,

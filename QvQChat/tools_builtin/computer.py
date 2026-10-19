@@ -225,6 +225,7 @@ def _schema(properties: dict, required: list[str]) -> dict:
 def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="run_command",
+        access="admin",
         description="Run a shell command on the host machine. Subject to security level: strict forbids, standard confirms dangerous ones, permissive runs audited.",
         parameters=_schema(
             {
@@ -239,6 +240,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="read_file",
+        access="safe",
         description="Read a text file from the host machine within allowed directories.",
         parameters=_schema(
             {
@@ -251,6 +253,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="write_file",
+        access="admin",
         description="Write or append content to a file on the host machine. Admin only; strict level asks confirmation.",
         parameters=_schema(
             {
@@ -265,6 +268,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="list_dir",
+        access="safe",
         description="List a directory on the host machine within allowed directories.",
         parameters=_schema(
             {"path": _s(type="string", description="Directory path, default current") },
@@ -274,6 +278,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="view_image",
+        access="safe",
         description="Open a local image file as visual input and view it (use the image path given with attachment messages). Requires a vision-capable model.",
         parameters=_schema(
             {"path": _s(type="string", description="Image file path (png/jpg/jpeg/gif/webp/bmp)")},

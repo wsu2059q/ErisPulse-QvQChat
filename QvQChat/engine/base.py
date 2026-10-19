@@ -17,6 +17,7 @@ class ChatRequest:
     model: str | None = None
     temperature: float | None = None
     max_tokens: int | None = None
+    needs: list | None = None
 
 
 @dataclass

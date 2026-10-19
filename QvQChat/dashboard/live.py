@@ -82,6 +82,10 @@ class LiveRegistry:
         live = self.get(session)
         return live is not None and live.status == "running"
 
+    def drop(self, session: str) -> None:
+        """移除会话的流记录（删除会话时调用）。"""
+        self._streams.pop(session, None)
+
 
  
 

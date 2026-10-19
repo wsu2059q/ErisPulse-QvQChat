@@ -42,6 +42,8 @@ class Tool:
     origin: str = "builtin"
     danger: bool = False
     meta: dict = field(default_factory=dict)
+     
+    access: str = "admin"
 
 
 def _allowed(name: str, whitelist: list[str] | None) -> bool:

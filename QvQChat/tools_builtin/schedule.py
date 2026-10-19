@@ -72,6 +72,7 @@ async def cancel_scheduled_task(ctx: ToolContext, task_id: str) -> str:
 def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="create_scheduled_task",
+        access="safe",
         description="Create a scheduled task: at the scheduled time the agent runs the prompt and sends the result to the target. " + SCHEDULE_HELP,
         parameters=_schema(
             {
@@ -89,12 +90,14 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="list_scheduled_tasks",
+        access="safe",
         description="List all scheduled tasks.",
         parameters={"type": "object", "properties": {}, "required": []},
         handler=list_scheduled_tasks,
     ))
     registry.register(Tool(
         name="cancel_scheduled_task",
+        access="safe",
         description="Cancel a scheduled task by id.",
         parameters=_schema(
             {"task_id": _s(type="string", description="Task id")},

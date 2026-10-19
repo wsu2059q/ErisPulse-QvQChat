@@ -290,7 +290,7 @@ def make_config(**overrides):
         wake_prefixes=[],
         command_prefixes=["#", "/"],
         admins=[],
-        admin_tools=["run_command", "run_python", "write_file", "call_adapter_api", "call_module", "takeover_session", "release_takeover", "eco_*", "mcp_*"],
+        admin_tools=[],
         safe_tools=[],
         safe_commands=["ping *"],
         security_level="standard",
@@ -336,15 +336,18 @@ class FakeMain:
     def __init__(self, catalog=None, **config_overrides):
         from QvQChat.engine.pool import ModelPool
         from QvQChat.scheduler import Scheduler
-        from QvQChat.session.manager import SessionManager
-        from QvQChat.session.store import MemoryStore
+        from QvQChat.conversation.service import ConversationService
+        from QvQChat.conversation.memory import MemoryStore
 
         self.sdk = FakeSDK(catalog)
         self.cfg = make_config(**config_overrides)
         self.logger = self.sdk.logger
         self.registry = ToolRegistry()
         self.personas = PersonaManager(self.sdk)
-        self.sessions = SessionManager(self.sdk, self.cfg)
+        self.conversations = ConversationService(self)
+        self.sessions = self.conversations
+        from QvQChat.conversation.delivery import Delivery
+        self.delivery = Delivery(self)
         self.memory = MemoryStore(self.sdk, self.cfg)
         self.pool = ModelPool(self.sdk, self.cfg)
         self.scheduler = Scheduler(self)

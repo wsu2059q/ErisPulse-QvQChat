@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .. import texts, utils
 from ..agent.tools import Tool, ToolContext, ToolRegistry
-from ..session.store import GLOBAL_SCOPE
+from ..conversation.memory import GLOBAL_SCOPE
 
 
 def _s(**simple) -> dict:
@@ -49,6 +49,7 @@ async def list_memory(ctx: ToolContext, scope: str = "chat") -> str:
 def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="remember",
+        access="safe",
         description="Store a long-term memory for the current chat (or globally). Use for stable facts about the user, preferences, ongoing matters.",
         parameters=_schema(
             {
@@ -63,6 +64,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="recall",
+        access="safe",
         description="Search long-term memories relevant to a query for the current chat (or global scope).",
         parameters=_schema(
             {
@@ -76,6 +78,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="forget",
+        access="safe",
         description="Delete long-term memories matching a query for the current chat (or global scope).",
         parameters=_schema(
             {
@@ -88,6 +91,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="list_memory",
+        access="safe",
         description="List all long-term memories of the current chat (or global scope).",
         parameters=_schema(
             {"scope": _s(type="string", description="chat or global")},

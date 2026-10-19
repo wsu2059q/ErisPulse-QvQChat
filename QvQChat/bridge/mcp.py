@@ -267,6 +267,7 @@ class MCPManager:
                 parameters=schema,
                 handler=handler,
                 origin="mcp",
+                access="admin",
                 meta={"server": name},
             ))
 

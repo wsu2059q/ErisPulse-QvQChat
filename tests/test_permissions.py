@@ -8,12 +8,16 @@ def make_policy_config(**overrides):
     return make_config(**overrides)
 
 
+SAFE_TOOLS = {"send_message", "send_dsl", "read_file", "list_dir", "recall", "create_scheduled_task"}
+
+
 def make_tool(name):
     return Tool(
         name=name,
         description="t",
         parameters={"type": "object", "properties": {}, "required": []},
         handler=None,
+        access="safe" if name in SAFE_TOOLS else "admin",
     )
 
 
@@ -37,7 +41,7 @@ def test_is_admin_semantics():
 def test_base_safe_tools_allowed_for_everyone():
     cfg = make_policy_config()
     for name in ("send_message", "send_dsl", "read_file", "list_dir", "recall", "create_scheduled_task"):
-        allowed, reason = tool_allowed(cfg, name, StubCtx().user_id, StubCtx().origin)
+        allowed, reason = tool_allowed(cfg, make_tool(name), StubCtx().user_id, StubCtx().origin)
         assert allowed, name
 
 
@@ -84,32 +88,44 @@ async def test_registry_invoke_enforces_policy():
 
 def test_safe_tools_override_and_prefix_wildcards():
     cfg = make_policy_config(safe_tools=["eco_Draw_*"])
-    allowed, _ = tool_allowed(cfg, "eco_Draw_draw", "1", "chat")
+    allowed, _ = tool_allowed(cfg, make_tool("eco_Draw_draw"), "1", "chat")
     assert allowed
-    allowed, _ = tool_allowed(cfg, "eco_Notes_search", "1", "chat")
+    allowed, _ = tool_allowed(cfg, make_tool("eco_Notes_search"), "1", "chat")
     assert not allowed
 
     cfg = make_policy_config(admin_tools=["run_command"])
-    allowed, _ = tool_allowed(cfg, "run_command", "1", "chat")
+    allowed, _ = tool_allowed(cfg, make_tool("run_command"), "1", "chat")
     assert not allowed
-    allowed, _ = tool_allowed(cfg, "call_module", "1", "chat")
+    allowed, _ = tool_allowed(cfg, make_tool("call_module"), "1", "chat")
     assert not allowed
 
     cfg = make_policy_config(safe_tools=["call_module"])
-    allowed, _ = tool_allowed(cfg, "call_module", "1", "chat")
+    allowed, _ = tool_allowed(cfg, make_tool("call_module"), "1", "chat")
     assert allowed
 
 
 def test_admin_users_pass_everything():
     cfg = make_policy_config(admins=["10001"])
     for name in ("run_command", "eco_Cron_cron", "mcp_x_y"):
-        allowed, _ = tool_allowed(cfg, name, "10001", "chat")
+        allowed, _ = tool_allowed(cfg, make_tool(name), "10001", "chat")
         assert allowed, name
 
 
 def test_task_origin_uses_creator_permissions():
     cfg = make_policy_config(admins=["10001"])
-    allowed, _ = tool_allowed(cfg, "run_command", "10001", "task")
+    allowed, _ = tool_allowed(cfg, make_tool("run_command"), "10001", "task")
     assert allowed
-    allowed, _ = tool_allowed(cfg, "run_command", "other", "task")
+    allowed, _ = tool_allowed(cfg, make_tool("run_command"), "other", "task")
+    assert not allowed
+
+
+def test_access_override_and_dynamic_tools():
+    cfg = make_policy_config(admin_tools=["recall"])
+    allowed, _ = tool_allowed(cfg, make_tool("recall"), "1", "chat")
+    assert not allowed
+
+    cfg = make_policy_config()
+    allowed, _ = tool_allowed(cfg, make_tool("eco_Notes_search"), "1", "chat")
+    assert not allowed
+    allowed, _ = tool_allowed(cfg, make_tool("mcp_srv_tool"), "1", "chat")
     assert not allowed

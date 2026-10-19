@@ -165,6 +165,7 @@ class EcosystemBridge:
             parameters=schema,
             handler=handler,
             origin="eco",
+            access="admin",
             meta={"module": module_name, "service": service_name},
         )
 

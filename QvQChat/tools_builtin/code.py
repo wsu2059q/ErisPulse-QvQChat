@@ -117,6 +117,7 @@ async def run_python_sdk(ctx: ToolContext, code: str, timeout: int = 30) -> str:
 def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="run_python",
+        access="admin",
         description="Execute a standalone Python script on the host machine in a temp directory and return its stdout/stderr. Security rules apply.",
         parameters=_schema(
             {
@@ -130,6 +131,7 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="run_python_sdk",
+        access="admin",
         description=(
             "Execute Python code INSIDE the running ErisPulse bot process (not a subprocess). "
             "Available globals: sdk (ErisPulse SDK: sdk.module / sdk.adapter / sdk.storage / sdk.lifecycle / sdk.client), "
