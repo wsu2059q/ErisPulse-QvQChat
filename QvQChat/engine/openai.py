@@ -19,7 +19,7 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
 class _ThinkDeltaFilter:
-    """流式增量中抑制 <think>…</think> 段落（含标签被分片的情况）。"""
+
 
     _OPEN = "<think>"
     _CLOSE = "</think>"
@@ -170,8 +170,8 @@ class OpenAIEngine:
         return cleaned
 
     async def _stream_chat(self, client, kwargs: dict, on_delta, on_reset=None):
-        """流式请求：content 增量经 on_delta 回调，tool_calls 增量拼装为完整调用。
-        finish_reason=length 时自动续写（最多 2 次）；工具参数被截断则清屏加大预算重试。"""
+
+
         filter_ = _ThinkDeltaFilter()
         texts: list[str] = []
         tools_acc: dict[int, dict] = {}
@@ -228,7 +228,6 @@ class OpenAIEngine:
             await consume(stream)
 
         await run_stream(kwargs)
-         
         if finish == "length" and tools_acc:
             if on_reset is not None:
                 try:
@@ -242,7 +241,6 @@ class OpenAIEngine:
             retry_kwargs = dict(kwargs)
             retry_kwargs["max_tokens"] = min(int(kwargs.get("max_tokens") or 2048) * 4, 65536)
             await run_stream(retry_kwargs)
-         
         rounds = 0
         while finish == "length" and not tools_acc and rounds < 2:
             rounds += 1
@@ -295,7 +293,6 @@ class OpenAIEngine:
                     try:
                         resp = await self._stream_chat(client, kwargs, on_delta, on_reset=on_reset)
                     except APIStatusError as e:
-                         
                         if (getattr(e, "status_code", 0) or 0) == 400 and kwargs.pop("stream_options", None):
                             resp = await self._stream_chat(client, kwargs, on_delta)
                         else:
@@ -326,7 +323,6 @@ class OpenAIEngine:
             text, tool_calls = self._extract(message) if message is not None else ("", [])
             finish_reason = str(getattr(choice, "finish_reason", "") or "")
             if finish_reason == "length" and not tool_calls:
-                 
                 retry_kwargs = dict(kwargs)
                 retry_kwargs["max_tokens"] = min(int(kwargs.get("max_tokens") or 2048) * 4, 65536)
                 resp = await client.chat.completions.create(**retry_kwargs)

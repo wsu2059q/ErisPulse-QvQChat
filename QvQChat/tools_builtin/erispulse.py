@@ -83,9 +83,6 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
         return texts.t("platform_method_unsupported", platform=platform, method=method, methods=", ".join(sends))
 
     threshold = int(getattr(ctx.config, "forward_threshold", 600) or 0)
-     
-     
-     
     forward_attempted = False
     if text and (as_forward or (not method and threshold and len(text) >= threshold)):
         forward_attempted = True
@@ -126,7 +123,6 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
         try:
             if content:
                 result = await getattr(chain, name)(content)
-             
             if utils._send_failed(result):
                 last_error = RuntimeError(f"send returned failed status: {result}")
                 result = None
@@ -149,7 +145,6 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
     if used:
         body += "\n" + texts.t("send_method_used", method=used)
     if forward_attempted and used:
-         
         body += "\n" + texts.t("forward_fallback")
     return body
 
@@ -180,7 +175,7 @@ async def send_dsl(ctx: ToolContext, platform: str, target_type: str, target_id:
 
 
 async def list_services(ctx, module: str = "") -> str:
-    """List ErisPulse module services so the agent can discover capabilities itself."""
+
     try:
         catalog = ctx.sdk.module.services() or {}
     except Exception as e:

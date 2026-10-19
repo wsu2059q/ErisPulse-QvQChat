@@ -13,12 +13,6 @@ from typing import Any
 TEXT_LIMIT = 4000
 OUTPUT_LIMIT = 8000
 
- 
- 
- 
- 
- 
- 
 
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _DELAY_RE = re.compile(r"^(\d+)\s*([smhd])$", re.IGNORECASE)
@@ -382,17 +376,13 @@ def build_forward_nodes(sections: list[str], nickname: str = "QvQChat", user_id:
 
 
 def _send_failed(result) -> bool:
-    """OneBot11 等 call_api 对 retcode!=0 只返回 status=failed 而不抛异常，需显式判断。"""
+
     return isinstance(result, dict) and str(result.get("status") or "") == "failed"
 
 
 async def deliver_forward(adapter, target_type: str, target_id: str, sections: list, sends) -> str:
-    """长内容自适应打包：适配器实现 Send.Forward(nodes) 即支持，
-    合并转发还是富文本折叠由适配器按平台能力决定。
 
-    返回 "forward" 表示已发送；"" 表示平台不支持或发送失败，
-    调用方应回退普通文本发送（不丢失内容）。
-    """
+
     cleaned = [str(s).strip() for s in sections if s and str(s).strip()]
     if not cleaned or adapter is None or "MergeForward" not in set(sends or ()):
         return ""

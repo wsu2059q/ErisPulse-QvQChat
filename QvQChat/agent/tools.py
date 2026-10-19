@@ -23,8 +23,6 @@ class ToolContext:
     event: Any = None
     origin: str = "chat"
     confirmer: Any = None
-     
-     
     sent_log: list = field(default_factory=list)
 
     async def confirm(self, text: str, timeout: int = 60) -> bool:
@@ -42,7 +40,6 @@ class Tool:
     origin: str = "builtin"
     danger: bool = False
     meta: dict = field(default_factory=dict)
-     
     access: str = "admin"
 
 
