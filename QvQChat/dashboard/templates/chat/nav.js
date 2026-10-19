@@ -1,3 +1,4 @@
+ 
   function switchTab(name) {
     el("qvq-nav").querySelectorAll(".qvq-nav-btn").forEach(function (btn) {
       btn.classList.toggle("active", btn.getAttribute("data-tab") === name);
