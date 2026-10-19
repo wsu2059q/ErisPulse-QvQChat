@@ -634,50 +634,44 @@
   }
 
   function showSessionMessages(chatKey) {
-    api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(chatKey)).then(function (data) {
-      var msgs = (data && data.messages) || [];
-      var summary = (data && data.summary) || "";
-      var rows = [];
-      if (summary) {
-        rows.push('<details class="qvq-smsg summary"><summary>' + esc(t("session_summary")) +
-          "</summary><div class='content'>" + esc(summary) + "</div></details>");
+    var PAGE = 30;
+    var rendered = 0;
+    var total = 0;
+    var msgs = [];
+    openModal(chatKey, '<div class="qvq-chat-loading">' + HERO_SVG + '<span class="qvq-chat-loading-tx">QvQ Chat</span></div>');
+    var body = el("qvq-modal-body");
+
+    function rowHtml(m, i) {
+      if (!m || typeof m !== "object") return "";
+      var role = m.role || "user";
+      var raw = contentText(m.content);
+      var ops = '<div class="ops">' +
+        '<button class="qvq-btn small ghost" data-copy="' + i + '">' + esc(t("copy")) + "</button>" +
+        '<button class="qvq-btn small ghost" data-edit="' + i + '">' + esc(t("edit")) + "</button>" +
+        '<button class="qvq-btn small danger" data-del="' + i + '">' + esc(t("del")) + "</button></div>";
+      if (role === "user") {
+        return '<div class="qvq-smsg me"><div class="content">' + esc(raw) + "</div>" + ops + "</div>";
       }
-      var count = 0;
-      msgs.forEach(function (m, i) {
-        if (!m || typeof m !== "object") return;
-        count++;
-        var role = m.role || "user";
-        var raw = contentText(m.content);
-        var ops = '<div class="ops">' +
-          '<button class="qvq-btn small ghost" data-copy="' + i + '">' + esc(t("copy")) + "</button>" +
-          '<button class="qvq-btn small ghost" data-edit="' + i + '">' + esc(t("edit")) + "</button>" +
-          '<button class="qvq-btn small danger" data-del="' + i + '">' + esc(t("del")) + "</button></div>";
-        if (role === "user") {
-          rows.push('<div class="qvq-smsg me"><div class="content">' + esc(raw) + "</div>" + ops + "</div>");
-        } else if (role === "assistant") {
-          var serial = m.rounds && m.rounds.length ? '<div class="qvq-rounds">' + renderSerial(roundsToItems(m.rounds)) + "</div>" : "";
-          if (!serial) {
-            var steps = traceToSteps(m.trace);
-            serial = steps && steps.length ? '<div class="qvq-steps">' + steps.map(function (st) {
-              var ms2 = st.end && st.end.ms != null ? (st.end.ms >= 1000 ? (st.end.ms / 1000).toFixed(1) + "s" : st.end.ms + "ms") : "";
-              return '<div class="qvq-step"><div class="qvq-step-row" data-step-toggle="1"><span class="qvq-step-ico">' + STEP_ICON_SVG + "</span>" +
-                '<span class="qvq-step-name">' + esc(st.start.name) + '</span><span class="qvq-step-args">' +
-                esc(String(st.start.arguments || "").replace(/\s+/g, " ").slice(0, 60)) + '</span><span class="qvq-step-ms">' + esc(ms2) + "</span></div>" +
-                (st.end && st.end.output ? '<pre class="qvq-step-detail">' + esc(st.end.output) + "</pre>" : "") + "</div>";
-            }).join("") + "</div>" : "";
-          }
-          rows.push('<div class="qvq-smsg bot"><div class="role-tag">AI</div>' + serial + '<div class="content">' +
-            (mdRender(raw) || esc(raw)) + "</div>" + ops + "</div>");
-        } else {
-          rows.push('<details class="qvq-smsg ctx"><summary>' + esc(role) + " · " + raw.length + " chars</summary><pre>" +
-            esc(raw) + "</pre>" + ops + "</details>");
+      if (role === "assistant") {
+        var serial = m.rounds && m.rounds.length ? '<div class="qvq-rounds">' + renderSerial(roundsToItems(m.rounds)) + "</div>" : "";
+        if (!serial) {
+          var steps = traceToSteps(m.trace);
+          serial = steps && steps.length ? '<div class="qvq-steps">' + steps.map(function (st) {
+            var ms2 = st.end && st.end.ms != null ? (st.end.ms >= 1000 ? (st.end.ms / 1000).toFixed(1) + "s" : st.end.ms + "ms") : "";
+            return '<div class="qvq-step"><div class="qvq-step-row" data-step-toggle="1"><span class="qvq-step-ico">' + STEP_ICON_SVG + "</span>" +
+              '<span class="qvq-step-name">' + esc(st.start.name) + '</span><span class="qvq-step-args">' +
+              esc(String(st.start.arguments || "").replace(/\s+/g, " ").slice(0, 60)) + '</span><span class="qvq-step-ms">' + esc(ms2) + "</span></div>" +
+              (st.end && st.end.output ? '<pre class="qvq-step-detail">' + esc(st.end.output) + "</pre>" : "") + "</div>";
+          }).join("") + "</div>" : "";
         }
-      });
-      var head = '<div class="qvq-smsg-head">' + esc(chatKey) + " · " +
-        esc(t("msgs_count").replace("{n}", String(count))) + "</div>";
-      var html = head + (rows.join("") || '<div class="qvq-empty">' + esc(t("sessions_empty")) + "</div>");
-      openModal(chatKey, html);
-      var body = el("qvq-modal-body");
+        return '<div class="qvq-smsg bot"><div class="role-tag">AI</div>' + serial + '<div class="content">' +
+          (mdRender(raw) || esc(raw)) + "</div>" + ops + "</div>";
+      }
+      return '<details class="qvq-smsg ctx"><summary>' + esc(role) + " · " + raw.length + " chars</summary><pre>" +
+        esc(raw) + "</pre>" + ops + "</details>";
+    }
+
+    function bindRows() {
       bindMdCopy(body);
       bindStepToggles(body);
       body.querySelectorAll("button[data-copy]").forEach(function (btn) {
@@ -724,7 +718,44 @@
           };
         };
       });
-    });
+    }
+
+    function bindMore() {
+      if (rendered >= total) return;
+      body.addEventListener("scroll", function () {
+        if (body.scrollTop + body.clientHeight >= body.scrollHeight - 80) {
+          if (rendered < total) fetchPage(rendered);
+        }
+      });
+    }
+
+    function fetchPage(start) {
+      api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(chatKey) + "&start=" + start + "&limit=" + PAGE).then(function (data) {
+        if ((data && data.error) || !data) {
+          body.innerHTML = '<div class="qvq-empty">' + esc(data.error || "error") + "</div>";
+          return;
+        }
+        total = (data && data.total) || 0;
+        var batch = (data && data.messages) || [];
+        if (start === 0) msgs = [];
+        batch.forEach(function (m) { msgs.push(m); });
+        rendered = msgs.length;
+        var rowsHtml = msgs.map(function (m, i) { return rowHtml(m, i); }).join("");
+        var summary = start === 0 ? ((data && data.summary) || "") : "";
+        var summaryHtml = summary
+          ? '<details class="qvq-smsg summary"><summary>' + esc(t("session_summary")) + "</summary><div class='content'>" + esc(summary) + "</div></details>"
+          : "";
+        var head = '<div class="qvq-smsg-head">' + esc(chatKey) + " · " +
+          esc(t("msgs_count").replace("{n}", String(total))) + "</div>";
+        var prevTop = body.scrollTop;
+        body.innerHTML = head + summaryHtml + '<div data-smsg-rows>' + rowsHtml + "</div>";
+        body.scrollTop = start === 0 ? 0 : prevTop;
+        bindRows();
+        bindMore();
+      });
+    }
+
+    fetchPage(0);
   }
 
   var AUDIT_SUMMARY_KEYS = ["command", "code", "path", "file", "action", "query", "content", "name", "endpoint", "tool", "error"];

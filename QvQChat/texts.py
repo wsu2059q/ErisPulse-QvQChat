@@ -85,6 +85,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "內置ペルソナは変更・削除できません",
         "ru": "Встроенную личность нельзя изменить или удалить",
     },
+    "skill.self_config.desc": {
+        "zh-CN": "按需配置智能体自身的基础设施：模型提供商与模型池、MCP 服务器、本模块设置（工具 manage_models / manage_mcp / manage_config）。",
+        "zh-TW": "按需配置智慧代理自身的基礎設施：模型提供商與模型池、MCP 伺服器、本模組設定（工具 manage_models / manage_mcp / manage_config）。",
+        "en": "Configure the agent's own infrastructure when asked: model providers and pool, MCP servers, and this module's settings (tools manage_models / manage_mcp / manage_config).",
+        "ja": "必要に応じてエージェント自身のインフラを設定：モデルプロバイダーとプール、MCP サーバー、本モジュール設定（manage_models / manage_mcp / manage_config）。",
+        "ru": "Настройка инфраструктуры агента по запросу: провайдеры и пул моделей, MCP-серверы, настройки модуля (инструменты manage_models / manage_mcp / manage_config).",
+    },
     "skills_system_note": {
         "zh-CN": "可用技能清单（任务匹配时用 load_skill 工具加载完整说明）：",
         "zh-TW": "可用技能清單（任務匹配時用 load_skill 工具載入完整說明）：",

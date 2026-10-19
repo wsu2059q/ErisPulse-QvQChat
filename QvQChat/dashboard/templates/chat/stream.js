@@ -1,3 +1,79 @@
+  function streamChat(payload, onEvent) {
+    var headers = { "Content-Type": "application/json" };
+    var token = getToken();
+    if (token) headers["Authorization"] = "Bearer " + token;
+    return fetch("/QvQChat/api/qvq/chat/stream", {
+      method: "POST",
+      headers: headers,
+      body: JSON.stringify(payload),
+    }).then(function (resp) {
+      if (resp.status === 409) return { __busy: true };
+      if (!resp.ok || !resp.body) throw new Error("stream unavailable");
+      var reader = resp.body.getReader();
+      var decoder = new TextDecoder();
+      var buf = "";
+      function pump() {
+        return reader.read().then(function (chunk) {
+          if (chunk.done) return;
+          buf += decoder.decode(chunk.value, { stream: true });
+          var idx;
+          while ((idx = buf.indexOf("\n\n")) >= 0) {
+            var block = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+            var ev = "message", data = "";
+            block.split("\n").forEach(function (line) {
+              if (line.indexOf("event:") === 0) ev = line.slice(6).trim();
+              else if (line.indexOf("data:") === 0) data += line.slice(5).trim();
+            });
+            if (!data) continue;
+            try { onEvent(ev, JSON.parse(data)); } catch (e) { (window.__pumpErrs = window.__pumpErrs || []).push(String((e && e.stack) || e)); }
+          }
+          return pump();
+        });
+      }
+      return pump();
+    });
+  }
+
+  function nearBottom(box) {
+    return box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  }
+
+
+  function makeLiveNode() {
+    var root = document.createElement("div");
+    root.className = "qvq-msg bot live";
+    root.innerHTML = '<div class="qvq-live-steps"></div><div class="qvq-live-text"><span class="qvq-cursor"></span></div>';
+    return {
+      root: root,
+      stepsEl: root.querySelector(".qvq-live-steps"),
+      textEl: root.querySelector(".qvq-live-text"),
+      timer: null,
+    };
+  }
+
+  function renderLiveNode(box, els, live) {
+    var stick = nearBottom(box);
+    els.stepsEl.innerHTML = stepsHtml(live.steps, true);
+    bindStepToggles(els.stepsEl);
+    if (live.segments.length) {
+      els.textEl.innerHTML = '<div class="qvq-rounds">' + renderSerial(live.segments) + "</div>";
+      bindStepToggles(els.textEl);
+    } else if (!live.text && live.started) {
+      var secs = Math.max(0, Math.round((Date.now() - live.started) / 1000));
+      els.textEl.innerHTML = '<span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "s</span>";
+    } else {
+      els.textEl.innerHTML = mdRender(live.text) || '<span class="qvq-cursor"></span>';
+    }
+    if (stick) box.scrollTop = box.scrollHeight;
+  }
+
+
+  function attachLive(snapshot) {
+    if (activeLive && activeLive.session === snapshot.session) return;
+    var epochAtAttach = chatEpoch;
+    var box = el("qvq-chat-box");
+    var live = { status: snapshot.status || "running", text: snapshot.text || "", steps: snapshot.steps || [], error: snapshot.error || null };
 /* 流式：SSE、实时输出节点、恢复挂载、消息派发 */
     setSessionBusy(snapshot.session, true);
     var els = makeLiveNode();
