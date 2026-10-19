@@ -1,8 +1,6 @@
-"""对话流注册表：流式执行归属于后端，前端断开后可重连续看。
 
-每个 dashboard 会话同一时间至多一个活跃流；流结束后记录保留一段时间，
-供用户切走再回来时看到结果；再次发起新消息时覆盖旧记录。
-"""
+
+
 from __future__ import annotations
 
 import asyncio
@@ -15,10 +13,10 @@ RETAIN_SECONDS = 2 * 3600
 @dataclass
 class LiveStream:
     session: str
-    status: str = "running"  # running | done | error
-    text: str = ""           # 累积的 assistant 输出（reset 会清空）
-    steps: list = field(default_factory=list)  # [{start, end}]
-    segments: list = field(default_factory=list)  # 有序：{type:text|tool, ...} 供串行渲染
+    status: str = "running"
+    text: str = ""
+    steps: list = field(default_factory=list)
+    segments: list = field(default_factory=list)
     reply: str | None = None
     error: str | None = None
     started: float = field(default_factory=time.time)
@@ -27,7 +25,7 @@ class LiveStream:
     task: asyncio.Task | None = None
 
     def cancel(self) -> bool:
-        """链式取消：取消运行任务即贯穿中止 LLM 流、工具与子智能体。"""
+
         if self.status != "running" or self.task is None or self.task.done():
             return False
         self.task.cancel()
@@ -83,14 +81,12 @@ class LiveRegistry:
         return live is not None and live.status == "running"
 
     def drop(self, session: str) -> None:
-        """移除会话的流记录（删除会话时调用）。"""
+
         self._streams.pop(session, None)
 
 
-# ── 回调适配：把 runner 的 on_delta/on_reset/on_tool_event 写入 LiveStream ──
-
 def bind(live: LiveStream):
-    """返回 (on_delta, on_reset, on_tool_event)，由 run_dashboard_chat 透传给 runner。"""
+
 
     async def on_delta(piece: str) -> None:
         live.text += piece

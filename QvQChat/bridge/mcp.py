@@ -175,7 +175,6 @@ class MCPManager:
         self.main = main
         self.clients: dict[str, MCPClient] = {}
 
-    # ── 服务器配置（独立存储，Dashboard 可直接增删改） ──
 
     def list_servers(self) -> list[dict]:
         servers = self.main.sdk.storage.get(SERVERS_KEY, [])
@@ -220,7 +219,6 @@ class MCPManager:
         self.replace_servers(remaining)
         return True
 
-    # ── 连接管理 ──
 
     async def connect_all(self) -> list[dict]:
         results = []

@@ -21,11 +21,8 @@ def _takumi_available(ctx: ToolContext) -> bool:
 
 async def render_image(ctx: ToolContext, html: str, width: int = 800,
                        image_format: str = "png", stylesheets: list | None = None) -> str:
-    """长文本/卡片转图片：调用 Takumi 的 render_card，返回 image_path。
 
-    返回值带 image_path 键——runner 会把图片回灌给模型自查；
-    发给用户用 send_message 的 image_url 参数。
-    """
+
     if not _takumi_available(ctx):
         return texts.t("render_unavailable")
     if not html or not html.strip():
@@ -52,7 +49,6 @@ async def render_image(ctx: ToolContext, html: str, width: int = 800,
 
 
 def register(registry: ToolRegistry, main) -> None:
-    # 检测注册：未装 Takumi 时不占工具位；调用时仍会二次检测（模块可热卸载）
     try:
         if "Takumi" not in main.sdk.module:
             return

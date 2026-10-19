@@ -21,9 +21,6 @@ def _mask_key(key: str) -> str:
     return "***" + key[-4:] if len(key) > 4 else "***"
 
 
-# ── 模型池 ──
-
-
 async def manage_models(ctx: ToolContext, action: str = "list", provider: dict | None = None,
                         provider_id: str = "", model_id: str = "") -> str:
     pool = ctx.main.pool
@@ -73,9 +70,6 @@ async def manage_models(ctx: ToolContext, action: str = "list", provider: dict |
         ctx.sdk.config.setConfig("QvQChat.default_model", wanted)
         return utils.to_text({"ok": True, "default_model": wanted})
     return f"unknown action: {action} (list / presets / save / delete / fetch_models / set_default)"
-
-
-# ── MCP 服务器 ──
 
 
 async def manage_mcp(ctx: ToolContext, action: str = "list", name: str = "", transport: str = "stdio",
@@ -132,9 +126,6 @@ async def manage_mcp(ctx: ToolContext, action: str = "list", name: str = "", tra
     return f"unknown action: {action} (list / status / save / remove / connect / disconnect)"
 
 
-# ── 模块配置 ──
-
-
 async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", updates: dict | None = None) -> str:
     from ..Config import QvQConfig
 
@@ -161,7 +152,6 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
 
 
 def register(registry: ToolRegistry, main) -> None:
-    # 用户可通过 QvQChat.self_config 整体关闭：工具与内置技能一起下线
     if not bool(getattr(main.cfg, "self_config", True)):
         return
     registry.register(Tool(

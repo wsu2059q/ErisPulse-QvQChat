@@ -69,7 +69,6 @@ def _needs_confirm(ctx: ToolContext) -> bool:
 
 _DEFAULT_SENSITIVE = ["config", ".env", "*.key", "*.pem", "*.db", "*.sqlite*", "id_rsa"]
 
-# 简单只读命令对所有人放行（如 ping）；黑名单与敏感文件保护仍然生效
 _DEFAULT_SAFE_COMMANDS = ["ping *"]
 
 
@@ -145,7 +144,7 @@ _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 
 
 async def view_image(ctx: ToolContext, path: str) -> str:
-    """把本地图片作为视觉输入回灌给模型（runner 按 image_path 键注入图片段）。"""
+
     try:
         resolved = _resolve_allowed(ctx, path)
     except PermissionError as e:

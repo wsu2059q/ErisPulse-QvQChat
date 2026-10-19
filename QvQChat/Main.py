@@ -161,7 +161,6 @@ class Main(BaseModule):
         self.pool = ModelPool(self.sdk, self.cfg)
         self.registry = ToolRegistry()
         self.personas = PersonaManager(self.sdk)
-        # 会话子系统唯一归属：conversations（sessions 为同一对象的沿用别名）
         self.conversations = ConversationService(self)
         self.sessions = self.conversations
         self.memory = MemoryStore(self.sdk, self.cfg)
@@ -516,7 +515,6 @@ class Main(BaseModule):
         return lock
 
     def _batch_message(self, event, chat_key: str, text: str, images: list) -> None:
-        # 聚合窗口：首条消息到达后等待 aggregate_window 秒，窗口内后续消息合并为一次请求
         entry = self._pending.setdefault(chat_key, {"items": [], "event": event, "timer": None})
         entry["items"].append(
             {
@@ -608,15 +606,12 @@ class Main(BaseModule):
                 for converted in [self._to_model_image(raw)]
                 if converted
             ]
-            # 每日限额：拦在落历史之前，被限流的请求不写进上下文
             limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
             if limit:
                 used_today = int(self._usage_today().get("tokens", 0) or 0)
                 if used_today >= limit and not self.is_admin(sender_id, "chat", event.get_platform() or ""):
                     await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
                     return
-            # 统一管道：平台侧运行也注册进 LiveRegistry，网页端可实时观看/取消
-            # busy 时中断旧任务，新任务带中断上下文
             interrupted_note = ""
             live = None
             registry = getattr(self, "live_registry", None)
@@ -633,7 +628,6 @@ class Main(BaseModule):
                 on_delta, on_reset, on_tool_event = live_bind(live)
             else:
                 on_delta = on_reset = on_tool_event = None
-            # 运行准备唯一入口：压缩 / 冷启动 seed / 人设 / 记忆 / 多模态
             prepared = await self.sessions.prepare(
                 chat_key,
                 labeled,
@@ -649,7 +643,6 @@ class Main(BaseModule):
             if interrupted_note:
                 contexts.append({"role": "user", "content": interrupted_note})
             async def on_tool_round(calls):
-                # 仅 all 模式发工具明细；brief 模式以 AI 发言代替，不打断
                 if getattr(self.cfg, "tool_notice_mode", "brief") != "all":
                     return
                 labels = [
@@ -660,7 +653,6 @@ class Main(BaseModule):
                 await event.reply(texts.t("processing_notice", tools="、".join(labels) + suffix))
 
             async def on_intermediate(speech):
-                # 仅 all 模式发阶段性发言；brief 由 AI 通过 send_message 工具主动播报
                 if getattr(self.cfg, "tool_notice_mode", "brief") != "all":
                     return
                 text = utils.truncate(str(speech).strip(), 1200)
@@ -680,7 +672,6 @@ class Main(BaseModule):
                     on_tool_event=on_tool_event,
                 )
             except asyncio.CancelledError:
-                # 网页端停止：半截回复落库并按完成收尾
                 if live is not None:
                     partial = live.text.strip()
                     if partial:
@@ -701,7 +692,6 @@ class Main(BaseModule):
                 live.publish("done", {"reply": live.reply, "session": chat_key})
             reply, force_forward = strip_output_tag(result.text.strip())
             reply = reply or texts.t("no_reply_content")
-            # 统一收尾：落历史 + 用量 + 裁剪摘要
             self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""))
             try:
                 await self.sdk.lifecycle.emit(
@@ -710,7 +700,6 @@ class Main(BaseModule):
                 )
             except Exception:
                 pass
-            # 投递唯一出口：recap 抑制 → 合并转发 → 分段/单条直发
             await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward)
         except Exception as e:
             self.logger.warning(f"process failed: {e}")
@@ -757,7 +746,6 @@ class Main(BaseModule):
         )
         prepared = await self.sessions.prepare(chat_key, prompt, persona_id=persona_id, persist=False)
         messages: list = []
-        # 定时/后台任务：告诉 AI 内容要用 send_message 自行投递，投递过就不再补发总结
         if send and platform:
             messages.append({"role": "system", "content": texts.t("task_run_note")})
         messages.extend(prepared["contexts"] + [prepared["user_msg"]])
@@ -769,13 +757,11 @@ class Main(BaseModule):
         )
         reply = result.text.strip() or texts.t("no_reply_content")
         if send and platform:
-            # AI 已在本运行中向该目标投递过内容（如日报本身）→ 总结段不再补发，避免双发
             delivered = any(
                 sent_platform == platform and sent_type == detail_type and sent_id == target_id
                 for sent_platform, sent_type, sent_id in ctx.sent_log
             )
             if not delivered:
-                # 打包与否看运行方式：用了工具的任务投递转合并转发，纯文本回答普通发送
                 await self.delivery.send_segments(
                     platform,
                     detail_type,
@@ -832,7 +818,6 @@ class Main(BaseModule):
             on_tool_event=on_tool_event,
         )
         reply = result.text.strip() or texts.t("no_reply_content")
-        # 统一收尾：落历史 + 用量 + 裁剪摘要 + 标题生成
         self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), title_from=text)
         return reply
 
@@ -840,7 +825,6 @@ class Main(BaseModule):
         target_type = str(task.get("target_type") or "user")
         detail_type = "group" if target_type == "group" else "private"
         chat_key = make_chat_key(str(task.get("platform") or ""), detail_type, str(task.get("target_id") or ""))
-        # 权限随创建者：框架/网页创建的任务以主人身份运行；聊天端创建的沿用创建者身份
         origin = str(task.get("origin") or "dashboard")
         if origin in ("task", ""):
             origin = "dashboard"

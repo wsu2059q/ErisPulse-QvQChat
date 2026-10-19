@@ -29,11 +29,7 @@ def parse_chat_key(chat_key: str) -> tuple[str, str, str]:
 
 
 class ConversationService:
-    """会话子系统唯一归属：生命周期、内容、上下文准备与收尾、压缩调度、上传。
 
-    Main 的三条运行管道（平台/定时任务/Dashboard）都经由 prepare()/finalize()，
-    不再各自手写「压缩→人设→记忆→摘要→落历史」的公共步骤。
-    """
 
     def __init__(self, main):
         self.main = main
@@ -41,7 +37,6 @@ class ConversationService:
         self.config = main.cfg
         self.compactor = Compactor(main)
 
-    # ════════════════ state 基础 ════════════════
 
     def _state(self, chat_key: str) -> dict:
         state = self.sdk.storage.get(CONV_PREFIX + chat_key, None)
@@ -66,7 +61,6 @@ class ConversationService:
         state["contexts"] = state["contexts"][-limit:]
         self.sdk.storage.set(CONV_PREFIX + chat_key, state)
 
-    # ════════════════ 内容 ════════════════
 
     def get_contexts(self, chat_key: str) -> list:
         return list(self._state(chat_key)["contexts"])
@@ -88,7 +82,6 @@ class ConversationService:
         state = self._state(chat_key)
         entry: dict = {"role": role, "content": content}
         if trace:
-            # 仅用于回放展示；送入模型前 runner._sanitize_contexts 会剥掉这些字段
             entry["trace"] = list(trace)
         if rounds:
             entry["rounds"] = list(rounds)
@@ -96,7 +89,7 @@ class ConversationService:
         self._save(chat_key, state)
 
     def append_user(self, chat_key: str, content, sender_id: str = "") -> None:
-        """content 可为纯文本或多模态段列表（text/image_url），历史保留图片供回放与编辑。"""
+
         state = self._state(chat_key)
         entry: dict = {"role": "user", "content": content}
         if sender_id:
@@ -119,7 +112,6 @@ class ConversationService:
             return False
         entry = contexts[index]
         if isinstance(attachments, list):
-            # 编辑带附件清单：按清单整体重建（可增删图片/文件）
             entry["content"] = self.rebuild_user_content(content, attachments)
         elif isinstance(entry.get("content"), list):
             kept = [p for p in entry["content"] if isinstance(p, dict) and p.get("type") != "text"]
@@ -148,7 +140,6 @@ class ConversationService:
         self._save(chat_key, state)
         return removed
 
-    # ════════════════ 元数据 ════════════════
 
     def set_persona(self, chat_key: str, persona_id: str | None) -> None:
         state = self._state(chat_key)
@@ -159,7 +150,7 @@ class ConversationService:
         return self._state(chat_key)["persona"]
 
     def set_flags(self, chat_key: str, pinned: bool | None = None, archived: bool | None = None) -> None:
-        """置顶/归档标记；不刷新会话的 updated 时间。"""
+
         state = self._state(chat_key)
         if pinned is not None:
             state["pinned"] = bool(pinned)
@@ -168,7 +159,7 @@ class ConversationService:
         self._save_no_touch(chat_key, state)
 
     def set_ui(self, chat_key: str, ui: dict) -> dict:
-        """会话级 UI 设置（密度/模型/强度等）；不刷新 updated。"""
+
         state = self._state(chat_key)
         cur = state.get("ui") if isinstance(state.get("ui"), dict) else {}
         cur.update({k: v for k, v in (ui or {}).items() if v is not None})
@@ -210,7 +201,6 @@ class ConversationService:
         state["summary"] = merged
         self._save(chat_key, state)
 
-    # ════════════════ 轮次与压缩记账 ════════════════
 
     def _turn_count(self, chat_key: str) -> int:
         return int(self._state(chat_key).get("turns") or 0)
@@ -230,13 +220,12 @@ class ConversationService:
     async def compact_now(self, chat_key: str) -> dict:
         return await self.compactor.compact(chat_key, force=True, reason="manual")
 
-    # ════════════════ 生命周期 ════════════════
 
     def create(self, platform: str = DASHBOARD_PLATFORM, detail_type: str = "private", target_id: str = "") -> str:
-        """创建会话并返回 chat_key；dashboard 会话自动分配 web/webN 序号（分配逻辑唯一在此）。"""
+
         if target_id:
             chat_key = make_chat_key(platform, detail_type, target_id)
-            self._state(chat_key)  # 触发一次落库
+            self._state(chat_key)
             return chat_key
         prefix = make_chat_key(platform, detail_type, "")
         existing = {
@@ -254,7 +243,7 @@ class ConversationService:
         return chat_key
 
     def delete(self, chat_key: str) -> bool:
-        """彻底删除会话：历史/摘要/元数据 + 长期记忆 + 人设绑定；正在运行的任务先取消。"""
+
         existed = self.sdk.storage.get(CONV_PREFIX + chat_key, None) is not None
         registry = getattr(self.main, "live_registry", None)
         if registry is not None:
@@ -346,7 +335,6 @@ class ConversationService:
                 out.append({"label": item["label"], "content": content})
         return out[:limit]
 
-    # ════════════════ 运行准备与收尾（三条管道唯一公共入口） ════════════════
 
     async def prepare(
         self,
@@ -362,11 +350,8 @@ class ConversationService:
         cross_user_id: str = "",
         persist: bool = True,
     ) -> dict:
-        """统一运行准备：压缩 → 冷启动 seed → 人设/记忆/摘要进系统提示 → 多模态 user 消息。
 
-        返回 {system, contexts, user_msg}；contexts 不含 user_msg（调用方拼接）。
-        persist=False 用于不落历史的运行（如 rpc chat）。
-        """
+
         await self.compact_if_needed(chat_key)
         contexts = self.get_contexts(chat_key)
         if not contexts and seed_provider is not None:
@@ -402,7 +387,6 @@ class ConversationService:
             except Exception:
                 caps = {}
             if caps.get("vision") is False:
-                # 主模型无视觉：视觉模型代看，把描述并入文本（无可用视觉模型则保留原图由引擎兜底）
                 described = await pool.describe_images(images) if pool else []
                 lines = [f"[image {i + 1}] {d}" for i, d in enumerate(described) if d]
                 if lines:
@@ -435,7 +419,7 @@ class ConversationService:
         model: str = "",
         title_from: str = "",
     ) -> str:
-        """统一收尾：落历史 + 用量 + 裁剪摘要 + 标题生成。"""
+
         self.append(chat_key, "assistant", reply, trace=trace, rounds=rounds)
         if usage:
             self.main.record_usage(chat_key, usage, model)
@@ -451,7 +435,6 @@ class ConversationService:
         if summary:
             self.append_summary(chat_key, summary)
 
-    # ════════════════ 系统提示组装 ════════════════
 
     def build_system(
         self,
@@ -498,10 +481,9 @@ class ConversationService:
                 system += "\n" + line
         return system
 
-    # ════════════════ 标题 ════════════════
 
     async def resolve_session_names(self, sessions: list[dict]) -> None:
-        """后台尽力解析会话显示名（群名/昵称），写入缓存供下次列表使用。"""
+
         for session in sessions[:20]:
             chat_key = str(session.get("chat_key") or "")
             if session.get("name") or not chat_key:
@@ -544,7 +526,7 @@ class ConversationService:
                 continue
 
     async def title_task(self, chat_key: str, user_text: str, reply: str) -> None:
-        """为无名字的会话用模型生成一个短标题（失败静默）。"""
+
         pool = getattr(self.main, "pool", None)
         if pool is None:
             return
@@ -569,10 +551,9 @@ class ConversationService:
         except Exception as e:
             self.main.logger.warning(f"title generation failed: {e}")
 
-    # ════════════════ 附件上传与多模态重建 ════════════════
 
     def save_upload(self, name: str, data: str) -> str | None:
-        """附件落地为真实文件（按内容 hash 复用），把路径交给 AI 自行读取/解压使用。"""
+
         payload: bytes | None = None
         m = _re.match(r"^data:([^;,]+)?(;base64)?,(.*)$", data, _re.DOTALL)
         if m and m.group(2):
@@ -590,7 +571,6 @@ class ConversationService:
         safe = _re.sub(r"[^\w.\-]+", "_", name, flags=_re.UNICODE).strip("_") or "file"
         try:
             UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-            # 同内容复用：忽略旧文件名，命中即返回既有路径
             for existing in UPLOAD_DIR.iterdir():
                 if existing.is_file() and existing.name.startswith(digest + "_"):
                     return str(existing)
@@ -601,7 +581,7 @@ class ConversationService:
         return str(target)
 
     def rebuild_user_content(self, text: str, attachments: list):
-        """编辑消息时按附件清单重建多模态内容：文本段 + 图片段 + 落盘文件说明。"""
+
         parts: list = []
         notes: list[str] = []
         if text:
@@ -636,7 +616,6 @@ class ConversationService:
             return parts[0]["text"]
         return parts
 
-    # ════════════════ 工具 ════════════════
 
     @staticmethod
     def _text_of(content) -> str:

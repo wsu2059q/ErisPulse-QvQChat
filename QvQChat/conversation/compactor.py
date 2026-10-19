@@ -7,7 +7,7 @@ from ..engine.base import ChatRequest
 
 
 def estimate_tokens(text) -> int:
-    """粗估 token：约 2 字符/token 的保守口径。"""
+
     if isinstance(text, list):
         text = " ".join(
             str(p.get("text") or "") for p in text if isinstance(p, dict) and p.get("type") == "text"
@@ -23,11 +23,8 @@ def context_tokens(contexts: list) -> int:
 
 
 def split_turns(contexts: list) -> list[list[dict]]:
-    """按「轮」切分上下文：一条 user 消息开启一轮，其后的 assistant/tool 消息归属该轮。
 
-    tool 消息永远附着在当前轮内 —— 保证 tool_calls 与 tool 成对移动，
-    任何切分点都不会拆散配对。
-    """
+
     turns: list[list[dict]] = []
     current: list[dict] = []
     for m in contexts:
@@ -36,7 +33,6 @@ def split_turns(contexts: list) -> list[list[dict]]:
         role = m.get("role")
         if role == "tool":
             if not current:
-                # 孤儿 tool 消息（前无 assistant）：自成保护轮，不与后文拆散
                 current = [m]
                 continue
             current.append(m)
@@ -63,26 +59,17 @@ def merge_turns(turns: list[list[dict]]) -> list[dict]:
 
 
 class Compactor:
-    """上下文压缩器：microcompact 瘦身 + summarize/truncate 轮压缩。
 
-    触发（由 service.compact_if_needed 统一调度）：
-    - microcompact：零成本，每次请求前都跑（旧轮 tool 输出截断）
-    - 预防性：每 compact_every_turns 轮做一次轮压缩，不再等触底
-    - 阈值：估算 token 超过 context_compress_tokens 时强制轮压缩
-    - 手动：/agent 压缩、Dashboard 按钮 → force=True
-    """
 
     def __init__(self, main):
         self.main = main
         self.sdk = main.sdk
         self.config = main.cfg
 
-    # ── 估算 ──
 
     def _pool(self):
         return getattr(self.main, "pool", None)
 
-    # ── microcompact：旧轮 tool 输出瘦身 ──
 
     def microcompact(self, contexts: list) -> tuple[list, int]:
         keep_chars = int(getattr(self.config, "tool_output_keep", 300) or 0)
@@ -106,10 +93,9 @@ class Compactor:
                 changed += 1
         return out, changed
 
-    # ── 轮压缩 ──
 
     def _select_removed(self, contexts: list) -> tuple[list[dict], list[list[dict]]]:
-        """返回 (被移除的旧轮消息, 保留的轮列表)。按轮切分，配对安全。"""
+
         turns = split_turns(contexts)
         if len(turns) <= 1:
             return [], turns
@@ -156,7 +142,7 @@ class Compactor:
             return ""
 
     async def summarize_entries(self, removed: list) -> str:
-        """对被裁剪的旧消息做要点摘要（trim_overflow 收尾路径使用）。"""
+
         return await self._summarize_turns(removed)
 
     @staticmethod
@@ -168,7 +154,7 @@ class Compactor:
         return str(content or "")
 
     async def compact(self, chat_key: str, force: bool = False, reason: str = "") -> dict:
-        """对单个会话执行压缩，返回动作报告（供日志/前端展示）。"""
+
         service = self.main.conversations
         contexts = service.get_contexts(chat_key)
         if not contexts:
@@ -206,7 +192,6 @@ class Compactor:
                 service.mark_compacted(chat_key)
                 actions.append("noop:few-turns")
         elif over or preventive:
-            # off 策略也响应触发：只做 microcompact 结果落地
             service.replace_contexts(chat_key, contexts)
             service.mark_compacted(chat_key)
             actions.append("strategy-off:slim-only")

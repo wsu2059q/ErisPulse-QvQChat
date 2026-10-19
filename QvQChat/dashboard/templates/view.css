@@ -117,7 +117,6 @@
   }
 }
 
-/* OLED（跟随 Dashboard 的 data-oled） */
 [data-oled="on"][data-theme="dark"] {
   --qvq-bg: #000000;
   --qvq-bg-s: #0a0d12;
@@ -138,8 +137,6 @@
     --qvq-shadow-hover: 0 6px 18px -6px rgba(0, 0, 0, 0.75);
   }
 }
-
-/* 骨架 */
 
 .qvq-app {
   box-sizing: border-box;
@@ -164,7 +161,6 @@
   box-sizing: border-box;
 }
 
-/* 细滚动条 */
 .qvq-app ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -182,8 +178,6 @@
   background: var(--qvq-accent);
   background-clip: content-box;
 }
-
-/* ─────────── 侧栏 ─────────── */
 
 .qvq-side {
   flex: 0 0 208px;
@@ -283,8 +277,6 @@
   min-width: 0;
 }
 
-/* ─────────── 主体 ─────────── */
-
 .qvq-main {
   flex: 1 1 auto;
   min-width: 0;
@@ -323,7 +315,6 @@
   margin: 0 0 18px 1px;
 }
 
-/* 非对称网格：主列 7 / 侧列 5，小屏退化为单列 */
 .qvq-grid {
   display: grid;
   gap: 14px;
@@ -354,7 +345,7 @@
   position: sticky;
   top: 18px;
 }
-/* 概览页双栏：最近会话 / 即将执行 */
+
 .qvq-split {
   display: grid;
   gap: 14px;
@@ -367,7 +358,6 @@
   height: 100%;
 }
 
-/* 移动端顶栏（桌面隐藏） */
 .qvq-topbar {
   display: none;
   position: sticky;
@@ -427,7 +417,6 @@
   }
 }
 
-/* 抽屉式侧栏（对齐 Dashboard 的移动端交互） */
 @media (max-width: 860px) {
   .qvq-app {
     flex-direction: column;
@@ -485,8 +474,6 @@
   }
 }
 
-/* ─────────── 卡片 ─────────── */
-
 .qvq-card {
   position: relative;
   background: var(--qvq-surface);
@@ -543,8 +530,6 @@
   stroke-linejoin: round;
 }
 
-/* ─────────── 统计 ─────────── */
-
 .qvq-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
@@ -580,8 +565,6 @@
 .qvq-stat.hl-teal .num {
   color: var(--qvq-ok-c);
 }
-
-/* ─────────── 按钮 ─────────── */
 
 .qvq-btn {
   font-family: inherit;
@@ -668,8 +651,6 @@
   height: 12px;
 }
 
-/* ─────────── 表单 ─────────── */
-
 .qvq-input,
 .qvq-textarea,
 .qvq-select {
@@ -708,7 +689,7 @@
   background-size: 10px 6px;
   background-repeat: no-repeat;
 }
-/* ── 自定义下拉组件（原生 select 仅作状态载体） ── */
+
 select.qvq-select[data-qvq-dd] {
   display: none;
 }
@@ -819,7 +800,7 @@ select.qvq-select[data-qvq-dd] {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* ── 开关组件 ── */
+
 .qvq-switch {
   position: relative;
   display: inline-block;
@@ -871,7 +852,7 @@ input[type="checkbox"],
 input[type="radio"] {
   accent-color: var(--qvq-accent);
 }
-/* ── 确认弹窗 ── */
+
 .qvq-settings-danger {
   margin-top: 16px;
   padding-top: 10px;
@@ -947,7 +928,6 @@ input[type="radio"] {
   flex: 0 0 auto;
 }
 
-/* 工具栏 / 操作行 */
 .qvq-toolbar {
   display: flex;
   gap: 10px;
@@ -964,8 +944,6 @@ input[type="radio"] {
 .qvq-input-sm {
   max-width: 240px;
 }
-
-/* ─────────── 分类标签 ─────────── */
 
 .qvq-cats {
   display: flex;
@@ -995,8 +973,6 @@ input[type="radio"] {
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
-
-/* ─────────── 表格 ─────────── */
 
 .qvq-table {
   width: 100%;
@@ -1030,8 +1006,6 @@ input[type="radio"] {
 .qvq-table tbody tr:last-child td {
   border-bottom: none;
 }
-
-/* ─────────── 标签片 ─────────── */
 
 .qvq-chip {
   display: inline-block;
@@ -1072,8 +1046,6 @@ input[type="radio"] {
   color: var(--qvq-er-c);
   border-color: var(--qvq-er-bd);
 }
-
-/* ─────────── 工具行 ─────────── */
 
 .qvq-tool-row {
   display: flex;
@@ -1223,7 +1195,7 @@ input[type="radio"] {
   color: var(--qvq-tx-t);
   text-align: center;
 }
-/* 主侧边栏里的会话区（仅对话页激活时显示）：固定高度，行滚动，已归档独立占位 */
+
 .qvq-nav-sessions {
   display: none;
   flex-direction: column;
@@ -1334,7 +1306,7 @@ input[type="radio"] {
   border-color: var(--qvq-accent);
   transform: translateY(-1px);
 }
-/* 主区 */
+
 .qvq-chat-main {
   flex: 1;
   min-width: 0;
@@ -1420,11 +1392,11 @@ input[type="radio"] {
   white-space: pre-wrap;
   word-break: break-word;
 }
-/* 入场动画只给新出现的流式消息，避免历史重渲染时整体闪烁 */
+
 .qvq-msg.live {
   animation: qvq-pop 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
-/* 用户：右侧气泡，最宽 60% */
+
 .qvq-msg.me {
   align-self: flex-end;
   max-width: 60%;
@@ -1433,12 +1405,12 @@ input[type="radio"] {
   border-bottom-right-radius: 5px;
   box-shadow: 0 10px 22px -14px rgba(58, 165, 220, 1);
 }
-/* AI：全宽文档式，无气泡 */
+
 .qvq-msg.bot {
   align-self: stretch;
   max-width: 100%;
 }
-/* 用户消息：气泡 + 下方独立操作行（hover 显示，右对齐） */
+
 .qvq-msg-wrap {
   display: flex;
   flex-direction: column;
@@ -1451,7 +1423,7 @@ input[type="radio"] {
 .qvq-msg-wrap .qvq-msg.me {
   max-width: 100%;
 }
-/* 常驻占位：悬停仅切换可见性，不推动下方内容 */
+
 .qvq-msg-acts {
   display: flex;
   visibility: hidden;
@@ -1492,7 +1464,7 @@ input[type="radio"] {
   color: var(--qvq-tx-t);
   animation: qvq-breathe 1.5s ease-in-out infinite;
 }
-/* ── 消息原地编辑：composer 同观感，隐藏原气泡与操作行 ── */
+
 .qvq-msg-wrap.editing {
   display: block;
   max-width: 100%;
@@ -1612,7 +1584,7 @@ input[type="radio"] {
 .qvq-msg.me .qvq-msg-file {
   border-color: rgba(255, 255, 255, 0.4);
 }
-/* ── 气泡内 mini-markdown ── */
+
 .qvq-msg p {
   margin: 0 0 6px;
 }
@@ -1718,7 +1690,6 @@ input[type="radio"] {
   background: var(--qvq-bg-s);
 }
 
-/* AI 消息内轮次文本块（串行渲染） */
 .qvq-rounds {
   display: flex;
   flex-direction: column;
@@ -1728,11 +1699,11 @@ input[type="radio"] {
 .qvq-step + .qvq-round-text {
   margin-top: 4px;
 }
-/* 新消息弹出动画（仅 fresh 首次渲染播放） */
+
 .qvq-msg.qvq-msg-new {
   animation: qvq-pop 0.26s cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
-/* 侧栏运行中指示 */
+
 .qvq-chat-srow.liverun .qvq-chat-sname::after {
   content: "";
   display: inline-block;
@@ -1833,23 +1804,35 @@ input[type="radio"] {
 @keyframes qvq-spin {
   to { transform: rotate(360deg); }
 }
-/* ── Composer：上输入框 + 下工具条 ── */
+
 .qvq-chat-queue {
   flex-direction: column;
   gap: 8px;
   margin-top: 12px;
 }
 .qvq-q-card {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--qvq-bd);
+  border: 1px dashed var(--qvq-bd-h);
   border-radius: 14px;
-  background: var(--qvq-surface);
+  background: var(--qvq-bg-s);
 }
 .qvq-q-card[draggable] {
   cursor: grab;
+}
+.qvq-q-badge {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--qvq-bd-h);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  font-size: 11px;
+  white-space: nowrap;
 }
 .qvq-q-main {
   flex: 1;
@@ -1860,26 +1843,35 @@ input[type="radio"] {
   color: var(--qvq-tx);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 60px;
+  max-height: 72px;
   overflow: hidden;
 }
 .qvq-q-att {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin: 4px 6px 0 0;
-  padding: 2px 8px;
-  border-radius: 8px;
+  gap: 5px;
+  margin: 6px 6px 0 0;
+  padding: 3px 8px;
+  border-radius: 9px;
   border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
   font-size: 11.5px;
   color: var(--qvq-tx-s);
 }
 .qvq-q-att img {
-  height: 26px;
-  border-radius: 5px;
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-left: -3px;
 }
 .qvq-q-edit {
   width: 100%;
+}
+.qvq-q-edit .qvq-textarea {
+  background: var(--qvq-surface);
+  border-color: var(--qvq-accent);
+  border-radius: 10px;
 }
 .qvq-q-edit .qvq-actions {
   margin-top: 6px;
@@ -2022,6 +2014,15 @@ input[type="radio"] {
   background: var(--qvq-accent-fill-h);
   transform: translateY(-1px);
 }
+.qvq-composer-send.stopping {
+  background: #e5484d;
+}
+.qvq-composer-send.stopping:hover {
+  background: #d93a3f;
+}
+.qvq-msg-editor .qvq-composer-send {
+  background: var(--qvq-accent-fill);
+}
 .qvq-composer-send svg {
   width: 15px;
   height: 15px;
@@ -2069,7 +2070,7 @@ input[type="radio"] {
   justify-content: center;
   line-height: 1;
 }
-/* ── 提名弹出菜单 ── */
+
 .qvq-mention-menu {
   position: fixed;
   z-index: 1400;
@@ -2217,8 +2218,6 @@ input[type="radio"] {
   color: var(--qvq-er-c);
 }
 
-/* ─────────── 空态 ─────────── */
-
 .qvq-empty {
   padding: 26px 14px;
   text-align: center;
@@ -2228,7 +2227,7 @@ input[type="radio"] {
   border: 1px dashed var(--qvq-bd-h);
   border-radius: 16px;
 }
-/* 卡片内的空态：垂直水平居中，避免贴顶 */
+
 .qvq-card .qvq-empty {
   display: flex;
   flex-direction: column;
@@ -2257,8 +2256,6 @@ input[type="radio"] {
   color: var(--qvq-accent);
 }
 
-/* ─────────── Toast ─────────── */
-
 .qvq-toast {
   position: fixed;
   right: 18px;
@@ -2278,8 +2275,6 @@ input[type="radio"] {
   border-color: var(--qvq-er-bd);
   color: var(--qvq-er-c);
 }
-
-/* ─────────── 登录 ─────────── */
 
 .qvq-login {
   position: fixed;
@@ -2321,8 +2316,6 @@ input[type="radio"] {
   color: var(--qvq-er-c);
   min-height: 16px;
 }
-
-/* ─────────── 概览横幅 ─────────── */
 
 .qvq-hero {
   display: flex;
@@ -2417,8 +2410,6 @@ input[type="radio"] {
   }
 }
 
-/* ─────────── 用量图表 ─────────── */
-
 .qvq-chart {
   width: 100%;
   height: 170px;
@@ -2489,8 +2480,6 @@ input[type="radio"] {
   font-weight: 700;
 }
 
-/* ─────────── 图表交互 ─────────── */
-
 .qvq-chart-wrap {
   position: relative;
 }
@@ -2541,8 +2530,6 @@ input[type="radio"] {
 .qvq-chart-tip b {
   color: var(--qvq-tx);
 }
-
-/* ─────────── 审计可视化 ─────────── */
 
 .qvq-table tr.qvq-audit-row {
   cursor: pointer;
@@ -2646,7 +2633,7 @@ input[type="radio"] {
   word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
 }
-/* ── 会话查看模态：气泡布局 ── */
+
 .qvq-smsg-head {
   font-size: 12px;
   color: var(--qvq-tx-t);
@@ -2768,8 +2755,6 @@ input[type="radio"] {
   white-space: nowrap;
 }
 
-/* ─────────── 主页列表：单行 + 时间右对齐 ─────────── */
-
 #qvq-home-sessions .qvq-tool-row,
 #qvq-home-tasks .qvq-tool-row {
   flex-wrap: nowrap;
@@ -2809,8 +2794,6 @@ input[type="radio"] {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-
-/* ─────────── 移动端适配 ─────────── */
 
 @media (max-width: 860px) {
   .qvq-app {
@@ -2888,8 +2871,6 @@ input[type="radio"] {
     grid-template-columns: 72px 1fr;
   }
 }
-
-/* ─────────── 动画 ─────────── */
 
 @keyframes qvq-rise {
   from {
