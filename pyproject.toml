@@ -37,7 +37,7 @@ test = [
 include = ["QvQChat*"]
 
 [tool.setuptools.package-data]
-QvQChat = ["dashboard/templates/*"]
+QvQChat = ["dashboard/templates/*", "dashboard/templates/chat/*", "dashboard/templates/css/*"]
 
 # uv 配置
 [[tool.uv.index]]
