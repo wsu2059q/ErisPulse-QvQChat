@@ -213,3 +213,7 @@ tests/config/*.db-wal
 .zcode/
 config/.erispulse_config.lock
 config/
+
+# QvQChat runtime data
+config/
+data/
