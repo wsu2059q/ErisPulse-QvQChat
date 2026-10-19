@@ -619,8 +619,28 @@ class DashboardManager:
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
         contexts = self.main.sessions.get_contexts(chat_key)
-        summary = self.main.sessions.summary_of(chat_key)
-        for message in contexts:
+        total = len(contexts)
+        # 窗口参数：start/limit 按需加载；start 缺省且给 limit 时取尾部一页
+        start_raw = self._query(request, "start")
+        limit_raw = self._query(request, "limit")
+        start_i, limit_n = 0, 0
+        try:
+            limit_n = max(1, int(limit_raw)) if limit_raw else 0
+        except ValueError:
+            limit_n = 0
+        try:
+            start_i = int(start_raw) if start_raw is not None else None
+        except ValueError:
+            start_i = None
+        if limit_n:
+            if start_i is None:
+                start_i = max(0, total - limit_n)
+            start_i = max(0, min(start_i, total))
+            window = contexts[start_i : start_i + limit_n]
+        else:
+            start_i = 0
+            window = contexts
+        for message in window:
             if isinstance(message, dict) and isinstance(message.get("content"), list):
                 images = [p for p in message["content"] if isinstance(p, dict) and p.get("type") == "image_url"]
                 if images:
@@ -628,7 +648,8 @@ class DashboardManager:
                         {"isImage": True, "name": "image", "data": (p.get("image_url") or {}).get("url", "")}
                         for p in images
                     ]
-        return {"chat_key": chat_key, "summary": summary, "messages": contexts}
+        return {"chat_key": chat_key, "summary": self.main.sessions.summary_of(chat_key) if start_i == 0 else "",
+                "messages": window, "total": total, "start": start_i}
 
     async def session_message_delete(self, request):
         body = await request.json()

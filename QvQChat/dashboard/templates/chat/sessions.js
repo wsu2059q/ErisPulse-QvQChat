@@ -296,9 +296,11 @@
       var sessionAtPoll = chatSession;
       var epochAtPoll = chatEpoch;
       var versionAtPoll = chatHistoryVersion;
-      api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtPoll)).then(function (data) {
+      var windowAtPoll = chatWindowStart;
+      api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtPoll) + "&limit=30").then(function (data) {
         if (epochAtPoll !== chatEpoch || sessionAtPoll !== chatSession) return;
         if (versionAtPoll !== chatHistoryVersion) return;
+        if (windowAtPoll < ((data && data.start) || 0)) return;
         var msgs = (data && data.messages) || [];
         var fresh = [];
         msgs.forEach(function (m, idx) {

@@ -1,8 +1,35 @@
-/* 消息流：历史加载、渲染、原地编辑与附件 */
+/* 消息流：历史按需加载（尾部窗口 + 上滚补更早）、渲染、原地编辑与附件 */
   var historySeq = 0;
   var chatLoading = false;
+  var HISTORY_PAGE = 30;
+  // 已加载窗口在服务端历史中的绝对起点与总数（>0 表示上方还有更早消息）
+  var chatWindowStart = 0;
+  var chatTotal = 0;
 
   var chatHistoryVersion = 0;
+
+  function applyHistoryWindow(data) {
+    var msgs = (data && data.messages) || [];
+    var start = (data && data.start) || 0;
+    chatTotal = (data && data.total) || msgs.length;
+    chatWindowStart = start;
+    chatHistory = [];
+    msgs.forEach(function (m, i) {
+      if (!m || typeof m !== "object") return;
+      if (m.role === "user" || m.role === "assistant") {
+        var atts = (m.atts || []).map(function (a) {
+          return { isImage: !!a.isImage, name: a.name || "image", data: a.data || "", mime: a.mime || "image/png" };
+        });
+        chatHistory.push({
+          role: m.role, text: contentText(m.content), idx: start + i,
+          steps: traceToSteps(m.trace),
+          rounds: Array.isArray(m.rounds) ? m.rounds : null,
+          atts: atts,
+        });
+      }
+    });
+  }
+
   function loadChatHistory() {
     var seq = ++historySeq;
     var sessionAtRequest = chatSession;
@@ -10,27 +37,12 @@
     var versionAtRequest = chatHistoryVersion;
     chatLoading = true;
     renderChat();
-    return api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtRequest)).then(function (data) {
+    return api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtRequest) + "&limit=" + HISTORY_PAGE).then(function (data) {
 
       if (seq !== historySeq || epochAtRequest !== chatEpoch || sessionAtRequest !== chatSession) return;
       if (versionAtRequest !== chatHistoryVersion) return;
       chatLoading = false;
-      var msgs = (data && data.messages) || [];
-      chatHistory = [];
-      msgs.forEach(function (m, idx) {
-        if (!m || typeof m !== "object") return;
-        if (m.role === "user" || m.role === "assistant") {
-          var atts = (m.atts || []).map(function (a) {
-            return { isImage: !!a.isImage, name: a.name || "image", data: a.data || "", mime: a.mime || "image/png" };
-          });
-          chatHistory.push({
-            role: m.role, text: contentText(m.content), idx: idx,
-            steps: traceToSteps(m.trace),
-            rounds: Array.isArray(m.rounds) ? m.rounds : null,
-            atts: atts,
-          });
-        }
-      });
+      applyHistoryWindow(data);
       renderChat();
     }, function () {
       if (seq !== historySeq) return;
@@ -39,6 +51,46 @@
     }, function () {
       chatLoading = false;
       renderChat();
+    });
+  }
+
+  var loadingOlder = false;
+  function loadOlderMessages() {
+    if (chatWindowStart <= 0 || chatLoading || loadingOlder) return;
+    loadingOlder = true;
+    var seq = historySeq;
+    var sessionAtRequest = chatSession;
+    var epochAtRequest = chatEpoch;
+    var versionAtRequest = chatHistoryVersion;
+    var box = el("qvq-chat-box");
+    var prevH = box ? box.scrollHeight : 0;
+    var prevTop = box ? box.scrollTop : 0;
+    var start = Math.max(0, chatWindowStart - HISTORY_PAGE);
+    api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtRequest) + "&start=" + start + "&limit=" + (chatWindowStart - start)).then(function (data) {
+      if (seq !== historySeq || epochAtRequest !== chatEpoch || sessionAtRequest !== chatSession) return;
+      if (versionAtRequest !== chatHistoryVersion) return;
+      var msgs = (data && data.messages) || [];
+      var prepend = [];
+      msgs.forEach(function (m, i) {
+        if (!m || typeof m !== "object") return;
+        if (m.role === "user" || m.role === "assistant") {
+          prepend.push({
+            role: m.role, text: contentText(m.content), idx: (data.start || start) + i,
+            steps: traceToSteps(m.trace),
+            rounds: Array.isArray(m.rounds) ? m.rounds : null,
+            atts: (m.atts || []).map(function (a) {
+              return { isImage: !!a.isImage, name: a.name || "image", data: a.data || "", mime: a.mime || "image/png" };
+            }),
+          });
+        }
+      });
+      if (prepend.length) {
+        chatHistory = prepend.concat(chatHistory);
+        chatWindowStart = data.start || start;
+        renderChat();
+        if (box) box.scrollTop = box.scrollHeight - prevH + prevTop;
+      }
+      loadingOlder = false;
     });
   }
 
@@ -84,13 +136,13 @@
       box.innerHTML = '<div class="qvq-chat-loading">' + HERO_SVG + '<span class="qvq-chat-loading-tx">QvQ Chat</span></div>';
       return;
     }
-    var chatHtmlKey = chatSession + "::" + chatHistory.map(function (m) { return [m.role, m.text, m.steps ? m.steps.length : 0, (m.atts || []).length].join("\u0001"); }).join("\u0002");
+    var chatHtmlKey = chatSession + "::" + chatWindowStart + "::" + chatHistory.map(function (m) { return [m.role, m.text, m.steps ? m.steps.length : 0, (m.atts || []).length].join(""); }).join("");
     if (box.getAttribute("data-html") === chatHtmlKey) {
       bindMdCopy(box);
       return;
     }
     box.setAttribute("data-html", chatHtmlKey);
-    box.innerHTML = chatHistory.map(function (m, i) {
+    var build = chatHistory.map(function (m, i) {
       var inner = "";
       (m.atts || []).forEach(function (a) {
         if (a.isImage) {
@@ -118,7 +170,8 @@
         return '<div class="qvq-msg-wrap"><div class="qvq-msg me' + freshCls + '">' + inner + body + '</div>' + acts + "</div>";
       }
       return '<div class="qvq-msg bot' + freshCls + '">' + stepsBlock + inner + body + "</div>";
-    }).join("");
+    });
+    box.innerHTML = build.join("");
     box.querySelectorAll(".qvq-msg-img").forEach(function (img) {
       img.onclick = function () {
         var m = chatHistory[parseInt(img.getAttribute("data-idx"), 10)] || {};
@@ -342,79 +395,3 @@
   }
 
 
-  function streamChat(payload, onEvent) {
-    var headers = { "Content-Type": "application/json" };
-    var token = getToken();
-    if (token) headers["Authorization"] = "Bearer " + token;
-    return fetch("/QvQChat/api/qvq/chat/stream", {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(payload),
-    }).then(function (resp) {
-      if (resp.status === 409) return { __busy: true };
-      if (!resp.ok || !resp.body) throw new Error("stream unavailable");
-      var reader = resp.body.getReader();
-      var decoder = new TextDecoder();
-      var buf = "";
-      function pump() {
-        return reader.read().then(function (chunk) {
-          if (chunk.done) return;
-          buf += decoder.decode(chunk.value, { stream: true });
-          var idx;
-          while ((idx = buf.indexOf("\n\n")) >= 0) {
-            var block = buf.slice(0, idx);
-            buf = buf.slice(idx + 2);
-            var ev = "message", data = "";
-            block.split("\n").forEach(function (line) {
-              if (line.indexOf("event:") === 0) ev = line.slice(6).trim();
-              else if (line.indexOf("data:") === 0) data += line.slice(5).trim();
-            });
-            if (!data) continue;
-            try { onEvent(ev, JSON.parse(data)); } catch (e) { (window.__pumpErrs = window.__pumpErrs || []).push(String((e && e.stack) || e)); }
-          }
-          return pump();
-        });
-      }
-      return pump();
-    });
-  }
-
-  function nearBottom(box) {
-    return box.scrollHeight - box.scrollTop - box.clientHeight < 120;
-  }
-
-
-  function makeLiveNode() {
-    var root = document.createElement("div");
-    root.className = "qvq-msg bot live";
-    root.innerHTML = '<div class="qvq-live-steps"></div><div class="qvq-live-text"><span class="qvq-cursor"></span></div>';
-    return {
-      root: root,
-      stepsEl: root.querySelector(".qvq-live-steps"),
-      textEl: root.querySelector(".qvq-live-text"),
-      timer: null,
-    };
-  }
-
-  function renderLiveNode(box, els, live) {
-    var stick = nearBottom(box);
-    els.stepsEl.innerHTML = stepsHtml(live.steps, true);
-    bindStepToggles(els.stepsEl);
-    if (live.segments.length) {
-      els.textEl.innerHTML = '<div class="qvq-rounds">' + renderSerial(live.segments) + "</div>";
-      bindStepToggles(els.textEl);
-    } else if (!live.text && live.started) {
-      var secs = Math.max(0, Math.round((Date.now() - live.started) / 1000));
-      els.textEl.innerHTML = '<span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "s</span>";
-    } else {
-      els.textEl.innerHTML = mdRender(live.text) || '<span class="qvq-cursor"></span>';
-    }
-    if (stick) box.scrollTop = box.scrollHeight;
-  }
-
-
-  function attachLive(snapshot) {
-    if (activeLive && activeLive.session === snapshot.session) return;
-    var epochAtAttach = chatEpoch;
-    var box = el("qvq-chat-box");
-    var live = { status: snapshot.status || "running", text: snapshot.text || "", steps: snapshot.steps || [], error: snapshot.error || null };
