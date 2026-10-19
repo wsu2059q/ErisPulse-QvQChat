@@ -1,3 +1,4 @@
+/* 消息流：历史加载、渲染、原地编辑与附件 */
   var historySeq = 0;
   var chatLoading = false;
 

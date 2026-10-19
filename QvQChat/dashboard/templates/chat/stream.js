@@ -1,3 +1,4 @@
+/* 流式：SSE、实时输出节点、恢复挂载、消息派发 */
     setSessionBusy(snapshot.session, true);
     var els = makeLiveNode();
     box.appendChild(els.root);

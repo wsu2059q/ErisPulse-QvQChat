@@ -239,7 +239,8 @@ class ConversationService:
             while (prefix + f"web{n}") in existing:
                 n += 1
             chat_key = prefix + f"web{n}"
-        self._state(chat_key)
+        state = self._state(chat_key)
+        self._save(chat_key, state)
         return chat_key
 
     def delete(self, chat_key: str) -> bool:
@@ -354,6 +355,14 @@ class ConversationService:
 
         await self.compact_if_needed(chat_key)
         contexts = self.get_contexts(chat_key)
+        # 发送级轮窗口：只携带最近 N 轮，历史本身不动
+        max_turns = int(getattr(self.config, "max_context_turns", 0) or 0)
+        if max_turns > 0:
+            from .compactor import split_turns, merge_turns
+
+            turns = split_turns(contexts)
+            if len(turns) > max_turns:
+                contexts = merge_turns(turns[-max_turns:])
         if not contexts and seed_provider is not None:
             seeded = seed_provider()
             if asyncio.iscoroutine(seeded):

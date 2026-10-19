@@ -1,3 +1,4 @@
+/* 启动：登录与 initApp 装配 */
   function initApp() {
     if (window.__qvq_inited__) return;
     window.__qvq_inited__ = true;

@@ -1,3 +1,4 @@
+/* 会话操作：导出/分享、会话设置、模型与强度菜单、提名 */
   function exportSession() {
     api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(chatSession)).then(function (data) {
       var msgs = (data && data.messages) || [];

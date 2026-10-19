@@ -228,8 +228,17 @@ class DashboardManager:
 
     def _view_html(self) -> str:
         html = (TEMPLATES / "view.html").read_text(encoding="utf-8")
-        css = (TEMPLATES / "view.css").read_text(encoding="utf-8")
-        js = (TEMPLATES / "view.js").read_text(encoding="utf-8")
+        css_dir = TEMPLATES / "css"
+        css = "".join(
+            (css_dir / f"{name}.css").read_text(encoding="utf-8")
+            for name in ("base", "admin", "chat", "views")
+        )
+        chat_dir = TEMPLATES / "chat"
+        order = ("core", "ui", "nav", "sessions", "messages", "stream", "views", "init")
+        js = "".join(
+            (chat_dir / f"{name}.js").read_text(encoding="utf-8")
+            for name in order
+        )
         return (
             "<!DOCTYPE html><html><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
