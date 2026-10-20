@@ -83,6 +83,9 @@ class DashboardManager:
             ("POST", "/api/qvq/import", self.import_data),
             ("GET", "/api/qvq/tasks", self.tasks_get),
             ("POST", "/api/qvq/tasks/delete", self.tasks_delete),
+            ("GET", "/api/qvq/breakers", self.breakers_get),
+            ("GET", "/api/qvq/costs", self.costs_get),
+            ("GET", "/api/qvq/running", self.running_get),
             ("GET", "/api/qvq/memory", self.memory_get),
             ("POST", "/api/qvq/memory/delete", self.memory_delete),
             ("GET", "/api/qvq/sessions", self.sessions_get),
@@ -568,8 +571,45 @@ class DashboardManager:
         for task in self.main.scheduler.list():
             item = dict(task)
             item["next_formatted"] = utils.format_ts(float(task.get("next_run", 0)))
+            if task.get("last_run"):
+                item["last_formatted"] = utils.format_ts(float(task.get("last_run") or 0))
             tasks.append(item)
-        return {"tasks": tasks}
+        runs = [
+            {**run, "at_formatted": utils.format_ts(float(run.get("at") or 0))}
+            for run in reversed(self.main.scheduler.runs())
+        ]
+        return {"tasks": tasks, "runs": runs}
+
+    async def breakers_get(self, request):
+        return {"breakers": self.main.pool.breaker_state()}
+
+    async def costs_get(self, request):
+        # 每百万 token 单价 × 用量明细（in/out），换算每日与按模型成本
+        prices = self.main.pool.model_costs()
+        daily: list[dict] = []
+        by_model: dict[str, float] = {}
+        total = 0.0
+        for day in self.main._usage_history(14):
+            day_cost = 0.0
+            for model_id, usage in (day.get("by_model") or {}).items():
+                price = prices.get(str(model_id))
+                if not price or not isinstance(usage, dict):
+                    continue
+                cost = (int(usage.get("in", 0) or 0) / 1e6) * price["input"] + (
+                    int(usage.get("out", 0) or 0) / 1e6
+                ) * price["output"]
+                day_cost += cost
+                by_model[str(model_id)] = by_model.get(str(model_id), 0.0) + cost
+            daily.append({"date": day.get("date"), "cost": round(day_cost, 4)})
+            total += day_cost
+        return {
+            "daily": daily,
+            "by_model": {k: round(v, 4) for k, v in sorted(by_model.items(), key=lambda kv: -kv[1])},
+            "total": round(total, 4),
+        }
+
+    async def running_get(self, request):
+        return {"running": self._live.overview()}
 
     async def tasks_delete(self, request):
         body = await request.json()

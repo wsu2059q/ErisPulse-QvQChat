@@ -535,6 +535,7 @@ class Main(BaseModule):
                     "tokens": int((data or {}).get("tokens", 0) or 0) if isinstance(data, dict) else 0,
                     "calls": int((data or {}).get("calls", 0) or 0) if isinstance(data, dict) else 0,
                     "by_chat": (data or {}).get("by_chat", {}),
+                    "by_model": (data or {}).get("by_model", {}),
                 }
             )
         return history
