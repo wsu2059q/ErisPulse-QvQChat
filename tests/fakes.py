@@ -324,6 +324,14 @@ def make_config(**overrides):
         mcp_timeout=30,
         extra_prompts=[],
         owner_only=False,
+        user_rate_limit=0,
+        group_isolation=False,
+        stt_provider="",
+        stt_module="",
+        whisper_model="base",
+        stt_language="zh",
+        kb_auto_inject=True,
+        kb_top_k=2,
         task_check_interval=20,
         task_use_cron_module=True,
         view_token="",
@@ -371,10 +379,10 @@ class FakeMain:
     def audit(self, tool, detail, ctx=None):
         self.audits.append({"tool": tool, "detail": detail})
 
-    def record_usage(self, chat_key, usage):
+    def record_usage(self, chat_key, usage, model=""):
         from QvQChat.Main import Main
 
-        Main.record_usage(self, chat_key, usage)
+        Main.record_usage(self, chat_key, usage, model)
 
     def _usage_today(self):
         from QvQChat.Main import Main
