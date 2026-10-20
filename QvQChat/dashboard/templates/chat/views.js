@@ -176,23 +176,26 @@
     var clients = {};
     (mcpData.clients || []).forEach(function (c) { clients[c.name] = c; });
 
-    var capRows = function (rows, empty) {
-      return rows || '<div class="qvq-empty">-</div>';
+    var capRows = function (rows) {
+      return '<div class="qvq-cap-flow">' + (rows || '<span class="qvq-tool-desc">-</span>') + "</div>";
     };
     var toolRows = tools.map(function (tool) {
       var off = disabled.indexOf(tool.name) >= 0;
-      return '<div class="qvq-cap-row"><span class="qvq-cap-name">' + esc(tool.label || tool.name) + "</span>" +
-        '<input type="checkbox" data-cap-tool="' + esc(tool.name) + '"' + (off ? "" : " checked") + "/></div>";
+      return '<label class="qvq-cap-chip' + (off ? " off" : "") + '">' +
+        '<input type="checkbox" data-cap-tool="' + esc(tool.name) + '"' + (off ? "" : " checked") + "/>" +
+        "<span>" + esc(tool.label || tool.name) + "</span></label>";
     }).join("");
     var skillRows = skills.map(function (sk) {
-      return '<div class="qvq-cap-row"><span class="qvq-cap-name">' + esc(sk.name) + "</span>" +
-        '<input type="checkbox" data-cap-skill="' + esc(sk.name) + '"' + (sk.enabled !== false ? " checked" : "") + "/></div>";
+      return '<label class="qvq-cap-chip' + (sk.enabled === false ? " off" : "") + '">' +
+        '<input type="checkbox" data-cap-skill="' + esc(sk.name) + '"' + (sk.enabled !== false ? " checked" : "") + "/>" +
+        "<span>" + esc(sk.name) + "</span></label>";
     }).join("");
     var mcpRows = servers.map(function (srv) {
       var client = clients[srv.name];
       var connected = client && client.status === "connected";
-      return '<div class="qvq-cap-row"><span class="qvq-cap-name">' + esc(srv.name) + "</span>" +
-        '<input type="checkbox" data-cap-mcp="' + esc(srv.name) + '"' + (connected ? " checked" : "") + "/></div>";
+      return '<label class="qvq-cap-chip' + (connected ? "" : " off") + '">' +
+        '<input type="checkbox" data-cap-mcp="' + esc(srv.name) + '"' + (connected ? " checked" : "") + "/>" +
+        "<span>" + esc(srv.name) + "</span></label>";
     }).join("");
 
     box.innerHTML =

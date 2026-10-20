@@ -689,6 +689,10 @@
     opacity: 0.35;
   }
 }
+/* 编排页卡片取自然高度，不参与网格等高拉伸 */
+.qvq-tab[data-section="orchestrate"] .qvq-grid .qvq-card {
+  height: auto;
+}
 .qvq-health-list {
   margin-top: 10px;
   display: flex;
@@ -748,11 +752,43 @@
   gap: 16px;
   align-items: start;
 }
-.qvq-caps-cols .qvq-cap-group {
-  max-height: 340px;
+.qvq-cap-head {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.qvq-cap-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 300px;
   overflow-y: auto;
   padding-right: 4px;
-  margin-bottom: 0;
+}
+.qvq-cap-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--qvq-surface, rgba(128, 128, 128, 0.1));
+  border: 1px solid var(--qvq-bd, rgba(128, 128, 128, 0.22));
+  cursor: pointer;
+  user-select: none;
+  max-width: 100%;
+}
+.qvq-cap-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qvq-cap-chip input {
+  margin: 0;
+  accent-color: var(--qvq-accent, #e5484d);
+}
+.qvq-cap-chip.off span {
+  opacity: 0.45;
+  text-decoration: line-through;
 }
 @media (max-width: 1100px) {
   .qvq-caps-cols {
@@ -806,22 +842,7 @@
   font-weight: 600;
 }
 .qvq-cap-group {
-  margin-bottom: 14px;
-}
-.qvq-cap-head {
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-.qvq-cap-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 5px 0;
-  border-bottom: 1px dashed var(--qvq-border, rgba(128, 128, 128, 0.15));
-}
-.qvq-cap-name {
-  word-break: break-all;
+  margin-bottom: 0;
 }
 .qvq-cost-row {
   display: flex;
