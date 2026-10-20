@@ -6,6 +6,8 @@ from . import utils
 from .utils import schedule_next
 
 TASKS_KEY = "QvQChat:tasks"
+TASK_RUNS_KEY = "QvQChat:task_runs"
+TASK_RUNS_KEEP = 50
 
 
 class Scheduler:
@@ -30,6 +32,27 @@ class Scheduler:
 
     def list(self) -> list[dict]:
         return self._load()
+
+    def runs(self, limit: int = TASK_RUNS_KEEP) -> list[dict]:
+        data = self.sdk.storage.get(TASK_RUNS_KEY, [])
+        runs = [r for r in data if isinstance(r, dict)] if isinstance(data, list) else []
+        return runs[-limit:]
+
+    def _record_run(self, task: dict, status: str, error: str = "") -> None:
+        try:
+            runs = self.runs(TASK_RUNS_KEEP - 1)
+            runs.append(
+                {
+                    "task_id": str(task.get("id") or ""),
+                    "name": str(task.get("name") or ""),
+                    "at": utils.now_ts(),
+                    "status": status,
+                    "error": utils.truncate(error, 160),
+                }
+            )
+            self.sdk.storage.set(TASK_RUNS_KEY, runs)
+        except Exception:
+            pass
 
     def add(self, spec: dict) -> dict:
         schedule = spec["schedule"]
@@ -201,6 +224,8 @@ class Scheduler:
     async def _fire(self, task: dict) -> None:
         try:
             await self.main.run_task(task)
+            self._record_run(task, "ok")
             self.main.logger.info(f"task fired: {task.get('id')} {task.get('name')}")
         except Exception as e:
+            self._record_run(task, "error", str(e))
             self.main.logger.warning(f"task {task.get('id')} failed: {e}")
