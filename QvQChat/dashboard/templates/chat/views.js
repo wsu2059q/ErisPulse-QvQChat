@@ -15,7 +15,220 @@
     body.querySelector("[data-form-save]").onclick = function () { onSave(body); };
   }
 
+  /* ===== 编排页：模型链拖拽 / 健康面板 / 运行状态 / 任务时间线 / 能力开关 ===== */
+
+  var orchChain = [];
+
+  function loadOrchestrate() {
+    api("/api/qvq/models").then(function (data) {
+      orchChain = flattenChain((data && data.providers) || []);
+      renderOrchChain();
+    });
+    api("/api/qvq/breakers").then(function (data) {
+      renderModelHealth("qvq-orch-health", (data && data.breakers) || []);
+    });
+    api("/api/qvq/running").then(function (data) {
+      renderRunning((data && data.running) || []);
+    });
+    api("/api/qvq/tasks").then(function (data) {
+      renderTaskTimeline((data && data.tasks) || [], (data && data.runs) || [], "qvq-orch-timeline");
+    });
+    Promise.all([
+      api("/api/qvq/tools"),
+      api("/api/qvq/skills"),
+      api("/api/qvq/mcp")
+    ]).then(function (results) {
+      renderOrchCaps(results[0] || {}, results[1] || {}, results[2] || {});
+    });
+  }
+
+  // 故障转移链 = 各 provider 的 models 依序展平；保留 provider 元信息以便重排后回存
+  function flattenChain(providers) {
+    var chain = [];
+    providers.forEach(function (p) {
+      (p.models || []).forEach(function (m) {
+        chain.push({ provider: p.id, name: p.name, base_url: p.base_url, model: m });
+      });
+    });
+    return chain;
+  }
+
+  function renderOrchChain() {
+    var box = el("qvq-orch-chain");
+    if (!box) return;
+    if (!orchChain.length) {
+      box.innerHTML = '<div class="qvq-empty">' + esc(t("models_empty")) + "</div>";
+      return;
+    }
+    box.innerHTML = '<div class="qvq-chain-list">' + orchChain.map(function (item, i) {
+      var off = item.model.enabled === false;
+      return '<div class="qvq-chain-row' + (off ? " off" : "") + '" draggable="true" data-ci="' + i + '">' +
+        '<span class="qvq-chain-seq">' + (i + 1) + "</span>" +
+        '<span class="qvq-chain-name">' + esc(item.provider + ":" + item.model.id) + "</span>" +
+        (off ? "<span class='qvq-chip'>" + esc(t("off")) + "</span>" : "") +
+        '<span class="qvq-q-drag" title="⇅">⇅</span></div>';
+    }).join("") + "</div>";
+    bindChainDrag(box);
+  }
+
+  function bindChainDrag(box) {
+    var dragIndex = null;
+    box.querySelectorAll(".qvq-chain-row").forEach(function (row) {
+      row.addEventListener("dragstart", function (e) {
+        dragIndex = parseInt(row.getAttribute("data-ci"), 10);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+      });
+      row.addEventListener("dragover", function (e) { e.preventDefault(); });
+      row.addEventListener("drop", function (e) {
+        e.preventDefault();
+        var to = parseInt(row.getAttribute("data-ci"), 10);
+        if (dragIndex === null || dragIndex === to) return;
+        var moved = orchChain.splice(dragIndex, 1)[0];
+        orchChain.splice(to, 0, moved);
+        dragIndex = null;
+        renderOrchChain();
+        saveChainOrder();
+      });
+    });
+  }
+
+  // 按新链序重排各 provider 的 models 数组；api_key 留空由后端保留旧值
+  function saveChainOrder() {
+    var byProvider = {};
+    orchChain.forEach(function (item) {
+      if (!byProvider[item.provider]) {
+        byProvider[item.provider] = { id: item.provider, name: item.name, base_url: item.base_url, api_key: "", models: [] };
+      }
+      byProvider[item.provider].models.push(item.model);
+    });
+    Promise.all(Object.keys(byProvider).map(function (pid) {
+      return api("/api/qvq/providers/save", "POST", byProvider[pid]);
+    })).then(function () { toast(t("orch_chain_saved")); });
+  }
+
+  function renderModelHealth(boxId, breakers) {
+    var box = el(boxId);
+    if (!box) return;
+    if (!breakers.length) {
+      box.innerHTML = '<div class="qvq-empty">' + esc(t("health_ok")) + "</div>";
+      return;
+    }
+    box.innerHTML = breakers.map(function (b) {
+      return '<div class="qvq-health-row"><span class="qvq-chip danger-chip">' + esc(t("health_cooldown")) + "</span>" +
+        "<b>" + esc(b.model) + "</b>" +
+        "<span class='qvq-tool-desc'>" + esc(t("health_fails").replace("{n}", b.fails)) + " · " +
+        esc(t("health_left").replace("{s}", b.cooldown_left)) + "</span></div>";
+    }).join("");
+  }
+
+  function renderRunning(items) {
+    var box = el("qvq-orch-running");
+    if (!box) return;
+    var live = items.filter(function (r) { return r.status === "running"; });
+    if (!live.length) {
+      box.innerHTML = '<div class="qvq-empty">' + esc(t("running_none")) + "</div>";
+      return;
+    }
+    box.innerHTML = live.map(function (r) {
+      return '<div class="qvq-tool-row"><span class="qvq-tool-name"><span class="qvq-chip o-eco">' + esc(t("steps_running")) + "</span> " +
+        esc(r.session) + "</span><span class='qvq-tool-desc'>" + esc(r.text_head || "-") + "</span></div>";
+    }).join("");
+  }
+
+  // 上半部分为定时任务（下次执行 + 最近状态），下半部分为最近执行记录
+  function renderTaskTimeline(tasks, runs, boxId) {
+    var box = el(boxId);
+    if (!box) return;
+    var lines = tasks.map(function (task) {
+      var status = task.last_status || "";
+      var dot = status === "error" ? "err" : (status ? "ok" : "");
+      var extra = "";
+      if (status === "error") extra = " · <span class='qvq-tl-err'>" + esc(t("task_status_error")) + "</span>";
+      else if (status === "running") extra = " · " + esc(t("steps_running"));
+      return '<div class="qvq-tl-row"><span class="qvq-tl-dot ' + dot + '"></span>' +
+        '<div class="qvq-tl-main"><b>' + esc(task.name || task.id) + "</b>" +
+        "<div class='qvq-tool-desc'>" + esc(task.schedule_raw || "") +
+        " · " + esc(t("task_next")) + " " + esc(task.next_formatted || "-") +
+        (task.last_formatted ? " · " + esc(t("task_last")) + " " + esc(task.last_formatted) : "") +
+        extra + "</div></div></div>";
+    }).join("");
+    var recent = runs.slice(0, 10).map(function (run) {
+      return '<div class="qvq-tl-row mini"><span class="qvq-tl-dot ' + (run.status === "error" ? "err" : "ok") + '"></span>' +
+        '<div class="qvq-tl-main"><span>' + esc(run.name || run.task_id) + "</span>" +
+        "<div class='qvq-tool-desc'>" + esc(run.at_formatted || "") +
+        (run.status === "error" && run.error ? " · " + esc(run.error) : "") + "</div></div></div>";
+    }).join("");
+    if (!lines && !recent) {
+      box.innerHTML = '<div class="qvq-empty">' + esc(t("timeline_empty")) + "</div>";
+      return;
+    }
+    box.innerHTML = '<div class="qvq-timeline">' + (lines || "") + (recent || "") + "</div>";
+  }
+
+  function renderOrchCaps(toolsData, skillsData, mcpData) {
+    var box = el("qvq-orch-caps");
+    if (!box) return;
+    var tools = toolsData.tools || [];
+    var disabled = toolsData.disabled || [];
+    var skills = skillsData.skills || [];
+    var servers = mcpData.servers || [];
+    var clients = {};
+    (mcpData.clients || []).forEach(function (c) { clients[c.name] = c; });
+
+    var capRows = function (rows, empty) {
+      return rows || '<div class="qvq-empty">-</div>';
+    };
+    var toolRows = tools.map(function (tool) {
+      var off = disabled.indexOf(tool.name) >= 0;
+      return '<div class="qvq-cap-row"><span class="qvq-cap-name">' + esc(tool.label || tool.name) + "</span>" +
+        '<input type="checkbox" data-cap-tool="' + esc(tool.name) + '"' + (off ? "" : " checked") + "/></div>";
+    }).join("");
+    var skillRows = skills.map(function (sk) {
+      return '<div class="qvq-cap-row"><span class="qvq-cap-name">' + esc(sk.name) + "</span>" +
+        '<input type="checkbox" data-cap-skill="' + esc(sk.name) + '"' + (sk.enabled !== false ? " checked" : "") + "/></div>";
+    }).join("");
+    var mcpRows = servers.map(function (srv) {
+      var client = clients[srv.name];
+      var connected = client && client.status === "connected";
+      return '<div class="qvq-cap-row"><span class="qvq-cap-name">' + esc(srv.name) + "</span>" +
+        '<input type="checkbox" data-cap-mcp="' + esc(srv.name) + '"' + (connected ? " checked" : "") + "/></div>";
+    }).join("");
+
+    box.innerHTML =
+      "<div class='qvq-cap-group'><div class='qvq-cap-head'>" + esc(t("caps_tools")) + " · " + tools.length + "</div>" +
+      capRows(toolRows) + "</div>" +
+      "<div class='qvq-cap-group'><div class='qvq-cap-head'>" + esc(t("caps_skills")) + " · " + skills.length + "</div>" +
+      capRows(skillRows) + "</div>" +
+      "<div class='qvq-cap-group'><div class='qvq-cap-head'>MCP · " + servers.length + "</div>" +
+      capRows(mcpRows) + "</div>";
+
+    box.querySelectorAll("input[data-cap-tool]").forEach(function (cb) {
+      cb.onchange = function () {
+        var name = cb.getAttribute("data-cap-tool");
+        var set = disabled.slice();
+        var idx = set.indexOf(name);
+        if (cb.checked && idx >= 0) set.splice(idx, 1);
+        if (!cb.checked && idx < 0) set.push(name);
+        api("/api/qvq/config", "POST", { disabled_tools: set }).then(function () { toast(t("saved")); });
+      };
+    });
+    box.querySelectorAll("input[data-cap-skill]").forEach(function (cb) {
+      cb.onchange = function () {
+        api("/api/qvq/skills/enabled", "POST", { name: cb.getAttribute("data-cap-skill"), enabled: cb.checked });
+      };
+    });
+    box.querySelectorAll("input[data-cap-mcp]").forEach(function (cb) {
+      cb.onchange = function () {
+        var path = cb.checked ? "/api/qvq/mcp/connect" : "/api/qvq/mcp/disconnect";
+        api(path, "POST", { name: cb.getAttribute("data-cap-mcp") });
+      };
+    });
+  }
+
   function loadModels() {
+    api("/api/qvq/breakers").then(function (data) {
+      renderModelHealth("qvq-models-health", (data && data.breakers) || []);
+    });
     api("/api/qvq/models").then(function (data) {
       var providers = (data && data.providers) || [];
       modelPresets = (data && data.presets) || [];
@@ -525,6 +738,7 @@
   function loadTasks() {
     api("/api/qvq/tasks").then(function (data) {
       var tasks = (data && data.tasks) || [];
+      renderTaskTimeline(tasks, (data && data.runs) || [], "qvq-tasks-timeline");
       if (!tasks.length) {
         el("qvq-tasks-list").innerHTML = '<div class="qvq-empty">' + esc(t("tasks_empty")) + "</div>";
         return;
@@ -961,8 +1175,62 @@
     }
   }
 
-  function renderUsageChart(data, boxId) {
-    var box = el(boxId || "qvq-usage-chart");
+  /* ===== 成本可视化：每日成本柱 + 累计线 + 按模型分布 ===== */
+
+  function renderCostChart(data, boxId) {
+    var box = el(boxId || "qvq-home-cost");
+    if (!box) return;
+    var days = data.daily || [];
+    var byModel = data.by_model || {};
+    var total = data.total || 0;
+    if (!Object.keys(byModel).length) {
+      box.innerHTML = '<div class="qvq-empty">' + esc(t("cost_empty")) + "</div>";
+      return;
+    }
+    var costs = days.map(function (d) { return d.cost || 0; });
+    var W = 700, H = 150, top = 10, bottom = 30;
+    var plotH = H - top - bottom;
+    var n = days.length || 1;
+    var maxC = Math.max.apply(null, costs) || 1;
+    var x = function (i) { return n > 1 ? W * (i / (n - 1)) : W / 2; };
+    var y = function (v) { return top + plotH - (v / maxC) * plotH; };
+    var grid = "";
+    [0.5].forEach(function (r) {
+      grid += "<line class='qvq-chart-grid' x1='0' y1='" + (top + plotH * r) + "' x2='" + W + "' y2='" + (top + plotH * r) + "' />";
+    });
+    var bw = Math.max(5, W / n * 0.4);
+    var bars = costs.map(function (c, i) {
+      if (!c) return "";
+      var h = (c / maxC) * plotH;
+      return "<rect class='qvq-chart-calls' x='" + (x(i) - bw / 2) + "' y='" + (top + plotH - h) +
+        "' width='" + bw + "' height='" + h + "' rx='2' />";
+    }).join("");
+    var cum = 0;
+    var cumMax = costs.reduce(function (a, b) { return a + b; }, 0) || 1;
+    var cumPoints = costs.map(function (c, i) {
+      cum += c;
+      return x(i) + "," + (top + plotH - (cum / cumMax) * plotH);
+    });
+    var axis = [0, n - 1].map(function (i) {
+      return "<span>" + esc(((days[i] && days[i].date) || "").slice(5)) + "</span>";
+    }).join("");
+    var dist = Object.keys(byModel).slice(0, 6).map(function (mid) {
+      var v = byModel[mid];
+      var pct = total ? Math.round((v / total) * 100) : 0;
+      return '<div class="qvq-cost-row"><span class="qvq-cost-name">' + esc(mid) + "</span>" +
+        '<span class="qvq-cost-bar"><i style="width:' + pct + '%"></i></span>' +
+        '<span class="qvq-cost-val">$' + Number(v).toFixed(4) + " · " + pct + "%</span></div>";
+    }).join("");
+    box.innerHTML =
+      "<div class='qvq-chart-legend'><span>" + esc(t("cost_total")) + " <b>$" + Number(total).toFixed(4) + "</b></span>" +
+      "<span>" + esc(t("cost_daily")) + "</span><span>" + esc(t("cost_by_model")) + "</span></div>" +
+      "<div class='qvq-chart-wrap'><svg class='qvq-chart' viewBox='0 0 " + W + " " + H + "' preserveAspectRatio='none' role='img'>" +
+      grid + bars +
+      "<path class='qvq-chart-line' d='M" + cumPoints.join(" L") + "' />" +
+      "</svg><div class='qvq-chart-axis'>" + axis + "</div></div>" + dist;
+  }
+
+  function renderUsageChart(data, boxId) {    var box = el(boxId || "qvq-usage-chart");
     if (!box) return;
     var days = data.days || [];
     var limit = data.limit || 0;

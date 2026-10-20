@@ -88,6 +88,9 @@
     api("/api/qvq/usage").then(function (data) {
       renderUsageChart(data || {}, "qvq-home-chart");
     });
+    api("/api/qvq/costs").then(function (data) {
+      renderCostChart(data || {}, "qvq-home-cost");
+    });
     api("/api/qvq/sessions").then(function (data) {
       var homeSessions = (data && data.sessions) || [];
       renderHomeList("qvq-home-sessions", homeSessions, function (s) {
