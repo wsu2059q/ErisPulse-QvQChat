@@ -83,10 +83,6 @@ class QvQConfig(BaseConfig):
     daily_token_limit: int = field(default=0, metadata=_desc("daily_token_limit", "单日模型 token 总量限额（0 不限），超出后非管理员对话被暂停，次日重置", "usage", 1, "number"))
     usage_retention_days: int = field(default=14, metadata=_desc("usage_retention_days", "用量统计数据保留天数", "usage", 2, "number"))
 
-    stt_provider: str = field(default="", metadata=_desc("stt_provider", "语音识别：module 调外部模块服务（stt_module）/ whisper 本地 faster-whisper（CPU 低算力）；留空不识别语音", "stt", 1, "select", ["", "module", "whisper"]))
-    stt_module: str = field(default="", metadata=_desc("stt_module", "module 模式的服务全名（格式：模块.服务，如 Whisper.transcribe）", "stt", 2))
-    whisper_model: str = field(default="base", metadata=_desc("whisper_model", "faster-whisper 模型（tiny/base/small，CPU 建议 base int8）", "stt", 3, "select", ["tiny", "base", "small"]))
-    stt_language: str = field(default="zh", metadata=_desc("stt_language", "语音识别语言提示（如 zh/en/ja）", "stt", 4))
     kb_auto_inject: bool = field(default=True, metadata=_desc("kb_auto_inject", "对话时自动检索知识库相关片段注入系统提示", "kb", 1, "switch"))
     kb_top_k: int = field(default=2, metadata=_desc("kb_top_k", "自动注入的知识库片段数上限", "kb", 2, "number"))
     skills_dir: str = field(default="data/QvQChat/skills", metadata=_desc("skills_dir", "技能目录（每个 .md 文件一个技能，frontmatter 含 name/description）", "skills", 1))
