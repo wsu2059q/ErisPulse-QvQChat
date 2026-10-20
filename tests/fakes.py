@@ -303,7 +303,7 @@ def make_config(**overrides):
         confirm_timeout=60,
         context_limit=30,
         history_seed=20,
-        forward_enabled=True,
+        forward_enabled=False,
         forward_threshold=600,
         context_summary=True,
         context_compress_tokens=128000,
