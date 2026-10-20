@@ -13,6 +13,8 @@ def make_main(**overrides):
         main.cfg.context_compress_tokens = 0
     main._pending = {}
     main._chat_locks = {}
+    main._rate_window = {}
+    main._rate_notice_shown = {}
     for name in (
         "_process_locked", "_chat_ctx", "_sender_name", "_resolve_group_name",
         "_seed_history",
@@ -20,7 +22,7 @@ def make_main(**overrides):
         "record_usage", "_usage_today", "_prune_usage", "_usage_history",
         "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
         "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
-        "_chat_key_of", "_chat_confirmer",
+        "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice",
     ):
         static_attr = inspect.getattr_static(Main, name)
         if isinstance(static_attr, staticmethod):

@@ -134,6 +134,8 @@ class Main(BaseModule):
         self._chat_locks: dict = {}
         self._pending: dict = {}
         self._waiting: dict = {}
+        self._rate_window: dict = {}
+        self._rate_notice_shown: dict = {}
 
     @staticmethod
     def get_load_strategy() -> ModuleLoadStrategy:
@@ -368,6 +370,35 @@ class Main(BaseModule):
                 except Exception:
                     pass
 
+    def _rate_allow(self, chat_key: str, sender_id: str, event) -> bool:
+        """群聊 per-user 滑动窗口限频：超限静默丢弃（每窗口至多提示一次），管理员豁免。"""
+        limit = int(getattr(self.cfg, "user_rate_limit", 0) or 0)
+        if limit <= 0 or not chat_key or ":group:" not in chat_key or not sender_id:
+            return True
+        if self.is_admin(sender_id, "chat", event.get_platform() or ""):
+            return True
+        now = time.time()
+        key = f"rate:{chat_key}:{sender_id}"
+        window = [t for t in self._rate_window.get(key, []) if now - t < 60]
+        if len(window) >= limit:
+            if not getattr(self, "_rate_notice_shown", {}).get(key):
+                self._rate_notice_shown = getattr(self, "_rate_notice_shown", {})
+                self._rate_notice_shown[key] = True
+                notice_event = event
+                self.spawn(self._rate_notice(notice_event))
+            return False
+        window.append(now)
+        self._rate_window[key] = window
+        if now - max(window[:-1], default=now) > 120:
+            self._rate_notice_shown.pop(key, None)
+        return True
+
+    async def _rate_notice(self, event) -> None:
+        try:
+            await event.reply(texts.t("rate_limited"))
+        except Exception:
+            pass
+
     def _should_trigger(self, event, chat_key: str, text: str) -> bool:
         if chat_key in self.takeover:
             return True
@@ -396,6 +427,8 @@ class Main(BaseModule):
             if not self._should_trigger(event, chat_key, text):
                 return
             event.done()
+            if not self._rate_allow(chat_key, str(event.get_user_id() or ""), event):
+                return
             images = self._extract_images(event)
             self._batch_message(event, chat_key, text, images)
         except Exception as e:
@@ -462,7 +495,12 @@ class Main(BaseModule):
                 by_model = data.get("by_model")
                 if not isinstance(by_model, dict):
                     by_model = {}
-                by_model[model] = int(by_model.get(model, 0) or 0) + tokens
+                entry = by_model.get(model)
+                entry = {"tokens": 0, "in": 0, "out": 0} if not isinstance(entry, dict) else entry
+                entry["tokens"] = int(entry.get("tokens", 0) or 0) + tokens
+                entry["in"] = int(entry.get("in", 0) or 0) + int(usage.get("prompt_tokens", 0) or 0)
+                entry["out"] = int(entry.get("out", 0) or 0) + int(usage.get("completion_tokens", 0) or 0)
+                by_model[model] = entry
                 data["by_model"] = by_model
             self.sdk.storage.set(key, data)
             self._prune_usage(today)
