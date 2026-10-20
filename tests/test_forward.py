@@ -24,7 +24,7 @@ class FakeForwardEvent:
 
 
 def make_harness(**overrides):
-    cfg = make_config(**{"forward_threshold": 50, "forward_enabled": True, **overrides})
+    cfg = make_config(**{"forward_threshold": 50, **overrides})
     sdk = FakeSDK()
     sdk.adapter.add("onebot11", FakeSendChain(sends=("MergeForward", "Text")), sends=("MergeForward", "Text"))
     return SimpleNamespace(cfg=cfg, logger=FakeLogger(), sdk=sdk)
@@ -35,7 +35,15 @@ def long_text(n):
 
 
 def tool_trace():
-    return [{"tool": "call_module", "arguments": "{}", "output": "installed"}]
+    return [{"tool": "call_module", "arguments": "{}", "output": "installed", "ms": 5}]
+
+
+def rounds_two_replies():
+    return [
+        {"text": "", "tools": tool_trace()},
+        {"text": "先说中间发现", "tools": []},
+        {"text": "综上是结论", "tools": []},
+    ]
 
 
 def forward_calls(harness, platform="onebot11"):
@@ -43,42 +51,32 @@ def forward_calls(harness, platform="onebot11"):
     return [args for name, args, _ in chain.calls if name == "MergeForward"]
 
 
-async def test_disabled_never_forwards():
-    harness = make_harness(forward_platforms=[], no_forward_platforms=["onebot11"])
+async def test_tool_run_with_multiple_replies_merges():
+    harness = make_harness()
     event = FakeForwardEvent()
-    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is False
+    assert await Delivery(harness)._try_forward(event, "综上是结论", tool_trace(), rounds=rounds_two_replies()) is True
+    calls = forward_calls(harness)
+    assert calls and len(calls[0][0]) >= 3
+    texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
+    assert any("call_module" in t for t in texts)
+    assert any("installed" in t for t in texts)
+    assert any("综上是结论" in t for t in texts)
+
+
+async def test_single_reply_stays_plain_even_with_tools():
+    harness = make_harness()
+    event = FakeForwardEvent()
+    rounds = [{"text": "一个简短的结论", "tools": []}]
+    assert await Delivery(harness)._try_forward(event, "一个简短的结论", tool_trace(), rounds=rounds) is False
     assert forward_calls(harness) == []
 
 
-async def test_threshold_zero_irrelevant_for_reply():
-    harness = make_harness(forward_threshold=0)
-    event = FakeForwardEvent()
-    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is True
-
-
-async def test_tool_run_reply_forwards_regardless_of_length():
-    harness = make_harness()
-    event = FakeForwardEvent()
-    rounds = [
-        {"text": "", "tools": tool_trace()},
-        {"text": "结论正文", "tools": []},
-    ]
-    assert await Delivery(harness)._try_forward(event, "短结论", tool_trace(), rounds=rounds) is False
-    assert await Delivery(harness)._try_forward(event, "结论正文" + long_text(200), tool_trace(), rounds=rounds) is True
-    calls = forward_calls(harness)
-    assert calls and len(calls[0][0]) >= 2
-    texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
-    assert any("call_module" in t for t in texts), texts
-    assert any("installed" in t for t in texts)
-    assert any("结论正文" in t for t in texts)
-
-
 async def test_consecutive_tools_merge_into_one_node():
-    harness = make_harness(forward_threshold=2)
+    harness = make_harness(forward_min_messages=1)
     event = FakeForwardEvent()
     tools = [
         {"tool": "call_module", "arguments": "{}", "output": "installed", "ms": 5},
-        {"tool": "call_module", "arguments": "{\"x\": 1}", "output": "ok", "ms": 6},
+        {"tool": "call_module", "arguments": '{"x": 1}', "output": "ok", "ms": 6},
     ]
     rounds = [
         {"text": "", "tools": tools},
@@ -93,19 +91,45 @@ async def test_consecutive_tools_merge_into_one_node():
     assert reply_node == "完成"
 
 
-async def test_plain_chat_never_forwards():
-    harness = make_harness(forward_threshold=2)
+async def test_tool_and_message_alternate_stay_separate():
+    harness = make_harness(forward_min_messages=1)
     event = FakeForwardEvent()
-    assert await Delivery(harness)._try_forward(event, long_text(30), []) is False
-    assert await Delivery(harness)._try_forward(event, long_text(60), []) is False
+    rounds = [
+        {"text": "", "tools": [{"tool": "read_file", "arguments": "{}", "output": "a", "ms": 1}]},
+        {"text": "中间说明", "tools": []},
+        {"text": "", "tools": [{"tool": "list_dir", "arguments": "{}", "output": "b", "ms": 1}]},
+        {"text": "最终结论", "tools": []},
+    ]
+    trace = [entry for r in rounds for entry in r["tools"]]
+    assert await Delivery(harness)._try_forward(event, "最终结论", trace, rounds=rounds) is True
+    calls = forward_calls(harness)
+    texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
+    assert len(texts) == 4
+    assert "中间说明" in texts[1]
+    assert "read_file" in texts[0] and "list_dir" in texts[2]
+
+
+async def test_platform_blocklist_never_forwards():
+    harness = make_harness(no_forward_platforms=["onebot11"])
+    event = FakeForwardEvent()
+    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_two_replies()) is False
     assert forward_calls(harness) == []
 
 
+async def test_platform_allowlist_gates():
+    harness = make_harness(forward_platforms=["yunhu"])
+    event = FakeForwardEvent()
+    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_two_replies()) is False
+    harness.sdk.adapter.add("yunhu", FakeSendChain(sends=("MergeForward", "Text")), sends=("MergeForward", "Text"))
+    event2 = FakeForwardEvent(platform="yunhu", sends=("MergeForward", "Text"))
+    assert await Delivery(harness)._try_forward(event2, "综上", tool_trace(), rounds=rounds_two_replies()) is True
+
+
 async def test_platform_without_forward_method_skips():
-    harness = make_harness(forward_threshold=2)
+    harness = make_harness()
     harness.sdk.adapter.add("onebot11", FakeSendChain(), sends=("Text",))
     event = FakeForwardEvent(sends=("Text",))
-    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is False
+    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace(), rounds=rounds_two_replies()) is False
     assert forward_calls(harness) == []
 
 
@@ -113,12 +137,12 @@ async def test_any_platform_with_forward_method_works():
     harness = make_harness()
     harness.sdk.adapter.add("yunhu", FakeSendChain(sends=("MergeForward", "Text")), sends=("MergeForward", "Text"))
     event = FakeForwardEvent(platform="yunhu", sends=("MergeForward", "Text"))
-    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is True
+    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_two_replies()) is True
     assert forward_calls(harness, "yunhu")
 
 
-async def test_force_forward_tag_overrides_short_and_disabled():
-    harness = make_harness(forward_platforms=[], no_forward_platforms=["onebot11"])
+async def test_force_forward_tag_overrides_disabled():
+    harness = make_harness(forward_platforms=[])
     event = FakeForwardEvent()
     assert await Delivery(harness)._try_forward(event, "短回复", [], force=True) is True
     calls = forward_calls(harness)
@@ -171,17 +195,16 @@ def _split_event(sent):
 
 async def test_deliver_reply_splits_plain_chat():
     sent = []
-    harness = SimpleNamespace(cfg=make_config(split_min_length=5, split_delay=0), logger=FakeLogger(), sdk=FakeSDK())
+    harness = make_harness(split_min_length=5, split_delay=0)
     delivery = Delivery(harness)
     text = "甲段内容长一点。" + "\n\n" + "乙段也长一点。"
     await delivery.deliver_reply(_split_event(sent), text, [], force=None)
     assert len(sent) == 2 and sent[0].startswith("甲段")
 
 
-async def test_deliver_reply_tool_run_never_splits():
+async def test_deliver_reply_merged_run_sends_nothing_plain():
     sent = []
-    harness = SimpleNamespace(cfg=make_config(split_min_length=10, forward_enabled=False), logger=FakeLogger(), sdk=FakeSDK())
+    harness = make_harness()
     delivery = Delivery(harness)
-    text = "甲段内容长一点。" + "\n\n" + "乙段也长一点。"
-    await delivery.deliver_reply(_split_event(sent), text, [{"tool": "x", "arguments": "", "output": ""}])
-    assert len(sent) == 1
+    await delivery.deliver_reply(_split_event(sent), "综上", tool_trace(), rounds=rounds_two_replies())
+    assert sent == []
