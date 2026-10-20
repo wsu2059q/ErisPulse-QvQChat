@@ -135,6 +135,11 @@
   margin: 0 0 18px 1px;
 }
 
+/* 全局垂直节奏：区块内相邻块统一上下间距，避免卡片/工具条上下贴连 */
+.qvq-tab > * + * {
+  margin-top: 14px;
+}
+
 .qvq-grid {
   display: grid;
   gap: 14px;
