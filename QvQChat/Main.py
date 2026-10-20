@@ -34,7 +34,7 @@ from .engine.base import ChatRequest
 from .engine.pool import ModelPool
 from .scheduler import Scheduler
 from .skills import SkillManager
-from .tools_builtin import agent, code, computer, erispulse, memory, schedule, selfconfig, skilltools, takumi
+from .tools_builtin import agent, code, computer, erispulse, knowledge, memory, schedule, selfconfig, skilltools, takumi
 from .version import __version__
 
 AUDIT_KEY = "QvQChat:audit"
@@ -125,6 +125,7 @@ class Main(BaseModule):
         self.personas = None
         self.sessions = None
         self.memory = None
+        self.knowledge = None
         self.runner = None
         self.eco = None
         self.mcp = None
@@ -167,6 +168,8 @@ class Main(BaseModule):
         self.conversations = ConversationService(self)
         self.sessions = self.conversations
         self.memory = MemoryStore(self.sdk, self.cfg)
+        from .conversation.knowledge import KnowledgeBase
+        self.knowledge = KnowledgeBase(self.sdk)
         self.skills = SkillManager(self.sdk, self.cfg)
         self.runner = AgentRunner(self.pool, self.registry, self.cfg)
         self.eco = EcosystemBridge(self)
@@ -225,6 +228,7 @@ class Main(BaseModule):
         computer.register(self.registry, self)
         code.register(self.registry, self)
         memory.register(self.registry, self)
+        knowledge.register(self.registry, self)
         schedule.register(self.registry, self)
         skilltools.register(self.registry, self)
         agent.register(self.registry, self)
