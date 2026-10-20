@@ -46,6 +46,27 @@ class Delivery:
         self.main = main
         self.sdk = main.sdk
         self.config = main.cfg
+        self._identity: dict = {}
+
+    async def bot_identity(self, platform: str) -> tuple[str, str]:
+        """机器人自己的 (账号, 昵称)：转发节点显示自己，而不是虚构身份。"""
+        if platform in self._identity:
+            return self._identity[platform]
+        user_id, nickname = "", ""
+        adapter = self.sdk.adapter.get(platform)
+        if adapter is not None:
+            for endpoint in ("get_login_info", "get_self_info"):
+                try:
+                    info = await adapter.call_api(endpoint)
+                except Exception:
+                    continue
+                if isinstance(info, dict):
+                    user_id = str(info.get("user_id") or info.get("id") or "")
+                    nickname = str(info.get("nickname") or info.get("name") or "")
+                if user_id or nickname:
+                    break
+        self._identity[platform] = (user_id, nickname)
+        return user_id, nickname
 
     def _reply_methods(self, event) -> list:
         from ..tools_builtin import erispulse
@@ -103,7 +124,9 @@ class Delivery:
         if not target_id:
             return False
         try:
-            used = await utils.deliver_forward(adapter, detail_type, target_id, sections, sends)
+            user_id, nickname = await self.bot_identity(platform)
+            used = await utils.deliver_forward(adapter, detail_type, target_id, sections, sends,
+                                               nickname=nickname, user_id=user_id)
         except Exception as e:
             self.main.logger.warning(f"forward send failed, fallback to normal reply: {e}")
             return False
@@ -143,7 +166,7 @@ class Delivery:
             return
         if await self._try_forward(event, reply, tool_trace, force=force):
             return
-        if force is not True and not tool_trace and str(getattr(self.config, "reply_split", "paragraph")) == "paragraph":
+        if force is not True and str(getattr(self.config, "reply_split", "paragraph")) == "paragraph":
             await self._send_split(event, reply)
             return
         await self._send_plain(event, reply)

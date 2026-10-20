@@ -46,7 +46,7 @@ class QvQConfig(BaseConfig):
     compact_model: str = field(default="", metadata=_desc("compact_model", "压缩摘要使用的模型（模型池 id），留空用当前默认模型", "chat", 5, "number"))
     max_context_turns: int = field(default=0, metadata=_desc("max_context_turns", "每请求最多携带最近 N 轮对话（发送级裁剪，不修改存储历史），0 不限", "chat", 5, "number"))
     tool_output_keep: int = field(default=300, metadata=_desc("tool_output_keep", "历史中旧工具输出的保留字符数，超出截断瘦身（0 关闭）", "chat", 5, "number"))
-    forward_enabled: bool = field(default=True, metadata=_desc("forward_enabled", "工具任务的回复/投递自动转为合并转发消息（需适配器实现 MergeForward）；纯对话一律普通发送", "chat", 3, "switch"))
+    forward_enabled: bool = field(default=False, metadata=_desc("forward_enabled", "合并消息开关：开启后工具任务的回复打包为合并转发卡（节点显示机器人自己的昵称）；默认关闭，AI 每段直接逐条发送", "chat", 3, "switch"))
     forward_threshold: int = field(default=600, metadata=_desc("forward_threshold", "send_message 工具发送的文本超过该字符数自动打包合并转发（0 关闭）；回复是否打包不看长度，看是否为工具任务", "chat", 4, "number"))
     reply_split: str = field(default="paragraph", metadata=_desc("reply_split", "纯对话分段回复：paragraph 按空行/段落切段连发模拟真人节奏 / off 单条发送；工具任务始终合并转发不分段", "chat", 6, "select", ["paragraph", "off"]))
     split_min_length: int = field(default=120, metadata=_desc("split_min_length", "分段回复的最小触发长度（字符），低于此值单条发送", "chat", 6, "number"))
