@@ -5,6 +5,7 @@ import re
 
 from .. import texts, utils
 from ..tools_builtin.erispulse import REPLY_PREFERENCE
+from .visual import build_sections
 
 OUTPUT_TAG_RE = re.compile(r"^\[\[(转发|直发)\]\]\s*")
 
@@ -96,7 +97,8 @@ class Delivery:
             return False
         return bool(len(reply.strip()) <= 150 and RECAP_RE.match(reply.strip()))
 
-    async def _try_forward(self, event, reply: str, tool_trace: list, force: bool | None = None) -> bool:
+    async def _try_forward(self, event, reply: str, tool_trace: list, force: bool | None = None,
+                           rounds: list | None = None) -> bool:
         if force is False:
             return False
         platform = event.get_platform() or ""
@@ -112,15 +114,7 @@ class Delivery:
                 return False
             if not tool_trace:
                 return False
-        sections: list = []
-        for entry in (tool_trace or [])[:20]:
-            sections.append(
-                f"{entry.get('tool', '')}({utils.truncate(str(entry.get('arguments', '')), 120)})\n"
-                + texts.t("forward_result", output=utils.truncate(str(entry.get("output", "")), 300))
-            )
-        sections += utils.split_reply_sections(reply)
-        if len(sections) > 40:
-            sections = sections[:39] + ["…"]
+        sections = build_sections(rounds, reply, tool_trace)
         if not sections:
             return False
         detail_type = "group" if event.is_group_message() else "user"
@@ -166,12 +160,13 @@ class Delivery:
                 await asyncio.sleep(delay)
             await self._send_plain(event, part)
 
-    async def deliver_reply(self, event, reply: str, tool_trace: list, force: bool | None = None) -> None:
+    async def deliver_reply(self, event, reply: str, tool_trace: list, force: bool | None = None,
+                            rounds: list | None = None) -> None:
 
         if self._is_recap(reply, tool_trace):
             self.main.logger.info("reply suppressed as send recap")
             return
-        if await self._try_forward(event, reply, tool_trace, force=force):
+        if await self._try_forward(event, reply, tool_trace, force=force, rounds=rounds):
             return
         if force is not True and str(getattr(self.config, "reply_split", "paragraph")) == "paragraph":
             await self._send_split(event, reply)

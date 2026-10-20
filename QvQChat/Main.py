@@ -700,7 +700,7 @@ class Main(BaseModule):
                 )
             except Exception:
                 pass
-            await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward)
+            await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None))
         except Exception as e:
             self.logger.warning(f"process failed: {e}")
 
