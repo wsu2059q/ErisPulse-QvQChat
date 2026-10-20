@@ -170,6 +170,7 @@
     mcp: loadMcp,
     tasks: loadTasks,
     memory: loadMemoryScopes,
+    knowledge: loadKnowledge,
     sessions: loadSessions,
     audit: loadAudit,
     settings: loadSettings

@@ -59,6 +59,10 @@
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="3" /><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13" /><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" /></svg></span>
         <span class="qvq-nav-tx" data-i18n="nav_memory">记忆</span>
       </button>
+      <button class="qvq-nav-btn" data-tab="knowledge">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M4 19V6a2 2 0 0 1 2-2h13v13H6a2 2 0 0 0-2 2zm0 0a2 2 0 0 0 2 2h13" /><path d="M9 8h6" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_knowledge">知识库</span>
+      </button>
       <button class="qvq-nav-btn" data-tab="sessions">
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg></span>
         <span class="qvq-nav-tx" data-i18n="nav_sessions">会话</span>
@@ -279,6 +283,19 @@
       <div class="qvq-grid asymmetric">
         <div class="qvq-card qvq-span5" id="qvq-memory-scopes"></div>
         <div class="qvq-card qvq-span7" id="qvq-memory-entries"></div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="knowledge">
+      <h1 class="qvq-h1" data-i18n="nav_knowledge">知识库</h1>
+      <p class="qvq-desc" data-i18n="knowledge_desc">共享资料库：相关片段会自动注入对话，也可用 knowledge_search 检索</p>
+      <div class="qvq-toolbar">
+        <button class="qvq-btn" id="qvq-kb-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="kb_add">添加条目</span></button>
+        <input class="qvq-input qvq-input-sm" id="qvq-kb-search" type="text" data-i18n-ph="kb_search_ph" placeholder="检索…" />
+        <span class="qvq-tool-desc" id="qvq-kb-stats"></span>
+      </div>
+      <div class="qvq-card">
+        <div id="qvq-kb-list"></div>
       </div>
     </section>
 
