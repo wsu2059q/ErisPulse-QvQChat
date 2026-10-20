@@ -17,11 +17,47 @@ MODELS_DEV_TTL = 86400
 
 
 class ModelPool:
+    BREAKER_THRESHOLD = 3
+    BREAKER_BASE_COOLDOWN = 60.0
+    BREAKER_MAX_COOLDOWN = 600.0
+
     def __init__(self, sdk: Any, config: Any):
         self.sdk = sdk
         self.config = config
         self.engine = OpenAIEngine()
         self._migrate_legacy()
+        # 模型熔断状态：model_id -> {"fails": 连续失败次数, "until": 冷却截止时间戳}
+        self._breaker: dict[str, dict] = {}
+
+    def breaker_state(self) -> list[dict]:
+        import time as _time
+
+        now = _time.time()
+        state = []
+        for model_id, info in self.__dict__.setdefault("_breaker", {}).items():
+            until = float(info.get("until") or 0)
+            if until <= now:
+                continue
+            state.append({"model": model_id, "fails": info.get("fails", 0), "cooldown_left": int(until - now)})
+        return state
+
+    def _record_fail(self, model_id: str) -> None:
+        import time as _time
+
+        info = self.__dict__.setdefault("_breaker", {}).setdefault(model_id, {"fails": 0, "until": 0})
+        info["fails"] = int(info.get("fails", 0)) + 1
+        if info["fails"] >= self.BREAKER_THRESHOLD:
+            cooldown = min(self.BREAKER_BASE_COOLDOWN * (2 ** (info["fails"] - self.BREAKER_THRESHOLD)), self.BREAKER_MAX_COOLDOWN)
+            info["until"] = _time.time() + cooldown
+
+    def _record_success(self, model_id: str) -> None:
+        self.__dict__.setdefault("_breaker", {}).pop(model_id, None)
+
+    def _is_open(self, model_id: str) -> bool:
+        import time as _time
+
+        info = self.__dict__.setdefault("_breaker", {}).get(model_id)
+        return bool(info and float(info.get("until") or 0) > _time.time())
 
     def _migrate_legacy(self) -> None:
         try:
@@ -136,6 +172,12 @@ class ModelPool:
             "vision": None,
             "tool_call": None,
         }
+        cost = meta.get("cost")
+        if isinstance(cost, dict):
+            info["cost"] = {
+                "input": cost.get("input"),
+                "output": cost.get("output"),
+            }
         modalities = meta.get("modalities")
         if isinstance(modalities, dict):
             inputs = modalities.get("input") or []
@@ -271,6 +313,8 @@ class ModelPool:
             for model in self.list_models():
                 if model["id"] != primary["id"] and self._meets_needs(model, request.needs):
                     chain.append(model)
+        # 熔断：冷却中的模型沉底而不是丢弃（全冷却时仍按链尝试）
+        chain.sort(key=lambda m: 1 if self._is_open(m["id"]) else 0)
         errors: list[str] = []
         for index, model in enumerate(chain):
             temperature = request.temperature
@@ -295,6 +339,7 @@ class ModelPool:
                     on_reset=on_reset,
                 )
             except EngineError as e:
+                self._record_fail(model["id"])
                 errors.append(f"{model['id']}: {e}")
                 if index + 1 < len(chain) and on_reset is not None:
                     try:
@@ -305,6 +350,7 @@ class ModelPool:
                         pass
                 continue
             response.model = model["id"]
+            self._record_success(model["id"])
             return response
         raise EngineError(texts.t("engine_all_failed", errors=" | ".join(errors)))
 
