@@ -626,6 +626,27 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "タスクが完了できませんでした：{error}",
         "ru": "Задача не выполнена: {error}",
     },
+    "kb_empty": {
+        "zh-CN": "知识库中还没有相关内容。",
+        "zh-TW": "知識庫中還沒有相關內容。",
+        "en": "The knowledge base has nothing relevant yet.",
+        "ja": "ナレッジベースに関連する内容はまだありません。",
+        "ru": "В базе знаний пока нет подходящего содержимого.",
+    },
+    "kb_system_note": {
+        "zh-CN": "以下是知识库中与当前话题相关的资料，供回答时参考：",
+        "zh-TW": "以下是知識庫中與當前話題相關的資料，供回答時參考：",
+        "en": "Reference material from the knowledge base relevant to the current topic:",
+        "ja": "現在のトピックに関連するナレッジベースの資料：",
+        "ru": "Материалы из базы знаний по текущей теме:",
+    },
+    "kb_need_title_content": {
+        "zh-CN": "需要标题与内容",
+        "zh-TW": "需要標題與內容",
+        "en": "Title and content are required",
+        "ja": "タイトルと内容が必要です",
+        "ru": "Нужны заголовок и содержимое",
+    },
     "compact_done": {
         "zh-CN": "会话压缩完成：{actions}",
         "zh-TW": "會話壓縮完成：{actions}",
