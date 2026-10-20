@@ -237,6 +237,23 @@ class ModelPool:
 
     CAPABILITY_KEYS = ("vision", "files", "video", "tool_call", "reasoning")
 
+    def model_costs(self) -> dict:
+        # 每百万 token 单价（models.dev 目录），用于 Dashboard 成本换算
+        costs: dict[str, dict] = {}
+        for model in self.list_models():
+            price = model.get("cost")
+            if not isinstance(price, dict):
+                continue
+            try:
+                input_price = float(price.get("input") or 0)
+                output_price = float(price.get("output") or 0)
+            except (TypeError, ValueError):
+                continue
+            if input_price > 0 or output_price > 0:
+                costs[model["id"]] = {"input": input_price, "output": output_price}
+        return costs
+
+
     def model_capabilities(self, model: dict) -> dict:
 
         caps = {}
