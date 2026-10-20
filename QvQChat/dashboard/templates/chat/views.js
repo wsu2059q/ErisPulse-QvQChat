@@ -908,6 +908,7 @@
           "<td>" + esc(session.turns) + "</td><td class='qvq-tool-desc'>" + esc(session.preview || "-") + "</td>" +
           "<td class='qvq-col-time'>" + esc(fmtTime(session.updated)) + "</td>" +
           "<td><button class='qvq-btn small ghost' data-view='" + esc(session.chat_key) + "'>" + esc(t("sessions_msgs")) + "</button> " +
+          "<button class='qvq-btn small ghost' data-access='" + esc(session.chat_key) + "'>" + esc(t("sess_members")) + "</button> " +
           "<button class='qvq-btn small danger' data-key='" + esc(session.chat_key) + "'>" + esc(t("reset_btn")) + "</button></td></tr>";
       }).join("");
       el("qvq-sessions-list").innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("col_chatkey")) + "</th><th>" + esc(t("col_persona")) +
@@ -922,6 +923,33 @@
       });
       el("qvq-sessions-list").querySelectorAll("button[data-view]").forEach(function (btn) {
         btn.onclick = function () { showSessionMessages(btn.getAttribute("data-view")); };
+      });
+      el("qvq-sessions-list").querySelectorAll("button[data-access]").forEach(function (btn) {
+        btn.onclick = function () { openSessionAccessModal(btn.getAttribute("data-access")); };
+      });
+    });
+  }
+
+  // 会话准入：成员白名单（* 全员）+ 接受哪些其它会话的输入（跨会话共享）
+  function openSessionAccessModal(chatKey) {
+    var session = chatMeta.sessions.filter(function (s) { return s.chat_key === chatKey; })[0] || {};
+    var fields =
+      "<label class='qvq-label'>" + esc(t("sess_members_hint")) + "</label>" +
+      "<textarea class='qvq-textarea' id='qvq-saf-members' style='min-height:88px'>" + esc((session.members || ["*"]).join("\n")) + "</textarea>" +
+      "<label class='qvq-label'>" + esc(t("sess_sources_hint")) + "</label>" +
+      "<textarea class='qvq-textarea' id='qvq-saf-sources' style='min-height:88px'>" + esc((session.sources || []).join("\n")) + "</textarea>";
+    openForm(sessionDisplayName(session) || chatKey, fields, function (body) {
+      var splitList = function (raw) {
+        return raw.split(/[\n,，;；]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+      };
+      var members = splitList(fv(body, "qvq-saf-members"));
+      var sources = splitList(fv(body, "qvq-saf-sources"));
+      api("/api/qvq/session/settings", "POST", { chat_key: chatKey, settings: { members: members } }).then(function () {
+        return api("/api/qvq/session/routes", "POST", { target: chatKey, sources: sources });
+      }).then(function () {
+        toast(t("saved"));
+        closeModal();
+        loadSessions();
       });
     });
   }
