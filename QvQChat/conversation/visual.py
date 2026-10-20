@@ -64,6 +64,7 @@ def visual_call(entry: dict) -> str:
 def build_sections(rounds: list | None, reply: str, tool_trace: list | None) -> list:
     """合并卡节点序列：AI 每段发言一条节点，连续工具调用合并为一条节点。"""
     sections: list[str] = []
+    text_count = 0
     tool_group: list[dict] = []
 
     def flush_tools():
@@ -82,6 +83,7 @@ def build_sections(rounds: list | None, reply: str, tool_trace: list | None) -> 
         if text:
             flush_tools()
             sections.append(text)
+            text_count += 1
     flush_tools()
 
     if not sections:
@@ -93,4 +95,4 @@ def build_sections(rounds: list | None, reply: str, tool_trace: list | None) -> 
         sections = [reply]
     if len(sections) > 40:
         sections = sections[:39] + ["…"]
-    return sections
+    return sections, text_count

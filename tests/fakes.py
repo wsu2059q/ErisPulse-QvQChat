@@ -304,6 +304,7 @@ def make_config(**overrides):
         context_limit=30,
         history_seed=20,
         forward_platforms=["*"], no_forward_platforms=[],
+        forward_min_messages=2,
         forward_threshold=600,
         context_summary=True,
         context_compress_tokens=128000,
