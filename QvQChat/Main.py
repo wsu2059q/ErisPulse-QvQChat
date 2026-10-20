@@ -169,7 +169,7 @@ class Main(BaseModule):
         self.sessions = self.conversations
         self.memory = MemoryStore(self.sdk, self.cfg)
         from .conversation.knowledge import KnowledgeBase
-        self.knowledge = KnowledgeBase(self.sdk)
+        self.knowledge = KnowledgeBase(self.sdk, self.cfg)
         self.skills = SkillManager(self.sdk, self.cfg)
         self.runner = AgentRunner(self.pool, self.registry, self.cfg)
         self.eco = EcosystemBridge(self)
@@ -432,7 +432,14 @@ class Main(BaseModule):
                     return
             self._cleanup_takeovers()
             chat_key = self._chat_key_of(event)
+            routed = self.sessions.resolve_route(chat_key)
+            if routed:
+                chat_key = routed
             if not self._should_trigger(event, chat_key, text):
+                return
+            if event.is_group_message() and not self.sessions.member_allowed(
+                chat_key, str(event.get_user_id() or ""), event.get_platform() or ""
+            ):
                 return
             event.done()
             if not self._rate_allow(chat_key, str(event.get_user_id() or ""), event):
