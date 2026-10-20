@@ -106,19 +106,20 @@
     })).then(function () { toast(t("orch_chain_saved")); });
   }
 
+  // 健康状态徽章：正常为右上角小绿标；有熔断时红标并附明细列表
   function renderModelHealth(boxId, breakers) {
     var box = el(boxId);
     if (!box) return;
     if (!breakers.length) {
-      box.innerHTML = '<div class="qvq-empty">' + esc(t("health_ok")) + "</div>";
+      box.innerHTML = '<span class="qvq-health-badge ok"><i></i>' + esc(t("health_ok")) + "</span>";
       return;
     }
-    box.innerHTML = breakers.map(function (b) {
-      return '<div class="qvq-health-row"><span class="qvq-chip danger-chip">' + esc(t("health_cooldown")) + "</span>" +
-        "<b>" + esc(b.model) + "</b>" +
-        "<span class='qvq-tool-desc'>" + esc(t("health_fails").replace("{n}", b.fails)) + " · " +
-        esc(t("health_left").replace("{s}", b.cooldown_left)) + "</span></div>";
-    }).join("");
+    box.innerHTML = '<span class="qvq-health-badge bad"><i></i>' + esc(t("health_cooldown")) + " × " + breakers.length + "</span>" +
+      '<div class="qvq-health-list">' + breakers.map(function (b) {
+        return '<div class="qvq-health-row"><b>' + esc(b.model) + "</b>" +
+          "<span class='qvq-tool-desc'>" + esc(t("health_fails").replace("{n}", b.fails)) + " · " +
+          esc(t("health_left").replace("{s}", b.cooldown_left)) + "</span></div>";
+      }).join("") + "</div>";
   }
 
   function renderRunning(items) {

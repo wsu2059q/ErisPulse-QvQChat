@@ -645,6 +645,56 @@
 }
 
 /* ===== 编排页：模型链拖拽 / 健康 / 时间线 / 能力开关 / 成本分布 ===== */
+.qvq-orch-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.qvq-orch-top > div:first-child {
+  min-width: 0;
+}
+.qvq-orch-health {
+  flex: none;
+  padding-top: 6px;
+}
+.qvq-health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  border: 1px solid var(--qvq-bd, rgba(128, 128, 128, 0.3));
+}
+.qvq-health-badge i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #30a46c;
+}
+.qvq-health-badge.ok {
+  color: #30a46c;
+}
+.qvq-health-badge.bad {
+  color: #e5484d;
+  border-color: rgba(229, 72, 77, 0.5);
+}
+.qvq-health-badge.bad i {
+  background: #e5484d;
+  animation: qvq-health-pulse 1.2s ease-in-out infinite;
+}
+@keyframes qvq-health-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.qvq-health-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .qvq-chain-list {
   display: flex;
   flex-direction: column;
@@ -691,6 +741,28 @@
   padding: 8px 0;
   border-bottom: 1px dashed var(--qvq-border, rgba(128, 128, 128, 0.2));
   flex-wrap: wrap;
+}
+.qvq-caps-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.qvq-caps-cols .qvq-cap-group {
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: 0;
+}
+@media (max-width: 1100px) {
+  .qvq-caps-cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .qvq-caps-cols {
+    grid-template-columns: 1fr;
+  }
 }
 .qvq-timeline {
   display: flex;

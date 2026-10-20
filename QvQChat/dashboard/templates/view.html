@@ -113,8 +113,13 @@
     </section>
 
     <section class="qvq-tab" data-section="orchestrate">
-      <h1 class="qvq-h1" data-i18n="nav_orchestrate">编排</h1>
-      <p class="qvq-desc" data-i18n="orchestrate_desc">智能体总览：模型链 · 健康 · 运行状态 · 任务时间线</p>
+      <div class="qvq-orch-top">
+        <div>
+          <h1 class="qvq-h1" data-i18n="nav_orchestrate">编排</h1>
+          <p class="qvq-desc" data-i18n="orchestrate_desc">智能体总览：模型链 · 健康 · 运行状态 · 任务时间线</p>
+        </div>
+        <div class="qvq-orch-health" id="qvq-orch-health"></div>
+      </div>
       <div class="qvq-grid asymmetric">
         <div class="qvq-card qvq-span7">
           <h3 class="qvq-card-title" data-i18n="orch_model_chain">模型链（故障转移顺序）</h3>
@@ -122,23 +127,19 @@
           <div id="qvq-orch-chain"></div>
         </div>
         <div class="qvq-card qvq-span5">
-          <h3 class="qvq-card-title" data-i18n="orch_health">模型健康</h3>
-          <div id="qvq-orch-health"></div>
-        </div>
-      </div>
-      <div class="qvq-grid asymmetric">
-        <div class="qvq-card qvq-span5">
           <h3 class="qvq-card-title" data-i18n="orch_running">运行状态</h3>
           <div id="qvq-orch-running"></div>
         </div>
+      </div>
+      <div class="qvq-grid asymmetric">
         <div class="qvq-card qvq-span7">
           <h3 class="qvq-card-title" data-i18n="orch_timeline">任务时间线</h3>
           <div id="qvq-orch-timeline"></div>
         </div>
-      </div>
-      <div class="qvq-card">
-        <h3 class="qvq-card-title" data-i18n="orch_capabilities">能力开关</h3>
-        <div id="qvq-orch-caps"></div>
+        <div class="qvq-card qvq-span5">
+          <h3 class="qvq-card-title" data-i18n="orch_capabilities">能力开关</h3>
+          <div id="qvq-orch-caps" class="qvq-caps-cols"></div>
+        </div>
       </div>
     </section>
 
