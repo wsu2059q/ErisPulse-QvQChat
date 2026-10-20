@@ -63,7 +63,8 @@ async def test_tool_run_reply_forwards_regardless_of_length():
         {"text": "", "tools": tool_trace()},
         {"text": "结论正文", "tools": []},
     ]
-    assert await Delivery(harness)._try_forward(event, "结论正文", tool_trace(), rounds=rounds) is True
+    assert await Delivery(harness)._try_forward(event, "短结论", tool_trace(), rounds=rounds) is False
+    assert await Delivery(harness)._try_forward(event, "结论正文" + long_text(200), tool_trace(), rounds=rounds) is True
     calls = forward_calls(harness)
     assert calls and len(calls[0][0]) >= 2
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
@@ -73,7 +74,7 @@ async def test_tool_run_reply_forwards_regardless_of_length():
 
 
 async def test_consecutive_tools_merge_into_one_node():
-    harness = make_harness()
+    harness = make_harness(forward_threshold=2)
     event = FakeForwardEvent()
     tools = [
         {"tool": "call_module", "arguments": "{}", "output": "installed", "ms": 5},
@@ -93,7 +94,7 @@ async def test_consecutive_tools_merge_into_one_node():
 
 
 async def test_plain_chat_never_forwards():
-    harness = make_harness()
+    harness = make_harness(forward_threshold=2)
     event = FakeForwardEvent()
     assert await Delivery(harness)._try_forward(event, long_text(30), []) is False
     assert await Delivery(harness)._try_forward(event, long_text(60), []) is False
@@ -101,7 +102,7 @@ async def test_plain_chat_never_forwards():
 
 
 async def test_platform_without_forward_method_skips():
-    harness = make_harness()
+    harness = make_harness(forward_threshold=2)
     harness.sdk.adapter.add("onebot11", FakeSendChain(), sends=("Text",))
     event = FakeForwardEvent(sends=("Text",))
     assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is False
