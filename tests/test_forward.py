@@ -59,12 +59,37 @@ async def test_threshold_zero_irrelevant_for_reply():
 async def test_tool_run_reply_forwards_regardless_of_length():
     harness = make_harness()
     event = FakeForwardEvent()
-    assert await Delivery(harness)._try_forward(event, "很短", tool_trace()) is True
+    rounds = [
+        {"text": "", "tools": tool_trace()},
+        {"text": "结论正文", "tools": []},
+    ]
+    assert await Delivery(harness)._try_forward(event, "结论正文", tool_trace(), rounds=rounds) is True
     calls = forward_calls(harness)
     assert calls and len(calls[0][0]) >= 2
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
-    assert any(t.startswith("call_module(") for t in texts), texts
+    assert any("call_module" in t for t in texts), texts
     assert any("installed" in t for t in texts)
+    assert any("结论正文" in t for t in texts)
+
+
+async def test_consecutive_tools_merge_into_one_node():
+    harness = make_harness()
+    event = FakeForwardEvent()
+    tools = [
+        {"tool": "call_module", "arguments": "{}", "output": "installed", "ms": 5},
+        {"tool": "call_module", "arguments": "{\"x\": 1}", "output": "ok", "ms": 6},
+    ]
+    rounds = [
+        {"text": "", "tools": tools},
+        {"text": "完成", "tools": []},
+    ]
+    assert await Delivery(harness)._try_forward(event, "完成", tools, rounds=rounds) is True
+    calls = forward_calls(harness)
+    assert calls and len(calls[0][0]) == 2
+    tool_node = calls[0][0][0]["data"]["content"][0]["data"]["text"]
+    assert tool_node.count("call_module") == 2
+    reply_node = calls[0][0][1]["data"]["content"][0]["data"]["text"]
+    assert reply_node == "完成"
 
 
 async def test_plain_chat_never_forwards():
