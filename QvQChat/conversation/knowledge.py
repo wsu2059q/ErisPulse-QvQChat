@@ -41,8 +41,18 @@ def chunk_text(content: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLA
 
 
 class KnowledgeBase:
-    def __init__(self, sdk):
+    def __init__(self, sdk, cfg=None):
         self.sdk = sdk
+        self.cfg = cfg
+
+    def _chunk_params(self) -> tuple[int, int]:
+        size = int(getattr(self.cfg, "kb_chunk_size", CHUNK_SIZE) or CHUNK_SIZE)
+        overlap = int(getattr(self.cfg, "kb_chunk_overlap", CHUNK_OVERLAP) or 0)
+        return max(80, size), max(0, min(overlap, size // 2))
+
+    def chunk(self, content: str) -> list[str]:
+        size, overlap = self._chunk_params()
+        return chunk_text(content, size=size, overlap=overlap)
 
     def _load(self) -> dict:
         data = self.sdk.storage.get(KB_KEY, {})
@@ -81,7 +91,7 @@ class KnowledgeBase:
     def _chunks(self) -> list[dict]:
         out = []
         for entry in self._load().values():
-            for piece in chunk_text(entry.get("content", "")):
+            for piece in self.chunk(entry.get("content", "")):
                 out.append({"entry": entry, "text": piece})
         return out
 
@@ -118,5 +128,21 @@ class KnowledgeBase:
 
     def stats(self) -> dict:
         entries = self._load()
-        chunks = sum(len(chunk_text(e.get("content", ""))) for e in entries.values())
+        chunks = sum(len(self.chunk(e.get("content", ""))) for e in entries.values())
         return {"entries": len(entries), "chunks": chunks}
+
+    def export(self) -> list[dict]:
+        return self.list()
+
+    def import_entries(self, items: list) -> int:
+        added = 0
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "").strip()
+            content = str(item.get("content") or "")
+            if not title or not content.strip():
+                continue
+            self.add(title, content, source=str(item.get("source") or ""))
+            added += 1
+        return added

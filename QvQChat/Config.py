@@ -85,5 +85,7 @@ class QvQConfig(BaseConfig):
 
     kb_auto_inject: bool = field(default=True, metadata=_desc("kb_auto_inject", "对话时自动检索知识库相关片段注入系统提示", "kb", 1, "switch"))
     kb_top_k: int = field(default=2, metadata=_desc("kb_top_k", "自动注入的知识库片段数上限", "kb", 2, "number"))
+    kb_chunk_size: int = field(default=400, metadata=_desc("kb_chunk_size", "知识库条目检索分块的目标字符数", "kb", 3, "number"))
+    kb_chunk_overlap: int = field(default=50, metadata=_desc("kb_chunk_overlap", "知识库相邻分块的重叠字符数", "kb", 4, "number"))
     skills_dir: str = field(default="data/QvQChat/skills", metadata=_desc("skills_dir", "技能目录（每个 .md 文件一个技能，frontmatter 含 name/description）", "skills", 1))
     skills_disabled: list[str] = field(default_factory=list, metadata=_desc("skills_disabled", "禁用的技能名列表", "skills", 2, "list"))
