@@ -28,6 +28,15 @@ def parse_chat_key(chat_key: str) -> tuple[str, str, str]:
     return (parts[0], parts[1], parts[2])
 
 
+_ISOLATION_RE = _re.compile(r"^([^:]+):group:([^:]+):u[^:]+$")
+
+
+def strip_isolation(chat_key: str) -> str:
+    """仅对形如 platform:group:<群>:u<成员> 的隔离 key 剥离成员后缀"""
+    m = _ISOLATION_RE.match(chat_key or "")
+    return f"{m.group(1)}:group:{m.group(2)}" if m else (chat_key or "")
+
+
 class ConversationService:
 
 
