@@ -12,6 +12,7 @@ from .. import texts, utils
 from .compactor import Compactor, context_tokens, estimate_tokens
 
 CONV_PREFIX = "QvQChat:conv:"
+ROUTES_KEY = "QvQChat:routes"
 UPLOAD_DIR = Path("data/QvQChat/uploads")
 
 DASHBOARD_PLATFORM = "dashboard"
@@ -166,6 +167,54 @@ class ConversationService:
         if archived is not None:
             state["archived"] = bool(archived)
         self._save_no_touch(chat_key, state)
+
+    # ===== 会话成员白名单与跨会话路由 =====
+
+    def routes(self) -> dict:
+        data = self.sdk.storage.get(ROUTES_KEY, {})
+        return {k: str(v) for k, v in data.items() if isinstance(k, str) and v} if isinstance(data, dict) else {}
+
+    def save_routes(self, routes: dict) -> None:
+        self.sdk.storage.set(ROUTES_KEY, {str(k): str(v) for k, v in (routes or {}).items() if v})
+
+    def resolve_route(self, chat_key: str) -> str:
+        """消息来源 key → 目标会话 key；群隔离 key 先精确匹配再回落到群 base key"""
+        routes = self.routes()
+        if not routes:
+            return ""
+        if chat_key in routes:
+            return routes[chat_key]
+        base = strip_isolation(chat_key)
+        if base != chat_key:
+            return routes.get(base, "")
+        return ""
+
+    def routes_into(self, target: str) -> list[str]:
+        return sorted(k for k, v in self.routes().items() if v == target)
+
+    def members_of(self, chat_key: str) -> list[str]:
+        members = self._state(chat_key).get("members")
+        return members if isinstance(members, list) and members else ["*"]
+
+    def set_members(self, chat_key: str, members: list) -> list[str]:
+        cleaned: list[str] = []
+        for item in members if isinstance(members, list) else []:
+            text = str(item).strip()
+            if text and text not in cleaned:
+                cleaned.append(text)
+        state = self._state(chat_key)
+        state["members"] = cleaned or ["*"]
+        self._save_no_touch(chat_key, state)
+        return state["members"]
+
+    def member_allowed(self, chat_key: str, user_id: str, platform: str = "") -> bool:
+        members = self.members_of(chat_key)
+        if "*" in members:
+            return True
+        uid = str(user_id or "")
+        if not uid:
+            return False
+        return uid in members or f"{platform}:{uid}" in members
 
     def set_ui(self, chat_key: str, ui: dict) -> dict:
 
