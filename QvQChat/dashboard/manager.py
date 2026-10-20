@@ -86,6 +86,9 @@ class DashboardManager:
             ("GET", "/api/qvq/breakers", self.breakers_get),
             ("GET", "/api/qvq/costs", self.costs_get),
             ("GET", "/api/qvq/running", self.running_get),
+            ("GET", "/api/qvq/kb", self.kb_get),
+            ("POST", "/api/qvq/kb/add", self.kb_add),
+            ("POST", "/api/qvq/kb/delete", self.kb_delete),
             ("GET", "/api/qvq/memory", self.memory_get),
             ("POST", "/api/qvq/memory/delete", self.memory_delete),
             ("GET", "/api/qvq/sessions", self.sessions_get),
@@ -610,6 +613,32 @@ class DashboardManager:
 
     async def running_get(self, request):
         return {"running": self._live.overview()}
+
+    async def kb_get(self, request):
+        query = self._query(request, "q") or ""
+        kb = self.main.knowledge
+        stats = kb.stats()
+        if query:
+            hits = kb.search(query, top_k=8)
+            items = [kb.get(h["id"]) for h in hits]
+            items = [i for i in items if i]
+        else:
+            items = kb.list()
+        return {"entries": items, "stats": stats}
+
+    async def kb_add(self, request):
+        body = await request.json()
+        title = str((body or {}).get("title") or "").strip()
+        content = str((body or {}).get("content") or "")
+        if not title or not content.strip():
+            return ({"error": texts.t("kb_need_title_content")}, 400)
+        entry = self.main.knowledge.add(title, content, source=str((body or {}).get("source") or ""))
+        return {"ok": True, "entry": entry}
+
+    async def kb_delete(self, request):
+        body = await request.json()
+        ok = self.main.knowledge.delete(str((body or {}).get("id") or ""))
+        return {"ok": ok}
 
     async def tasks_delete(self, request):
         body = await request.json()
