@@ -842,49 +842,51 @@
   function loadMemoryScopes() {
     api("/api/qvq/memory").then(function (data) {
       var scopes = (data && data.scopes) || [];
-      currentMemoryScope = "";
-      el("qvq-memory-entries").innerHTML = '<div class="qvq-empty">' + esc(t("memory_pick")) + "</div>";
+      var box = el("qvq-memory-scopes");
       if (!scopes.length) {
-        el("qvq-memory-scopes").innerHTML = '<div class="qvq-empty">' + esc(t("memory_empty")) + "</div>";
+        box.innerHTML = '<div class="qvq-empty">' + esc(t("memory_empty")) + "</div>";
         return;
       }
-      el("qvq-memory-scopes").innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("col_chatkey")) + "</th><th>" + esc(t("col_count")) + "</th></tr></thead><tbody>" +
+      box.innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("col_chatkey")) + "</th><th>" + esc(t("col_count")) + "</th></tr></thead><tbody>" +
         scopes.map(function (scope) {
           return "<tr style='cursor:pointer' data-scope='" + esc(scope.chat_key) + "'><td>" + esc(scope.chat_key) + "</td><td>" + esc(scope.count) + "</td></tr>";
         }).join("") + "</tbody></table>";
-      el("qvq-memory-scopes").querySelectorAll("tr[data-scope]").forEach(function (row) {
-        row.onclick = function () { loadMemoryEntries(row.getAttribute("data-scope")); };
+      box.querySelectorAll("tr[data-scope]").forEach(function (row) {
+        row.onclick = function () { openMemoryModal(row.getAttribute("data-scope")); };
       });
     });
   }
 
-  function loadMemoryEntries(chatKey) {
-    currentMemoryScope = chatKey;
+  function openMemoryModal(chatKey) {
+    openModal(chatKey,
+      '<div class="qvq-actions"><button class="qvq-btn small danger" id="qvq-memory-clear">' + esc(t("memory_clear")) + "</button></div>" +
+      '<div id="qvq-memory-modal-list"><div class="qvq-empty">…</div></div>');
+    el("qvq-memory-clear").onclick = function () {
+      confirmDialog(t("confirm_del")).then(function (ok) {
+        if (!ok) return;
+        api("/api/qvq/memory/delete", "POST", { chat_key: chatKey }).then(function () {
+          toast(t("deleted"));
+          closeModal();
+          loadMemoryScopes();
+        });
+      });
+    };
     api("/api/qvq/memory?chat_key=" + encodeURIComponent(chatKey)).then(function (data) {
       var entries = (data && data.entries) || [];
-      var body = entries.length
+      var list = el("qvq-memory-modal-list");
+      if (!list) return;
+      list.innerHTML = entries.length
         ? "<table class='qvq-table'><tbody>" + entries.map(function (entry) {
             return "<tr><td>[" + esc(entry.category) + "/" + esc(entry.importance) + "] " + esc(entry.content) +
               " <button class='qvq-btn small danger' data-content='" + esc(entry.content) + "'><svg viewBox='0 0 24 24' class='qvq-btn-ico'><path d='M6 6l12 12M18 6L6 18'/></svg></button></td></tr>";
           }).join("") + "</tbody></table>"
         : '<div class="qvq-empty">' + esc(t("memory_empty")) + "</div>";
-      el("qvq-memory-entries").innerHTML =
-        "<h3 class='qvq-card-title'>" + esc(chatKey) +
-        " <button class='qvq-btn small danger' id='qvq-memory-clear'>" + esc(t("memory_clear")) + "</button></h3>" + body;
-      var clear = el("qvq-memory-clear");
-      if (clear) {
-        clear.onclick = function () {
-          confirmDialog(t("confirm_del")).then(function (ok) {
-            if (!ok) return;
-            api("/api/qvq/memory/delete", "POST", { chat_key: chatKey }).then(function () { toast(t("deleted")); loadMemoryScopes(); });
-          });
-        };
-      }
-      el("qvq-memory-entries").querySelectorAll("button[data-content]").forEach(function (btn) {
+      list.querySelectorAll("button[data-content]").forEach(function (btn) {
         btn.onclick = function () {
           api("/api/qvq/memory/delete", "POST", { chat_key: chatKey, content: btn.getAttribute("data-content") }).then(function () {
             toast(t("deleted"));
-            loadMemoryEntries(chatKey);
+            openMemoryModal(chatKey);
+            loadMemoryScopes();
           });
         };
       });
@@ -893,7 +895,9 @@
 
   function loadSessions() {
     api("/api/qvq/sessions").then(function (data) {
-      var sessions = (data && data.sessions) || [];
+      var sessions = ((data && data.sessions) || []).filter(function (s) {
+        return (s.turns || 0) > 0 || s.preview;
+      });
       if (!sessions.length) {
         el("qvq-sessions-list").innerHTML = '<div class="qvq-empty">' + esc(t("sessions_empty")) + "</div>";
         return;
