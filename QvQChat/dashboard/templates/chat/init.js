@@ -84,6 +84,7 @@
     el("qvq-model-add").onclick = function () { openModelModal(null); };
     el("qvq-persona-add").onclick = function () { openPersonaModal(null); };
     el("qvq-skill-add").onclick = function () { openSkillModal(null); };
+    el("qvq-kb-add").onclick = function () { openKnowledgeModal(); };
     el("qvq-mcp-add").onclick = function () { openMcpModal(null); };
     el("qvq-skill-export").onclick = function () {
       api("/api/qvq/skills/export").then(function (data) {

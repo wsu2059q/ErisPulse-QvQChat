@@ -768,6 +768,77 @@
     });
   }
 
+  /* ===== 知识库：列表 / 检索 / 添加 / 删除 ===== */
+
+  function loadKnowledge() {
+    var query = (el("qvq-kb-search") || {}).value || "";
+    api("/api/qvq/kb?q=" + encodeURIComponent(query.trim())).then(function (data) {
+      var entries = (data && data.entries) || [];
+      var stats = (data && data.stats) || {};
+      var statsEl = el("qvq-kb-stats");
+      if (statsEl) statsEl.textContent = t("kb_stats_line").replace("{e}", stats.entries || 0).replace("{c}", stats.chunks || 0);
+      var box = el("qvq-kb-list");
+      if (!box) return;
+      if (!entries.length) {
+        box.innerHTML = '<div class="qvq-empty">' + esc(t("kb_list_empty")) + "</div>";
+        return;
+      }
+      box.innerHTML = entries.map(function (entry) {
+        return '<div class="qvq-tool-row" data-kb="' + esc(entry.id) + '"><span class="qvq-tool-name">' + esc(entry.title) +
+          (entry.source ? " <span class='qvq-chip'>" + esc(entry.source) + "</span>" : "") + "</span>" +
+          "<span class='qvq-tool-desc'>" + esc((entry.content || "").slice(0, 160)) + "</span>" +
+          "<button class='qvq-btn small danger' data-kb-del='" + esc(entry.id) + "'>" + esc(t("del")) + "</button></div>";
+      }).join("");
+      box.querySelectorAll("button[data-kb-del]").forEach(function (btn) {
+        btn.onclick = function () {
+          confirmDialog(t("confirm_del")).then(function (ok) {
+            if (!ok) return;
+            api("/api/qvq/kb/delete", "POST", { id: btn.getAttribute("data-kb-del") }).then(function () {
+              toast(t("deleted"));
+              loadKnowledge();
+            });
+          });
+        };
+      });
+    });
+    var search = el("qvq-kb-search");
+    if (search && !search.dataset.bound) {
+      search.dataset.bound = "1";
+      var timer = null;
+      search.oninput = function () {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(loadKnowledge, 300);
+      };
+    }
+  }
+
+  function openKnowledgeModal() {
+    var fields =
+      "<label class='qvq-label'>" + esc(t("kb_title_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-kbf-title' placeholder='…' />" +
+      "<label class='qvq-label'>" + esc(t("kb_source_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-kbf-source' placeholder='doc / url / note' />" +
+      "<label class='qvq-label'>" + esc(t("kb_content_label")) + "</label>" +
+      "<textarea class='qvq-textarea' id='qvq-kbf-content' style='min-height:180px'></textarea>";
+    openForm(t("kb_add"), fields, function (body) {
+      var title = fv(body, "qvq-kbf-title");
+      var content = body.querySelector("#qvq-kbf-content").value;
+      if (!title.trim() || !content.trim()) {
+        toast(t("kb_need_title_content"), true);
+        return;
+      }
+      api("/api/qvq/kb/add", "POST", { title: title, content: content, source: fv(body, "qvq-kbf-source") }).then(function (r) {
+        if (r && r.ok) {
+          toast(t("saved"));
+          closeModal();
+          loadKnowledge();
+        } else {
+          toast((r && r.error) || "error", true);
+        }
+      });
+    });
+  }
+
   function loadMemoryScopes() {
     api("/api/qvq/memory").then(function (data) {
       var scopes = (data && data.scopes) || [];
