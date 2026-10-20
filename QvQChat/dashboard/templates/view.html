@@ -290,6 +290,9 @@
       <p class="qvq-desc" data-i18n="knowledge_desc">共享资料库：相关片段会自动注入对话，也可用 knowledge_search 检索</p>
       <div class="qvq-toolbar">
         <button class="qvq-btn" id="qvq-kb-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="kb_add">添加条目</span></button>
+        <button class="qvq-btn ghost" id="qvq-kb-export" data-i18n="kb_export">导出</button>
+        <button class="qvq-btn ghost" id="qvq-kb-import" data-i18n="kb_import">导入</button>
+        <input type="file" id="qvq-kb-file" accept="application/json" style="display:none" />
         <input class="qvq-input qvq-input-sm" id="qvq-kb-search" type="text" data-i18n-ph="kb_search_ph" placeholder="检索…" />
         <span class="qvq-tool-desc" id="qvq-kb-stats"></span>
       </div>

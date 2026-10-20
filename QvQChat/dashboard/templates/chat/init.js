@@ -85,6 +85,32 @@
     el("qvq-persona-add").onclick = function () { openPersonaModal(null); };
     el("qvq-skill-add").onclick = function () { openSkillModal(null); };
     el("qvq-kb-add").onclick = function () { openKnowledgeModal(); };
+    el("qvq-kb-export").onclick = function () {
+      api("/api/qvq/kb/export").then(function (data) {
+        var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "qvqchat-kb-" + new Date().toISOString().slice(0, 10) + ".json";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+    };
+    el("qvq-kb-import").onclick = function () { el("qvq-kb-file").click(); };
+    el("qvq-kb-file").onchange = function () {
+      var file = this.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var data;
+        try { data = JSON.parse(reader.result); } catch (e) { toast("invalid json", true); return; }
+        api("/api/qvq/kb/import", "POST", { entries: (data && data.entries) || [] }).then(function (r) {
+          toast(t("saved") + " × " + ((r && r.added) || 0));
+          loadKnowledge();
+        });
+      };
+      reader.readAsText(file);
+      this.value = "";
+    };
     el("qvq-mcp-add").onclick = function () { openMcpModal(null); };
     el("qvq-skill-export").onclick = function () {
       api("/api/qvq/skills/export").then(function (data) {
