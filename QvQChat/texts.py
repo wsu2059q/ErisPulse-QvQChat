@@ -612,6 +612,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "タスクが見つかりません: {id}",
         "ru": "Задача не найдена: {id}",
     },
+    "rate_limited": {
+        "zh-CN": "消息有点太密啦，稍后再 @ 我～",
+        "zh-TW": "訊息有點太密啦，稍後再 @ 我～",
+        "en": "Messages are coming in a bit fast — ping me again in a moment.",
+        "ja": "メッセージが少し密集しています。少し待ってからまた呼んでください。",
+        "ru": "Сообщения слишком частые — позовите меня чуть позже.",
+    },
+    "run_failed": {
+        "zh-CN": "这次任务没跑成：{error}",
+        "zh-TW": "這次任務沒跑成：{error}",
+        "en": "The task didn't finish: {error}",
+        "ja": "タスクが完了できませんでした：{error}",
+        "ru": "Задача не выполнена: {error}",
+    },
     "compact_done": {
         "zh-CN": "会话压缩完成：{actions}",
         "zh-TW": "會話壓縮完成：{actions}",
