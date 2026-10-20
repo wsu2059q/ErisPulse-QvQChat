@@ -133,6 +133,7 @@ class Main(BaseModule):
         self.takeover: dict = {}
         self._chat_locks: dict = {}
         self._pending: dict = {}
+        self._waiting: dict = {}
 
     @staticmethod
     def get_load_strategy() -> ModuleLoadStrategy:
@@ -438,13 +439,6 @@ class Main(BaseModule):
             self.sessions.set_group_name(chat_key, name)
         return name
 
-    def _lock_for(self, chat_key: str) -> asyncio.Lock:
-        lock = self._chat_locks.get(chat_key)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._chat_locks[chat_key] = lock
-        return lock
-
     def _usage_today(self) -> dict:
         data = self.sdk.storage.get(f"QvQChat:usage:{time.strftime('%Y-%m-%d')}", {})
         return data if isinstance(data, dict) else {}
@@ -506,6 +500,48 @@ class Main(BaseModule):
                 }
             )
         return history
+
+    def _enqueue_waiting(self, chat_key: str, event, items: list) -> None:
+        queue = self._waiting.setdefault(chat_key, [])
+        queue.append((event, items))
+        self.logger.info(f"chat busy, message queued ({chat_key}, {len(queue)} waiting)")
+        self.spawn(self._announce_queued(chat_key, event, items))
+
+    async def _announce_queued(self, chat_key: str, event, items: list) -> None:
+        incoming = " ".join(str(i.get("text") or "") for i in items if i.get("text"))
+        registry = getattr(self, "live_registry", None)
+        current = ""
+        live = registry.get(chat_key) if registry else None
+        if live is not None:
+            current = str(live.text or "")[-300:]
+        prompt = (
+            "机器人正在执行一个未完成的长任务。任务最近的输出摘要是："
+            + (current or "（尚无输出）")
+            + "。此时收到新消息：" + incoming[:150] + "。"
+            "请以机器人自己的口吻输出一句话：简单说明当前在做什么，并告诉对方这条新消息已排入队列、"
+            "任务完成后就会处理。只输出这一句话，不要调用任何工具。"
+        )
+        reply = ""
+        try:
+            response = await self.pool.chat(
+                ChatRequest(messages=[{"role": "user", "content": prompt}], max_tokens=80, temperature=0.7)
+            )
+            reply = (response.content or "").strip()
+        except Exception as e:
+            self.logger.warning(f"queue announce failed: {e}")
+        if not reply:
+            return
+        try:
+            await event.reply(reply)
+        except Exception as e:
+            self.logger.warning(f"queue announce reply failed: {e}")
+
+    def _drain_waiting(self, chat_key: str) -> None:
+        queue = self._waiting.pop(chat_key, None)
+        if not queue:
+            return
+        for event, items in queue:
+            self._batch_message(event, chat_key, items)
 
     def _lock_for(self, chat_key: str) -> asyncio.Lock:
         lock = self._chat_locks.get(chat_key)
@@ -618,6 +654,10 @@ class Main(BaseModule):
             if registry is not None:
                 old_live = registry.get(chat_key)
                 if old_live and old_live.status == "running" and old_live.text.strip():
+                    # queue：当前任务后台继续，新消息排到任务完成后处理；interrupt：取消旧任务
+                    if str(getattr(self.cfg, "interrupt_mode", "queue")) == "queue":
+                        self._enqueue_waiting(chat_key, event, items)
+                        return
                     old_live.cancel()
                     interrupted_note = texts.t(
                         "interrupted_note",
@@ -701,8 +741,13 @@ class Main(BaseModule):
             except Exception:
                 pass
             await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None))
+            self._drain_waiting(chat_key)
         except Exception as e:
             self.logger.warning(f"process failed: {e}")
+            try:
+                await event.reply(texts.t("run_failed", error=utils.truncate(str(e), 200)))
+            except Exception:
+                pass
 
     async def _seed_history(self, event) -> list:
         try:
