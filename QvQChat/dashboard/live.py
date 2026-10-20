@@ -59,6 +59,25 @@ class LiveRegistry:
     def __init__(self):
         self._streams: dict[str, LiveStream] = {}
 
+    def overview(self) -> list[dict]:
+        self._cleanup()
+        out = []
+        for live in list(self._streams.values()):
+            if live.status == "running" or not live.stale():
+                out.append(
+                    {
+                        "session": live.session,
+                        "status": live.status,
+                        "started": live.started,
+                        "steps": len(live.steps),
+                        "text_head": (live.text or "")[:120],
+                        "error": live.error or "",
+                    }
+                )
+        out.sort(key=lambda item: item["started"], reverse=True)
+        return out
+
+
     def get(self, session: str) -> LiveStream | None:
         live = self._streams.get(session)
         if live is not None and live.stale():
