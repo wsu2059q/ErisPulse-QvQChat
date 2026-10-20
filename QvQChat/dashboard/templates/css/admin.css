@@ -135,6 +135,11 @@
   margin: 0 0 18px 1px;
 }
 
+ 
+.qvq-tab > * + * {
+  margin-top: 14px;
+}
+
 .qvq-grid {
   display: grid;
   gap: 14px;
