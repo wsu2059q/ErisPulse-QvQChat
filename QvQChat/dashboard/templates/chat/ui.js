@@ -34,7 +34,6 @@
   var chatQueues = {};
   var chatSyncTimer = null;
   var modelPresets = [];
-  var currentMemoryScope = "";
   var currentCategory = "";
 
   function applyI18n(root) {
@@ -68,6 +67,10 @@
     document.querySelectorAll(".qvq-dd-btn.open").forEach(function (b) { b.classList.remove("open"); });
   }
 
+  // 浮层挂 body：滚动/缩放时关闭，避免卡片内滚动条把菜单"顶开"
+  window.addEventListener("scroll", closeAllMenus, true);
+  window.addEventListener("resize", closeAllMenus);
+
   function enhanceSelects(root) {
     (root || document).querySelectorAll("select.qvq-select").forEach(function (sel) {
       if (sel.getAttribute("data-qvq-dd")) return;
@@ -91,9 +94,23 @@
       btn.appendChild(chev);
       var menu = document.createElement("span");
       menu.className = "qvq-dd-menu";
+      document.body.appendChild(menu);
       wrap.appendChild(btn);
-      wrap.appendChild(menu);
       wrap.appendChild(sel);
+      function place() {
+        var r = btn.getBoundingClientRect();
+        var openUp = r.bottom + 280 > window.innerHeight && r.top > 300;
+        menu.classList.toggle("up", openUp);
+        menu.style.left = r.left + "px";
+        menu.style.width = r.width + "px";
+        if (openUp) {
+          menu.style.top = "auto";
+          menu.style.bottom = (window.innerHeight - r.top + 6) + "px";
+        } else {
+          menu.style.bottom = "auto";
+          menu.style.top = (r.bottom + 6) + "px";
+        }
+      }
       function renderMenu() {
         var cur = sel.value;
         var opts = Array.prototype.slice.call(sel.options || []).map(function (o) {
@@ -110,8 +127,7 @@
         closeAllMenus();
         if (willOpen) {
           renderMenu();
-          var r = btn.getBoundingClientRect();
-          menu.classList.toggle("up", r.bottom + 280 > window.innerHeight && r.top > 300);
+          place();
           menu.classList.add("open");
           btn.classList.add("open");
         }
