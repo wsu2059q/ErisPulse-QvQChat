@@ -160,6 +160,7 @@
 
   var loaders = {
     overview: loadOverview,
+    orchestrate: loadOrchestrate,
     chat: loadChatMeta,
     models: loadModels,
     personas: loadPersonas,

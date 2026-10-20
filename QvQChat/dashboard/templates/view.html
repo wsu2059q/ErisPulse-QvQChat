@@ -21,6 +21,10 @@
         <span class="qvq-nav-tx" data-i18n="nav_chat">对话</span>
       </button>
       <div class="qvq-nav-sessions" id="qvq-nav-sessions"></div>
+      <button class="qvq-nav-btn" data-tab="orchestrate">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="6" r="2.5" /><circle cx="12" cy="18" r="2.5" /><path d="M6 8.5v1.5a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8.5M12 12.5v3" /></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_orchestrate">编排</span>
+      </button>
       <div class="qvq-nav-group" data-i18n="nav_group_config">能力</div>
       <button class="qvq-nav-btn" data-tab="models">
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M12 2.5l9 5-9 5-9-5 9-5z" /><path d="M3 12l9 5 9-5" /><path d="M3 17l9 5 9-5" /></svg></span>
@@ -91,6 +95,10 @@
         <h3 class="qvq-card-title" data-i18n="usage_title">用量趋势</h3>
         <div id="qvq-home-chart"></div>
       </div>
+      <div class="qvq-card">
+        <h3 class="qvq-card-title" data-i18n="cost_title">成本估算</h3>
+        <div id="qvq-home-cost"></div>
+      </div>
       <div class="qvq-stats" id="qvq-stats"></div>
       <div class="qvq-split">
         <div class="qvq-card">
@@ -101,6 +109,36 @@
           <h3 class="qvq-card-title" data-i18n="upcoming_tasks">即将执行</h3>
           <div id="qvq-home-tasks"></div>
         </div>
+      </div>
+    </section>
+
+    <section class="qvq-tab" data-section="orchestrate">
+      <h1 class="qvq-h1" data-i18n="nav_orchestrate">编排</h1>
+      <p class="qvq-desc" data-i18n="orchestrate_desc">智能体总览：模型链 · 健康 · 运行状态 · 任务时间线</p>
+      <div class="qvq-grid asymmetric">
+        <div class="qvq-card qvq-span7">
+          <h3 class="qvq-card-title" data-i18n="orch_model_chain">模型链（故障转移顺序）</h3>
+          <div class="qvq-tool-desc" data-i18n="orch_chain_hint">拖拽调整故障转移顺序，松手自动保存</div>
+          <div id="qvq-orch-chain"></div>
+        </div>
+        <div class="qvq-card qvq-span5">
+          <h3 class="qvq-card-title" data-i18n="orch_health">模型健康</h3>
+          <div id="qvq-orch-health"></div>
+        </div>
+      </div>
+      <div class="qvq-grid asymmetric">
+        <div class="qvq-card qvq-span5">
+          <h3 class="qvq-card-title" data-i18n="orch_running">运行状态</h3>
+          <div id="qvq-orch-running"></div>
+        </div>
+        <div class="qvq-card qvq-span7">
+          <h3 class="qvq-card-title" data-i18n="orch_timeline">任务时间线</h3>
+          <div id="qvq-orch-timeline"></div>
+        </div>
+      </div>
+      <div class="qvq-card">
+        <h3 class="qvq-card-title" data-i18n="orch_capabilities">能力开关</h3>
+        <div id="qvq-orch-caps"></div>
       </div>
     </section>
 
@@ -155,6 +193,7 @@
         <div class="qvq-toolbar">
           <button class="qvq-btn" id="qvq-model-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="models_add">添加模型</span></button>
         </div>
+        <div id="qvq-models-health"></div>
         <div id="qvq-models-list"></div>
       </div>
     </section>
@@ -228,6 +267,10 @@
       <p class="qvq-desc" data-i18n="tasks_desc">由智能体通过 create_scheduled_task 创建</p>
       <div class="qvq-card">
         <div id="qvq-tasks-list"></div>
+      </div>
+      <div class="qvq-card">
+        <h3 class="qvq-card-title" data-i18n="orch_timeline">任务时间线</h3>
+        <div id="qvq-tasks-timeline"></div>
       </div>
     </section>
 
