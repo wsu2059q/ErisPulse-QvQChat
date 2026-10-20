@@ -380,7 +380,7 @@ class ConversationService:
                 contexts = self.seed_contexts(chat_key, seeded)
         personas = getattr(self.main, "personas", None)
         persona = personas.get(persona_id) if (persona_id and personas) else personas.resolve(chat_key)
-        system = self.build_system(persona, scene=scene, chat_key=chat_key, active_skills=active_skills, mcp_tools=mcp_tools)
+        system = self.build_system(persona, scene=scene, chat_key=chat_key, active_skills=active_skills, mcp_tools=mcp_tools, kb_query=self._text_of(text))
         memory = getattr(self.main, "memory", None)
         if memory is not None:
             recalled = memory.recall(chat_key, query=self._text_of(text), limit=int(getattr(self.config, "memory_recall", 6)))
@@ -452,6 +452,7 @@ class ConversationService:
         chat_key: str = "",
         active_skills: list[str] | None = None,
         mcp_tools: list[str] | None = None,
+        kb_query: str = "",
     ) -> str:
         from ..Main import CAPABILITY_PROMPT
 
@@ -484,6 +485,14 @@ class ConversationService:
             tools_hint = [str(t) for t in mcp_tools if str(t)]
             if tools_hint:
                 system += "\n\n" + texts.t("dashboard_mcp_hint", tools=", ".join(tools_hint))
+        if getattr(self.config, "kb_auto_inject", True) and kb_query:
+            kb = getattr(self.main, "knowledge", None)
+            hits = kb.search(kb_query, top_k=int(getattr(self.config, "kb_top_k", 2) or 0)) if kb else []
+            if hits:
+                blocks = "\n\n".join(
+                    f"<kb-doc title=\"{h['title']}\">\n{h['snippet']}\n</kb-doc>" for h in hits
+                )
+                system += "\n\n" + texts.t("kb_system_note") + "\n" + blocks
         for line in getattr(self.config, "extra_prompts", []) or []:
             line = str(line).strip()
             if line:
