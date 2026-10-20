@@ -4,11 +4,25 @@
 
 ## 未发布
 
+### 新增
+
+- **模型健康度熔断**：连续失败 ≥3 次自动冷却（60s×2^n，上限 10 分钟），故障转移链跳过冷却模型，成功即清零；`GET /api/qvq/breakers` 供面板查询
+- **成本统计**：模型价格来自 models.dev 目录（`{input, output}` 每百万 token），`record_usage` 按模型记录 `{tokens, in, out}`，`GET /api/qvq/costs` 换算每日与按模型成本
+- **群聊 per-user 限频**：`user_rate_limit`（每用户每分钟滑动窗口，0 不限，管理员豁免），超限静默丢弃并至多提示一次
+- **智能体编排页**（左侧新增）：模型链拖拽排序（自动保存）、运行状态、任务时间线（定时任务记录最近执行 `QvQChat:task_runs`）、能力开关（工具/技能/MCP 汇总开关）、模型健康徽章
+- **成本可视化**：概览页新增成本估算卡（每日成本柱状 + 累计线 + 按模型分布）
+- **知识库**：`conversation/knowledge.py` 全文存储 + 即时分块（约 400 字）+ 词面打分检索；`kb_auto_inject` 开启时相关片段自动注入系统提示；工具 `knowledge_search`（safe）/ `knowledge_add` / `knowledge_delete`（admin）；Dashboard 新增知识库管理页（增删查 + 统计）
+- **群成员会话隔离**：`group_isolation` 开关（默认关），开启后群聊每位成员独立上下文/人格/记忆（chat_key 追加 `:u<成员>` 后缀，发送路径自动还原目标）
+- **OpenAI 兼容端点**：`GET /v1/models` 与 `POST /v1/chat/completions`（含 SSE 流式），Bearer 令牌即 Dashboard 访问令牌；会话按 `user` 字段隔离（默认独立 API 会话）
+
 ### 优化
 
 - 默认投递改为逐条分段发送（AI 每段直接发到聊天）；合并转发卡改为可选开关（`forward_enabled`，默认关），开启时工具任务回复打包为合并转发
 - 合并转发节点去掉「【N/M】」编号前缀；节点身份改用机器人自己的账号与昵称（get_login_info / get_self_info），不再显示虚构的 QvQChat
 - 分段发送不再区分工具任务与纯对话，统一按段落切分；`[[转发]]` / `[[直发]]` 标签仍可强制
+- 全局区块垂直间距统一（`.qvq-tab` 内相邻块 14px）；自定义下拉菜单改为挂载 body 的固定定位浮层，不再被卡片滚动区裁剪或撑开
+- 记忆页改为单列表：点击作用域打开模态窗查看/删除条目与会话记忆清空
+- 会话页默认隐藏 0 轮空会话占位
 
 ## 4.0.2
 
