@@ -109,6 +109,9 @@ class Delivery:
             sends = list(self.sdk.adapter.list_sends(platform))
         except Exception:
             sends = []
+        threshold = int(getattr(self.config, "forward_threshold", 600) or 0)
+        if force is not True and threshold and len(reply) < threshold:
+            return False
         if force is not True:
             if not self.merges(platform):
                 return False
