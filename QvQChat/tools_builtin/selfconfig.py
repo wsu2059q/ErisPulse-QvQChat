@@ -126,6 +126,58 @@ async def manage_mcp(ctx: ToolContext, action: str = "list", name: str = "", tra
     return f"unknown action: {action} (list / status / save / remove / connect / disconnect)"
 
 
+async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: str = "",
+                          name: str = "", system: str = "", chat_key: str = "",
+                          persona: str | None = None) -> str:
+    personas = ctx.main.personas
+    action = str(action or "list").lower()
+    if action == "list":
+        bound = {}
+        for session in ctx.main.sessions.list_sessions():
+            pid = session.get("persona")
+            if pid:
+                bound[session["chat_key"]] = pid
+        return utils.to_text({
+            "personas": [
+                {k: p.get(k) for k in ("id", "name", "builtin")}
+                for p in personas.list()
+            ],
+            "global_default": personas.global_default(),
+            "bindings": bound,
+            "current_chat": ctx.chat_key,
+        })
+    if action == "save":
+        if not name and not system:
+            return "save needs name and/or system"
+        saved = personas.save({
+            "id": str(persona_id or "") or None,
+            "name": name,
+            "system": system,
+        })
+        return utils.to_text({"ok": True, "persona": saved})
+    if action == "delete":
+        return utils.to_text({"ok": personas.delete(str(persona_id or ""))})
+    if action == "bind":
+        target = str(chat_key or "").strip() or ctx.chat_key
+        if persona is None and not persona_id:
+            return "bind needs persona (existing persona id); use unbind to clear"
+        personas.bind(target, str(persona or persona_id))
+        ctx.main.sessions.set_persona(target, str(persona or persona_id))
+        return utils.to_text({"ok": True, "chat_key": target, "persona": str(persona or persona_id)})
+    if action == "unbind":
+        target = str(chat_key or "").strip() or ctx.chat_key
+        personas.bind(target, None)
+        ctx.main.sessions.set_persona(target, None)
+        return utils.to_text({"ok": True, "chat_key": target})
+    if action == "set_global":
+        personas.set_global_default(str(persona_id or "") or None)
+        return utils.to_text({"ok": True, "global_default": str(persona_id or "")})
+    if action == "clear_global":
+        personas.set_global_default(None)
+        return utils.to_text({"ok": True})
+    return f"unknown action: {action} (list / save / delete / bind / unbind / set_global / clear_global)"
+
+
 async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", updates: dict | None = None) -> str:
     from ..Config import QvQConfig
 
@@ -189,6 +241,23 @@ def register(registry: ToolRegistry, main) -> None:
             [],
         ),
         handler=manage_mcp,
+        danger=True,
+    ))
+    registry.register(Tool(
+        name="manage_personas",
+        description="Self-manage personas: list, create or update, delete, bind a persona to the current or any chat, unbind, and set/clear the global default persona. Admin only.",
+        parameters=_schema(
+            {
+                "action": _s(type="string", description="list / save / delete / bind / unbind / set_global / clear_global"),
+                "persona_id": _s(type="string", description="Persona id for delete/set_global; optional id for save"),
+                "name": _s(type="string", description="save: persona name"),
+                "system": _s(type="string", description="save: system prompt"),
+                "persona": _s(type="string", description="bind: existing persona id to bind"),
+                "chat_key": _s(type="string", description="bind/unbind target chat; omit for the current chat"),
+            },
+            [],
+        ),
+        handler=manage_personas,
         danger=True,
     ))
     registry.register(Tool(

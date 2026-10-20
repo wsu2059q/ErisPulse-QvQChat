@@ -44,14 +44,14 @@ def forward_calls(harness, platform="onebot11"):
 
 
 async def test_disabled_never_forwards():
-    harness = make_harness(forward_enabled=False)
+    harness = make_harness(forward_platforms=[], no_forward_platforms=["onebot11"])
     event = FakeForwardEvent()
     assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is False
     assert forward_calls(harness) == []
 
 
 async def test_threshold_zero_irrelevant_for_reply():
-    harness = make_harness(forward_threshold=0, forward_enabled=True)
+    harness = make_harness(forward_threshold=0)
     event = FakeForwardEvent()
     assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is True
 
@@ -63,10 +63,8 @@ async def test_tool_run_reply_forwards_regardless_of_length():
     calls = forward_calls(harness)
     assert calls and len(calls[0][0]) >= 2
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
-    from QvQChat import texts as texts_mod
-
-    assert any(texts_mod.t("forward_process_title") in t for t in texts)
-    assert any("call_module" in t for t in texts)
+    assert any(t.startswith("call_module(") for t in texts), texts
+    assert any("installed" in t for t in texts)
 
 
 async def test_plain_chat_never_forwards():
@@ -94,7 +92,7 @@ async def test_any_platform_with_forward_method_works():
 
 
 async def test_force_forward_tag_overrides_short_and_disabled():
-    harness = make_harness(forward_enabled=False)
+    harness = make_harness(forward_platforms=[], no_forward_platforms=["onebot11"])
     event = FakeForwardEvent()
     assert await Delivery(harness)._try_forward(event, "短回复", [], force=True) is True
     calls = forward_calls(harness)

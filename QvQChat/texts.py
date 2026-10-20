@@ -78,6 +78,36 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "あなたは QvQChat、ErisPulse フレームワーク上で動く汎用エージェントです。メッセージの送受信、モジュールサービスの呼び出し、コードの作成と実行、ファイルとコマンドの操作、画像と音声の生成、タスクと長期記憶の管理ができます。回答は簡潔に。不確かなことは理由を説明。リスクのある操作は確認を。能力を捏造せずツールを優先してください。",
         "ru": "Вы QvQChat — универсальный агент на фреймворке ErisPulse. Вы можете отправлять и получать сообщения платформ, вызывать службы модулей экосистемы, писать и запускать код, работать с файлами и командами, генерировать изображения и речь, управлять задачами и долговременной памятью. Отвечайте кратко и по делу; объясняйте при неуверенности; подтверждайте рискованные операции; не выдумывайте возможности — используйте инструменты.",
     },
+    "persona_concise_name": {
+        "zh-CN": "简短回应", "zh-TW": "簡短回應", "en": "Concise", "ja": "簡潔", "ru": "Кратко",
+    },
+    "persona_concise_system": {
+        "zh-CN": "回复尽量简短自然，通常一两句话，像日常聊天；不用列表、标题和客套话；只有被直接追问时才展开细节。",
+        "zh-TW": "回覆盡量簡短自然，通常一兩句話，像日常聊天；不用列表、標題和客套話；只有被直接追問時才展開細節。",
+        "en": "Keep replies short and natural — usually one or two sentences, like everyday chat. No lists, headers or pleasantries; expand only when directly asked.",
+        "ja": "返信は簡潔に自然に。ふだんの会話のように1〜2文で。箇条書き・見出し・挨拶は使わず、聞かれたときだけ詳しく。",
+        "ru": "Отвечай коротко и естественно — обычно одно-два предложения, как в живом чате. Без списков, заголовков и вежливых оборотов; детали только по прямому вопросу.",
+    },
+    "persona_detailed_name": {
+        "zh-CN": "深度详解", "zh-TW": "深度詳解", "en": "In-depth", "ja": "詳細解説", "ru": "Подробно",
+    },
+    "persona_detailed_system": {
+        "zh-CN": "回答详尽完整：先给结论，再给背景、推理与分点展开，主动补充容易被忽略的边界情况；适合技术解释、方案对比与深度问题。",
+        "zh-TW": "回答詳盡完整：先給結論，再給背景、推理與分點展開，主動補充容易被忽略的邊界情況；適合技術解釋、方案對比與深度問題。",
+        "en": "Answer thoroughly: conclusion first, then background, reasoning and structured points; proactively cover edge cases. Suited to technical explanations, comparisons and deep questions.",
+        "ja": "徹底的に答える：結論を先に述べ、背景・理由・要点を整理して展開し、見落とされがちな例外にも触れる。技術解説や比較、深い質問に適する。",
+        "ru": "Отвечай исчерпывающе: сначала вывод, затем контекст, рассуждение и структурированные пункты; заранее закрывай граничные случаи. Для техобъяснений, сравнений и глубоких вопросов.",
+    },
+    "tool.manage_personas.name": {
+        "zh-CN": "人格管理", "zh-TW": "人格管理", "en": "Manage personas", "ja": "ペルソナ管理", "ru": "Управление личностями",
+    },
+    "tool.manage_personas.desc": {
+        "zh-CN": "自我管理人格：list 列出 / save 新增或修改 / delete 删除 / bind 绑定到指定或当前会话 / unbind 解绑会话 / set_global 设全局默认人格 / clear_global 恢复默认。仅管理员。",
+        "zh-TW": "自我管理人格：list 列出 / save 新增或修改 / delete 刪除 / bind 綁定到指定或當前會話 / unbind 解綁會話 / set_global 設全域預設人格 / clear_global 恢復預設。僅管理員。",
+        "en": "Self-manage personas: list / save (create or update) / delete / bind to a chat or the current one / unbind / set_global default persona / clear_global. Admin only.",
+        "ja": "ペルソナを自己管理：list 一覧 / save 追加・更新 / delete 削除 / bind 指定または現在のセッションに紐付け / unbind 解除 / set_global 既定ペルソナ / clear_global 既定解除。管理者のみ。",
+        "ru": "Самоуправление личностями: list список / save создать или изменить / delete удалить / bind привязать к чату или текущему / unbind отвязать / set_global личность по умолчанию / clear_global сброс. Только админ.",
+    },
     "persona_builtin_readonly": {
         "zh-CN": "内置人格不可修改或删除",
         "zh-TW": "內建人格不可修改或刪除",
