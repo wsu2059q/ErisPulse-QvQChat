@@ -48,6 +48,14 @@ class Delivery:
         self.config = main.cfg
         self._identity: dict = {}
 
+    def merges(self, platform: str) -> bool:
+        if platform in [b for b in [str(x) for x in (getattr(self.config, "no_forward_platforms", []) or [])] if platform == b or (b.endswith("*") and platform.startswith(b[:-1]))]:
+            return False
+        for a in [str(x) for x in (getattr(self.config, "forward_platforms", ["*"]) or ["*"])]:
+            if a == "*" or platform == a or (a.endswith("*") and platform.startswith(a[:-1])):
+                return True
+        return False
+
     async def bot_identity(self, platform: str) -> tuple[str, str]:
         """机器人自己的 (账号, 昵称)：转发节点显示自己，而不是虚构身份。"""
         if platform in self._identity:
@@ -100,20 +108,19 @@ class Delivery:
         except Exception:
             sends = []
         if force is not True:
-            if not getattr(self.config, "forward_enabled", True):
+            if not self.merges(platform):
                 return False
             if not tool_trace:
                 return False
         sections: list = []
-        if tool_trace:
-            lines = []
-            for entry in tool_trace[:10]:
-                lines.append(f"{entry.get('tool', '')}({utils.truncate(str(entry.get('arguments', '')), 80)})")
-                output = utils.truncate(str(entry.get("output", "")), 200).replace("\n", " ")
-                lines.append(texts.t("forward_result", output=output))
-            if lines:
-                sections.append(texts.t("forward_process_title") + "\n" + "\n".join(lines))
+        for entry in (tool_trace or [])[:20]:
+            sections.append(
+                f"{entry.get('tool', '')}({utils.truncate(str(entry.get('arguments', '')), 120)})\n"
+                + texts.t("forward_result", output=utils.truncate(str(entry.get("output", "")), 300))
+            )
         sections += utils.split_reply_sections(reply)
+        if len(sections) > 40:
+            sections = sections[:39] + ["…"]
         if not sections:
             return False
         detail_type = "group" if event.is_group_message() else "user"
@@ -182,7 +189,7 @@ class Delivery:
             sends = list(self.sdk.adapter.list_sends(platform))
         except Exception:
             sends = []
-        if getattr(self.config, "forward_enabled", True) and from_tools:
+        if self.merges(platform) and from_tools:
             try:
                 used = await utils.deliver_forward(
                     adapter,

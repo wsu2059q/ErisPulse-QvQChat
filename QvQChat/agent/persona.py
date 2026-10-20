@@ -6,8 +6,12 @@ from .. import texts, utils
 
 PERSONAS_KEY = "QvQChat:personas"
 BINDING_PREFIX = "QvQChat:binding:"
+DEFAULT_PERSONA_KEY = "QvQChat:default_persona"
 
 ASSISTANT_ID = "assistant"
+CONCISE_ID = "concise"
+DETAILED_ID = "detailed"
+BUILTIN_IDS = (ASSISTANT_ID, CONCISE_ID, DETAILED_ID)
 
 
 def _default_personas() -> dict:
@@ -19,7 +23,23 @@ def _default_personas() -> dict:
             "opening": [],
             "tools": None,
             "builtin": True,
-        }
+        },
+        CONCISE_ID: {
+            "id": CONCISE_ID,
+            "name": texts.t("persona_concise_name"),
+            "system": texts.t("persona_concise_system"),
+            "opening": [],
+            "tools": None,
+            "builtin": True,
+        },
+        DETAILED_ID: {
+            "id": DETAILED_ID,
+            "name": texts.t("persona_detailed_name"),
+            "system": texts.t("persona_detailed_system"),
+            "opening": [],
+            "tools": None,
+            "builtin": True,
+        },
     }
 
 
@@ -34,18 +54,28 @@ class PersonaManager:
             for persona_id, data in stored.items():
                 data = dict(data)
                 data["id"] = persona_id
-                if persona_id == ASSISTANT_ID:
+                if persona_id in BUILTIN_IDS:
                     data["builtin"] = True
                     data["modified"] = True
                 personas[persona_id] = data
         return list(personas.values())
 
     def get(self, persona_id: str | None) -> dict:
-        if persona_id:
+        wanted = persona_id or self.global_default()
+        if wanted:
             for persona in self.list():
-                if persona["id"] == persona_id:
+                if persona["id"] == wanted:
                     return persona
         return _default_personas()[ASSISTANT_ID]
+
+    def global_default(self) -> str:
+        return str(self.sdk.storage.get(DEFAULT_PERSONA_KEY, "") or "")
+
+    def set_global_default(self, persona_id: str | None) -> None:
+        if persona_id:
+            self.sdk.storage.set(DEFAULT_PERSONA_KEY, str(persona_id))
+        else:
+            self.sdk.storage.delete(DEFAULT_PERSONA_KEY)
 
     def save(self, data: dict) -> dict:
         persona_id = str(data.get("id") or utils.new_id())
@@ -61,7 +91,7 @@ class PersonaManager:
         self.sdk.storage.set(PERSONAS_KEY, stored)
         result = dict(stored[persona_id])
         result["id"] = persona_id
-        if persona_id == ASSISTANT_ID:
+        if persona_id in BUILTIN_IDS:
             result["builtin"] = True
             result["modified"] = True
         return result

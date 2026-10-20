@@ -159,3 +159,29 @@ async def test_run_prompt_tool_run_delivers_as_forward():
     main.delivery = type('D', (), {'send_segments': staticmethod(fake_send)})()
     await Main.run_prompt(main, "onebot11:private:u1", "纯回答", origin="task")
     assert sends == [("onebot11", "private", "u1", False)]
+
+
+async def test_manage_personas_bind_and_global():
+    ctx = make_ctx()
+    out = json.loads(await selfconfig.manage_personas(
+        ctx, action="save", persona_id="terse",
+        name="Terse", system="Keep it to one sentence.",
+    ))
+    assert out["ok"] is True
+    listing = json.loads(await selfconfig.manage_personas(ctx, action="list"))
+    assert any(p["id"] == "terse" for p in listing["personas"])
+
+    out = json.loads(await selfconfig.manage_personas(ctx, action="bind", persona="terse"))
+    assert out["chat_key"] == ctx.chat_key
+    resolved = ctx.main.personas.resolve(ctx.chat_key)
+    assert resolved["id"] == "terse"
+
+    out = json.loads(await selfconfig.manage_personas(ctx, action="set_global", persona_id="concise"))
+    assert ctx.main.personas.global_default() == "concise"
+    fallback = ctx.main.personas.resolve("other:private:9")
+    assert fallback["id"] == "concise"
+
+    out = json.loads(await selfconfig.manage_personas(ctx, action="unbind"))
+    assert out["ok"] is True
+    out = json.loads(await selfconfig.manage_personas(ctx, action="delete", persona_id="terse"))
+    assert out["ok"] is True
