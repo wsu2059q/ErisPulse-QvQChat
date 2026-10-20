@@ -21,7 +21,7 @@ except ImportError:
 from . import texts, utils
 from .conversation.delivery import Delivery, strip_output_tag
 from .conversation.memory import MemoryStore
-from .conversation.service import ConversationService, make_chat_key, parse_chat_key
+from .conversation.service import ConversationService, make_chat_key, parse_chat_key, strip_isolation
 from .dashboard.live import bind as live_bind
 from .Config import QvQConfig
 from .I18n import QvQI18n
@@ -334,15 +334,19 @@ class Main(BaseModule):
             pass
         return urls[:3]
 
-    @staticmethod
-    def _chat_key_of(event) -> str:
+    def _chat_key_of(self, event) -> str:
         platform = event.get_platform() or ""
         if event.is_group_message():
-            return make_chat_key(platform, "group", str(event.get_group_id() or ""))
+            gid = str(event.get_group_id() or "")
+            if getattr(self.cfg, "group_isolation", False):
+                uid = str(event.get_user_id() or "")
+                if uid:
+                    return make_chat_key(platform, "group", f"{gid}:u{uid}")
+            return make_chat_key(platform, "group", gid)
         return make_chat_key(platform, "private", str(event.get_user_id() or ""))
 
     def _chat_ctx(self, event, chat_key: str) -> ToolContext:
-        platform, detail_type, target_id = parse_chat_key(chat_key)
+        platform, detail_type, target_id = parse_chat_key(strip_isolation(chat_key))
         session_key = ""
         try:
             session_key = self.sdk.interaction.make_key(event)
@@ -820,7 +824,7 @@ class Main(BaseModule):
 
     async def run_prompt(self, chat_key: str, prompt: str, persona_id: str = "",
                          origin: str = "task", send: bool = True, user_id: str = "") -> str:
-        platform, detail_type, target_id = parse_chat_key(chat_key)
+        platform, detail_type, target_id = parse_chat_key(strip_isolation(chat_key))
         ctx = ToolContext(
             main=self,
             sdk=self.sdk,
@@ -874,7 +878,7 @@ class Main(BaseModule):
         on_reset=None,
         on_tool_event=None,
     ) -> str:
-        platform, detail_type, target_id = parse_chat_key(chat_key)
+        platform, detail_type, target_id = parse_chat_key(strip_isolation(chat_key))
         ctx = ToolContext(
             main=self,
             sdk=self.sdk,

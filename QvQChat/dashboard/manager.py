@@ -120,6 +120,8 @@ class DashboardManager:
         public_routes = [
             ("GET", "/api/qvq/share/messages", self.share_messages),
             ("GET", "/share", self.share_page),
+            ("GET", "/v1/models", self.v1_models),
+            ("POST", "/v1/chat/completions", self.v1_chat_completions),
         ]
         for method, path, handler in public_routes:
             router.register_http_route("QvQChat", path, handler, methods=[method])
@@ -639,6 +641,121 @@ class DashboardManager:
         body = await request.json()
         ok = self.main.knowledge.delete(str((body or {}).get("id") or ""))
         return {"ok": ok}
+
+    # ===== OpenAI 兼容端点：Bearer=view_token，映射 run_dashboard_chat =====
+
+    def _v1_authorized(self, request) -> bool:
+        raw = getattr(request, "raw", request)
+        try:
+            auth = raw.headers.get("Authorization", "")
+        except Exception:
+            auth = ""
+        token = self._own_token()
+        return bool(token) and auth == f"Bearer {token}"
+
+    @staticmethod
+    def _v1_message_text(content) -> str:
+        if isinstance(content, list):
+            return "\n".join(
+                str(p.get("text") or "") for p in content if isinstance(p, dict) and p.get("type") == "text"
+            )
+        return str(content or "")
+
+    async def v1_models(self, request):
+        if not self._v1_authorized(request):
+            return ({"error": {"message": "Invalid API key", "type": "auth_error"}}, 401)
+        data = [
+            {"id": m["id"], "object": "model", "owned_by": "QvQChat"}
+            for m in self.main.pool.list_models()
+        ]
+        return {"object": "list", "data": data}
+
+    async def v1_chat_completions(self, request):
+        import asyncio as _asyncio
+        import json as _json
+
+        if not self._v1_authorized(request):
+            return ({"error": {"message": "Invalid API key", "type": "auth_error"}}, 401)
+        body = await request.json()
+        messages = (body or {}).get("messages") or []
+        user_text = ""
+        for msg in reversed(messages):
+            if isinstance(msg, dict) and msg.get("role") == "user":
+                user_text = self._v1_message_text(msg.get("content"))
+                break
+        if not user_text.strip():
+            return ({"error": {"message": "messages must contain a user message", "type": "invalid_request_error"}}, 400)
+        api_user = str((body or {}).get("user") or "").strip()
+        session = "dashboard:private:api" + (f"_{utils.sanitize_name(api_user)}" if api_user else "")
+        model = str((body or {}).get("model") or "")
+        comp_id = "chatcmpl-" + utils.new_id()
+        created = int(utils.now_ts())
+
+        def base_chunk():
+            return {
+                "id": comp_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model,
+                "choices": [{"index": 0, "delta": {}, "finish_reason": None}],
+            }
+
+        if (body or {}).get("stream"):
+            queue: _asyncio.Queue = _asyncio.Queue()
+
+            def on_delta(piece: str) -> None:
+                if piece:
+                    queue.put_nowait(piece)
+
+            async def runner():
+                try:
+                    await self.main.run_dashboard_chat(session, user_text, model=model, on_delta=on_delta)
+                    queue.put_nowait(None)
+                except Exception as e:
+                    queue.put_nowait(e)
+
+            async def gen():
+                _asyncio.get_running_loop().create_task(runner())
+                started = False
+                while True:
+                    item = await queue.get()
+                    if item is None:
+                        break
+                    if isinstance(item, Exception):
+                        yield "data: " + _json.dumps({"error": {"message": str(item)}}, ensure_ascii=False) + "\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                    delta = {"role": "assistant", "content": item} if not started else {"content": item}
+                    started = True
+                    piece = base_chunk()
+                    piece["choices"][0]["delta"] = delta
+                    yield "data: " + _json.dumps(piece, ensure_ascii=False) + "\n\n"
+                if not started:
+                    piece = base_chunk()
+                    piece["choices"][0]["delta"] = {"role": "assistant", "content": ""}
+                    yield "data: " + _json.dumps(piece, ensure_ascii=False) + "\n\n"
+                last = base_chunk()
+                last["choices"][0]["delta"] = {}
+                last["choices"][0]["finish_reason"] = "stop"
+                yield "data: " + _json.dumps(last, ensure_ascii=False) + "\n\n"
+                yield "data: [DONE]\n\n"
+
+            from starlette.responses import StreamingResponse
+
+            return StreamingResponse(gen(), media_type="text/event-stream")
+
+        try:
+            reply = await self.main.run_dashboard_chat(session, user_text, model=model)
+        except Exception as e:
+            return ({"error": {"message": str(e), "type": "internal_error"}}, 500)
+        return {
+            "id": comp_id,
+            "object": "chat.completion",
+            "created": created,
+            "model": model,
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
 
     async def tasks_delete(self, request):
         body = await request.json()
