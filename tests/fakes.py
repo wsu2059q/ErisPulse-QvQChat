@@ -360,7 +360,7 @@ class FakeMain:
         self.delivery = Delivery(self)
         self.memory = MemoryStore(self.sdk, self.cfg)
         from QvQChat.conversation.knowledge import KnowledgeBase
-        self.knowledge = KnowledgeBase(self.sdk)
+        self.knowledge = KnowledgeBase(self.sdk, self.cfg)
         self.pool = ModelPool(self.sdk, self.cfg)
         self.scheduler = Scheduler(self)
         from QvQChat.bridge.mcp import MCPManager

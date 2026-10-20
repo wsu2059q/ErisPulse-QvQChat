@@ -89,6 +89,9 @@ class DashboardManager:
             ("GET", "/api/qvq/kb", self.kb_get),
             ("POST", "/api/qvq/kb/add", self.kb_add),
             ("POST", "/api/qvq/kb/delete", self.kb_delete),
+            ("GET", "/api/qvq/kb/export", self.kb_export),
+            ("POST", "/api/qvq/kb/import", self.kb_import),
+            ("POST", "/api/qvq/session/routes", self.session_routes),
             ("GET", "/api/qvq/memory", self.memory_get),
             ("POST", "/api/qvq/memory/delete", self.memory_delete),
             ("GET", "/api/qvq/sessions", self.sessions_get),
@@ -642,6 +645,14 @@ class DashboardManager:
         ok = self.main.knowledge.delete(str((body or {}).get("id") or ""))
         return {"ok": ok}
 
+    async def kb_export(self, request):
+        return {"entries": self.main.knowledge.export()}
+
+    async def kb_import(self, request):
+        body = await request.json()
+        added = self.main.knowledge.import_entries((body or {}).get("entries") or [])
+        return {"ok": True, "added": added}
+
     # ===== OpenAI 兼容端点：Bearer=view_token，映射 run_dashboard_chat =====
 
     def _v1_authorized(self, request) -> bool:
@@ -786,6 +797,8 @@ class DashboardManager:
         for session in sessions:
             if str(session.get("platform") or "") == "dashboard" and not session.get("name"):
                 session["name"] = texts.t("dashboard_session_name")
+            session["members"] = self.main.sessions.members_of(session.get("chat_key") or "")
+            session["sources"] = self.main.sessions.routes_into(session.get("chat_key") or "")
         try:
             self.main.spawn(self.main.conversations.resolve_session_names(sessions))
         except Exception:
@@ -910,9 +923,27 @@ class DashboardManager:
         ui = (body or {}).get("settings")
         if not isinstance(ui, dict):
             return ({"error": "settings object required"}, 400)
-        allowed = ("density", "model", "effort")
-        saved = self.main.sessions.set_ui(chat_key, {k: str(ui[k]) for k in allowed if ui.get(k) is not None})
+        saved = self.main.sessions.set_ui(chat_key, {k: str(ui[k]) for k in ("density", "model", "effort") if ui.get(k) is not None})
+        members = ui.get("members")
+        if isinstance(members, list):
+            saved["members"] = self.main.sessions.set_members(chat_key, members)
         return {"ok": True, "ui": saved}
+
+    async def session_routes(self, request):
+        body = await request.json()
+        target = str((body or {}).get("target") or "").strip()
+        if not target:
+            return ({"error": "target required"}, 400)
+        sources = (body or {}).get("sources")
+        if isinstance(sources, list):
+            routes = {k: v for k, v in self.main.sessions.routes().items() if v != target}
+            for src in sources:
+                src = str(src).strip()
+                if src and src != target:
+                    routes[src] = target
+            self.main.sessions.save_routes(routes)
+            return {"ok": True, "sources": sorted(k for k, v in routes.items() if v == target)}
+        return {"sources": self.main.sessions.routes_into(target)}
 
     def _ui_defaults(self) -> dict:
         d = self.sdk.storage.get(UI_DEFAULTS_KEY, {})
