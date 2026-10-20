@@ -38,10 +38,11 @@ def tool_trace():
     return [{"tool": "call_module", "arguments": "{}", "output": "installed", "ms": 5}]
 
 
-def rounds_two_replies():
+def rounds_multi_replies():
     return [
         {"text": "", "tools": tool_trace()},
         {"text": "先说中间发现", "tools": []},
+        {"text": "补充一个关键细节", "tools": []},
         {"text": "综上是结论", "tools": []},
     ]
 
@@ -54,7 +55,7 @@ def forward_calls(harness, platform="onebot11"):
 async def test_tool_run_with_multiple_replies_merges():
     harness = make_harness()
     event = FakeForwardEvent()
-    assert await Delivery(harness)._try_forward(event, "综上是结论", tool_trace(), rounds=rounds_two_replies()) is True
+    assert await Delivery(harness)._try_forward(event, "综上是结论", tool_trace(), rounds=rounds_multi_replies()) is True
     calls = forward_calls(harness)
     assert calls and len(calls[0][0]) >= 3
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
@@ -112,24 +113,24 @@ async def test_tool_and_message_alternate_stay_separate():
 async def test_platform_blocklist_never_forwards():
     harness = make_harness(no_forward_platforms=["onebot11"])
     event = FakeForwardEvent()
-    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_two_replies()) is False
+    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_multi_replies()) is False
     assert forward_calls(harness) == []
 
 
 async def test_platform_allowlist_gates():
     harness = make_harness(forward_platforms=["yunhu"])
     event = FakeForwardEvent()
-    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_two_replies()) is False
+    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_multi_replies()) is False
     harness.sdk.adapter.add("yunhu", FakeSendChain(sends=("MergeForward", "Text")), sends=("MergeForward", "Text"))
     event2 = FakeForwardEvent(platform="yunhu", sends=("MergeForward", "Text"))
-    assert await Delivery(harness)._try_forward(event2, "综上", tool_trace(), rounds=rounds_two_replies()) is True
+    assert await Delivery(harness)._try_forward(event2, "综上", tool_trace(), rounds=rounds_multi_replies()) is True
 
 
 async def test_platform_without_forward_method_skips():
     harness = make_harness()
     harness.sdk.adapter.add("onebot11", FakeSendChain(), sends=("Text",))
     event = FakeForwardEvent(sends=("Text",))
-    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace(), rounds=rounds_two_replies()) is False
+    assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace(), rounds=rounds_multi_replies()) is False
     assert forward_calls(harness) == []
 
 
@@ -137,7 +138,7 @@ async def test_any_platform_with_forward_method_works():
     harness = make_harness()
     harness.sdk.adapter.add("yunhu", FakeSendChain(sends=("MergeForward", "Text")), sends=("MergeForward", "Text"))
     event = FakeForwardEvent(platform="yunhu", sends=("MergeForward", "Text"))
-    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_two_replies()) is True
+    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_multi_replies()) is True
     assert forward_calls(harness, "yunhu")
 
 
@@ -206,5 +207,5 @@ async def test_deliver_reply_merged_run_sends_nothing_plain():
     sent = []
     harness = make_harness()
     delivery = Delivery(harness)
-    await delivery.deliver_reply(_split_event(sent), "综上", tool_trace(), rounds=rounds_two_replies())
+    await delivery.deliver_reply(_split_event(sent), "综上", tool_trace(), rounds=rounds_multi_replies())
     assert sent == []
