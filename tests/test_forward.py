@@ -24,7 +24,7 @@ class FakeForwardEvent:
 
 
 def make_harness(**overrides):
-    cfg = make_config(**{"forward_threshold": 50, **overrides})
+    cfg = make_config(**{"forward_threshold": 50, "forward_enabled": True, **overrides})
     sdk = FakeSDK()
     sdk.adapter.add("onebot11", FakeSendChain(sends=("MergeForward", "Text")), sends=("MergeForward", "Text"))
     return SimpleNamespace(cfg=cfg, logger=FakeLogger(), sdk=sdk)
@@ -51,7 +51,7 @@ async def test_disabled_never_forwards():
 
 
 async def test_threshold_zero_irrelevant_for_reply():
-    harness = make_harness(forward_threshold=0)
+    harness = make_harness(forward_threshold=0, forward_enabled=True)
     event = FakeForwardEvent()
     assert await Delivery(harness)._try_forward(event, long_text(500), tool_trace()) is True
 

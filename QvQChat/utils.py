@@ -353,22 +353,17 @@ def split_reply_sections(text: str, max_nodes: int = 12, min_nodes: int = 2) -> 
     return sections
 
 
-def build_forward_nodes(sections: list[str], nickname: str = "QvQChat", user_id: str = "10000") -> list[dict]:
+def build_forward_nodes(sections: list[str], nickname: str = "", user_id: str = "") -> list[dict]:
     cleaned = [str(s).strip() for s in sections if s and str(s).strip()]
-    total = len(cleaned)
     nodes: list[dict] = []
-    for index, section in enumerate(cleaned, 1):
-        lines = section.splitlines()
-        head = lines[0][:80] if lines else ""
-        rest = "\n".join(lines[1:]).strip()
-        display = f"【{index}/{total}】{head}" + (f"\n{rest}" if rest else "")
+    for section in cleaned:
         nodes.append(
             {
                 "type": "node",
                 "data": {
                     "user_id": str(user_id),
                     "nickname": str(nickname),
-                    "content": [{"type": "text", "data": {"text": display}}],
+                    "content": [{"type": "text", "data": {"text": section}}],
                 },
             }
         )
@@ -380,13 +375,14 @@ def _send_failed(result) -> bool:
     return isinstance(result, dict) and str(result.get("status") or "") == "failed"
 
 
-async def deliver_forward(adapter, target_type: str, target_id: str, sections: list, sends) -> str:
+async def deliver_forward(adapter, target_type: str, target_id: str, sections: list, sends,
+                          nickname: str = "", user_id: str = "") -> str:
 
 
     cleaned = [str(s).strip() for s in sections if s and str(s).strip()]
     if not cleaned or adapter is None or "MergeForward" not in set(sends or ()):
         return ""
-    nodes = build_forward_nodes(cleaned)
+    nodes = build_forward_nodes(cleaned, nickname=nickname, user_id=user_id)
     try:
         chain = adapter.Send.To(target_type, target_id)
         result = await chain.MergeForward(nodes)
