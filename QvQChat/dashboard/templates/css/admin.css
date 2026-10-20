@@ -570,10 +570,7 @@ select.qvq-select[data-qvq-dd] {
 }
 .qvq-dd-menu {
   display: none;
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
+  position: fixed;
   z-index: 1300;
   background: var(--qvq-surface);
   border: 1px solid var(--qvq-bd-h);
