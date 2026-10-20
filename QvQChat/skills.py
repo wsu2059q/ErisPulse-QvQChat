@@ -14,6 +14,13 @@ BUILTIN_SKILLS: list[dict] = [
         "description": texts.t("skill.self_config.desc"),
         "body": """The manage_* tools are your configuration interface (admin/master only). Use them when the user asks in natural language — no dashboard needed.
 
+## Personas — manage_personas
+- action="list": personas, the global default and per-chat bindings (current chat included).
+- action="save" with name and/or system (id optional): creates or updates a persona; built-in ids (assistant/concise/detailed) can be overridden.
+- action="bind" with persona and optional chat_key (default = current chat); action="unbind" clears it.
+- action="set_global" with persona_id makes it the default for unbound chats; action="clear_global" resets.
+
+## Models — manage_models
 - action="list": providers with masked keys, enabled models, current default.
 - action="presets": preset base URLs (openai, deepseek, zhipu, ollama, custom, ...).
 - action="save" with provider={id?, name, base_url, api_key, models:[{id, enabled, temperature?, max_tokens?}]}.
@@ -23,13 +30,15 @@ BUILTIN_SKILLS: list[dict] = [
 - action="set_default" with model_id="provider:model" (empty clears back to pool order).
 - action="delete" with provider_id. Confirm before deleting.
 
+## MCP servers — manage_mcp
 - action="list" / "status": configured servers and live clients with their tool names.
 - action="save": name plus either stdio (command, args, env) or http (url, headers). Saves and connects immediately; the result reports the tool count or the connection error.
 - action="connect" / "disconnect" / "remove" with name. Confirm before removing.
 - Newly connected tools register as mcp_<server>_<tool> and follow the normal permission rules.
 
+## Module settings — manage_config
 - action="get": all QvQChat settings, or one key.
-- action="set" with updates={key: value}: valid QvQChat config keys only (unknown keys are rejected). E.g. reply triggers, aggregate_window, forward_enabled, tool_notice_mode.
+- action="set" with updates={key: value}: valid QvQChat config keys only (unknown keys are rejected). E.g. reply triggers, aggregate_window, forward_platforms, tool_notice_mode.
 
 Rules: never read back or repeat api keys in your replies; sanity-check a changed model pool with a quick ping if the user asks; settings that affect safety (security_level, trust_agent, owner_only, admin lists) deserve an explicit confirmation even from an admin.""",
     },
