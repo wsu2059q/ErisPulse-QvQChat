@@ -109,15 +109,16 @@ class Delivery:
             sends = list(self.sdk.adapter.list_sends(platform))
         except Exception:
             sends = []
-        threshold = int(getattr(self.config, "forward_threshold", 600) or 0)
-        if force is not True and threshold and len(reply) < threshold:
-            return False
         if force is not True:
             if not self.merges(platform):
                 return False
             if not tool_trace:
                 return False
-        sections = build_sections(rounds, reply, tool_trace)
+        sections, text_segments = build_sections(rounds, reply, tool_trace)
+        if force is not True:
+            min_messages = int(getattr(self.config, "forward_min_messages", 2) or 0)
+            if min_messages and text_segments < min_messages:
+                return False
         if not sections:
             return False
         detail_type = "group" if event.is_group_message() else "user"
