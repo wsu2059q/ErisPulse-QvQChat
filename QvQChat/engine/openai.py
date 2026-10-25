@@ -27,6 +27,7 @@ class _ThinkDeltaFilter:
     def __init__(self):
         self._buf = ""
         self._inside = False
+        self._reasoning_parts: list[str] = []
 
     def feed(self, chunk: str) -> str:
         self._buf += chunk
@@ -35,8 +36,12 @@ class _ThinkDeltaFilter:
             if self._inside:
                 end = self._buf.find(self._CLOSE)
                 if end == -1:
-                    self._buf = self._buf[-len(self._CLOSE):]
+                    keep = len(self._CLOSE)
+                    if len(self._buf) > keep:
+                        self._reasoning_parts.append(self._buf[:-keep])
+                        self._buf = self._buf[-keep:]
                     break
+                self._reasoning_parts.append(self._buf[:end])
                 self._buf = self._buf[end + len(self._CLOSE):]
                 self._inside = False
             else:
@@ -56,6 +61,23 @@ class _ThinkDeltaFilter:
                 self._buf = self._buf[start + len(self._OPEN):]
                 self._inside = True
         return "".join(out)
+
+    def flush(self) -> str:
+        """流结束时处理残留：未闭合的思考段归入 reasoning，其余作为正文吐出。"""
+        if self._inside:
+            self._reasoning_parts.append(self._buf)
+            self._buf = ""
+            self._inside = False
+            return ""
+        out, self._buf = self._buf, ""
+        return out
+
+    def take_reasoning(self) -> str:
+        if not self._reasoning_parts:
+            return ""
+        joined = "".join(self._reasoning_parts)
+        self._reasoning_parts.clear()
+        return joined
 
 
 class OpenAIEngine:
@@ -169,7 +191,7 @@ class OpenAIEngine:
                 cleaned.append(message)
         return cleaned
 
-    async def _stream_chat(self, client, kwargs: dict, on_delta, on_reset=None):
+    async def _stream_chat(self, client, kwargs: dict, on_delta, on_reset=None, on_reasoning=None):
 
 
         filter_ = _ThinkDeltaFilter()
@@ -178,6 +200,29 @@ class OpenAIEngine:
         model = str(kwargs.get("model") or "")
         usage_obj = None
         finish = ""
+
+        async def _emit_delta(piece: str) -> None:
+            if not piece:
+                return
+            texts.append(piece)
+            if on_delta is None:
+                return
+            try:
+                result = on_delta(piece)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                pass
+
+        async def _emit_reasoning(piece: str) -> None:
+            if not piece or on_reasoning is None:
+                return
+            try:
+                result = on_reasoning(piece)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                pass
 
         async def consume(stream) -> None:
             nonlocal model, usage_obj, finish
@@ -193,17 +238,18 @@ class OpenAIEngine:
                     if getattr(choices[0], "finish_reason", None):
                         finish = str(choices[0].finish_reason)
                     delta = choices[0].delta
+                    reasoning_piece = (
+                        getattr(delta, "reasoning_content", None)
+                        or getattr(delta, "reasoning", None)
+                    )
+                    if reasoning_piece:
+                        await _emit_reasoning(str(reasoning_piece))
                     piece = getattr(delta, "content", None)
                     if piece:
                         out = filter_.feed(piece)
+                        await _emit_reasoning(filter_.take_reasoning())
                         if out:
-                            texts.append(out)
-                            try:
-                                result = on_delta(out)
-                                if asyncio.iscoroutine(result):
-                                    await result
-                            except Exception:
-                                pass
+                            await _emit_delta(out)
                     for tcd in getattr(delta, "tool_calls", None) or []:
                         index = tcd.index if tcd.index is not None else 0
                         slot = tools_acc.setdefault(index, {"id": "", "name": "", "arguments": ""})
@@ -215,6 +261,10 @@ class OpenAIEngine:
                                 slot["name"] = fn.name if not slot["name"] else slot["name"] + fn.name
                             if getattr(fn, "arguments", None):
                                 slot["arguments"] += fn.arguments
+                leftover = filter_.flush()
+                if leftover:
+                    await _emit_delta(leftover)
+                await _emit_reasoning(filter_.take_reasoning())
             finally:
                 close = getattr(stream, "close", None)
                 if close is not None:
@@ -273,7 +323,7 @@ class OpenAIEngine:
             }
         return ChatResponse(content=text or None, tool_calls=tool_calls, model=model, usage=usage)
 
-    async def chat(self, base_url: str, api_key: str, request: ChatRequest, on_delta=None, on_reset=None) -> ChatResponse:
+    async def chat(self, base_url: str, api_key: str, request: ChatRequest, on_delta=None, on_reset=None, on_reasoning=None) -> ChatResponse:
         client = self.client_for(base_url, api_key)
         kwargs: dict = {"model": request.model, "messages": self.merge_system(request.messages)}
         if request.temperature is not None:
@@ -291,10 +341,10 @@ class OpenAIEngine:
             try:
                 if streaming:
                     try:
-                        resp = await self._stream_chat(client, kwargs, on_delta, on_reset=on_reset)
+                        resp = await self._stream_chat(client, kwargs, on_delta, on_reset=on_reset, on_reasoning=on_reasoning)
                     except APIStatusError as e:
                         if (getattr(e, "status_code", 0) or 0) == 400 and kwargs.pop("stream_options", None):
-                            resp = await self._stream_chat(client, kwargs, on_delta)
+                            resp = await self._stream_chat(client, kwargs, on_delta, on_reasoning=on_reasoning)
                         else:
                             raise
                 else:
@@ -311,7 +361,7 @@ class OpenAIEngine:
                                     await result
                             except Exception:
                                 pass
-                        resp = await self._stream_chat(client, kwargs, on_delta, on_reset=on_reset)
+                        resp = await self._stream_chat(client, kwargs, on_delta, on_reset=on_reset, on_reasoning=on_reasoning)
                     else:
                         resp = await self._create_with_retry(client, kwargs)
                 else:

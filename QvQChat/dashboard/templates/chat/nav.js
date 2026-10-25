@@ -421,26 +421,29 @@
           ? '<img class="qvq-q-att" src="' + a.data + '" alt=""/>'
           : '<span class="qvq-q-att"><i class="qvq-file-ico">' + FILE_ICON_SVG + "</i>" + esc(a.name) + "</span>";
       }).join("");
-      var editBox = item.editing
-        ? '<div class="qvq-q-edit"><textarea class="qvq-textarea" rows="2">' + esc(item.text) + "</textarea>" +
-          '<div class="qvq-actions"><button class="qvq-btn small" data-q-save="' + i + '">' + esc(t("save")) + "</button>" +
-          '<button class="qvq-btn small ghost" data-q-cancel="' + i + '">' + esc(t("cancel")) + "</button></div></div>"
-        : '<div class="qvq-q-text">' + esc(item.text) + "</div>" + attsHtml;
       return '<div class="qvq-q-card" draggable="true" data-qi="' + i + '">' +
         '<span class="qvq-q-badge">' + esc(t("queue_badge")) + "</span>" +
-        '<div class="qvq-q-main">' + editBox + "</div>" +
+        '<div class="qvq-q-main"><div class="qvq-q-text">' + esc(item.text) + "</div>" + attsHtml + "</div>" +
         '<div class="qvq-q-ops">' +
         '<button type="button" class="qvq-btn small" data-q-now="' + i + '" title="' + esc(t("queue_send_now")) + '">' + esc(t("queue_send_now")) + "</button>" +
-        '<button type="button" class="qvq-icon-btn" data-q-edit="' + i + '" title="' + esc(t("edit")) + '"><svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>' +
+        '<button type="button" class="qvq-icon-btn" data-q-edit="' + i + '" title="' + esc(t("queue_edit")) + '" aria-label="' + esc(t("queue_edit")) + '"><svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>' +
         '<button type="button" class="qvq-icon-btn" data-q-del="' + i + '" title="' + esc(t("del")) + '"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6"/></svg></button>' +
         '<span class="qvq-q-drag" title="⇅">⇅</span>' +
         "</div></div>";
     }).join("");
     box.querySelectorAll("[data-q-now]").forEach(function (btn) {
       btn.onclick = function () {
-        if (chatBusy) return;
         var i = parseInt(btn.getAttribute("data-q-now"), 10);
         var item = queue.splice(i, 1)[0];
+        if (!item) { renderQueue(); return; }
+        if (chatBusy) {
+          // 立即发送（回复中）：停止当前生成，本条顶到队首，
+          // 由 settle/attachLive 收尾时的 pumpQueue 自动发出
+          queue.unshift(item);
+          renderQueue();
+          cancelChat();
+          return;
+        }
         renderQueue();
         dispatchMessage(item.text, item.atts);
       };
@@ -448,29 +451,24 @@
     box.querySelectorAll("[data-q-edit]").forEach(function (btn) {
       btn.onclick = function () {
         var i = parseInt(btn.getAttribute("data-q-edit"), 10);
-        queue[i].editing = true;
+        var item = queue.splice(i, 1)[0];
+        if (!item) { renderQueue(); return; }
+        // 编辑回输入框：文本与附件回填 composer，条目移出队列
+        var input = el("qvq-chat-input");
+        if (input) {
+          input.value = input.value.trim() ? input.value.replace(/\s+$/, "") + "\n" + item.text : item.text;
+          input.style.height = "auto";
+          input.style.height = Math.min(input.scrollHeight, 160) + "px";
+          input.focus();
+        }
+        chatAtts = chatAtts.concat(item.atts || []);
+        renderAttach();
         renderQueue();
       };
     });
     box.querySelectorAll("[data-q-del]").forEach(function (btn) {
       btn.onclick = function () {
         queue.splice(parseInt(btn.getAttribute("data-q-del"), 10), 1);
-        renderQueue();
-      };
-    });
-    box.querySelectorAll("[data-q-save]").forEach(function (btn) {
-      btn.onclick = function () {
-        var i = parseInt(btn.getAttribute("data-q-save"), 10);
-        var card = btn.closest(".qvq-q-card");
-        queue[i].text = card.querySelector("textarea").value;
-        queue[i].editing = false;
-        renderQueue();
-      };
-    });
-    box.querySelectorAll("[data-q-cancel]").forEach(function (btn) {
-      btn.onclick = function () {
-        var i = parseInt(btn.getAttribute("data-q-cancel"), 10);
-        queue[i].editing = false;
         renderQueue();
       };
     });

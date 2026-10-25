@@ -111,11 +111,11 @@ async def test_rebuild_user_content_with_attachments():
         content2 = mgr.main.conversations.rebuild_user_content("带文件", [
             {"name": "doc.zip", "mime": "application/zip", "data": TINY_PNG},
         ])
-        # 只有文件没有图片时回落为纯文本（说明文字并入文本段）
+# 只有文件没有图片时回落为纯文本（说明文字并入文本段）
         body_text = content2 if isinstance(content2, str) else content2[0]["text"]
         assert "doc.zip" in body_text and "uploads" in body_text
 
-        # 清空附件：只余文本
+# 清空附件：只余文本
         assert mgr.main.conversations.rebuild_user_content("纯文本", []) == "纯文本"
     finally:
         shutil.rmtree("data/QvQChat/uploads", ignore_errors=True)

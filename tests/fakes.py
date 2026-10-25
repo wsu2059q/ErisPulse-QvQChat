@@ -34,6 +34,9 @@ class FakeLogger:
     def warning(self, *args, **kwargs):
         self.records.append(("warning", args))
 
+    def debug(self, *args, **kwargs):
+        self.records.append(("debug", args))
+
 
 class FakeModuleManager:
     def __init__(self, catalog=None):
@@ -86,8 +89,23 @@ class FakeLifecycle:
     def register(self, event, handler):
         self.registered.append((event, handler))
 
+    def unregister(self, event, handler):
+        self.registered = [
+            (e, h) for e, h in self.registered if not (e == event and h == handler)
+        ]
+
     async def emit(self, event, data=None, **kwargs):
         self.emitted.append((event, data))
+# 与框架一致：emit 等待全部已注册处理器执行完毕（异常吞掉，不改写载荷）
+        for registered_event, handler in list(self.registered):
+            if registered_event != event:
+                continue
+            try:
+                result = handler(data)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                pass
         return data
 
 
@@ -390,6 +408,11 @@ class FakeMain:
         from QvQChat.Main import Main
 
         return Main._usage_today(self)
+
+    def _prune_usage(self, today: str) -> None:
+        from QvQChat.Main import Main
+
+        Main._prune_usage(self, today)
 
     def _usage_history(self, days=14):
         from QvQChat.Main import Main

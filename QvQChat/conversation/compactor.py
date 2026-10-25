@@ -1,25 +1,49 @@
 from __future__ import annotations
 
+import re as _re
 from typing import Any
 
 from .. import texts, utils
-from ..engine.base import ChatRequest
+from ..engine import tokens
+from ..engine.base import ChatRequest, TaskSpec
 
 
 def estimate_tokens(text) -> int:
-
-    if isinstance(text, list):
-        text = " ".join(
-            str(p.get("text") or "") for p in text if isinstance(p, dict) and p.get("type") == "text"
-        )
-    return len(str(text or "")) // 2
+    """薄 re-export：实际实现见 engine.tokens.count_tokens。"""
+    return tokens.count_tokens(text)
 
 
 def context_tokens(contexts: list) -> int:
-    total = 0
-    for m in contexts:
-        total += estimate_tokens(m.get("content") if isinstance(m, dict) else m)
-    return total
+    """薄 re-export：实际实现见 engine.tokens.messages_tokens（含每消息 +4 开销）。"""
+    return tokens.messages_tokens(contexts)
+
+
+FACT_KINDS = ("ENTITY", "PREFERENCE", "TODO")
+
+
+def extract_facts(text: str) -> tuple[str, list[str]]:
+    """从摘要输出中宽松解析 <facts> 段。
+
+    返回 (去掉 facts 段的摘要文本, ["KIND|内容", ...])；解析失败（无标签/行格式不符）
+    时原样返回文本、facts 为空（不入库）。"""
+    raw = str(text or "")
+    facts: list[str] = []
+    match = _re.search(r"<facts>(.*?)</facts>", raw, _re.DOTALL | _re.IGNORECASE)
+    summary = raw
+    if match:
+        summary = (raw[: match.start()] + raw[match.end():]).strip()
+        for line in match.group(1).splitlines():
+            line = line.strip().lstrip("-*•·").strip()
+            if "|" not in line:
+                continue
+            kind, _, content = line.partition("|")
+            kind = kind.strip().upper()
+            content = content.strip()
+            if kind in FACT_KINDS and content:
+                facts.append(f"{kind}|{content}")
+# <summary> 标签宽松剥离（模型可能加也可能不加）
+    summary = _re.sub(r"</?summary>", "", summary, flags=_re.IGNORECASE).strip()
+    return summary, facts
 
 
 def split_turns(contexts: list) -> list[list[dict]]:
@@ -65,10 +89,28 @@ class Compactor:
         self.main = main
         self.sdk = main.sdk
         self.config = main.cfg
+# 模块级注入 token 估算配置（Main 不改，构造时注入）
+        tokens.configure(self.config)
 
 
     def _pool(self):
         return getattr(self.main, "pool", None)
+
+    async def _dispatch_compact(self, request: ChatRequest):
+        """摘要调用迁 dispatch(kind="compact", prefer="cheap")；老式池对象退回 chat。"""
+        pool = self._pool()
+        if pool is None:
+            return None
+        dispatch = getattr(pool, "dispatch", None)
+        model = str(getattr(self.config, "compact_model", "") or "") or None
+        if callable(dispatch):
+            return await dispatch(TaskSpec(kind="compact", prefer="cheap", model=model), request)
+        return await pool.chat(ChatRequest(
+            messages=request.messages,
+            model=model,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+        ))
 
 
     def microcompact(self, contexts: list) -> tuple[list, int]:
@@ -108,37 +150,70 @@ class Compactor:
         return merge_turns(removed_turns), turns[-keep_n:]
 
     async def _summarize_turns(self, removed: list) -> str:
-        transcript = "\n".join(
-            f"{m.get('role')}: {str(self._content_text(m.get('content')))[:240]}"
-            for m in removed
-            if isinstance(m, dict)
-        )
+# 摘要条目截断/总量上限参数化（原硬编码 240/8000）
+        entry_chars = int(getattr(self.config, "compact_transcript_chars", 400) or 0)
+        input_chars = int(getattr(self.config, "compact_input_chars", 12000) or 0)
+        lines: list[str] = []
+        for m in removed:
+            if not isinstance(m, dict):
+                continue
+            line = f"{m.get('role')}: {self._content_text(m.get('content'))}"
+            lines.append(line[:entry_chars] if entry_chars > 0 else line)
+        transcript = "\n".join(lines)
+        if input_chars > 0:
+            transcript = transcript[:input_chars]
         pool = self._pool()
         if pool is None:
             return ""
-        model = str(getattr(self.config, "compact_model", "") or "") or None
         try:
-            response = await pool.chat(
+            response = await self._dispatch_compact(
                 ChatRequest(
                     messages=[
                         {
                             "role": "system",
-                            "content": (
-                                "Summarize the following conversation excerpt into concise bullet "
-                                "points in the same language as the content. Keep names, ids, "
-                                "decisions, facts and unresolved questions. No preamble."
-                            ),
+                            "content": texts.t("compact_summary_prompt"),
                         },
-                        {"role": "user", "content": transcript[:8000]},
+                        {"role": "user", "content": transcript},
                     ],
-                    model=model,
                     max_tokens=600,
                     temperature=0.2,
                 )
             )
-            return (response.content or "").strip()
+            return (getattr(response, "content", "") or "").strip()
         except Exception as e:
             self.main.logger.warning(f"compactor summarize failed: {e}")
+            return ""
+
+    async def summarize_text(self, old: str, new: str) -> str:
+        """两段摘要文本的 LLM 合并压缩（用于 append_summary 超 cap 时）。"""
+        pool = self._pool()
+        if pool is None:
+            return ""
+        input_chars = int(getattr(self.config, "compact_input_chars", 12000) or 0)
+        old_text = str(old or "")
+        new_text = str(new or "")
+        if input_chars > 0:
+            old_text = old_text[: input_chars // 2]
+            new_text = new_text[: max(200, input_chars - len(old_text))]
+        try:
+            response = await self._dispatch_compact(
+                ChatRequest(
+                    messages=[
+                        {"role": "system", "content": texts.t("compact_merge_prompt")},
+                        {
+                            "role": "user",
+                            "content": (
+                                "<old>\n" + old_text + "\n</old>\n\n<new>\n" + new_text + "\n</new>"
+                            ),
+                        },
+                    ],
+                    max_tokens=600,
+                    temperature=0.2,
+                )
+            )
+            return (getattr(response, "content", "") or "").strip()
+        except Exception as e:
+            self.main.logger.warning(f"compactor merge failed: {e}")
             return ""
 
     async def summarize_entries(self, removed: list) -> str:
@@ -176,13 +251,23 @@ class Compactor:
         if strategy != "off" and (force or over or preventive):
             removed, kept_turns = self._select_removed(contexts)
             if removed:
+                summary = ""
                 if strategy == "truncate":
-                    summary = ""
                     actions.append(f"truncate:-{len(removed)}")
                 else:
-                    summary = await self._summarize_turns(removed)
-                    actions.append(f"summarize:-{len(removed)}" + ("(ok)" if summary else "(dry)"))
+                    raw = await self._summarize_turns(removed)
+                    summary = raw
+                    actions.append(f"summarize:-{len(removed)}" + ("(ok)" if raw else "(dry)"))
                 kept = merge_turns(kept_turns)
+                if summary:
+# 分离 <facts> 段（宽松解析，失败不入库）
+                    clean, facts = extract_facts(summary)
+                    if clean:
+                        summary = clean
+                    if facts and getattr(self.config, "facts_extract", True):
+                        added = service.append_facts(chat_key, facts)
+                        if added:
+                            actions.append(f"facts:+{added}")
                 if summary:
                     service.append_summary(chat_key, summary)
                 service.replace_contexts(chat_key, kept)

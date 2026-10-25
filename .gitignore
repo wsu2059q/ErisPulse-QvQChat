@@ -217,3 +217,10 @@ config/
 # QvQChat runtime data
 config/
 data/
+
+# Runtime logs & temp files
+*.log
+.tmp*
+
+# 本地分析文档（不入库）
+docs/optimization-*.md

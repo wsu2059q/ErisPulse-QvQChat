@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import secrets
-from dataclasses import fields as dc_fields
 from pathlib import Path
 from urllib.parse import quote
 
-from .. import texts, utils
-from ..Config import QvQConfig
-from ..engine.base import ChatRequest
-
+from .. import texts, utils# noqa: F401 — utils 供后续扩展；texts 为 chat 附件注入使用
+from .api_config import ConfigApiMixin
+from .api_ops import OpsApiMixin
+from .api_sessions import SessionsApiMixin
 TEMPLATES = Path(__file__).parent / "templates"
 
 ICON_SVG = (
@@ -26,23 +25,27 @@ ICON_SVG = (
 FAVICON_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
     'stroke="#3aa5dc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-    '<rect x="4" y="7" width="16" height="12" rx="2" stroke-dasharray="3 2"/>'
+    '<rect x="4" y="7" width="16" height="12" rx="2"/>'
     '<circle cx="9" cy="13" r="1.2" fill="#3aa5dc"/>'
     '<circle cx="15" cy="13" r="1.2" fill="#3aa5dc"/>'
-    '<path d="M12 7V4" stroke-dasharray="2 2"/>'
+    '<path d="M12 7V4"/>'
     '<circle cx="12" cy="3" r="1" fill="#3aa5dc"/>'
-    '<path d="M4 17l-2 2M20 17l2 2" stroke-dasharray="2 2"/>'
+    '<path d="M4 17l-2 2M20 17l2 2"/>'
     "</svg>"
 )
 FAVICON_HREF = "data:image/svg+xml," + quote(FAVICON_SVG)
 
 TOKEN_KEY = "QvQChat:auth_token"
-AUDIT_STORAGE_KEY = "QvQChat:audit"
-SHARES_KEY = "QvQChat:shares"
-UI_DEFAULTS_KEY = "QvQChat:ui_defaults"
 
 
-class DashboardManager:
+class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin):
+    """Dashboard 管理器（拆分后）。
+
+    会话/配置/运维三个 API 域分别在 api_sessions.py / api_config.py / api_ops.py（mixin），
+    本文件保留：路由注册表、鉴权、视图与 OpenAI 兼容 / 聊天流式端点。
+    HTTP 路径零变化。
+    """
+
     def __init__(self, main):
         self.main = main
         self.sdk = main.sdk
@@ -86,6 +89,7 @@ class DashboardManager:
             ("GET", "/api/qvq/breakers", self.breakers_get),
             ("GET", "/api/qvq/costs", self.costs_get),
             ("GET", "/api/qvq/running", self.running_get),
+            ("GET", "/api/qvq/participation", self.participation_get),
             ("GET", "/api/qvq/kb", self.kb_get),
             ("POST", "/api/qvq/kb/add", self.kb_add),
             ("POST", "/api/qvq/kb/delete", self.kb_delete),
@@ -94,6 +98,7 @@ class DashboardManager:
             ("POST", "/api/qvq/session/routes", self.session_routes),
             ("GET", "/api/qvq/memory", self.memory_get),
             ("POST", "/api/qvq/memory/delete", self.memory_delete),
+            ("POST", "/api/qvq/profile/clear", self.profile_clear),
             ("GET", "/api/qvq/sessions", self.sessions_get),
             ("GET", "/api/qvq/session/messages", self.session_messages),
             ("POST", "/api/qvq/session/messages/delete", self.session_message_delete),
@@ -277,383 +282,10 @@ class DashboardManager:
         }
         return data
 
-    async def usage_get(self, request):
-        return {
-            "days": self.main._usage_history(14),
-            "limit": int(getattr(self.main.cfg, "daily_token_limit", 0) or 0),
-        }
-
-    async def export_data(self, request):
-        from ..conversation.memory import MEM_PREFIX
-
-        memory = {}
-        for key in self.sdk.storage.keys():
-            if isinstance(key, str) and key.startswith(MEM_PREFIX):
-                entries = self.sdk.storage.get(key, [])
-                if entries:
-                    memory[key[len(MEM_PREFIX):]] = entries
-        return {
-            "version": 2,
-            "exported_at": utils.now_ts(),
-            "providers": self.main.pool.list_providers(),
-            "personas": {
-                pid: data
-                for pid, data in (self.sdk.storage.get("QvQChat:personas", {}) or {}).items()
-            },
-            "tasks": self.main.scheduler.list(),
-            "memory": memory,
-            "mcp": self.main.mcp.list_servers(),
-            "skills": self.main.skills.list_skills(),
-        }
-
-    async def import_data(self, request):
-        body = await request.json()
-        data = (body or {}).get("data") if isinstance(body, dict) else None
-        if not isinstance(data, dict):
-            return ({"error": "data object required"}, 400)
-        applied = []
-        if isinstance(data.get("providers"), list):
-            for provider in data["providers"]:
-                try:
-                    self.main.pool.save_provider(provider)
-                except Exception:
-                    pass
-            applied.append("providers")
-        elif isinstance(data.get("models"), list):
-            for model in data["models"]:
-                try:
-                    self.main.pool.save_provider({
-                        "id": "imported",
-                        "name": "Imported",
-                        "base_url": model.get("base_url", ""),
-                        "api_key": model.get("api_key", ""),
-                        "models": [{"id": model.get("model", ""), "enabled": True}],
-                    })
-                except Exception:
-                    pass
-            applied.append("models")
-        if isinstance(data.get("personas"), dict):
-            stored = self.sdk.storage.get("QvQChat:personas", {})
-            if not isinstance(stored, dict):
-                stored = {}
-            stored.update(data["personas"])
-            self.sdk.storage.set("QvQChat:personas", stored)
-            applied.append("personas")
-        if isinstance(data.get("tasks"), list):
-            existing = self.main.scheduler.list()
-            known = {t.get("id") for t in existing}
-            for task in data["tasks"]:
-                if isinstance(task, dict) and task.get("id") not in known:
-                    task.setdefault("managed_by", "")
-                    task.setdefault("cron_ref", "")
-                    existing.append(task)
-            if data["tasks"]:
-                self.main.scheduler._save(existing)
-            applied.append("tasks")
-        if isinstance(data.get("memory"), dict):
-            from ..conversation.memory import MEM_PREFIX
-
-            for chat_key, entries in data["memory"].items():
-                if isinstance(entries, list):
-                    self.sdk.storage.set(MEM_PREFIX + str(chat_key), entries)
-            applied.append("memory")
-        if isinstance(data.get("mcp"), list):
-            self.main.mcp.replace_servers([s for s in data["mcp"] if isinstance(s, dict)])
-            applied.append("mcp")
-        if isinstance(data.get("skills"), list):
-            for s in data["skills"]:
-                if isinstance(s, dict) and s.get("name"):
-                    try:
-                        self.main.skills.save_skill(
-                            str(s.get("name")),
-                            str(s.get("description") or ""),
-                            str(s.get("body") or ""),
-                        )
-                    except (ValueError, OSError):
-                        pass
-            applied.append("skills")
-        return {"ok": True, "applied": applied}
-
     async def auth(self, request):
         return {"ok": True}
 
-    async def models_get(self, request):
-        providers = []
-        for p in self.main.pool.list_providers():
-            item = dict(p)
-            key = item.get("api_key") or ""
-            item["api_key_masked"] = ("*" * 8 + key[-4:]) if len(key) > 4 else ("*" * len(key) if key else "")
-            item.pop("api_key", None)
-            providers.append(item)
-        return {
-            "providers": providers,
-            "models": self.main.pool.list_models(),
-            "presets": self.main.pool.presets(),
-            "default": getattr(self.main.cfg, "default_model", ""),
-        }
-
-    async def providers_save(self, request):
-        body = await request.json()
-        try:
-            entry = self.main.pool.save_provider(body or {})
-            return {"ok": True, "provider": {**entry, "api_key": ""}}
-        except Exception as e:
-            return ({"error": str(e)}, 400)
-
-    async def providers_delete(self, request):
-        body = await request.json()
-        ok = self.main.pool.delete_provider(str((body or {}).get("id") or ""))
-        return {"ok": ok}
-
-    async def providers_remote_models(self, request):
-        body = await request.json()
-        data = dict(body or {})
-        if not str(data.get("api_key") or "") and data.get("id"):
-            provider_id = str(data.get("id"))
-            for p in self.main.pool.list_providers():
-                if p.get("id") == provider_id:
-                    data["api_key"] = str(p.get("api_key") or "")
-                    break
-        try:
-            models = await self.main.pool.fetch_remote_models(data)
-            return {"ok": True, "models": models}
-        except Exception as e:
-            return ({"error": str(e)}, 502)
-
-    async def models_test(self, request):
-        body = await request.json()
-        model_id = str((body or {}).get("id") or "")
-        started = utils.now_ts()
-        try:
-            response = await self.main.pool.chat(ChatRequest(messages=[{"role": "user", "content": "ping"}], model=model_id or None))
-            return {"ok": True, "reply": response.content or "", "model": response.model, "ms": int((utils.now_ts() - started) * 1000)}
-        except Exception as e:
-            return {"ok": False, "error": str(e), "ms": int((utils.now_ts() - started) * 1000)}
-
-    async def skills_get(self, request):
-        return {"skills": self.main.skills.list_skills()}
-
-    async def skills_save(self, request):
-        body = await request.json()
-        try:
-            skill = self.main.skills.save_skill(
-                str((body or {}).get("name") or ""),
-                str((body or {}).get("description") or ""),
-                str((body or {}).get("body") or ""),
-            )
-            return {"ok": True, "skill": skill}
-        except (ValueError, OSError) as e:
-            return ({"error": str(e)}, 400)
-
-    async def skills_delete(self, request):
-        body = await request.json()
-        ok = self.main.skills.delete_skill(str((body or {}).get("name") or ""))
-        return {"ok": ok}
-
-    async def skills_enabled(self, request):
-        body = await request.json()
-        name = str((body or {}).get("name") or "")
-        self.main.skills.set_enabled(name, bool((body or {}).get("enabled")))
-        return {"ok": True}
-
-    async def skills_export(self, request):
-        skills = self.main.skills.list_skills()
-        return {
-            "skills": [
-                {"name": s["name"], "description": s.get("description", ""), "body": s.get("body", "")}
-                for s in skills
-            ]
-        }
-
-    async def personas_get(self, request):
-        bindings = {}
-        for session in self.main.sessions.list_sessions():
-            if session.get("persona"):
-                bindings[session["chat_key"]] = session["persona"]
-        return {"personas": self.main.personas.list(), "bindings": bindings}
-
-    async def personas_save(self, request):
-        body = await request.json()
-        try:
-            persona = self.main.personas.save(body or {})
-            return {"ok": True, "persona": persona}
-        except ValueError as e:
-            return ({"error": str(e)}, 400)
-
-    async def personas_delete(self, request):
-        body = await request.json()
-        try:
-            ok = self.main.personas.delete(str((body or {}).get("id") or ""))
-            return {"ok": ok}
-        except ValueError as e:
-            return ({"error": str(e)}, 400)
-
-    async def personas_bind(self, request):
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        persona = (body or {}).get("persona") or None
-        self.main.personas.bind(chat_key, persona)
-        self.main.sessions.set_persona(chat_key, persona)
-        return {"ok": True}
-
-    async def tools_get(self, request):
-        tools = []
-        for tool in self.main.registry.list():
-            tools.append(
-                {
-                    "name": tool.name,
-                    "label": texts.t(f"tool.{tool.name}.name", default=tool.name),
-                    "description": texts.t(f"tool.{tool.name}.desc", default=tool.description),
-                    "origin": tool.origin,
-                    "origin_label": texts.t(f"origin.{tool.origin}", default=tool.origin),
-                    "danger": tool.danger,
-                    "access": getattr(tool, "access", "admin"),
-                }
-            )
-        tools.sort(key=lambda t: (t["origin"], t["name"]))
-        return {
-            "tools": tools,
-            "disabled": list(getattr(self.main.cfg, "disabled_tools", []) or []),
-            "risk": texts.t("tool.risk", default="risk"),
-        }
-
-    async def tools_refresh(self, request):
-        info = await self.main.eco.refresh()
-        return {"ok": True, "info": info}
-
-    async def mcp_get(self, request):
-        return {"servers": self.main.mcp.list_servers(), "clients": self.main.mcp.status()}
-
-    async def mcp_save(self, request):
-        body = await request.json()
-        try:
-            saved = self.main.mcp.save_server(body or {})
-        except ValueError as e:
-            return ({"error": str(e)}, 400)
-        info = None
-        error = None
-        try:
-            info = await self.main.mcp.connect_one(str(saved["name"]), saved)
-        except Exception as e:
-            error = str(e)
-        return {"ok": True, "server": saved, "info": info, "error": error}
-
-    async def mcp_delete(self, request):
-        body = await request.json()
-        name = str((body or {}).get("name") or "")
-        try:
-            await self.main.mcp.disconnect(name)
-        except Exception:
-            pass
-        return {"ok": self.main.mcp.delete_server(name)}
-
-    async def mcp_connect(self, request):
-        body = await request.json()
-        name = str((body or {}).get("name") or "")
-        server_cfg = None
-        for item in self.main.mcp.list_servers():
-            if item.get("name") == name:
-                server_cfg = item
-                break
-        if server_cfg is None:
-            return ({"error": f"server not found: {name}"}, 404)
-        try:
-            info = await self.main.mcp.connect_one(name, server_cfg)
-            return {"ok": True, "info": info}
-        except Exception as e:
-            return ({"error": str(e)}, 500)
-
-    async def mcp_disconnect(self, request):
-        body = await request.json()
-        ok = await self.main.mcp.disconnect(str((body or {}).get("name") or ""))
-        return {"ok": ok}
-
-    async def extensions_get(self, request):
-        return {
-            "info": dict(self.main.eco.info),
-            "extensions": self.main.eco.extensions_status(),
-        }
-
-    async def tasks_get(self, request):
-        tasks = []
-        for task in self.main.scheduler.list():
-            item = dict(task)
-            item["next_formatted"] = utils.format_ts(float(task.get("next_run", 0)))
-            if task.get("last_run"):
-                item["last_formatted"] = utils.format_ts(float(task.get("last_run") or 0))
-            tasks.append(item)
-        runs = [
-            {**run, "at_formatted": utils.format_ts(float(run.get("at") or 0))}
-            for run in reversed(self.main.scheduler.runs())
-        ]
-        return {"tasks": tasks, "runs": runs}
-
-    async def breakers_get(self, request):
-        return {"breakers": self.main.pool.breaker_state()}
-
-    async def costs_get(self, request):
-        # 每百万 token 单价 × 用量明细（in/out），换算每日与按模型成本
-        prices = self.main.pool.model_costs()
-        daily: list[dict] = []
-        by_model: dict[str, float] = {}
-        total = 0.0
-        for day in self.main._usage_history(14):
-            day_cost = 0.0
-            for model_id, usage in (day.get("by_model") or {}).items():
-                price = prices.get(str(model_id))
-                if not price or not isinstance(usage, dict):
-                    continue
-                cost = (int(usage.get("in", 0) or 0) / 1e6) * price["input"] + (
-                    int(usage.get("out", 0) or 0) / 1e6
-                ) * price["output"]
-                day_cost += cost
-                by_model[str(model_id)] = by_model.get(str(model_id), 0.0) + cost
-            daily.append({"date": day.get("date"), "cost": round(day_cost, 4)})
-            total += day_cost
-        return {
-            "daily": daily,
-            "by_model": {k: round(v, 4) for k, v in sorted(by_model.items(), key=lambda kv: -kv[1])},
-            "total": round(total, 4),
-        }
-
-    async def running_get(self, request):
-        return {"running": self._live.overview()}
-
-    async def kb_get(self, request):
-        query = self._query(request, "q") or ""
-        kb = self.main.knowledge
-        stats = kb.stats()
-        if query:
-            hits = kb.search(query, top_k=8)
-            items = [kb.get(h["id"]) for h in hits]
-            items = [i for i in items if i]
-        else:
-            items = kb.list()
-        return {"entries": items, "stats": stats}
-
-    async def kb_add(self, request):
-        body = await request.json()
-        title = str((body or {}).get("title") or "").strip()
-        content = str((body or {}).get("content") or "")
-        if not title or not content.strip():
-            return ({"error": texts.t("kb_need_title_content")}, 400)
-        entry = self.main.knowledge.add(title, content, source=str((body or {}).get("source") or ""))
-        return {"ok": True, "entry": entry}
-
-    async def kb_delete(self, request):
-        body = await request.json()
-        ok = self.main.knowledge.delete(str((body or {}).get("id") or ""))
-        return {"ok": ok}
-
-    async def kb_export(self, request):
-        return {"entries": self.main.knowledge.export()}
-
-    async def kb_import(self, request):
-        body = await request.json()
-        added = self.main.knowledge.import_entries((body or {}).get("entries") or [])
-        return {"ok": True, "added": added}
-
-    # ===== OpenAI 兼容端点：Bearer=view_token，映射 run_dashboard_chat =====
+# ===== OpenAI 兼容端点：Bearer=view_token，映射 run_dashboard_chat =====
 
     def _v1_authorized(self, request) -> bool:
         raw = getattr(request, "raw", request)
@@ -768,346 +400,6 @@ class DashboardManager:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
-    async def tasks_delete(self, request):
-        body = await request.json()
-        ok = self.main.scheduler.cancel(str((body or {}).get("id") or ""))
-        return {"ok": ok}
-
-    async def memory_get(self, request):
-        chat_key = self._query(request, "chat_key")
-        if not chat_key:
-            return {"scopes": self.main.memory.list_scopes(), "entries": []}
-        return {"scopes": [], "entries": self.main.memory.entries(chat_key)}
-
-    async def memory_delete(self, request):
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        query = str((body or {}).get("query") or "")
-        content = (body or {}).get("content")
-        if content is not None:
-            removed = 1 if self.main.memory.remove(chat_key, str(content)) else 0
-        elif query:
-            removed = self.main.memory.forget(chat_key, query)
-        else:
-            removed = self.main.memory.clear(chat_key)
-        return {"ok": True, "removed": removed}
-
-    async def sessions_get(self, request):
-        sessions = self.main.sessions.list_sessions()
-        for session in sessions:
-            if str(session.get("platform") or "") == "dashboard" and not session.get("name"):
-                session["name"] = texts.t("dashboard_session_name")
-            session["members"] = self.main.sessions.members_of(session.get("chat_key") or "")
-            session["sources"] = self.main.sessions.routes_into(session.get("chat_key") or "")
-        try:
-            self.main.spawn(self.main.conversations.resolve_session_names(sessions))
-        except Exception:
-            pass
-        live_keys = set()
-        try:
-            for s in sessions:
-                if self._live.busy(s["chat_key"]):
-                    live_keys.add(s["chat_key"])
-                    s["live"] = True
-        except Exception:
-            pass
-        return {"sessions": sessions, "live_sessions": sorted(live_keys), "ui_defaults": self._ui_defaults()}
-
-    async def session_messages(self, request):
-        chat_key = self._query(request, "chat_key")
-        if not chat_key:
-            return ({"error": "chat_key required"}, 400)
-        contexts = self.main.sessions.get_contexts(chat_key)
-        total = len(contexts)
-        # 窗口参数：start/limit 按需加载；start 缺省且给 limit 时取尾部一页
-        start_raw = self._query(request, "start")
-        limit_raw = self._query(request, "limit")
-        start_i, limit_n = 0, 0
-        try:
-            limit_n = max(1, int(limit_raw)) if limit_raw else 0
-        except ValueError:
-            limit_n = 0
-        try:
-            start_i = int(start_raw) if start_raw is not None else None
-        except ValueError:
-            start_i = None
-        if limit_n:
-            if start_i is None:
-                start_i = max(0, total - limit_n)
-            start_i = max(0, min(start_i, total))
-            window = contexts[start_i : start_i + limit_n]
-        else:
-            start_i = 0
-            window = contexts
-        for message in window:
-            if isinstance(message, dict) and isinstance(message.get("content"), list):
-                images = [p for p in message["content"] if isinstance(p, dict) and p.get("type") == "image_url"]
-                if images:
-                    message["atts"] = [
-                        {"isImage": True, "name": "image", "data": (p.get("image_url") or {}).get("url", "")}
-                        for p in images
-                    ]
-        return {"chat_key": chat_key, "summary": self.main.sessions.summary_of(chat_key) if start_i == 0 else "",
-                "messages": window, "total": total, "start": start_i}
-
-    async def session_message_delete(self, request):
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        index = int((body or {}).get("index", -1))
-        if self.main.conversations.delete_message(chat_key, index):
-            return {"ok": True}
-        return ({"error": "index out of range"}, 400)
-
-    async def session_context_edit(self, request):
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        index = int((body or {}).get("index", -1))
-        content = str((body or {}).get("content") or "")
-        attachments = (body or {}).get("attachments")
-        if self.main.conversations.edit_message(chat_key, index, content, attachments):
-            return {"ok": True}
-        return ({"error": "index out of range"}, 400)
-
-    async def sessions_delete(self, request):
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        if not chat_key:
-            return ({"error": "chat_key required"}, 400)
-        return {"ok": self.main.conversations.delete(chat_key)}
-
-    async def sessions_create(self, request):
-        body = await request.json()
-        chat_key = self.main.conversations.create(
-            platform=str((body or {}).get("platform") or "dashboard"),
-            detail_type=str((body or {}).get("detail_type") or "private"),
-            target_id=str((body or {}).get("target_id") or ""),
-        )
-        return {"ok": True, "chat_key": chat_key}
-
-    async def sessions_delete_archived(self, request):
-        return {"ok": True, "removed": self.main.conversations.delete_archived()}
-
-    async def session_compact(self, request):
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        if not chat_key:
-            return ({"error": "chat_key required"}, 400)
-        report = await self.main.conversations.compact_now(chat_key)
-        return {"ok": True, "report": report}
-
-    async def sessions_reset(self, request):
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        self.main.sessions.reset(chat_key)
-        return {"ok": True}
-
-    async def session_flags(self, request):
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        if not chat_key:
-            return ({"error": "chat_key required"}, 400)
-        pinned = (body or {}).get("pinned")
-        archived = (body or {}).get("archived")
-        self.main.sessions.set_flags(
-            chat_key,
-            pinned=None if pinned is None else bool(pinned),
-            archived=None if archived is None else bool(archived),
-        )
-        return {"ok": True}
-
-    async def session_settings(self, request):
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        if not chat_key:
-            return ({"error": "chat_key required"}, 400)
-        ui = (body or {}).get("settings")
-        if not isinstance(ui, dict):
-            return ({"error": "settings object required"}, 400)
-        saved = self.main.sessions.set_ui(chat_key, {k: str(ui[k]) for k in ("density", "model", "effort") if ui.get(k) is not None})
-        members = ui.get("members")
-        if isinstance(members, list):
-            saved["members"] = self.main.sessions.set_members(chat_key, members)
-        return {"ok": True, "ui": saved}
-
-    async def session_routes(self, request):
-        body = await request.json()
-        target = str((body or {}).get("target") or "").strip()
-        if not target:
-            return ({"error": "target required"}, 400)
-        sources = (body or {}).get("sources")
-        if isinstance(sources, list):
-            routes = {k: v for k, v in self.main.sessions.routes().items() if v != target}
-            for src in sources:
-                src = str(src).strip()
-                if src and src != target:
-                    routes[src] = target
-            self.main.sessions.save_routes(routes)
-            return {"ok": True, "sources": sorted(k for k, v in routes.items() if v == target)}
-        return {"sources": self.main.sessions.routes_into(target)}
-
-    def _ui_defaults(self) -> dict:
-        d = self.sdk.storage.get(UI_DEFAULTS_KEY, {})
-        return d if isinstance(d, dict) else {}
-
-    async def settings_defaults_get(self, request):
-        return {"ui_defaults": self._ui_defaults()}
-
-    async def settings_defaults_set(self, request):
-        body = await request.json()
-        ui = (body or {}).get("settings")
-        if not isinstance(ui, dict):
-            return ({"error": "settings object required"}, 400)
-        cur = self._ui_defaults()
-        allowed = ("density", "model", "effort")
-        cur.update({k: str(ui[k]) for k in allowed if ui.get(k) is not None})
-        self.sdk.storage.set(UI_DEFAULTS_KEY, cur)
-        return {"ok": True, "ui_defaults": cur}
-
-
-    def _shares(self) -> dict:
-        shares = self.sdk.storage.get(SHARES_KEY, {})
-        return shares if isinstance(shares, dict) else {}
-
-    def _share_token(self, token: str) -> dict | None:
-        share = self._shares().get(token)
-        if not isinstance(share, dict) or not share.get("enabled", True):
-            return None
-        expires = float(share.get("expires", 0) or 0)
-        if expires and utils.now_ts() > expires:
-            return None
-        return share
-
-    def _share_contexts(self, share: dict) -> list:
-
-        contexts = self.main.sessions.get_contexts(str(share.get("chat_key") or ""))
-        budget = int(share.get("max_tokens", 4000) or 4000) * 2
-        picked: list = []
-        used = 0
-        for message in reversed(contexts):
-            if not isinstance(message, dict):
-                continue
-            content = message.get("content")
-            if isinstance(content, list):
-                content = " ".join(str(p.get("text") or "") for p in content if isinstance(p, dict) and p.get("type") == "text")
-            size = len(str(content or ""))
-            if picked and used + size > budget:
-                break
-            picked.append(message)
-            used += size
-        return list(reversed(picked))
-
-    async def session_share(self, request):
-        import secrets as _secrets
-
-        body = await request.json()
-        chat_key = str((body or {}).get("chat_key") or "")
-        if not chat_key:
-            return ({"error": "chat_key required"}, 400)
-        try:
-            hours = min(24 * 30, max(1, int((body or {}).get("expires_hours", 24))))
-        except (TypeError, ValueError):
-            hours = 24
-        try:
-            max_tokens = min(200_000, max(200, int((body or {}).get("max_tokens", 4000))))
-        except (TypeError, ValueError):
-            max_tokens = 4000
-        token = _secrets.token_urlsafe(18)
-        shares = self._shares()
-        shares[token] = {
-            "chat_key": chat_key,
-            "created": utils.now_ts(),
-            "expires": utils.now_ts() + hours * 3600,
-            "max_tokens": max_tokens,
-            "enabled": True,
-        }
-        self.sdk.storage.set(SHARES_KEY, shares)
-        return {"ok": True, "token": token, "url": f"/QvQChat/share?token={token}", "expires": shares[token]["expires"], "max_tokens": max_tokens}
-
-    async def session_share_revoke(self, request):
-        body = await request.json()
-        token = str((body or {}).get("token") or "")
-        shares = self._shares()
-        if token in shares:
-            shares.pop(token)
-            self.sdk.storage.set(SHARES_KEY, shares)
-            return {"ok": True}
-        return ({"error": "not found"}, 404)
-
-    async def share_messages(self, request):
-        token = self._query(request, "token")
-        share = self._share_token(token) if token else None
-        if share is None:
-            return ({"error": "invalid or expired share"}, 403)
-        contexts = self._share_contexts(share)
-        summary = self.main.sessions.summary_of(str(share.get("chat_key") or ""))
-        return {
-            "chat_key": share.get("chat_key"),
-            "summary": summary,
-            "messages": contexts,
-            "expires": share.get("expires"),
-        }
-
-    async def share_page(self, request):
-        from starlette.responses import HTMLResponse
-
-        token = request.query_params.get("token") if request.query_params else ""
-        html = (TEMPLATES / "share.html").read_text(encoding="utf-8")
-        return HTMLResponse(html.replace("__TOKEN__", token))
-
-    async def audit_get(self, request):
-        entries = self.main.sdk.storage.get(AUDIT_STORAGE_KEY, [])
-        if not isinstance(entries, list):
-            entries = []
-        limit = 200
-        try:
-            limit = max(1, min(int(self._query(request, "limit") or 200), 500))
-        except Exception:
-            limit = 200
-        return {"entries": list(reversed(entries[-limit:]))}
-
-    async def config_get(self, request):
-        from ErisPulse.Core import i18n
-
-        fields = []
-        for f in dc_fields(QvQConfig):
-            meta = f.metadata or {}
-            desc = meta.get("description") or {}
-            if isinstance(desc, dict):
-                text = str(desc.get("default") or "")
-                key = desc.get("i18n")
-                if key:
-                    try:
-                        text = i18n.t(key, default=text)
-                    except Exception:
-                        pass
-            else:
-                text = str(desc)
-            ui = meta.get("ui") or {}
-            fields.append(
-                {
-                    "key": f.name,
-                    "value": getattr(self.main.cfg, f.name, None),
-                    "description": text,
-                    "group": str(ui.get("group") or "other"),
-                    "order": ui.get("order", 99),
-                    "widget": str(ui.get("widget") or "text"),
-                    "options": ui.get("options"),
-                }
-            )
-        return {"fields": fields}
-
-    async def config_set(self, request):
-        body = await request.json()
-        if not isinstance(body, dict):
-            return ({"error": "body must be an object"}, 400)
-        valid = {f.name for f in dc_fields(QvQConfig)}
-        applied = []
-        for key, value in body.items():
-            if key in valid:
-                self.sdk.config.setConfig(f"QvQChat.{key}", value)
-                applied.append(key)
-        return {"ok": True, "applied": applied}
-
     UPLOAD_DIR = Path("data/QvQChat/uploads")
 
     def _save_upload(self, name: str, data: str) -> str | None:
@@ -1167,6 +459,8 @@ class DashboardManager:
         if len(parsed) == 2 and isinstance(parsed[0], dict):
             return parsed
         text, images, session, skills, mcp_tools, persona_id, model, temperature = parsed
+        if self._live.busy(session):
+            return ({"error": "session busy"}, 409)
         try:
             reply = await self.main.run_dashboard_chat(
                 session,
@@ -1199,7 +493,7 @@ class DashboardManager:
             return ({"error": "session busy"}, 409)
 
         run_live = self._live.start(session)
-        on_delta, on_reset, on_tool_event = live_mod.bind(run_live)
+        on_delta, on_reset, on_tool_event, on_reasoning = live_mod.bind(run_live)
 
         async def run():
             try:
@@ -1215,15 +509,16 @@ class DashboardManager:
                     on_delta=on_delta,
                     on_reset=on_reset,
                     on_tool_event=on_tool_event,
+                    on_reasoning=on_reasoning,
                 )
                 run_live.reply = reply
                 run_live.status = "done"
                 run_live.publish("done", {"reply": reply, "session": session})
             except _asyncio.CancelledError:
-                partial = run_live.text.strip()
+                partial, trace, rounds = run_live.partial_record()
                 if partial:
                     try:
-                        self.main.sessions.append(session, "assistant", partial)
+                        self.main.sessions.append(session, "assistant", partial, trace=trace, rounds=rounds)
                     except Exception:
                         pass
                 run_live.reply = partial or None

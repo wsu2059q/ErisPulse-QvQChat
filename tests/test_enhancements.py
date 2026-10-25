@@ -151,7 +151,7 @@ async def test_context_summarize_on_overflow():
         manager.append(key, "user", f"旧消息{i}")
     removed = manager.trim_overflow(key, keep=2)
     assert len(removed) == 4
-    # 收尾摘要：经 compactor.summarize_entries 写入会话摘要
+# 收尾摘要：经 compactor.summarize_entries 写入会话摘要
     await manager._summarize_overflow(key, removed)
     assert "方案A" in manager.summary_of(key)
 

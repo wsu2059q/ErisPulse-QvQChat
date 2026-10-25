@@ -60,6 +60,25 @@ def sanitize_name(name: str) -> str:
     return "n" + hashlib.md5(str(name).encode("utf-8")).hexdigest()[:6]
 
 
+def match_pattern(name: str, rules, star_all: bool = True) -> bool:
+    """前缀通配匹配（收编，替代 Main/_match_tool_rules、tools/_allowed/_disabled_match 等重复实现）。
+
+    规则以 ``*`` 结尾按前缀匹配（``eco_*`` 命中所有 eco_ 开头项），否则全等；
+    ``star_all=True``（默认）时单独的 ``*`` 匹配一切。delivery.py 的平台通配
+（`a == "*" or platform == a or a.endswith("*")`）语义与此一致，后续可迁此实现。
+    """
+    for rule in rules or []:
+        rule = str(rule)
+        if rule.endswith("*"):
+            if rule == "*" and not star_all:
+                continue
+            if name.startswith(rule[:-1]):
+                return True
+        elif rule == name:
+            return True
+    return False
+
+
 def split_top_level(text: str, sep: str = ",") -> list[str]:
     parts: list[str] = []
     buf: list[str] = []

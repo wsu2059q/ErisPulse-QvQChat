@@ -82,16 +82,25 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
     if method and sends and method not in sends:
         return texts.t("platform_method_unsupported", platform=platform, method=method, methods=", ".join(sends))
 
-    threshold = int(getattr(ctx.config, "forward_threshold", 600) or 0)
+    from ..conversation.delivery import delivery_profile, dispatch_text
+
+# D2：转发阈值纳入平台 profile（delivery_profiles 通配命中可覆盖）
+    profile = delivery_profile(ctx.config, platform)
+    threshold = int(profile.get("forward_threshold", 600) or 0)
     forward_attempted = False
     if text and (as_forward or (not method and threshold and len(text) >= threshold)):
         forward_attempted = True
+# D5：先按 Markdown 标题/长块切节，仅 Text-only 平台才剥离 Markdown
+# （先剥后切会让标题切块失效：markdown_to_text 已删掉 "## " 前缀）
+        sections = utils.split_reply_sections(text)
+        if sends and "Markdown" not in sends and "Html" not in sends:
+            sections = [utils.markdown_to_text(s) for s in sections]
         try:
             used = await utils.deliver_forward(
                 adapter,
                 target_type,
                 target_id,
-                utils.split_reply_sections(utils.markdown_to_text(text)),
+                sections,
                 sends,
             )
         except Exception as e:
@@ -115,25 +124,26 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
         if "Text" not in attempts:
             attempts.append("Text")
 
-    result = None
+# D4：与回复路径收敛同一发送实现（方法降级 + 指数退避重试 + 失败入待发队列）
     used = ""
+    result = None
     last_error: Exception | None = None
-    for name in attempts:
-        content = utils.markdown_to_text(text) if name == "Text" else text
-        try:
-            if content:
-                result = await getattr(chain, name)(content)
-            if utils._send_failed(result):
-                last_error = RuntimeError(f"send returned failed status: {result}")
-                result = None
-                continue
-            used = name
-            break
-        except Exception as e:
-            last_error = e
-            continue
+    if text:
+        queue = {
+            "chat_key": str(getattr(ctx, "chat_key", "") or f"{platform}:{target_type}:{target_id}"),
+            "platform": platform,
+            "detail_type": target_type,
+            "target_id": target_id,
+        }
+        logger = ctx.main.logger if ctx.main is not None else None
+        used, result, last_error = await dispatch_text(
+            ctx.sdk, ctx.config,
+            lambda name, content: getattr(chain, name)(content),
+            attempts, text, queue=queue, logger=logger,
+        )
     if text and not used:
-        return texts.t("tool_error", name="send_message", error=str(last_error))
+        detail = str(last_error) if last_error is not None else "send failed"
+        return texts.t("tool_error", name="send_message", error=f"{detail}；已转入待发队列")
 
     if image_url:
         result = await chain.Image(image_url)

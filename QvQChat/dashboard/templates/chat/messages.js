@@ -8,6 +8,19 @@
 
   var chatHistoryVersion = 0;
 
+  function mapServerMessage(m, start, i) {
+    // 服务端消息 → 本地条目的唯一映射：idx 必须是绝对索引，rounds 必须透传
+    var atts = (m.atts || []).map(function (a) {
+      return { isImage: !!a.isImage, name: a.name || "image", data: a.data || "", mime: a.mime || "image/png" };
+    });
+    return {
+      role: m.role, text: contentText(m.content), idx: start + i,
+      steps: traceToSteps(m.trace),
+      rounds: Array.isArray(m.rounds) ? m.rounds : null,
+      atts: atts,
+    };
+  }
+
   function applyHistoryWindow(data) {
     var msgs = (data && data.messages) || [];
     var start = (data && data.start) || 0;
@@ -16,17 +29,7 @@
     chatHistory = [];
     msgs.forEach(function (m, i) {
       if (!m || typeof m !== "object") return;
-      if (m.role === "user" || m.role === "assistant") {
-        var atts = (m.atts || []).map(function (a) {
-          return { isImage: !!a.isImage, name: a.name || "image", data: a.data || "", mime: a.mime || "image/png" };
-        });
-        chatHistory.push({
-          role: m.role, text: contentText(m.content), idx: start + i,
-          steps: traceToSteps(m.trace),
-          rounds: Array.isArray(m.rounds) ? m.rounds : null,
-          atts: atts,
-        });
-      }
+      if (m.role === "user" || m.role === "assistant") chatHistory.push(mapServerMessage(m, start, i));
     });
   }
 
@@ -38,17 +41,21 @@
     chatLoading = true;
     renderChat();
     return api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtRequest) + "&limit=" + HISTORY_PAGE).then(function (data) {
-
-      if (seq !== historySeq || epochAtRequest !== chatEpoch || sessionAtRequest !== chatSession) return;
-      if (versionAtRequest !== chatHistoryVersion) return;
-      chatLoading = false;
+      if (seq !== historySeq) return; // 新请求已接管本会话的加载
+      chatLoading = false;            // 其余守卫失败只影响是否应用数据，不影响解除 loading
+      if (data && data.__http >= 400) {
+        toast(data.error || ("HTTP " + data.__http), true);
+        renderChat();
+        return;
+      }
+      if (epochAtRequest !== chatEpoch || sessionAtRequest !== chatSession || versionAtRequest !== chatHistoryVersion) {
+        renderChat();
+        return;
+      }
       applyHistoryWindow(data);
-      renderChat();
+      renderChat({ stick: true });
     }, function () {
       if (seq !== historySeq) return;
-      chatLoading = false;
-      renderChat();
-    }, function () {
       chatLoading = false;
       renderChat();
     });
@@ -67,29 +74,22 @@
     var prevTop = box ? box.scrollTop : 0;
     var start = Math.max(0, chatWindowStart - HISTORY_PAGE);
     api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtRequest) + "&start=" + start + "&limit=" + (chatWindowStart - start)).then(function (data) {
+      loadingOlder = false;
       if (seq !== historySeq || epochAtRequest !== chatEpoch || sessionAtRequest !== chatSession) return;
       if (versionAtRequest !== chatHistoryVersion) return;
       var msgs = (data && data.messages) || [];
       var prepend = [];
       msgs.forEach(function (m, i) {
         if (!m || typeof m !== "object") return;
-        if (m.role === "user" || m.role === "assistant") {
-          prepend.push({
-            role: m.role, text: contentText(m.content), idx: (data.start || start) + i,
-            steps: traceToSteps(m.trace),
-            rounds: Array.isArray(m.rounds) ? m.rounds : null,
-            atts: (m.atts || []).map(function (a) {
-              return { isImage: !!a.isImage, name: a.name || "image", data: a.data || "", mime: a.mime || "image/png" };
-            }),
-          });
-        }
+        if (m.role === "user" || m.role === "assistant") prepend.push(mapServerMessage(m, (data && data.start) || start, i));
       });
       if (prepend.length) {
         chatHistory = prepend.concat(chatHistory);
-        chatWindowStart = data.start || start;
+        chatWindowStart = (data && data.start) || start;
         renderChat();
         if (box) box.scrollTop = box.scrollHeight - prevH + prevTop;
       }
+    }, function () {
       loadingOlder = false;
     });
   }
@@ -97,7 +97,25 @@
   var CHIP_KEYS = ["chat_chip_1", "chat_chip_2", "chat_chip_3", "chat_chip_4"];
   var HERO_SVG = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='7' width='16' height='12' rx='3' stroke-dasharray='3 2'/><circle cx='9' cy='13' r='1.2' fill='currentColor'/><circle cx='15' cy='13' r='1.2' fill='currentColor'/><path d='M12 7V4'/><circle cx='12' cy='3' r='1' fill='currentColor'/></svg>";
 
-  function renderChat() {
+  function stickChatBottom(box) {
+    if (stick) stickChatBottom(box);
+    else if (prevTop) box.scrollTop = prevTop;
+    // base64 图片异步解码会继续撑高容器：解码完成后补偿一次，避免"启动停在半截"
+    box.querySelectorAll("img").forEach(function (img) {
+      if (img.complete) return;
+      var done = false;
+      function restick() {
+        if (done) return;
+        done = true;
+        if (box.scrollHeight - box.scrollTop - box.clientHeight < 600) box.scrollTop = box.scrollHeight;
+      }
+      img.addEventListener("load", restick, { once: true });
+      img.addEventListener("error", restick, { once: true });
+    });
+  }
+
+  function renderChat(opts) {
+    var stick = !!(opts && opts.stick);
     var box = el("qvq-chat-box");
     var main = document.querySelector(".qvq-chat-main");
     var chips = el("qvq-chat-chips");
@@ -136,7 +154,11 @@
       box.innerHTML = '<div class="qvq-chat-loading">' + HERO_SVG + '<span class="qvq-chat-loading-tx">QvQ Chat</span></div>';
       return;
     }
-    var chatHtmlKey = chatSession + "::" + chatWindowStart + "::" + chatHistory.map(function (m) { return [m.role, m.text, m.steps ? m.steps.length : 0, (m.atts || []).length].join(""); }).join("");
+    var chatHtmlKey = chatSession + "::" + chatWindowStart + "::" + chatHistory.map(function (m) {
+      return [m.role, m.text, m.steps ? m.steps.length : 0, (m.atts || []).length,
+        m.rounds ? m.rounds.map(function (r) { return (r.text || "").length + "." + (r.tools || []).length; }).join(",") : "-",
+        m.fresh ? 1 : 0, m.err ? 1 : 0].join("");
+    }).join("");
     if (box.getAttribute("data-html") === chatHtmlKey) {
       bindMdCopy(box);
       return;
@@ -171,6 +193,7 @@
       }
       return '<div class="qvq-msg bot' + freshCls + '">' + stepsBlock + inner + body + "</div>";
     });
+    var prevTop = stick ? 0 : box.scrollTop;
     box.innerHTML = build.join("");
     box.querySelectorAll(".qvq-msg-img").forEach(function (img) {
       img.onclick = function () {

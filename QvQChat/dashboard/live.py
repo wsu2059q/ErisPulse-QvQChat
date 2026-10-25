@@ -15,6 +15,7 @@ class LiveStream:
     session: str
     status: str = "running"
     text: str = ""
+    reasoning: str = ""
     steps: list = field(default_factory=list)
     segments: list = field(default_factory=list)
     reply: str | None = None
@@ -36,12 +37,55 @@ class LiveStream:
             "session": self.session,
             "status": self.status,
             "text": self.text,
+            "reasoning": self.reasoning,
             "steps": self.steps,
             "segments": self.segments,
             "reply": self.reply,
             "error": self.error,
             "started": self.started,
         }
+
+    def partial_record(self) -> tuple[str, list, list]:
+        """取消/中断时从 steps 与 segments 还原 (text, trace, rounds)，保住中间步骤。"""
+
+        trace = [
+            {
+                "tool": (step.get("start") or {}).get("name", "?"),
+                "arguments": str((step.get("start") or {}).get("arguments", "") or ""),
+                "output": str((step.get("end") or {}).get("output", "") or ""),
+                "ms": int((step.get("end") or {}).get("ms") or 0),
+            }
+            for step in self.steps
+            if step.get("start")
+        ]
+        rounds: list = []
+
+        def _round() -> dict:
+            if not rounds:
+                rounds.append({"text": "", "tools": []})
+            return rounds[-1]
+
+        for seg in self.segments:
+            if seg.get("type") == "tool":
+                start = seg.get("start") or {}
+                end = seg.get("end") or {}
+                _round()["tools"].append(
+                    {
+                        "tool": start.get("name", "?"),
+                        "arguments": str(start.get("arguments", "") or ""),
+                        "output": str(end.get("output", "") or ""),
+                        "ms": int(end.get("ms") or 0),
+                    }
+                )
+            else:
+                piece = str(seg.get("text") or "")
+                if not piece:
+                    continue
+                if rounds and not rounds[-1]["tools"]:
+                    rounds[-1]["text"] += piece
+                else:
+                    rounds.append({"text": piece, "tools": []})
+        return self.text.strip(), trace, rounds
 
     def publish(self, event: str, data: dict) -> None:
         self.updated = time.time()
@@ -117,8 +161,16 @@ def bind(live: LiveStream):
 
     async def on_reset() -> None:
         live.text = ""
+        live.reasoning = ""
         live.steps.clear()
-        live.publish("reset", {})
+        live.segments.clear()
+        live.publish("reset", {"segments": []})
+
+    async def on_reasoning(piece: str) -> None:
+        if not piece:
+            return
+        live.reasoning += piece
+        live.publish("reasoning", {"t": piece})
 
     async def on_tool_event(evt: dict) -> None:
         if evt.get("phase") == "start":
@@ -151,4 +203,4 @@ def bind(live: LiveStream):
                 seg["end"] = evt
         live.publish("tool", evt)
 
-    return on_delta, on_reset, on_tool_event
+    return on_delta, on_reset, on_tool_event, on_reasoning

@@ -84,6 +84,13 @@ class EcosystemBridge:
             self._remove_personas(ids)
         self._prev_ext_personas = {}
         self.info = {"modules": module_count, "tools": tool_count, "updated": utils.now_ts()}
+# 防抖热刷新（module.load/unload）后自动重发现参与决策提供者
+        participation = getattr(self.main, "participation", None)
+        if participation is not None:
+            try:
+                await participation.discover()
+            except Exception as e:
+                self.main.logger.debug(f"participation discover failed: {e}")
         return dict(self.info)
 
     async def _call_optional(self, module: str, service: str):
@@ -120,16 +127,22 @@ class EcosystemBridge:
                 continue
             base_id = str(item.get("id") or f"p{index}")
             pid = f"ext.{module}.{base_id}"
+# 外部人格全量字段白名单透传（未提供项由 persona.save merge 语义兜底）
+            payload = {
+                "id": pid,
+                "name": str(item.get("name") or base_id),
+                "system": str(item.get("system") or ""),
+                "opening": item.get("opening"),
+                "tools": item.get("tools"),
+            }
+            for key in ("owner_title", "nickname", "avatar"):
+                if item.get(key):
+                    payload[key] = item.get(key)
+            for key in ("style", "examples", "banned_words", "catchphrases"):
+                if item.get(key) is not None:
+                    payload[key] = item.get(key)
             try:
-                self.main.personas.save(
-                    {
-                        "id": pid,
-                        "name": str(item.get("name") or base_id),
-                        "system": str(item.get("system") or ""),
-                        "opening": item.get("opening"),
-                        "tools": item.get("tools"),
-                    }
-                )
+                self.main.personas.save(payload)
             except Exception:
                 continue
             ids.append(pid)

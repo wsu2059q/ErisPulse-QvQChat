@@ -51,7 +51,7 @@ async def test_manage_models_roundtrip():
     assert ctx.sdk.config_sets[-1] == ("QvQChat.default_model", "p1:m1")
     assert "unknown model" in await selfconfig.manage_models(ctx, action="set_default", model_id="nope")
 
-    # api_key 留空保留原值
+# api_key 留空保留原值
     await selfconfig.manage_models(ctx, action="save", provider={"id": "p1", "base_url": "https://api.p1/v1"})
     stored = ctx.main.pool.get_provider("p1")
     assert stored["api_key"] == "sk-secret"
@@ -79,8 +79,25 @@ async def test_manage_config_roundtrip():
         "tool_notice_mode": "brief"
     }
     out = json.loads(await selfconfig.manage_config(ctx, action="set", updates={"aggregate_window": 0, "bogus": 1}))
-    assert out["applied"] == ["aggregate_window"] and out["rejected"] == ["bogus"]
+    assert out["applied"] == ["aggregate_window"]
+    assert set(out["rejected"]) == {"bogus"} and out["rejected"]["bogus"]
     assert ctx.sdk.config_sets[-1] == ("QvQChat.aggregate_window", 0)
+
+
+async def test_manage_config_rejects_bad_values_with_reason():
+    """set 走统一 coerce：坏值拒收并带原因，好值照常抝合落盘。"""
+    ctx = make_ctx()
+    out = json.loads(await selfconfig.manage_config(
+        ctx,
+        action="set",
+        updates={"context_limit": "", "wake_prefixes": "a\nb", "reply_private": "true", "security_level": "wild"},
+    ))
+    assert out["applied"] == ["wake_prefixes"]
+    assert ctx.sdk.config_sets[-1] == ("QvQChat.wake_prefixes", ["a", "b"])
+    assert set(out["rejected"]) == {"context_limit", "reply_private", "security_level"}
+    for reason in out["rejected"].values():
+        assert reason
+    assert out["ok"] is False
 
 
 async def test_send_message_forward_fallback_reports_honestly():
