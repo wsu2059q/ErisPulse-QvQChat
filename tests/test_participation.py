@@ -579,12 +579,9 @@ def test_participation_config_group_and_defaults():
         "participation_enabled": (False, "participation", 1),
         "participation_groups": ([], "participation", 2),
         "participation_groups_exclude": ([], "participation", 3),
-        "participation_strategy": ("first_speak", "participation", 4),
-        "participation_score_threshold": (0.6, "participation", 5),
-        "participation_hourly_limit": (8, "participation", 6),
-        "participation_cooldown_seconds": (300, "participation", 7),
-        "participation_provider_timeout": (2, "participation", 8),
-        "participation_proactive_daily_limit": (3, "participation", 9),
+        "participation_hourly_limit": (8, "participation", 4),
+        "participation_cooldown_seconds": (300, "participation", 5),
+        "participation_proactive_daily_limit": (3, "participation", 6),
     }
     for key, (default, group, order) in expected.items():
         assert key in fm, key
@@ -593,10 +590,10 @@ def test_participation_config_group_and_defaults():
         assert ui.get("group") == group and ui.get("order") == order, key
         actual = f.default_factory() if f.default_factory is not MISSING else f.default
         assert actual == default, key
-    ui = (fm["participation_strategy"].metadata or {}).get("ui") or {}
-    assert ui.get("options") == ["first_speak", "max_score", "unanimous"]
-# select 成员校验 / bool 拒收字符串 / 默认关闭
-    assert QvQConfig.coerce("participation_strategy", "bogus")[0] is False
+    # 行为细节（聚合策略等）不再进入主模块设置面，仅作为接口内部语义
+    for absent in ("participation_strategy", "participation_score_threshold", "participation_provider_timeout"):
+        assert absent not in fm
+# bool 拒收字符串 / 默认关闭
     assert QvQConfig.coerce("participation_enabled", True) == (True, True, None)
     assert QvQConfig.coerce("participation_enabled", "true")[0] is False
     ok, v, _ = QvQConfig.coerce("participation_hourly_limit", "5")
