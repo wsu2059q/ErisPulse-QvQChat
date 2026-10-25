@@ -23,15 +23,9 @@ class Main(BaseModule):
 
 装上模块即上线，卸载即消失。无需重启 QvQChat。
 
-## 三条可选深度集成服务
+## 两条可选深度集成服务
 
-模块可以额外实现以下服务，参与智能体的行为定制：
-
-### `qvq_prompts()` → 注入系统提示词
-
-返回 `list[str]` 或 `list[{"text": str, "priority": int}]`。按 `priority` 升序拼接到系统提示词末尾。
-
-适合：使用约定（"画完图后发给用户"）、行为约束、知识库说明。
+模块可以额外实现以下约定服务，参与智能体的行为定制：
 
 ### `qvq_personas()` → 注册人格预设
 
@@ -43,13 +37,25 @@ class Main(BaseModule):
 
 返回 `dict[服务名, JSON Schema]`，覆盖签名推断。参数复杂时可用。
 
+> **关键陷阱**：若模块声明了 `get_meta().services` 白名单，约定的 `qvq_*` 服务（`qvq_personas` / `qvq_schemas`）也必须列入 `services`，否则 `sdk.module.call` 会拒绝调用——深度集成静默不生效。例如：
+>
+> ```python
+> return ModuleMeta(name="Draw", services=[
+>     {"name": "draw", "description": "根据描述生成图片"},
+>     {"name": "qvq_schemas", "description": "QvQChat 参数 schema 约定服务"},
+>     {"name": "qvq_personas", "description": "QvQChat 人格约定服务"},
+> ])
+> ```
+>
+> 未声明 `services` 白名单的模块不受影响（无白名单即不拦截）。
+
 ## 事件订阅
 
 QvQChat 广播两个生命周期事件，扩展模块用 `sdk.lifecycle.on()` 订阅：
 
 | 事件 | 时机 | 载荷字段 |
 |---|---|---|
-| `qvq.message` | 收到用户消息时 | `chat_key` `platform` `sender_id` `sender_name` `text` `is_group` |
+| `qvq.message` | 消息被处理时 | `chat_key` `platform` `sender_id` `sender_name` `text` `is_group` |
 | `qvq.replied` | 回复发出后 | `chat_key` `reply` `tools` |
 
 ```python
