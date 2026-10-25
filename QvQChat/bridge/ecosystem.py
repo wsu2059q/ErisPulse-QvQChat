@@ -4,7 +4,6 @@ import asyncio
 
 from .. import utils
 from ..agent.tools import Tool
-from ..pluginsettings import normalize_settings_payload
 from ..utils import sanitize_name, schema_from_signature
 
 PREFIX = "eco_"
@@ -114,10 +113,13 @@ class EcosystemBridge:
 
     async def _collect_settings(self, module: str) -> None:
  
+ 
         raw = await self._call_optional(module, SETTINGS_SERVICE)
-        catalog = normalize_settings_payload(raw, module)
-        if catalog is not None:
-            self.main.plugin_settings_catalog[module] = catalog
+        if raw is None:
+            return
+        title = raw.get("title") if isinstance(raw, dict) else raw
+        title = str(title).strip() if title is not None else ""
+        self.main.plugin_settings_catalog[module] = title or module
 
     def _remove_personas(self, ids: list[str]) -> None:
         for pid in ids:
