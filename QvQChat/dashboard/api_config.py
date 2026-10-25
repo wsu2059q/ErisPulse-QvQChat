@@ -9,7 +9,6 @@ from dataclasses import fields as dc_fields
 from .. import texts, utils
 from ..Config import QvQConfig
 from ..engine.base import ChatRequest
-from ..pluginsettings import load_overrides, merge_entry, save_overrides, validate_by_descriptor
 
 
 class ConfigApiMixin:
@@ -389,55 +388,86 @@ class ConfigApiMixin:
         catalog = getattr(self.main, "plugin_settings_catalog", None)
         return catalog if isinstance(catalog, dict) else {}
 
+    def _plugin_config_class(self, module: str):
+        """模块注册名 → ConfigClass（与 Dashboard 同源：sdk.module._module_classes）。"""
+        module_class = (getattr(self.sdk.module, "_module_classes", None) or {}).get(module)
+        if module_class is None:
+            return None
+        return getattr(module_class, "ConfigClass", None)
+
     async def plugin_settings_get(self, request):
+        from ErisPulse.runtime.config_schema import resolve_config_schema
+
         modules = []
-        for name in sorted(self._plugin_catalog()):
-            entry = self._plugin_catalog()[name]
-            overrides = load_overrides(self.sdk, name)
-            items = []
-            for item in entry.get("items") or []:
-                data = dict(item)
-                key = item.get("key")
-                data["value"] = overrides[key] if key in overrides else item.get("default")
-                items.append(data)
-            modules.append({"module": name, "title": entry.get("title") or name, "items": items})
+        for name, title in sorted(self._plugin_catalog().items()):
+            config_class = self._plugin_config_class(name)
+            if config_class is None:
+                continue   
+            try:
+                schema = resolve_config_schema(config_class)
+            except Exception as e:
+                self.main.logger.debug(f"plugin config schema resolve failed ({name}): {e}")
+                continue
+            try:
+                values = self.sdk.config.getConfig(name)
+            except Exception:
+                values = None
+            modules.append(
+                {
+                    "module": name,
+                    "title": title or name,
+                    "config_key": name,   
+                    "schema": schema,
+                    "values": dict(values) if isinstance(values, dict) else {},
+                }
+            )
         return {"modules": modules}
 
     async def plugin_settings_save(self, request):
+        from ErisPulse.runtime.config_schema import dict_to_dataclass, validate_config
+
         body = await request.json()
         if not isinstance(body, dict):
             return ({"error": "body must be an object"}, 400)
         module = str(body.get("module") or "")
         values = body.get("values")
-        entry = self._plugin_catalog().get(module)
-        if entry is None:
+        if module not in self._plugin_catalog():
             return ({"error": f"unknown module: {module}"}, 400)
         if not isinstance(values, dict):
             return ({"error": "values must be an object"}, 400)
-        descriptors = {item["key"]: item for item in entry.get("items") or [] if isinstance(item, dict) and item.get("key")}
-        applied = []
-        errors: dict[str, str] = {}
-        updates: dict = {}
-        for raw_key, value in values.items():
-            key = str(raw_key)
-            item = descriptors.get(key)
-            if item is None:
-                errors[key] = texts.t("config_err_unknown_key", name=key)
-                continue
-            ok, coerced, err = validate_by_descriptor(item, value)
-            if ok:
-                updates[key] = coerced
-                applied.append(key)
-            else:
-                errors[key] = err
+        config_class = self._plugin_config_class(module)
+        if config_class is None:
+            return ({"error": f"module has no config schema: {module}"}, 400)
+        try:
+            current = self.sdk.config.getConfig(module)
+        except Exception:
+            current = None
+        merged = {**(current if isinstance(current, dict) else {}), **values}
+        try:
+            config_instance = dict_to_dataclass(config_class, merged)
+        except Exception as e:
+            return ({"ok": False, "applied": [], "errors": {"": str(e)}}, 400)
+        errors_list = validate_config(config_instance)
+        if errors_list:
  
-        if updates:
-            overrides = save_overrides(self.sdk, module, updates)
-            merged = merge_entry(entry, overrides)
-            try:
-                await self.sdk.lifecycle.emit("qvq.plugin_config", {"module": module, "values": merged})
-            except Exception as e:
-                self.main.logger.debug(f"plugin_config emit failed: {e}")
-        if errors:
-            return ({"ok": False, "applied": applied, "errors": errors}, 400)
-        return {"ok": True, "applied": applied}
+ 
+            errors: dict[str, str] = {}
+            for msg in errors_list:
+                target = ""
+                for key in sorted((str(k) for k in values), key=len, reverse=True):
+                    if msg.startswith(f"{key}:") or key in msg:
+                        target = key
+                        break
+                errors[target] = f"{errors[target]}; {msg}" if target in errors else msg
+            return ({"ok": False, "applied": [], "errors": errors}, 400)
+ 
+        from dataclasses import asdict
+
+        applied_values = asdict(config_instance)
+        for key, value in applied_values.items():
+            self.sdk.config.setConfig(f"{module}.{key}", value)
+        try:
+            await self.sdk.lifecycle.emit("qvq.plugin_config", {"module": module, "values": applied_values})
+        except Exception as e:
+            self.main.logger.debug(f"plugin_config emit failed: {e}")
+        return {"ok": True, "applied": [str(k) for k in values]}
