@@ -9,6 +9,7 @@ from dataclasses import fields as dc_fields
 from .. import texts, utils
 from ..Config import QvQConfig
 from ..engine.base import ChatRequest
+from ..pluginsettings import load_overrides, merge_entry, save_overrides, validate_by_descriptor
 
 
 class ConfigApiMixin:
@@ -378,6 +379,65 @@ class ConfigApiMixin:
                 applied.append(str(key))
             else:
                 errors[str(key)] = err
+        if errors:
+            return ({"ok": False, "applied": applied, "errors": errors}, 400)
+        return {"ok": True, "applied": applied}
+
+    # ===== 插件设置（qvq_settings 注册项）：读取 / 保存 =====
+
+    def _plugin_catalog(self) -> dict:
+        catalog = getattr(self.main, "plugin_settings_catalog", None)
+        return catalog if isinstance(catalog, dict) else {}
+
+    async def plugin_settings_get(self, request):
+        modules = []
+        for name in sorted(self._plugin_catalog()):
+            entry = self._plugin_catalog()[name]
+            overrides = load_overrides(self.sdk, name)
+            items = []
+            for item in entry.get("items") or []:
+                data = dict(item)
+                key = item.get("key")
+                data["value"] = overrides[key] if key in overrides else item.get("default")
+                items.append(data)
+            modules.append({"module": name, "title": entry.get("title") or name, "items": items})
+        return {"modules": modules}
+
+    async def plugin_settings_save(self, request):
+        body = await request.json()
+        if not isinstance(body, dict):
+            return ({"error": "body must be an object"}, 400)
+        module = str(body.get("module") or "")
+        values = body.get("values")
+        entry = self._plugin_catalog().get(module)
+        if entry is None:
+            return ({"error": f"unknown module: {module}"}, 400)
+        if not isinstance(values, dict):
+            return ({"error": "values must be an object"}, 400)
+        descriptors = {item["key"]: item for item in entry.get("items") or [] if isinstance(item, dict) and item.get("key")}
+        applied = []
+        errors: dict[str, str] = {}
+        updates: dict = {}
+        for raw_key, value in values.items():
+            key = str(raw_key)
+            item = descriptors.get(key)
+            if item is None:
+                errors[key] = texts.t("config_err_unknown_key", name=key)
+                continue
+            ok, coerced, err = validate_by_descriptor(item, value)
+            if ok:
+                updates[key] = coerced
+                applied.append(key)
+            else:
+                errors[key] = err
+# 部分成功语义：合法键先落盘并广播，非法键拒收回显
+        if updates:
+            overrides = save_overrides(self.sdk, module, updates)
+            merged = merge_entry(entry, overrides)
+            try:
+                await self.sdk.lifecycle.emit("qvq.plugin_config", {"module": module, "values": merged})
+            except Exception as e:
+                self.main.logger.debug(f"plugin_config emit failed: {e}")
         if errors:
             return ({"ok": False, "applied": applied, "errors": errors}, 400)
         return {"ok": True, "applied": applied}

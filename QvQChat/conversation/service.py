@@ -209,6 +209,24 @@ class ConversationService:
         if sender_id:
             self._user_seen_record(sender_id, chat_key, self._text_of(content))
 
+    def pop_last_user_if(self, chat_key: str, text: str) -> bool:
+        """末条上下文为内容匹配的 user 消息时弹出并保存（悬空恢复防重复；仅动末条）。
+
+        多模态 content（parts 列表）按文本部分拼接比对；不匹配/末条非 user 一律不动。
+        """
+        state = self._state(chat_key)
+        contexts = state["contexts"]
+        if not contexts:
+            return False
+        entry = contexts[-1]
+        if not isinstance(entry, dict) or entry.get("role") != "user":
+            return False
+        if self._text_of(entry.get("content")) != str(text or ""):
+            return False
+        contexts.pop()
+        self._save(chat_key, state)
+        return True
+
 # ===== 用户→群会话倒排（recent_user_messages 免全库扫描） =====
 
     def _user_seen(self, uid: str) -> list[dict] | None:

@@ -117,6 +117,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin):
             ("GET", "/api/qvq/audit", self.audit_get),
             ("GET", "/api/qvq/config", self.config_get),
             ("POST", "/api/qvq/config", self.config_set),
+            ("GET", "/api/qvq/plugin_settings", self.plugin_settings_get),
+            ("POST", "/api/qvq/plugin_settings/save", self.plugin_settings_save),
             ("POST", "/api/qvq/chat", self.chat_post),
             ("POST", "/api/qvq/chat/stream", self.chat_stream),
             ("GET", "/api/qvq/chat/live", self.chat_live),

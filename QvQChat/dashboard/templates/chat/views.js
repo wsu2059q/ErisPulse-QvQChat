@@ -1280,6 +1280,10 @@
   var settingsDraft = {};      // key → 当前编辑值（跨分类切换/搜索重绘保留）
   var settingsEnums = { tools: [], skills: [] };
   var settingsEventsBound = false;
+  // 插件设置（qvq_settings 注册项）：独立拉取后并入统一 schema（key 加前缀防跨插件撞名）
+  var settingsConfigFields = [];
+  var settingsPluginFields = [];
+  var PLUGIN_KEY_PREFIX = "plugin:";
 
   // chat 组语义分块（字段 order 上界 → 小节标题键）
   var CHAT_SECTIONS = [
@@ -1302,20 +1306,56 @@
     bindSettingsFormEvents();
     api("/api/qvq/config").then(function (data) {
       if (!data || data.error || !Array.isArray(data.fields)) return;
-      settingsFields = data.fields;
+      settingsConfigFields = data.fields;
       settingsGroupsTable = data.groups || [];
-      settingsOriginal = {};
-      settingsFields.forEach(function (f) {
-        settingsOriginal[f.key] = settingsNormalize(f, f.value);
-      });
-      settingsDraft = {};
-      Object.keys(settingsOriginal).forEach(function (k) {
-        settingsDraft[k] = settingsOriginal[k];
-      });
-      renderSettingsCategories();
-      renderSettingsForm();
+      applySettingsState();
       loadSettingsEnums();
     });
+    api("/api/qvq/plugin_settings").then(function (data) {
+      settingsPluginFields = mapPluginSettings((data && data.modules) || []);
+      applySettingsState();
+    });
+  }
+
+  // 合并 QvQChat 配置字段与插件设置字段为统一 schema（draft/dirty/保存机制共用）
+  function applySettingsState() {
+    settingsFields = settingsConfigFields.concat(settingsPluginFields);
+    settingsOriginal = {};
+    settingsFields.forEach(function (f) {
+      settingsOriginal[f.key] = settingsNormalize(f, f.value);
+    });
+    settingsDraft = {};
+    Object.keys(settingsOriginal).forEach(function (k) {
+      settingsDraft[k] = settingsOriginal[k];
+    });
+    renderSettingsCategories();
+    renderSettingsForm();
+  }
+
+  // 插件设置字段映射为 settingField 现有形状：{key,type,widget,options,min/max/step,dangerous,description,value}
+  function mapPluginSettings(modules) {
+    var fields = [];
+    (modules || []).forEach(function (m, mi) {
+      (m.items || []).forEach(function (it, i) {
+        fields.push({
+          key: PLUGIN_KEY_PREFIX + m.module + ":" + it.key,
+          plugin_module: m.module,
+          plugin_title: m.title || m.module,
+          type: it.type || "str",
+          widget: it.widget || "text",
+          options: it.options || null,
+          min: it.min != null ? it.min : null,
+          max: it.max != null ? it.max : null,
+          step: it.step != null ? it.step : null,
+          dangerous: !!it.dangerous,
+          description: it.desc || it.key,
+          value: it.value,
+          group: "plugin",
+          order: mi * 1000 + i + 1
+        });
+      });
+    });
+    return fields;
   }
 
   // disabled_tools / skills_disabled 的 checkbox 多选数据源
@@ -1367,13 +1407,17 @@
 
   function settingsGroups() {
     // 优先用后端 GROUP_META 组表（组序与字段 order 解耦），无则回退字段推导
+    var groups;
     if (settingsGroupsTable.length) {
-      return settingsGroupsTable.map(function (g) { return g.id; });
+      groups = settingsGroupsTable.map(function (g) { return g.id; });
+    } else {
+      groups = [];
+      settingsFields.forEach(function (f) {
+        if (groups.indexOf(f.group) < 0) groups.push(f.group);
+      });
     }
-    var groups = [];
-    settingsFields.forEach(function (f) {
-      if (groups.indexOf(f.group) < 0) groups.push(f.group);
-    });
+    // "插件"分区恒置末位（有插件注册项才出现）
+    if (settingsPluginFields.length && groups.indexOf("plugin") < 0) groups.push("plugin");
     return groups;
   }
 
@@ -1529,12 +1573,15 @@
       fields.sort(function (a, b) { return (a.order || 99) - (b.order || 99); });
     }
     if (!fields.length) {
-      box.innerHTML = '<div class="qvq-empty">' + esc(q ? t("settings_no_match") : "-") + "</div>";
+      var emptyText = q ? t("settings_no_match")
+        : (currentCategory === "plugin" ? t("plugin_settings_empty") : "-");
+      box.innerHTML = '<div class="qvq-empty">' + esc(emptyText) + "</div>";
       settingsUpdateSaveBtn();
       return;
     }
     var html = "";
     var lastSec = -1;
+    var lastPlugin = "";
     fields.forEach(function (f) {
       if (q) {
         html += "<div class='qvq-settings-hit'><span class='qvq-chip'>" + esc(t("group_" + f.group)) + "</span>" + settingField(f) + "</div>";
@@ -1550,6 +1597,10 @@
             break;
           }
         }
+      }
+      if (f.group === "plugin" && f.plugin_module !== lastPlugin) {
+        html += "<div class='qvq-settings-sec'>" + esc(f.plugin_title || f.plugin_module) + "</div>";
+        lastPlugin = f.plugin_module;
       }
       html += settingField(f);
     });
@@ -1760,26 +1811,13 @@
       toast(t("settings_no_change"));
       return;
     }
-    var payload = {};
-    dirty.forEach(function (k) { payload[k] = settingsDraft[k]; });
     var dangerKeys = dirty.filter(function (k) {
       var f = settingsSchemaOf(k);
       return f && f.dangerous;
     });
     var go = function () {
-      api("/api/qvq/config", "POST", payload).then(function (r) {
-        if (r && r.errors && Object.keys(r.errors).length) {
-          Object.keys(r.errors).forEach(function (k) { settingsShowError(k, r.errors[k]); });
-          (r.applied || []).forEach(function (k) { settingsOriginal[k] = settingsDraft[k]; });
-          toast(t("settings_save_partial"), true);
-        } else if (r && r.ok) {
-          dirty.forEach(function (k) { settingsOriginal[k] = settingsDraft[k]; });
-          toast(t("settings_saved"));
-        } else {
-          toast((r && r.error) || "error", true);
-        }
-        settingsUpdateSaveBtn();
-      });
+      saveConfigSettings(dirty);
+      savePluginSettings(dirty);
     };
     if (dangerKeys.length) {
       confirmDialog(t("settings_danger_confirm") + "\n" + dangerKeys.join(", ")).then(function (ok) {
@@ -1788,6 +1826,58 @@
     } else {
       go();
     }
+  }
+
+  // QvQChat 自身配置：只送 dirty 字段到 /api/qvq/config
+  function saveConfigSettings(dirty) {
+    var keys = dirty.filter(function (k) { return k.indexOf(PLUGIN_KEY_PREFIX) !== 0; });
+    if (!keys.length) return;
+    var payload = {};
+    keys.forEach(function (k) { payload[k] = settingsDraft[k]; });
+    api("/api/qvq/config", "POST", payload).then(function (r) {
+      if (r && r.errors && Object.keys(r.errors).length) {
+        Object.keys(r.errors).forEach(function (k) { settingsShowError(k, r.errors[k]); });
+        (r.applied || []).forEach(function (k) { settingsOriginal[k] = settingsDraft[k]; });
+        toast(t("settings_save_partial"), true);
+      } else if (r && r.ok) {
+        keys.forEach(function (k) { settingsOriginal[k] = settingsDraft[k]; });
+        toast(t("settings_saved"));
+      } else {
+        toast((r && r.error) || "error", true);
+      }
+      settingsUpdateSaveBtn();
+    });
+  }
+
+  // 插件设置：按模块分组 POST /api/qvq/plugin_settings/save，错误回填沿用字段级红字
+  function savePluginSettings(dirty) {
+    var byModule = {};
+    dirty.forEach(function (k) {
+      if (k.indexOf(PLUGIN_KEY_PREFIX) !== 0) return;
+      var rest = k.slice(PLUGIN_KEY_PREFIX.length);
+      var sep = rest.indexOf(":");
+      if (sep <= 0) return;
+      var mod = rest.slice(0, sep);
+      var rawKey = rest.slice(sep + 1);
+      if (!byModule[mod]) byModule[mod] = {};
+      byModule[mod][rawKey] = settingsDraft[k];
+    });
+    Object.keys(byModule).forEach(function (mod) {
+      api("/api/qvq/plugin_settings/save", "POST", { module: mod, values: byModule[mod] }).then(function (r) {
+        var full = function (rk) { return PLUGIN_KEY_PREFIX + mod + ":" + rk; };
+        if (r && r.errors && Object.keys(r.errors).length) {
+          Object.keys(r.errors).forEach(function (rk) { settingsShowError(full(rk), r.errors[rk]); });
+          (r.applied || []).forEach(function (rk) { settingsOriginal[full(rk)] = settingsDraft[full(rk)]; });
+          toast(t("settings_save_partial"), true);
+        } else if (r && r.ok) {
+          Object.keys(byModule[mod]).forEach(function (rk) { settingsOriginal[full(rk)] = settingsDraft[full(rk)]; });
+          toast(t("settings_saved"));
+        } else {
+          toast((r && r.error) || "error", true);
+        }
+        settingsUpdateSaveBtn();
+      });
+    });
   }
 
   // T4：设置页有未保存修改时，切 tab（捕获阶段拦截导航点击）/ 关页给出离开提示
