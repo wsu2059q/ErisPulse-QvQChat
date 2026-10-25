@@ -217,12 +217,9 @@ class QvQConfig(BaseConfig):
     participation_enabled: bool = field(default=False, metadata=_desc("participation_enabled", "群聊参与决策：未被 @/前缀命中时问询生态插件的 qvq_decision 服务判断是否插话（默认关闭，需自行开启）", "participation", 1, "switch", dangerous=True))
     participation_groups: list[str] = field(default_factory=list, metadata=_desc("participation_groups", "参与决策生效的群白名单（群号或 platform:group:gid，支持通配），留空表示全部群", "participation", 2, "list"))
     participation_groups_exclude: list[str] = field(default_factory=list, metadata=_desc("participation_groups_exclude", "参与决策排除的群黑名单，优先级高于白名单", "participation", 3, "list"))
-    participation_strategy: str = field(default="first_speak", metadata=_desc("participation_strategy", "多提供者聚合策略：first_speak 任一提供者说插话即插话 / max_score 最高分且达到阈值才插话 / unanimous 全体一致才插话", "participation", 4, "select", ["first_speak", "max_score", "unanimous"]))
-    participation_score_threshold: float = field(default=0.6, metadata=_desc("participation_score_threshold", "max_score 策略的分数阈值（0-1，提供者 score 达到才插话）", "participation", 5, "number", minimum=0, maximum=1))
-    participation_hourly_limit: int = field(default=8, metadata=_desc("participation_hourly_limit", "每群每小时机器人主动发言上限（插话+主动开口，0 不限），超出后本小时静默", "participation", 6, "number"))
-    participation_cooldown_seconds: int = field(default=300, metadata=_desc("participation_cooldown_seconds", "同群两次发言的最小间隔秒数（0 不限），冷却期内不再插话", "participation", 7, "number"))
-    participation_provider_timeout: float = field(default=2, metadata=_desc("participation_provider_timeout", "单个参与决策提供者的问询超时（秒），超时视为 silent", "participation", 8, "number"))
-    participation_proactive_daily_limit: int = field(default=3, metadata=_desc("participation_proactive_daily_limit", "全局每日主动发言（speak 服务）上限（0 不限），插话不计入", "participation", 9, "number"))
+    participation_hourly_limit: int = field(default=8, metadata=_desc("participation_hourly_limit", "每群每小时机器人主动发言上限（插话+主动开口，0 不限），超出后本小时静默", "participation", 4, "number"))
+    participation_cooldown_seconds: int = field(default=300, metadata=_desc("participation_cooldown_seconds", "同群两次发言的最小间隔秒数（0 不限），冷却期内不再插话", "participation", 5, "number"))
+    participation_proactive_daily_limit: int = field(default=3, metadata=_desc("participation_proactive_daily_limit", "全局每日主动发言（speak 服务）上限（0 不限），插话不计入", "participation", 6, "number"))
 
 # ===== 类型校验 seam：三个写入方（dashboard config_set / AI 工具 manage_config / 导入回灌）共用 =====
 
