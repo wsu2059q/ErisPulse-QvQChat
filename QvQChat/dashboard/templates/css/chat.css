@@ -398,6 +398,27 @@
   animation: qvq-breathe 1.4s ease-in-out infinite;
 }
 
+.qvq-think {
+  margin: 10px 0 12px;
+  font-size: 12.5px;
+  border-left: 2px solid var(--qvq-line, rgba(128, 128, 128, 0.35));
+  padding-left: 10px;
+  opacity: 0.85;
+}
+.qvq-think summary {
+  cursor: pointer;
+  user-select: none;
+  color: var(--qvq-dim, inherit);
+  opacity: 0.75;
+}
+.qvq-think-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 6px;
+  padding-right: 4px;
+}
 .qvq-steps {
   display: flex;
   flex-direction: column;
@@ -956,4 +977,65 @@
 .qvq-toast.err {
   border-color: var(--qvq-er-bd);
   color: var(--qvq-er-c);
+}
+
+ 
+@media (hover: none), (pointer: coarse) {
+   
+  .qvq-msg-acts {
+    visibility: visible;
+    opacity: 0.85;
+  }
+  .qvq-msg-wrap:hover .qvq-msg-acts {
+    visibility: visible;
+  }
+  .qvq-msg-acts button {
+    width: 40px;
+    height: 40px;
+  }
+  .qvq-msg-acts button svg {
+    width: 16px;
+    height: 16px;
+  }
+   
+  .qvq-icon-btn {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+  }
+  .qvq-composer-send {
+    width: 40px;
+    height: 40px;
+  }
+  .qvq-mm-btn {
+    padding: 10px;
+  }
+  .qvq-chat-chip {
+    padding: 10px 14px;
+  }
+  .qvq-md-pre .qvq-md-copy {
+    padding: 8px 10px;
+  }
+   
+  .qvq-att button,
+  .qvq-ed-att button {
+    min-width: 40px;
+    min-height: 40px;
+    margin: -10px -6px;
+  }
+   
+  .qvq-step-row:hover,
+  .qvq-mention-opt:hover {
+    background: transparent;
+  }
+  .qvq-msg-acts button:hover {
+    background: transparent;
+  }
+}
+
+ 
+@media (max-width: 860px) {
+  .qvq-q-card {
+    flex-wrap: wrap;
+  }
 }

@@ -40,7 +40,7 @@
 |---|---|
 | **流式 + 可恢复** | SSE 逐字输出，工具步骤串行可见。浏览器刷新或切走再回来，任务自动接上——不丢进度，可中途停止 |
 | **聊天端 ↔ 网页端** | 聊天端发起的任务，网页端实时可见并可远程停止。同一条管道，两个入口 |
-| **生态即能力** | 模块声明 `services` 即自动转为工具；可选 `qvq_prompts` / `qvq_personas` / `qvq_schemas` 深度集成 |
+| **生态即能力** | 模块声明 `services` 即自动转为工具；可选 `qvq_personas` / `qvq_schemas` 深度集成 |
 | **子智能体** | `spawn_agent` 派出独立会话探索任务，只汇报结论，不污染主对话 |
 | **进程内执行** | `run_python_sdk` 主进程内跑 Python，sdk / adapter / storage 直接访问 |
 | **上下文压缩** | 超阈值自动压缩旧对话为摘要（默认 128000 估算），长任务不怕撑爆 |
@@ -122,7 +122,6 @@ QvQChat 的扩展就是普通的 ErisPulse 模块，不需要任何专门接口�
 
 | 服务 | 返回 | 作用 |
 |---|---|---|
-| `qvq_prompts()` | `list[str]` 或 `list[{"text", "priority"}]` | 注入系统提示词 |
 | `qvq_personas()` | `list[{"id", "name", "system", "tools"?}]` | 注册人格预设 |
 | `qvq_schemas()` | `dict[服务名, JSON Schema]` | 为本模块的服务提供显式参数 schema |
 
@@ -141,9 +140,6 @@ class Main(BaseModule):
     async def draw(self, prompt: str, size: str = "1024x1024"):
         """根据描述生成图片"""
         return {"image_url": "https://..."}
-
-    async def qvq_prompts(self):
-        return [{"text": "画图后用 send_message 把图片发给用户。", "priority": 40}]
 ```
 
 **事件订阅**：QvQChat 在每条消息处理时广播 `qvq.message`，回复后广播 `qvq.replied`。扩展模块用 `sdk.lifecycle.on("qvq.message")` 即可订阅。

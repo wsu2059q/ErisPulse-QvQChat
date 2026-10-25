@@ -48,7 +48,7 @@ pip install ErisPulse-QvQChat
 2. 「模型池」页添加模型并测试连通
 3. 私聊或 @ 机器人即可对话
 
-可选增强：装 [ErisPulse-Cron](https://github.com/wsu2059q/ErisPulse-Cron) 后 cron 定时任务自动交给它托管。装任意声明了 `meta.services` 的生态模块，智能体无需重启即获得对应工具（生图、语音合成、知识库等推荐做成独立扩展模块）；实现 `qvq_prompts` / `qvq_personas` / `qvq_schemas` 可进一步注入提示词、注册人格、精确定义参数，详见 README「扩展 QvQChat」。
+可选增强：装 [ErisPulse-Cron](https://github.com/wsu2059q/ErisPulse-Cron) 后 cron 定时任务自动交给它托管。装任意声明了 `meta.services` 的生态模块，智能体无需重启即获得对应工具（生图、语音合成、知识库等推荐做成独立扩展模块）；实现 `qvq_personas` / `qvq_schemas` 可进一步注册人格、精确定义参数，详见 README「扩展 QvQChat」。
 
 ---
 
