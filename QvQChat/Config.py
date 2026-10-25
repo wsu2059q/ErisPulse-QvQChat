@@ -168,6 +168,11 @@ class QvQConfig(BaseConfig):
     opening_max_len: int = field(default=200, metadata=_desc("opening_max_len", "开场白单条最大字符数（超出截断）", "chat", 48, "number"))
     reply_narrate: bool = field(default=False, metadata=_desc("reply_narrate", "边做边说：工具任务的每一步先说一句要做什幺、拿到结果简短汇报、结束给简短结论（每句单独发到群里，像真人工作播报）", "chat", 49, "switch"))
 
+# 实例重启恢复（chat/recovery.py）
+    recovery_enabled: bool = field(default=True, metadata=_desc("recovery_enabled", "实例重启后自动恢复被中断的回复", "chat", 50, "switch"))
+    recovery_min_age: int = field(default=90, metadata=_desc("recovery_min_age", "标记距今超过该秒数才恢复（防误判正常在跑）", "chat", 51, "number"))
+    replay_on_boot: bool = field(default=True, metadata=_desc("replay_on_boot", "启动时重放发送失败队列", "chat", 52, "switch"))
+
     memory_max: int = field(default=200, metadata=_desc("memory_max", "每会话长期记忆条数上限", "memory", 1, "number"))
     memory_recall: int = field(default=6, metadata=_desc("memory_recall", "每次对话注入的相关记忆条数上限", "memory", 2, "number"))
 

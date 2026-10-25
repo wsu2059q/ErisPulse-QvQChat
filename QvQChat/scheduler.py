@@ -7,6 +7,8 @@ from .utils import schedule_next
 
 TASKS_KEY = "QvQChat:tasks"
 TASK_RUNS_KEY = "QvQChat:task_runs"
+# 单次任务执行状态键前缀（running→done/failed；重启后 running 残留由恢复例程改 interrupted）
+TASK_RUN_STATE_PREFIX = "QvQChat:task_runs:"
 TASK_RUNS_KEEP = 50
 
 # 用户画像固化内置任务（非对话任务：_fire 走 _fire_profile_consolidate 而非 run_prompt）
@@ -55,6 +57,20 @@ class Scheduler:
                 }
             )
             self.sdk.storage.set(TASK_RUNS_KEY, runs)
+        except Exception:
+            pass
+
+    def _mark_run_state(self, task_id: str, status: str) -> None:
+        """单次执行状态标记（执行中断探针）：running 落盘、结束落 done/failed。
+
+        实例在执行中崩溃则残留 running，重启后由恢复例程改 interrupted。
+        """
+        if not task_id:
+            return
+        try:
+            self.sdk.storage.set(
+                TASK_RUN_STATE_PREFIX + task_id, {"status": status, "ts": utils.now_ts()}
+            )
         except Exception:
             pass
 
@@ -186,6 +202,10 @@ class Scheduler:
         self.register_cron_handler()
         self.ensure_profile_task()
         self.main.spawn(self._loop())
+# 启动恢复钩子：悬空回复重跑 / 待发队列重放 / 任务中断对账（例程自带延迟避开加载期）
+        recover = getattr(self.main, "recover_inflight_routine", None)
+        if callable(recover):
+            self.main.spawn(recover())
 
 # ===== 用户画像固化定时任务 =====
 
@@ -273,13 +293,17 @@ class Scheduler:
             await self._fire(task)
 
     async def _fire(self, task: dict) -> None:
+        task_id = str(task.get("id") or "")
+        self._mark_run_state(task_id, "running")
         try:
             if task.get("task_kind") == PROFILE_TASK_KIND:
                 await self._fire_profile_consolidate()
             else:
                 await self.main.run_task(task)
             self._record_run(task, "ok")
+            self._mark_run_state(task_id, "done")
             self.main.logger.info(f"task fired: {task.get('id')} {task.get('name')}")
         except Exception as e:
             self._record_run(task, "error", str(e))
+            self._mark_run_state(task_id, "failed")
             self.main.logger.warning(f"task {task.get('id')} failed: {e}")

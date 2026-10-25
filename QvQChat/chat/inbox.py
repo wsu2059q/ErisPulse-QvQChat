@@ -19,6 +19,7 @@ from ..conversation.service import DASHBOARD_PLATFORM, make_chat_key, parse_chat
 from ..dashboard.live import bind as live_bind
 from ..conversation.delivery import strip_output_tag
 from ..engine.base import ChatRequest, TaskSpec
+from .recovery import INFLIGHT_KEY_PREFIX, RecoveryMixin
 
 CONFIRM_WORDS = {"确认", "確認", "确定", "確定", "是", "confirm", "yes", "y", "ok"}
 
@@ -26,8 +27,9 @@ CONFIRM_WORDS = {"确认", "確認", "确定", "確定", "是", "confirm", "yes"
 RATE_WINDOW_CAP = 512
 
 
-class InboxMixin:
-    """Main 的消息入口 mixin。依赖宿主提供 self.sdk / self.cfg / self.logger /
+class InboxMixin(RecoveryMixin):
+    """Main 的消息入口 mixin（组合 RecoveryMixin：实例重启恢复方法随本链挂到 Main）。
+    依赖宿主提供 self.sdk / self.cfg / self.logger /
     self.sessions / self.pool / self.runner / self.delivery / self.takeover /
     self._pending / self._waiting / self._chat_locks / self._rate_window /
     self._rate_notice_shown / self.spawn / self.is_admin / self._chat_confirmer 等。"""
@@ -532,50 +534,59 @@ class InboxMixin:
                 if text:
                     await event.reply(text)
 
+# 悬空回复标记：生成开始落盘（记录将送入模型的 labeled 文本），实例崩溃重启后
+# 据此重跑该轮；完成/异常/取消均在 finally 清除，保证正常路径无残留
+            self.sdk.storage.set(
+                INFLIGHT_KEY_PREFIX + chat_key,
+                {"text": labeled, "origin": origin, "ts": time.time()},
+            )
             try:
-                result = await self.runner.run(
-                    system=system,
-                    messages=contexts + [user_msg],
-                    ctx=ctx,
-                    persona_tools=persona.get("tools"),
-                    on_tool_round=on_tool_round,
-                    on_intermediate=on_intermediate,
-                    on_delta=on_delta,
-                    on_reset=on_reset,
-                    on_tool_event=on_tool_event,
-                    on_reasoning=on_reasoning,
-                )
-            except asyncio.CancelledError:
-                if live is not None:
-                    partial, partial_trace, partial_rounds = live.partial_record()
-                    if partial:
-                        self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
-                    live.reply = partial or None
-                    live.status = "done"
-                    live.publish("done", {"reply": partial, "session": chat_key})
-                    live.publish("end", {"status": live.status})
-                raise
-            finally:
-                if live is not None:
-                    if live.status == "running":
+                try:
+                    result = await self.runner.run(
+                        system=system,
+                        messages=contexts + [user_msg],
+                        ctx=ctx,
+                        persona_tools=persona.get("tools"),
+                        on_tool_round=on_tool_round,
+                        on_intermediate=on_intermediate,
+                        on_delta=on_delta,
+                        on_reset=on_reset,
+                        on_tool_event=on_tool_event,
+                        on_reasoning=on_reasoning,
+                    )
+                except asyncio.CancelledError:
+                    if live is not None:
+                        partial, partial_trace, partial_rounds = live.partial_record()
+                        if partial:
+                            self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
+                        live.reply = partial or None
                         live.status = "done"
-                    live.publish("end", {"status": live.status})
-            if live is not None:
-                live.reply = result.text.strip()
-                live.status = "done"
-                live.publish("done", {"reply": live.reply, "session": chat_key})
-            reply, force_forward = strip_output_tag(result.text.strip())
-            reply = reply or texts.t("no_reply_content")
-            self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""))
-            try:
-                await self.sdk.lifecycle.emit(
-                    "qvq.replied",
-                    {"chat_key": chat_key, "reply": reply, "tools": len(result.tool_trace)},
-                )
-            except Exception as e:
-                self.logger.debug(f"emit qvq.replied failed: {e}")
-            await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None))
-            self._drain_waiting(chat_key)
+                        live.publish("done", {"reply": partial, "session": chat_key})
+                        live.publish("end", {"status": live.status})
+                    raise
+                finally:
+                    if live is not None:
+                        if live.status == "running":
+                            live.status = "done"
+                        live.publish("end", {"status": live.status})
+                if live is not None:
+                    live.reply = result.text.strip()
+                    live.status = "done"
+                    live.publish("done", {"reply": live.reply, "session": chat_key})
+                reply, force_forward = strip_output_tag(result.text.strip())
+                reply = reply or texts.t("no_reply_content")
+                self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""))
+                try:
+                    await self.sdk.lifecycle.emit(
+                        "qvq.replied",
+                        {"chat_key": chat_key, "reply": reply, "tools": len(result.tool_trace)},
+                    )
+                except Exception as e:
+                    self.logger.debug(f"emit qvq.replied failed: {e}")
+                await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None))
+                self._drain_waiting(chat_key)
+            finally:
+                self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
         except Exception as e:
             self.logger.warning(f"process failed: {e}")
             try:

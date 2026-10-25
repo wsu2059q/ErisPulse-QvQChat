@@ -105,6 +105,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         self.dashboard = None
         self.participation = None
         self.takeover: dict = {}
+        self.plugin_settings_catalog: dict = {}
         self._chat_locks: dict = {}
         self._pending: dict = {}
         self._waiting: dict = {}
@@ -129,6 +130,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                 {"name": "get_status", "description": "获取运行状态摘要"},
                 {"name": "speak", "description": "主动向会话发言（插件主动开口唯一出口，先过输出预算护栏），返回发送文本或拒绝原因", "signature": "(chat_key: str, reason: str = '', prompt: str = '', persona_id: str = '') -> str"},
                 {"name": "describe_image", "description": "用视觉模型描述一张图片（表情包收录打标签等场景），返回描述文本", "signature": "(url: str, prompt: str = '') -> str"},
+                {"name": "plugin_config", "description": "读取插件设置（qvq_settings 描述符默认值与已存覆盖值合并；module 过滤，空返回全部）", "signature": "(module: str = '') -> dict"},
                 {"name": "participation_status", "description": "获取群聊参与决策状态：提供者目录、输出预算现状、最近决策日志", "signature": "() -> dict"},
             ],
         )
@@ -480,6 +482,20 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         )
         _log_proactive(True, "")
         return reply
+
+    async def plugin_config(self, module: str = "", **_) -> dict:
+        """插件设置读取：qvq_settings 描述符默认值 + 已存覆盖值合并；module 过滤。"""
+        from .pluginsettings import load_overrides, merge_entry
+
+        catalog = getattr(self, "plugin_settings_catalog", None)
+        if not isinstance(catalog, dict):
+            catalog = {}
+        result = {}
+        for name, entry in catalog.items():
+            if module and name != module:
+                continue
+            result[name] = merge_entry(entry if isinstance(entry, dict) else {}, load_overrides(self.sdk, name))
+        return result
 
     async def participation_status(self, **_) -> dict:
         """参与决策观测（提供者目录 + 输出预算现状 + 最近决策环形日志）。"""

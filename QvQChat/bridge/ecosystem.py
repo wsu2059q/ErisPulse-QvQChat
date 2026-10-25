@@ -4,11 +4,13 @@ import asyncio
 
 from .. import utils
 from ..agent.tools import Tool
+from ..pluginsettings import normalize_settings_payload
 from ..utils import sanitize_name, schema_from_signature
 
 PREFIX = "eco_"
 SCHEMA_SERVICE = "qvq_schemas"
 PERSONAS_SERVICE = "qvq_personas"
+SETTINGS_SERVICE = "qvq_settings"
 EXT_CALL_TIMEOUT = 15.0
 
 
@@ -58,6 +60,7 @@ class EcosystemBridge:
         exclude = set(getattr(self.main.cfg, "eco_exclude", []) or ["QvQChat"])
         self.registry.unregister_prefix(PREFIX)
         self._schemas = {}
+        self.main.plugin_settings_catalog = {}
         self._prev_ext_personas = self._ext_personas
         self._ext_personas = {}
         used: set[str] = set()
@@ -72,6 +75,7 @@ class EcosystemBridge:
                 continue
             module_count += 1
             await self._collect_schemas(module_name)
+            await self._collect_settings(module_name)
             for service in services:
                 tool = self._build_tool(module_name, service, used)
                 if tool is None:
@@ -107,6 +111,13 @@ class EcosystemBridge:
                 for name, schema in schemas.items()
                 if isinstance(schema, dict)
             }
+
+    async def _collect_settings(self, module: str) -> None:
+# 插件设置描述符（qvq_settings）：白名单陷阱同 qvq_schemas——探测失败静默跳过
+        raw = await self._call_optional(module, SETTINGS_SERVICE)
+        catalog = normalize_settings_payload(raw, module)
+        if catalog is not None:
+            self.main.plugin_settings_catalog[module] = catalog
 
     def _remove_personas(self, ids: list[str]) -> None:
         for pid in ids:
