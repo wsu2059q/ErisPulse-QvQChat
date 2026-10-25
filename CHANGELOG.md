@@ -6,6 +6,9 @@
 
 ### 新增
 
+- **插件设置项注册**：约定服务 `qvq_settings()`——生态插件把自己的配置项声明为描述符，主体经生态桥自动发现（热刷新），Dashboard 设置页新增"插件"分区统一渲染/校验/保存（复用全套表单控件与脏检查），值存 `QvQChat:plugin_cfg:{模块}` 并经 `plugin_config` 服务与 `qvq.plugin_config` 事件回流插件热生效；QvQStalker 已接入（15 项行为参数可在面板直接调）
+- **实例重启任务恢复**：生成中回复落盘标记，重启后自动识别被中断的会话并重跑（去重已持久化的悬空用户消息，经无事件路径重新投递）；启动时串行重放各会话发送失败队列；定时任务执行状态落盘，中断残留自动标记（`recovery_enabled`/`recovery_min_age`/`replay_on_boot` 可调）
+- **配套插件 ErisPulse-QvQMemes**（独立模块）：全智能表情包系统——`send_sticker` 语义选图工具交给模型自主决定何时发/发哪张（零概率），群聊图片经观察通道自动收录、视觉模型自动打标签，新鲜度确定性降权防刷屏
 - **群聊参与决策插件化**：核心新增 `qvq.observe` 旁听事件（全量群消息广播，含未触发回复的）、`qvq_decision` 参与决策提供者约定（生态桥自动发现/热刷新）、`speak` 主动发言服务与 `participation_status` 观测服务、SpeechBudget 输出护栏（每群每小时上限/冷却/全局每日 proactive 限额）；`participation.enabled` 默认关闭，装插件不等于放行；配套插件 ErisPulse-QvQStalker（窥屏热度/五层判定/冲动值主动发言，独立模块仓库）
 - **跨会话用户画像与记忆固化**：按 `platform:uid` 聚合各会话事实与高重要记忆，定时（默认 6 小时）LLM 提炼 traits/preferences、30 天未强化自动衰减，构建时注入（优先级介于事实与记忆之间）；`/qvq memories` 与 Dashboard 记忆页可查看/分级清空（画像/事实/记忆）
 - **边做边说回复模式**：`reply_narrate` 开关（默认关），工具任务逐步口播——动手前一句话说明、结果一两句汇报、简短结论收尾，每句单独发到群里
