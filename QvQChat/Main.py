@@ -105,7 +105,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         self.dashboard = None
         self.participation = None
         self.takeover: dict = {}
-        self.plugin_settings_catalog: dict = {}
+        self.plugin_settings_catalog: dict = {}# qvq_settings 归属标记：{module: title}
         self._chat_locks: dict = {}
         self._pending: dict = {}
         self._waiting: dict = {}
@@ -130,7 +130,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                 {"name": "get_status", "description": "获取运行状态摘要"},
                 {"name": "speak", "description": "主动向会话发言（插件主动开口唯一出口，先过输出预算护栏），返回发送文本或拒绝原因", "signature": "(chat_key: str, reason: str = '', prompt: str = '', persona_id: str = '') -> str"},
                 {"name": "describe_image", "description": "用视觉模型描述一张图片（表情包收录打标签等场景），返回描述文本", "signature": "(url: str, prompt: str = '') -> str"},
-                {"name": "plugin_config", "description": "读取插件设置（qvq_settings 描述符默认值与已存覆盖值合并；module 过滤，空返回全部）", "signature": "(module: str = '') -> dict"},
+                {"name": "plugin_config", "description": "读取插件设置（框架 config 中各模块当前存储值，{module: {key: value}}；module 过滤，空返回全部）", "signature": "(module: str = '') -> dict"},
                 {"name": "participation_status", "description": "获取群聊参与决策状态：提供者目录、输出预算现状、最近决策日志", "signature": "() -> dict"},
             ],
         )
@@ -484,17 +484,23 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         return reply
 
     async def plugin_config(self, module: str = "", **_) -> dict:
-        """插件设置读取：qvq_settings 描述符默认值 + 已存覆盖值合并；module 过滤。"""
-        from .pluginsettings import load_overrides, merge_entry
+        """插件设置读取：框架 config 各模块当前存储值（{module: {key: value}}）；module 过滤。
 
+        不合并默认值——默认值由插件自身 ConfigClass 行为承担，这里只透传 sdk.config 现值；
+        归属以 plugin_settings_catalog（qvq_settings 标记）为准。
+        """
         catalog = getattr(self, "plugin_settings_catalog", None)
         if not isinstance(catalog, dict):
             catalog = {}
         result = {}
-        for name, entry in catalog.items():
+        for name in catalog:
             if module and name != module:
                 continue
-            result[name] = merge_entry(entry if isinstance(entry, dict) else {}, load_overrides(self.sdk, name))
+            try:
+                values = self.sdk.config.getConfig(name)
+            except Exception:
+                values = None
+            result[name] = dict(values) if isinstance(values, dict) else {}
         return result
 
     async def participation_status(self, **_) -> dict:

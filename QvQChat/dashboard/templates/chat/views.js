@@ -1332,26 +1332,44 @@
     renderSettingsForm();
   }
 
-  // 插件设置字段映射为 settingField 现有形状：{key,type,widget,options,min/max/step,dangerous,description,value}
+  // 插件设置字段映射为 settingField 现有形状：{key,type,widget,options,secret,placeholder,dangerous,description,value}
+  // 数据源为框架 resolve_config_schema 输出：schema.fields[name] = {type(integer/float/boolean/array/table/string),
+  // description, required, secret, default, widget?, group?, order?, options?, placeholder?}；values = sdk.config 现值
   function mapPluginSettings(modules) {
+    var TYPE_MAP = { integer: "int", float: "float", boolean: "bool", array: "list", table: "dict", string: "str" };
     var fields = [];
     (modules || []).forEach(function (m, mi) {
-      (m.items || []).forEach(function (it, i) {
+      var schemaFields = (m.schema && m.schema.fields) || {};
+      var values = m.values || {};
+      var names = Object.keys(schemaFields).map(function (n) {
+        return { name: n, fs: schemaFields[n] };
+      });
+      names.sort(function (a, b) {
+        var oa = a.fs && a.fs.order != null ? a.fs.order : 999;
+        var ob = b.fs && b.fs.order != null ? b.fs.order : 999;
+        return oa - ob;
+      });
+      names.forEach(function (pair, i) {
+        var it = pair.fs || {};
+        var opts = null;
+        if (Array.isArray(it.options) && it.options.length) {
+          opts = it.options.map(function (o) { return (o && typeof o === "object") ? o.value : o; });
+        }
         fields.push({
-          key: PLUGIN_KEY_PREFIX + m.module + ":" + it.key,
+          key: PLUGIN_KEY_PREFIX + m.module + ":" + pair.name,
           plugin_module: m.module,
           plugin_title: m.title || m.module,
-          type: it.type || "str",
+          type: TYPE_MAP[it.type] || "str",
           widget: it.widget || "text",
-          options: it.options || null,
-          min: it.min != null ? it.min : null,
-          max: it.max != null ? it.max : null,
-          step: it.step != null ? it.step : null,
-          dangerous: !!it.dangerous,
-          description: it.desc || it.key,
-          value: it.value,
+          options: opts,
+          secret: !!it.secret,
+          required: !!it.required,
+          placeholder: it.placeholder || null,
+          dangerous: false,
+          description: it.description || pair.name,
+          value: values[pair.name],
           group: "plugin",
-          order: mi * 1000 + i + 1
+          order: mi * 1000 + (it.order != null ? it.order : i + 1)
         });
       });
     });

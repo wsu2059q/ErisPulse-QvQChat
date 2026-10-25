@@ -39,9 +39,10 @@ class FakeLogger:
 
 
 class FakeModuleManager:
-    def __init__(self, catalog=None):
+    def __init__(self, catalog=None, module_classes=None):
         self._catalog = catalog or {}
         self._instances = {}
+        self._module_classes = dict(module_classes or {})# 模块注册名 → 模块类（插件设置端点读 ConfigClass 用）
         self.calls = []
         self.handlers = {}
 
@@ -284,6 +285,29 @@ class FakeInteraction:
         return "fake:interaction:key"
 
 
+class FakeConfig:
+    """sdk.config 替身：getConfig(key) 取整节（含点路径子键合并），setConfig 记录调用。"""
+
+    def __init__(self):
+        self._data = {}
+        self.sets = []
+
+    def getConfig(self, key, default=None):
+        result = {}
+        base = self._data.get(key)
+        if isinstance(base, dict):
+            result.update(base)
+        prefix = key + "."
+        for stored_key, value in self._data.items():
+            if isinstance(stored_key, str) and stored_key.startswith(prefix):
+                result[stored_key[len(prefix):]] = value
+        return result if result else default
+
+    def setConfig(self, key, value):
+        self.sets.append((key, value))
+        self._data[key] = value
+
+
 class FakeSDK:
     def __init__(self, catalog=None):
         self.storage = FakeStorage()
@@ -293,8 +317,9 @@ class FakeSDK:
         self.client = FakeClient()
         self.adapter = FakeAdapterManager()
         self.interaction = SimpleNamespace(make_key=lambda event: "fake:interaction:key")
-        self.config_sets = []
-        self.config = SimpleNamespace(setConfig=lambda key, value: self.config_sets.append((key, value)))
+        self.config_sets = []# 兼容旧断言（与 config.sets 同一列表）
+        self.config = FakeConfig()
+        self.config.sets = self.config_sets
 
 
 def make_config(**overrides):
