@@ -128,6 +128,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                 {"name": "run_prompt", "description": "运行一段提示词并可将结果发送到目标会话"},
                 {"name": "get_status", "description": "获取运行状态摘要"},
                 {"name": "speak", "description": "主动向会话发言（插件主动开口唯一出口，先过输出预算护栏），返回发送文本或拒绝原因", "signature": "(chat_key: str, reason: str = '', prompt: str = '', persona_id: str = '') -> str"},
+                {"name": "describe_image", "description": "用视觉模型描述一张图片（表情包收录打标签等场景），返回描述文本", "signature": "(url: str, prompt: str = '') -> str"},
                 {"name": "participation_status", "description": "获取群聊参与决策状态：提供者目录、输出预算现状、最近决策日志", "signature": "() -> dict"},
             ],
         )
@@ -425,6 +426,17 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
 
     async def chat(self, session_id: str, prompt: str, persona: str = "") -> str:
         return await self.run_prompt(session_id, prompt, persona_id=persona, origin="rpc", send=False)
+
+    async def describe_image(self, url: str, prompt: str = "") -> str:
+        """用视觉模型描述一张图片（表情包收录打标签等），无视觉能力时返回空串。"""
+        if not url:
+            return ""
+        try:
+            descriptions = await self.pool.describe_images([url], prompt=prompt)
+            return str(descriptions[0]) if descriptions else ""
+        except Exception as e:
+            self.logger.warning(f"describe_image failed: {e}")
+            return ""
 
     async def speak(self, chat_key: str, reason: str = "", prompt: str = "",
                     persona_id: str = "", **_) -> str:

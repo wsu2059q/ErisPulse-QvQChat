@@ -207,6 +207,7 @@ class InboxMixin:
                         "at_bot": bool(event.is_at_message()),
                         "reply_to_bot": False,
                         "is_command_prefix": False,
+                        "images": self._extract_images(event),
                         "ts": time.time(),
                     },
                 )
