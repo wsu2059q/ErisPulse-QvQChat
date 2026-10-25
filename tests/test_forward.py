@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from QvQChat.conversation.delivery import Delivery, split_paragraphs
+from QvQChat.conversation.rhythm import structure_signals
 
 from fakes import FakeLogger, FakeSendChain, FakeSDK, make_config
 
@@ -209,3 +210,78 @@ async def test_deliver_reply_merged_run_sends_nothing_plain():
     delivery = Delivery(harness)
     await delivery.deliver_reply(_split_event(sent), "综上", tool_trace(), rounds=rounds_multi_replies())
     assert sent == []
+
+
+async def test_structure_aware_forwards_structured_report():
+    harness = make_harness(forward_structure_aware=True)
+    event = FakeForwardEvent()
+    reply = "## 适配清单\n\n```py\nprint(1)\n```\n\n综上如下。"
+    rounds = [{"text": reply, "tools": []}]
+# 无工具轮次，但结构化占比高 → 仍走合并转发
+    assert await Delivery(harness)._try_forward(event, reply, [], rounds=rounds) is True
+    assert forward_calls(harness)
+
+
+async def test_structure_aware_sends_pure_chatter_direct():
+    harness = make_harness(forward_structure_aware=True)
+    event = FakeForwardEvent()
+    rounds = [
+        {"text": "哈哈好呀", "tools": tool_trace()},
+        {"text": "那就这样", "tools": []},
+        {"text": "晚点聊", "tools": []},
+    ]
+# 段数达到 min 但纯寒暄无结构 → 直发（旧行为会合并转发）
+    assert await Delivery(harness)._try_forward(event, "晚点聊", tool_trace(), rounds=rounds) is False
+    assert forward_calls(harness) == []
+
+
+async def test_structure_aware_multi_part_with_code_still_forwards():
+    harness = make_harness(forward_structure_aware=True)
+    event = FakeForwardEvent()
+    chatter = [
+        "今天聊聊天气，有点冷。",
+        "最近也没什么特别的事情。",
+        "就这样吧，闲聊而已。",
+        "再补一句凑数的话。",
+        "还有一句没营养的。",
+    ]
+    reply = "\n".join(chatter[:2]) + "\n```\nok\n```\n" + "\n".join(chatter[2:])
+    rounds = [
+        {"text": chatter[0], "tools": []},
+        {"text": "```\nok\n```", "tools": []},
+        {"text": "\n".join(chatter[1:]), "tools": []},
+    ]
+    sig = structure_signals(rounds, reply)
+# 结构占比低于阈值，但段数达标且含代码块 → 仍转发
+    assert sig["score"] < 0.4 and sig["has_code"] is True
+    assert await Delivery(harness)._try_forward(event, reply, [], rounds=rounds) is True
+    assert forward_calls(harness)
+
+
+async def test_force_tags_keep_priority_over_structure_awareness():
+    harness = make_harness(forward_structure_aware=True)
+    event = FakeForwardEvent()
+    assert await Delivery(harness)._try_forward(event, "短回复", [], force=True) is True
+    assert await Delivery(harness)._try_forward(event, "```py\nx=1\n```", [], force=False, rounds=[{"text": "x", "tools": []}]) is False
+
+
+async def test_forward_nodes_use_persona_nickname():
+    """会话人格配置 nickname → 转发节点显示人格昵称而非机器人自身昵称。"""
+    harness = make_harness()
+    harness.personas = SimpleNamespace(
+        resolve=lambda chat_key: {"id": "p1", "nickname": "阿波"}
+    )
+    event = FakeForwardEvent()
+    assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_multi_replies()) is True
+    calls = forward_calls(harness)
+    assert calls
+    nicknames = {n["data"]["nickname"] for n in calls[0][0]}
+    assert nicknames == {"阿波"}
+
+# 未配置 nickname → 回落机器人自身昵称（原行为）
+    harness2 = make_harness()
+    event2 = FakeForwardEvent()
+    assert await Delivery(harness2)._try_forward(event2, "综上", tool_trace(), rounds=rounds_multi_replies()) is True
+    calls2 = forward_calls(harness2)
+    nicknames2 = {n["data"]["nickname"] for n in calls2[0][0]}
+    assert "阿波" not in nicknames2

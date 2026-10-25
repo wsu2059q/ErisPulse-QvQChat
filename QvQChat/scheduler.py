@@ -9,6 +9,10 @@ TASKS_KEY = "QvQChat:tasks"
 TASK_RUNS_KEY = "QvQChat:task_runs"
 TASK_RUNS_KEEP = 50
 
+# 用户画像固化内置任务（非对话任务：_fire 走 _fire_profile_consolidate 而非 run_prompt）
+PROFILE_TASK_KIND = "profile_consolidate"
+PROFILE_TASK_NAME = "qvq:profile_consolidate"
+
 
 class Scheduler:
     def __init__(self, main):
@@ -68,6 +72,9 @@ class Scheduler:
             "prompt": str(spec.get("prompt") or ""),
             "persona": str(spec.get("persona") or ""),
             "chat_key": str(spec.get("chat_key") or ""),
+# 任务分派字段透传（task_models[kind] / 显式模型）
+            "task_kind": str(spec.get("task_kind") or "chat"),
+            "model": str(spec.get("model") or ""),
             "created_by": str(spec.get("created_by") or ""),
             "created": now,
             "next_run": schedule_next(schedule, now),
@@ -177,7 +184,51 @@ class Scheduler:
     async def start(self) -> None:
         self.ensure_delegations()
         self.register_cron_handler()
+        self.ensure_profile_task()
         self.main.spawn(self._loop())
+
+# ===== 用户画像固化定时任务 =====
+
+    def ensure_profile_task(self) -> dict | None:
+        """注册画像固化内置任务（幂等）：每 profile_consolidate_hours 小时对近期活跃用户跑 consolidate。
+
+        profile_enabled 关闭或间隔<=0 时不注册；任务表中已存在同 kind 任务则不重复。返回新建任务或 None。"""
+        if not bool(getattr(self.main.cfg, "profile_enabled", True)):
+            return None
+        hours = float(getattr(self.main.cfg, "profile_consolidate_hours", 6) or 0)
+        if hours <= 0:
+            return None
+        for task in self._load():
+            if task.get("task_kind") == PROFILE_TASK_KIND:
+                return None
+        task = self.add(
+            {
+                "name": PROFILE_TASK_NAME,
+                "schedule": {"type": "interval", "seconds": max(60, int(hours * 3600))},
+                "schedule_raw": f"every:{int(hours) if hours.is_integer() else hours}h",
+                "prompt": "",
+                "task_kind": PROFILE_TASK_KIND,
+            }
+        )
+        return task
+
+    async def _fire_profile_consolidate(self) -> int:
+        """对 user_seen 倒排里近 24h 活跃用户跑画像固化；单用户失败跳过（低频容错）。"""
+        service = getattr(self.main, "conversations", None) or getattr(self.main, "sessions", None)
+        profile = getattr(service, "profile", None) if service is not None else None
+        if profile is None:
+            return 0
+        users = profile.active_user_keys(within_hours=24)
+        done = 0
+        for user_key in users:
+            try:
+                await profile.consolidate(user_key)
+                done += 1
+            except Exception as e:
+                self.main.logger.warning(f"profile consolidate failed for {user_key}: {e}")
+        if users:
+            self.main.logger.info(f"profile consolidated: {done}/{len(users)} active users")
+        return done
 
     async def _loop(self) -> None:
         while True:
@@ -223,7 +274,10 @@ class Scheduler:
 
     async def _fire(self, task: dict) -> None:
         try:
-            await self.main.run_task(task)
+            if task.get("task_kind") == PROFILE_TASK_KIND:
+                await self._fire_profile_consolidate()
+            else:
+                await self.main.run_task(task)
             self._record_run(task, "ok")
             self.main.logger.info(f"task fired: {task.get('id')} {task.get('name')}")
         except Exception as e:

@@ -114,3 +114,78 @@ async def test_config_get_returns_localized_meta():
     assert fields["security_level"]["options"] == ["strict", "standard", "permissive"]
     assert fields["default_model"]["description"]
     assert fields["view_token"]["group"] == "access"
+
+
+async def test_config_get_schema_types_groups_and_secret_masking():
+    main, manager = make_manager(view_token="secret-token-1")
+
+    class FakeQp:
+        pass
+
+    data = await manager.config_get(FakeQp())
+    fields = {f["key"]: f for f in data["fields"]}
+# 每字段带 schema 元数据：类型/区间/枚举来源/secret/dangerous
+    assert fields["context_limit"]["type"] == "int"
+    assert fields["split_delay"]["type"] == "float"
+    assert fields["wake_prefixes"]["type"] == "list"
+    assert fields["reply_private"]["type"] == "bool"
+    assert fields["keep_ratio"]["widget"] == "slider"
+    assert fields["keep_ratio"]["min"] == 0.1 and fields["keep_ratio"]["max"] == 0.5
+    assert fields["compact_model"]["widget"] == "text"
+    assert fields["disabled_tools"]["items"] == "tools"
+    assert fields["skills_disabled"]["items"] == "skills"
+    assert fields["trust_agent"]["dangerous"] is True
+# secret 值掩码回显，真实令牌不进响应
+    assert fields["view_token"]["secret"] is True
+    assert fields["view_token"]["value"] == "******"
+    assert "secret-token-1" not in str(data)
+# 顶层 groups 表来自 GROUP_META
+    groups = {g["id"]: g["order"] for g in data["groups"]}
+    assert groups["model"] < groups["security"] < groups["access"]
+
+
+class FakeJsonRequest:
+    def __init__(self, body):
+        self._body = body
+
+    async def json(self):
+        return self._body
+
+
+async def test_config_set_validates_and_returns_field_errors():
+    main, manager = make_manager()
+    res = await manager.config_set(FakeJsonRequest({"context_limit": 12, "bogus": 1}))
+    assert res[1] == 400
+    assert res[0]["ok"] is False
+    assert res[0]["applied"] == ["context_limit"]
+    assert set(res[0]["errors"]) == {"bogus"}
+    assert main.sdk.config_sets[-1] == ("QvQChat.context_limit", 12)
+
+# 空串数字 / 非 bool / 越界 / select 非成员 → 拒收且不落盘
+    res = await manager.config_set(FakeJsonRequest({"context_limit": "", "keep_ratio": 0.9, "reply_private": "true"}))
+    assert res[1] == 400
+    assert set(res[0]["errors"]) == {"context_limit", "keep_ratio", "reply_private"}
+    assert len(main.sdk.config_sets) == 1
+
+# 全部合法 → 200 + applied
+    res = await manager.config_set(FakeJsonRequest({"wake_prefixes": ["a", "b"], "security_level": "strict"}))
+    assert res == {"ok": True, "applied": ["wake_prefixes", "security_level"]}
+    assert ("QvQChat.wake_prefixes", ["a", "b"]) in main.sdk.config_sets
+
+
+async def test_export_includes_config_and_import_validates():
+    main, manager = make_manager(view_token="tok-x")
+
+    class FakeQp:
+        pass
+
+    data = await manager.export_data(FakeQp())
+    assert "config" in data and data["config"]["view_token"] == "tok-x"
+
+    res = await manager.import_data(FakeJsonRequest({
+        "data": {"config": {"context_limit": "8", "security_level": "wild"}}
+    }))
+    assert res["ok"] is True
+    assert "config" in res["applied"]
+    assert ("QvQChat.context_limit", 8) in main.sdk.config_sets
+    assert res["errors"]["config"]["security_level"]

@@ -293,6 +293,7 @@
   flex-direction: column;
   width: min(680px, 100%);
   max-height: min(78vh, 640px);
+  max-height: min(78dvh, 640px);
   background: var(--qvq-surface);
   border: 1px solid var(--qvq-bd);
   border-radius: 18px;
@@ -317,6 +318,11 @@
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 8px;
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .qvq-modal-close:hover {
   color: var(--qvq-tx);
@@ -546,9 +552,6 @@
   .qvq-chat-srow:hover .qvq-chat-stime {
     display: block;
   }
-  .qvq-chat-srow:hover .qvq-chat-sacts {
-    visibility: hidden;
-  }
   .qvq-msg {
     max-width: 94%;
   }
@@ -567,13 +570,18 @@
   .qvq-chat-main.is-empty::after {
     flex-basis: 40px;
   }
+  .qvq-modal {
+    padding: 12px;
+  }
   .qvq-modal-card {
     width: 96vw;
     max-height: 86vh;
+    max-height: 86dvh;
     border-radius: 14px;
   }
   .qvq-modal-body {
     max-height: 64vh;
+    max-height: 64dvh;
   }
   .qvq-smsg.me {
     margin-left: 8%;
@@ -872,4 +880,41 @@
   flex: none;
   font-size: 12px;
   opacity: 0.75;
+}
+
+/* ===== 设置页（工单 T4/T5）：搜索命中/语义小节/备份卡片/工具页扩展小节 ===== */
+.qvq-settings-sec {
+  margin: 20px 0 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--qvq-bd);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--qvq-tx-t);
+}
+.qvq-settings-sec:first-child {
+  margin-top: 2px;
+}
+.qvq-settings-hit {
+  position: relative;
+}
+.qvq-settings-hit > .qvq-chip {
+  display: inline-flex;
+  margin-top: 14px;
+}
+.qvq-settings-hit .qvq-label {
+  margin-top: 4px;
+}
+.qvq-backup-card .qvq-tool-desc {
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+.qvq-backup-card .qvq-actions {
+  margin-top: 10px;
+}
+.qvq-ext-fold {
+  margin-top: 14px;
+}
+.qvq-ext-fold .qvq-tool-desc {
+  margin-bottom: 10px;
 }

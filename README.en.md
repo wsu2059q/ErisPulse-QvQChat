@@ -46,7 +46,7 @@ Tasks initiated on QQ / Yunhu and other chat platforms are visible in real time 
 
 **Ecosystem as Capability**
 
-Installed ErisPulse modules that declare `services` automatically become agent tools. Optional `qvq_prompts` / `qvq_personas` / `qvq_schemas` for deep prompt, persona, and schema integration. Install or uninstall modules — capabilities change instantly.
+Installed ErisPulse modules that declare `services` automatically become agent tools. Optional `qvq_personas` / `qvq_schemas` for deep persona and schema integration. Install or uninstall modules — capabilities change instantly.
 
 **Sub-agents**
 
@@ -141,7 +141,7 @@ QvQChat extensions are plain ErisPulse modules:
 
 **Layer 1 (automatic)**: Declare `services` in `get_meta()` — each service becomes an agent tool.
 
-**Layer 2 (optional, each independent)**: Implement any of `qvq_prompts()`, `qvq_personas()`, or `qvq_schemas()` for deep integration.
+**Layer 2 (optional, each independent)**: Implement `qvq_personas()` or `qvq_schemas()` for deep integration.
 
 ```python
 from ErisPulse.Core.Bases import BaseModule, ModuleMeta
@@ -155,9 +155,6 @@ class Main(BaseModule):
 
     async def draw(self, prompt: str, size: str = "1024x1024"):
         return {"image_url": "https://..."}
-
-    async def qvq_prompts(self):
-        return [{"text": "After drawing, send via send_message.", "priority": 40}]
 ```
 
 ## Config

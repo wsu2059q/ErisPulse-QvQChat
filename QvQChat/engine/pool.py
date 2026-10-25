@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import deque
 from typing import Any
 
 from .. import texts, utils
 from ..providers import PROVIDER_PRESETS, get_preset
-from .base import ChatRequest, ChatResponse, EngineError
+from .base import ChatRequest, ChatResponse, EngineError, TaskSpec
 from .openai import OpenAIEngine
+from .router import classify
 
 POOL_KEY = "QvQChat:providers"
 LEGACY_KEY = "QvQChat:models"
@@ -21,13 +23,20 @@ class ModelPool:
     BREAKER_BASE_COOLDOWN = 60.0
     BREAKER_MAX_COOLDOWN = 600.0
 
+    ROUTING_LOG_MAX = 50
+
     def __init__(self, sdk: Any, config: Any):
         self.sdk = sdk
         self.config = config
         self.engine = OpenAIEngine()
         self._migrate_legacy()
-        # 模型熔断状态：model_id -> {"fails": 连续失败次数, "until": 冷却截止时间戳}
+# 模型熔断状态：model_id -> {"fails": 连续失败次数, "until": 冷却截止时间戳}
         self._breaker: dict[str, dict] = {}
+# 难度感知路由（默认关闭）：chat_key -> (prefer, reason, ts)
+        self.routing_cache: dict[str, tuple] = {}
+# 路由统计与最近决策回看（{prefer: 计数} / deque[{chat_key, prefer, reason, ts}]）
+        self.routing_stats: dict[str, int] = {}
+        self.routing_log: deque = deque(maxlen=self.ROUTING_LOG_MAX)
 
     def breaker_state(self) -> list[dict]:
         import time as _time
@@ -238,7 +247,7 @@ class ModelPool:
     CAPABILITY_KEYS = ("vision", "files", "video", "tool_call", "reasoning")
 
     def model_costs(self) -> dict:
-        # 每百万 token 单价（models.dev 目录），用于 Dashboard 成本换算
+# 每百万 token 单价（models.dev 目录），用于 Dashboard 成本换算
         costs: dict[str, dict] = {}
         for model in self.list_models():
             price = model.get("cost")
@@ -295,18 +304,16 @@ class ModelPool:
                         "temperature": model.get("temperature"),
                         "max_tokens": model.get("max_tokens"),
                         "capabilities": self.model_capabilities(model),
+# 透出 models.db 目录数据，否则 context_length/cost 是死数据
+                        "context_length": model.get("context_length"),
+                        "cost": model.get("cost") if isinstance(model.get("cost"), dict) else None,
                     }
                 )
         return models
 
     def resolve_model(self, model_id: str | None = None, needs: list | None = None) -> dict:
         models = self.list_models()
-        if needs:
-            capable = [m for m in models if self._meets_needs(m, needs)]
-            if capable:
-                models = capable
-            else:
-                self.sdk.logger.warning(f"no model meets needs {needs}, falling back to full pool")
+# 显式指定的模型优先于 needs 过滤——用户点名不被静默换掉
         if model_id:
             for model in models:
                 if model["id"] == model_id:
@@ -314,6 +321,12 @@ class ModelPool:
             for model in models:
                 if model.get("model") == model_id:
                     return model
+        if needs:
+            capable = [m for m in models if self._meets_needs(m, needs)]
+            if capable:
+                models = capable
+            else:
+                self.sdk.logger.warning(f"no model meets needs {needs}, falling back to full pool")
         default = getattr(self.config, "default_model", "") or ""
         if default:
             for model in models:
@@ -323,14 +336,157 @@ class ModelPool:
             return models[0]
         raise EngineError(texts.t("provider_no_models"))
 
-    async def chat(self, request: ChatRequest, on_delta=None, on_reset=None) -> ChatResponse:
+# ===== 无副作用能力查询 =====
+
+    def has_model(self, needs: list | None = None) -> bool:
+        """无副作用查询：池中是否存在满足全部 needs 的启用模型（能力未知 None 视为不满足）。"""
+        models = self.list_models()
+        if not needs:
+            return bool(models)
+        return any(self._meets_needs(m, needs) for m in models)
+
+    def capability_status(self, need: str) -> str:
+        """全池对单一能力的明确判定：yes=至少一个启用模型明确具备；
+        no=全部启用模型明确不具备；unknown=无数据或含能力未知的模型。"""
+        saw_false = False
+        for model in self.list_models():
+            value = self.model_capabilities(model).get(need)
+            if value is True:
+                return "yes"
+            if value is False:
+                saw_false = True
+        return "no" if saw_false else "unknown"
+
+# ===== TaskSpec 任务分派 =====
+
+    def resolve_task_model(self, spec: TaskSpec) -> dict:
+        """解析任务模型：显式 model > cfg.task_models[kind] > needs 过滤 >
+        prefer="cheap" 按 cost(input+output) 升序 > 池序。"""
+        models = self.list_models()
+        if not models:
+            raise EngineError(texts.t("provider_no_models"))
+        explicit = str(spec.model or "")
+        if not explicit:
+            task_models = getattr(self.config, "task_models", None)
+            if isinstance(task_models, dict):
+                explicit = str(task_models.get(spec.kind) or "")
+        if explicit:
+            for model in models:
+                if model["id"] == explicit:
+                    return model
+            for model in models:
+                if model.get("model") == explicit:
+                    return model
+            self.sdk.logger.warning(f"task model {explicit!r} not found for kind {spec.kind!r}, falling back to pool")
+        candidates = models
+        needs = [str(n) for n in (spec.needs or []) if str(n)]
+        if needs:
+            capable = [m for m in candidates if self._meets_needs(m, needs)]
+            if capable:
+                candidates = capable
+            else:
+                self.sdk.logger.warning(f"no model meets needs {needs} for task {spec.kind!r}, falling back to full pool")
+        if str(spec.prefer or "").lower() == "cheap" and len(candidates) > 1:
+            costs = self.model_costs()
+            priced = [m for m in candidates if m["id"] in costs]
+            rest = [m for m in candidates if m["id"] not in costs]
+            priced.sort(key=lambda m: costs[m["id"]]["input"] + costs[m["id"]]["output"])
+            candidates = priced + rest
+        return candidates[0]
+
+# ===== 难度感知路由（V1 启发式，cfg.routing_enabled 默认关闭） =====
+
+    @staticmethod
+    def _first_user_text(request: ChatRequest) -> str:
+        """本轮首条 user 消息的文本（多模态分片取 text 部分），无则空串。"""
+        for message in request.messages or []:
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                parts = [
+                    str(part.get("text") or "")
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
+                ]
+                return "\n".join(part for part in parts if part)
+            return ""
+        return ""
+
+    def _route_chat_spec(self, spec: TaskSpec, request: ChatRequest) -> None:
+        """开关打开时，对无显式约束的 chat 任务按首条用户消息难度改写 spec.prefer。
+
+        命中条件：kind=="chat" 且 prefer/model/needs 均未指定（显式指定与能力过滤优先于路由）。
+        结果按 chat_key 缓存 routing_ttl 秒（无 chat_key 则每条独立分级）；统计入
+        routing_stats / routing_log，决策走 logger.debug。routing_enabled=False 时零行为。
+        """
+        if not getattr(self.config, "routing_enabled", False):
+            return
+        if spec.kind != "chat" or spec.prefer or spec.model or spec.needs:
+            return
+        text = self._first_user_text(request)
+        if not text:
+            return
+        chat_key = str(spec.chat_key or "")
+        now = time.time()
+        try:
+            ttl = float(getattr(self.config, "routing_ttl", 300) or 0)
+        except (TypeError, ValueError):
+            ttl = 300.0
+        prefer = reason = ""
+        cached = False
+        if chat_key and ttl > 0:
+            hit = self.routing_cache.get(chat_key)
+            if hit and now - float(hit[2]) < ttl:
+                prefer, reason = str(hit[0]), str(hit[1])
+                cached = True
+        if not prefer:
+            prefer, reason = classify(text)
+            if chat_key and ttl > 0:
+# 简单防膨胀：超 256 条时先剔除过期项再写入
+                if len(self.routing_cache) > 256:
+                    self.routing_cache = {
+                        k: v for k, v in self.routing_cache.items() if now - float(v[2]) < ttl
+                    }
+                self.routing_cache[chat_key] = (prefer, reason, now)
+        spec.prefer = prefer
+        self.routing_stats[prefer] = self.routing_stats.get(prefer, 0) + 1
+        self.routing_log.append({"chat_key": chat_key, "prefer": prefer, "reason": reason, "ts": now})
+        scope = f"[{chat_key}] " if chat_key else ""
+        suffix = "; cache hit" if cached else ""
+        self.sdk.logger.debug(f"model routing {scope}-> {prefer} ({reason}){suffix}")
+
+    async def dispatch(
+        self,
+        spec: TaskSpec,
+        request: ChatRequest,
+        on_delta=None,
+        on_reset=None,
+        on_reasoning=None,
+    ) -> ChatResponse:
+        """按 TaskSpec 分派任务模型后走统一 chat 链（failover/熔断照常生效）。"""
+        self._route_chat_spec(spec, request)# 难度感知路由（默认关闭，不改显式约束）
+        model = self.resolve_task_model(spec)
+        scoped = ChatRequest(
+            messages=request.messages,
+            tools=request.tools,
+            model=model["id"],
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            needs=request.needs,
+        )
+        return await self.chat(scoped, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning)
+
+    async def chat(self, request: ChatRequest, on_delta=None, on_reset=None, on_reasoning=None) -> ChatResponse:
         primary = self.resolve_model(request.model, request.needs)
         chain = [primary]
         if getattr(self.config, "model_failover", True):
             for model in self.list_models():
                 if model["id"] != primary["id"] and self._meets_needs(model, request.needs):
                     chain.append(model)
-        # 熔断：冷却中的模型沉底而不是丢弃（全冷却时仍按链尝试）
+# 熔断：冷却中的模型沉底而不是丢弃（全冷却时仍按链尝试）
         chain.sort(key=lambda m: 1 if self._is_open(m["id"]) else 0)
         errors: list[str] = []
         for index, model in enumerate(chain):
@@ -348,12 +504,14 @@ class ModelPool:
                 max_tokens=max_tokens,
             )
             try:
+                extra = {"on_reasoning": on_reasoning} if on_reasoning is not None else {}
                 response = await self.engine.chat(
                     model.get("base_url", ""),
                     model.get("api_key", ""),
                     scoped,
                     on_delta=on_delta,
                     on_reset=on_reset,
+                    **extra,
                 )
             except EngineError as e:
                 self._record_fail(model["id"])
@@ -384,8 +542,9 @@ class ModelPool:
                 {"type": "image_url", "image_url": {"url": url}},
             ]
             try:
-                response = await self.chat(
-                    ChatRequest(messages=[{"role": "user", "content": parts}], needs=["vision"], max_tokens=800)
+                response = await self.dispatch(
+                    TaskSpec(kind="vision", needs=["vision"]),
+                    ChatRequest(messages=[{"role": "user", "content": parts}], max_tokens=800),
                 )
                 text = (response.content or "").strip()
             except Exception as e:

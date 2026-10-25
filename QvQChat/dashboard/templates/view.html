@@ -42,14 +42,11 @@
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z" /></svg></span>
         <span class="qvq-nav-tx" data-i18n="nav_tools">工具</span>
       </button>
-      <button class="qvq-nav-btn" data-tab="extensions">
-        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><path d="M3.3 7L12 12l8.7-5M12 22V12" /></svg></span>
-        <span class="qvq-nav-tx" data-i18n="nav_extensions">扩展</span>
-      </button>
       <button class="qvq-nav-btn" data-tab="mcp">
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" /></svg></span>
         <span class="qvq-nav-tx" data-i18n="nav_mcp">MCP</span>
       </button>
+      <div class="qvq-nav-group" data-i18n="nav_group_run">运行</div>
       <button class="qvq-nav-btn" data-tab="tasks">
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5.2l3.4 2" /></svg></span>
         <span class="qvq-nav-tx" data-i18n="nav_tasks">定时任务</span>
@@ -71,6 +68,7 @@
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg></span>
         <span class="qvq-nav-tx" data-i18n="nav_audit">审计</span>
       </button>
+      <div class="qvq-nav-group" data-i18n="nav_settings">设置</div>
       <button class="qvq-nav-btn" data-tab="settings">
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" /></svg></span>
         <span class="qvq-nav-tx" data-i18n="nav_settings">设置</span>
@@ -141,6 +139,7 @@
       </div>
       <div class="qvq-card">
         <h3 class="qvq-card-title" data-i18n="orch_timeline">任务时间线</h3>
+        <div class="qvq-tool-desc" data-i18n="orch_timeline_att">仅显示运行中 / 异常的任务与执行记录</div>
         <div id="qvq-orch-timeline"></div>
       </div>
     </section>
@@ -236,12 +235,9 @@
       <div class="qvq-card">
         <div id="qvq-tools-list"></div>
       </div>
-    </section>
-
-    <section class="qvq-tab" data-section="extensions">
-      <h1 class="qvq-h1" data-i18n="nav_extensions">扩展</h1>
-      <p class="qvq-desc" data-i18n="extensions_desc">外部 ErisPulse 模块为智能体提供工具与人格</p>
-      <div class="qvq-card">
+      <div class="qvq-card qvq-ext-fold">
+        <h3 class="qvq-card-title" data-i18n="nav_extensions">扩展</h3>
+        <p class="qvq-tool-desc" data-i18n="extensions_desc">外部 ErisPulse 模块为智能体提供工具与人格</p>
         <div id="qvq-extensions-list"></div>
       </div>
     </section>
@@ -325,19 +321,22 @@
       <h1 class="qvq-h1" data-i18n="nav_settings">设置</h1>
       <p class="qvq-desc" data-i18n="settings_desc">运行时配置，保存即生效</p>
       <div class="qvq-toolbar">
-        <button class="qvq-btn ghost" id="qvq-backup-export" data-i18n="backup_export">导出配置</button>
-        <button class="qvq-btn ghost" id="qvq-backup-import" data-i18n="backup_import">导入配置</button>
-        <input type="file" id="qvq-backup-file" accept="application/json" style="display:none" />
+        <input class="qvq-input qvq-input-sm" id="qvq-settings-search" type="text" data-i18n-ph="settings_search_ph" placeholder="搜索设置项…" />
       </div>
       <div class="qvq-cats" id="qvq-settings-cats"></div>
-      <div class="qvq-card" id="qvq-usage-card" style="display:none">
-        <h3 class="qvq-card-title" data-i18n="usage_title">用量趋势</h3>
-        <div id="qvq-usage-chart"></div>
-      </div>
       <div class="qvq-card">
         <div id="qvq-settings-form"></div>
         <div class="qvq-actions">
           <button class="qvq-btn" id="qvq-settings-save" data-i18n="save">保存</button>
+        </div>
+      </div>
+      <div class="qvq-card qvq-backup-card">
+        <h3 class="qvq-card-title" data-i18n="backup_title">数据备份</h3>
+        <p class="qvq-tool-desc" data-i18n="backup_desc">导出包含模型池、人格、任务、记忆、MCP、技能与全部设置的完整备份；导入时逐项校验后应用。</p>
+        <div class="qvq-actions">
+          <button class="qvq-btn ghost" id="qvq-backup-export" data-i18n="backup_export_data">导出数据备份</button>
+          <button class="qvq-btn ghost" id="qvq-backup-import" data-i18n="backup_import_data">导入数据备份</button>
+          <input type="file" id="qvq-backup-file" accept="application/json" style="display:none" />
         </div>
       </div>
     </section>

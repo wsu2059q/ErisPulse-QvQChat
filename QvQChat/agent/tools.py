@@ -46,13 +46,8 @@ class Tool:
 def _allowed(name: str, whitelist: list[str] | None) -> bool:
     if whitelist is None:
         return True
-    for entry in whitelist:
-        if entry.endswith("*"):
-            if name.startswith(entry[:-1]):
-                return True
-        elif name == entry:
-            return True
-    return False
+# 收编到 utils.match_pattern（保持原语义：前缀通配 + 全等）
+    return utils.match_pattern(name, whitelist)
 
 
 class ToolRegistry:
@@ -88,13 +83,8 @@ class ToolRegistry:
 
     @staticmethod
     def _disabled_match(name: str, disabled: list[str]) -> bool:
-        for entry in disabled:
-            if entry.endswith("*"):
-                if name.startswith(entry[:-1]):
-                    return True
-            elif name == entry:
-                return True
-        return False
+# 收编到 utils.match_pattern
+        return utils.match_pattern(name, disabled)
 
     def llm_schemas(self, whitelist: list[str] | None = None, disabled: list[str] | None = None) -> list[dict]:
         schemas: list[dict] = []
@@ -115,9 +105,18 @@ class ToolRegistry:
             )
         return schemas
 
-    async def invoke(self, name: str, arguments: dict, ctx: ToolContext, timeout: float = 120.0) -> str:
+    async def invoke(self, name: str, arguments: dict, ctx: ToolContext, timeout: float = 120.0,
+                     meta: dict | None = None) -> str:
+        """执行工具。错误不抛异常而是返回错误文案（原有语义）。
+
+        meta 为可选输出参数：调用失败时置 meta["error"]=True（正常路径不动 meta），
+        供调用方（runner 工具自愈）做可靠的失败判定，而不是比对错误文案前缀。
+        权限拒绝不计为失败——换参数重试无法解决，不触发自愈。
+        """
         tool = self._tools.get(name)
         if tool is None:
+            if meta is not None:
+                meta["error"] = True
             return texts.t("tool_not_found", name=name)
         if ctx.main is not None:
             checker = getattr(ctx.main, "check_tool_permission", None)
@@ -128,9 +127,15 @@ class ToolRegistry:
         try:
             result = await asyncio.wait_for(tool.handler(ctx, **(arguments or {})), timeout=timeout)
         except asyncio.TimeoutError:
+            if meta is not None:
+                meta["error"] = True
             return texts.t("tool_timeout", name=name, seconds=int(timeout))
         except TypeError as e:
+            if meta is not None:
+                meta["error"] = True
             return texts.t("tool_param_error", name=name, error=e)
         except Exception as e:
+            if meta is not None:
+                meta["error"] = True
             return texts.t("tool_error", name=name, error=f"{type(e).__name__}: {e}")
         return utils.to_text(result)

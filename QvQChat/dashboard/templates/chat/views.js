@@ -31,7 +31,7 @@
       renderRunning((data && data.running) || []);
     });
     api("/api/qvq/tasks").then(function (data) {
-      renderTaskTimeline((data && data.tasks) || [], (data && data.runs) || [], "qvq-orch-timeline");
+      renderTaskTimeline((data && data.tasks) || [], (data && data.runs) || [], "qvq-orch-timeline", true);
     });
     Promise.all([
       api("/api/qvq/tools"),
@@ -137,9 +137,16 @@
   }
 
   // 上半部分为定时任务（下次执行 + 最近状态），下半部分为最近执行记录
-  function renderTaskTimeline(tasks, runs, boxId) {
+  // attentionOnly=true（编排页）：只显示需要关注的——上次失败/运行中的任务与出错的执行
+  function renderTaskTimeline(tasks, runs, boxId, attentionOnly) {
     var box = el(boxId);
     if (!box) return;
+    if (attentionOnly) {
+      tasks = tasks.filter(function (task) {
+        return task.last_status === "error" || task.last_status === "running";
+      });
+      runs = runs.filter(function (run) { return run.status === "error"; }).slice(0, 10);
+    }
     var lines = tasks.map(function (task) {
       var status = task.last_status || "";
       var dot = status === "error" ? "err" : (status ? "ok" : "");
@@ -213,7 +220,15 @@
         var idx = set.indexOf(name);
         if (cb.checked && idx >= 0) set.splice(idx, 1);
         if (!cb.checked && idx < 0) set.push(name);
-        api("/api/qvq/config", "POST", { disabled_tools: set }).then(function () { toast(t("saved")); });
+        api("/api/qvq/config", "POST", { disabled_tools: set }).then(function (r) {
+          if (r && r.errors && Object.keys(r.errors).length) {
+            toast(t("settings_save_partial"), true);
+          } else if (r && r.ok) {
+            toast(t("saved"));
+          } else {
+            toast((r && r.error) || "error", true);
+          }
+        });
       };
     });
     box.querySelectorAll("input[data-cap-skill]").forEach(function (cb) {
@@ -561,7 +576,7 @@
 
   function loadTools() {
     api("/api/qvq/tools").then(function (data) {
-      var tools = (data && data.tools) || [];
+      tools = (data && data.tools) || [];
       var riskLabel = (data && data.risk) || "risk";
       renderToolList(tools, "", riskLabel);
       var filter = el("qvq-tools-filter");
@@ -569,6 +584,8 @@
         renderToolList(tools, filter.value.trim().toLowerCase(), riskLabel);
       };
     });
+    // 扩展模块小节并入工具页底部（原独立 tab 移除）
+    loadExtensions();
   }
 
   function renderToolList(tools, keyword, riskLabel) {
@@ -785,7 +802,8 @@
       }
       box.innerHTML = entries.map(function (entry) {
         return '<div class="qvq-tool-row" data-kb="' + esc(entry.id) + '"><span class="qvq-tool-name">' + esc(entry.title) +
-          (entry.source ? " <span class='qvq-chip'>" + esc(entry.source) + "</span>" : "") + "</span>" +
+          (entry.source ? " <span class='qvq-chip'>" + esc(entry.source) + "</span>" : "") +
+          (entry.triggers && entry.triggers.length ? " <span class='qvq-chip'>@" + esc(entry.triggers.join(", ")) + "</span>" : "") + "</span>" +
           "<span class='qvq-tool-desc'>" + esc((entry.content || "").slice(0, 160)) + "</span>" +
           "<button class='qvq-btn small danger' data-kb-del='" + esc(entry.id) + "'>" + esc(t("del")) + "</button></div>";
       }).join("");
@@ -818,6 +836,12 @@
       "<input class='qvq-input' id='qvq-kbf-title' placeholder='…' />" +
       "<label class='qvq-label'>" + esc(t("kb_source_label")) + "</label>" +
       "<input class='qvq-input' id='qvq-kbf-source' placeholder='doc / url / note' />" +
+      "<label class='qvq-label'>" + esc(t("kb_triggers_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-kbf-triggers' placeholder='" + esc(t("kb_triggers_ph")) + "' />" +
+      "<label class='qvq-label'>" + esc(t("kb_priority_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-kbf-priority' type='number' value='0' />" +
+      "<label class='qvq-label'>" + esc(t("kb_cooldown_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-kbf-cooldown' type='number' min='0' value='' placeholder='30' />" +
       "<label class='qvq-label'>" + esc(t("kb_content_label")) + "</label>" +
       "<textarea class='qvq-textarea' id='qvq-kbf-content' style='min-height:180px'></textarea>";
     openForm(t("kb_add"), fields, function (body) {
@@ -827,7 +851,12 @@
         toast(t("kb_need_title_content"), true);
         return;
       }
-      api("/api/qvq/kb/add", "POST", { title: title, content: content, source: fv(body, "qvq-kbf-source") }).then(function (r) {
+      // 世界书：triggers 逗号/顿号/空白分隔，priority 数字（大优先），cooldown 空则用配置默认
+      var triggers = fv(body, "qvq-kbf-triggers").split(/[,，、\s]+/).filter(Boolean);
+      var priority = parseInt(fv(body, "qvq-kbf-priority"), 10) || 0;
+      var cdRaw = parseInt(fv(body, "qvq-kbf-cooldown"), 10);
+      var cooldownMin = isNaN(cdRaw) ? null : Math.max(0, cdRaw);
+      api("/api/qvq/kb/add", "POST", { title: title, content: content, source: fv(body, "qvq-kbf-source"), triggers: triggers, priority: priority, cooldown_min: cooldownMin }).then(function (r) {
         if (r && r.ok) {
           toast(t("saved"));
           closeModal();
@@ -841,6 +870,7 @@
 
   function loadMemoryScopes() {
     api("/api/qvq/memory").then(function (data) {
+      loadMemoryProfile(data);
       var scopes = (data && data.scopes) || [];
       var box = el("qvq-memory-scopes");
       if (!scopes.length) {
@@ -855,6 +885,52 @@
         row.onclick = function () { openMemoryModal(row.getAttribute("data-scope")); };
       });
     });
+  }
+
+  // 用户画像卡（只读展示 + 清空按钮；数据随 /api/qvq/memory 响应返回）
+  function loadMemoryProfile(data) {
+    var section = document.querySelector(".qvq-tab[data-section='memory']");
+    if (!section) return;
+    var card = el("qvq-profile-card");
+    if (!card) {
+      var scopesCard = el("qvq-memory-scopes");
+      var anchor = (scopesCard && scopesCard.parentElement) ? scopesCard.parentElement : null;
+      card = document.createElement("div");
+      card.className = "qvq-card";
+      card.id = "qvq-profile-card";
+      if (anchor && anchor.parentElement) {
+        anchor.insertAdjacentElement("afterend", card);
+      } else {
+        section.appendChild(card);
+      }
+    }
+    var user = (data && data.profile_user) || "";
+    var profile = (data && data.profile) || {};
+    var rows = [];
+    [["traits", "T"], ["preferences", "P"], ["facts", "F"]].forEach(function (pair) {
+      (profile[pair[0]] || []).forEach(function (item) {
+        rows.push("<tr><td><span class='qvq-chip'>" + pair[1] + "</span> " + esc(item.text || "") + "</td></tr>");
+      });
+    });
+    card.innerHTML = "<h2 class='qvq-h2'>" + esc(t("profile_card_title")) +
+      (user ? " <span class='qvq-tool-desc'>" + esc(t("profile_card_user")) + ": " + esc(user) + "</span>" : "") + "</h2>" +
+      "<div class='qvq-actions'><button class='qvq-btn small danger' id='qvq-profile-clear'>" + esc(t("profile_card_clear")) + "</button></div>" +
+      (rows.length
+        ? "<table class='qvq-table'><tbody>" + rows.join("") + "</tbody></table>"
+        : '<div class="qvq-empty">' + esc(t("profile_card_empty")) + "</div>");
+    var clearBtn = el("qvq-profile-clear");
+    if (clearBtn) {
+      clearBtn.onclick = function () {
+        if (!user) return;
+        confirmDialog(t("profile_card_confirm")).then(function (ok) {
+          if (!ok) return;
+          api("/api/qvq/profile/clear", "POST", { user_key: user }).then(function () {
+            toast(t("deleted"));
+            loadMemoryScopes();
+          });
+        });
+      };
+    }
   }
 
   function openMemoryModal(chatKey) {
@@ -1199,33 +1275,111 @@
   }
 
   var settingsFields = [];
+  var settingsGroupsTable = [];
+  var settingsOriginal = {};   // key → 加载时的规范化值（dirty 基准）
+  var settingsDraft = {};      // key → 当前编辑值（跨分类切换/搜索重绘保留）
+  var settingsEnums = { tools: [], skills: [] };
+  var settingsEventsBound = false;
+
+  // chat 组语义分块（字段 order 上界 → 小节标题键）
+  var CHAT_SECTIONS = [
+    { max: 9, key: "settings_sec_context" },
+    { max: 13, key: "settings_sec_forward" },
+    { max: 16, key: "settings_sec_reply" },
+    { max: 19, key: "settings_sec_flow" },
+    { max: 999, key: "settings_sec_misc" }
+  ];
+
+  function settingsSchemaOf(key) {
+    for (var i = 0; i < settingsFields.length; i++) {
+      if (settingsFields[i].key === key) return settingsFields[i];
+    }
+    return null;
+  }
 
   function loadSettings() {
+    bindSettingsSearch();
+    bindSettingsFormEvents();
     api("/api/qvq/config").then(function (data) {
-      settingsFields = (data && data.fields) || [];
+      if (!data || data.error || !Array.isArray(data.fields)) return;
+      settingsFields = data.fields;
+      settingsGroupsTable = data.groups || [];
+      settingsOriginal = {};
+      settingsFields.forEach(function (f) {
+        settingsOriginal[f.key] = settingsNormalize(f, f.value);
+      });
+      settingsDraft = {};
+      Object.keys(settingsOriginal).forEach(function (k) {
+        settingsDraft[k] = settingsOriginal[k];
+      });
       renderSettingsCategories();
       renderSettingsForm();
-      syncUsageChart();
+      loadSettingsEnums();
     });
   }
 
+  // disabled_tools / skills_disabled 的 checkbox 多选数据源
+  function loadSettingsEnums() {
+    var need = { tools: false, skills: false };
+    settingsFields.forEach(function (f) {
+      if (f.items && f.items in need) need[f.items] = true;
+    });
+    if (need.tools) {
+      api("/api/qvq/tools").then(function (data) {
+        settingsEnums.tools = ((data && data.tools) || []).map(function (tl) { return tl.name; });
+        refreshSettingsChecks("tools");
+      });
+    }
+    if (need.skills) {
+      api("/api/qvq/skills").then(function (data) {
+        settingsEnums.skills = ((data && data.skills) || []).map(function (sk) { return sk.name; });
+        refreshSettingsChecks("skills");
+      });
+    }
+  }
+
+  function refreshSettingsChecks(source) {
+    var box = el("qvq-settings-form");
+    if (!box) return;
+    box.querySelectorAll("[data-checks]").forEach(function (node) {
+      var f = settingsSchemaOf(node.getAttribute("data-key"));
+      if (f && f.items === source) {
+        node.innerHTML = settingsChecksHtml(f, settingsDraft[f.key]);
+      }
+    });
+  }
+
+  function settingsNormalize(f, value) {
+    var type = f.type || "str";
+    if (type === "int" || type === "float") {
+      var n = Number(value);
+      return value === null || value === "" || value === undefined || isNaN(n) ? String(value == null ? "" : value) : n;
+    }
+    if (type === "list") {
+      return Array.isArray(value)
+        ? value.map(function (x) { return String(x).trim(); }).filter(Boolean)
+        : String(value == null ? "" : value);
+    }
+    if (type === "bool") return !!value;
+    if (type === "dict") return value && typeof value === "object" ? value : {};
+    return String(value == null ? "" : value);
+  }
+
   function settingsGroups() {
+    // 优先用后端 GROUP_META 组表（组序与字段 order 解耦），无则回退字段推导
+    if (settingsGroupsTable.length) {
+      return settingsGroupsTable.map(function (g) { return g.id; });
+    }
     var groups = [];
     settingsFields.forEach(function (f) {
       if (groups.indexOf(f.group) < 0) groups.push(f.group);
-    });
-    groups.sort(function (a, b) {
-      function first(g) {
-        var f = settingsFields.filter(function (x) { return x.group === g; })[0] || {};
-        return f.order || 99;
-      }
-      return first(a) - first(b);
     });
     return groups;
   }
 
   function renderSettingsCategories() {
     var nav = el("qvq-settings-cats");
+    if (!nav) return;
     var groups = settingsGroups();
     if (!currentCategory || groups.indexOf(currentCategory) < 0) currentCategory = groups[0] || "";
     nav.innerHTML = groups.map(function (g) {
@@ -1234,53 +1388,433 @@
       return "<button class='qvq-cat-btn" + (g === currentCategory ? " active" : "") + "' data-cat='" + esc(g) + "'>" + esc(label) + "</button>";
     }).join("");
     nav.querySelectorAll("button[data-cat]").forEach(function (btn) {
-      btn.onclick = function () {
-        currentCategory = btn.getAttribute("data-cat");
-        renderSettingsCategories();
-        renderSettingsForm();
-        syncUsageChart();
-      };
+      btn.onclick = function () { switchSettingsCategory(btn.getAttribute("data-cat")); };
     });
   }
 
+  function switchSettingsCategory(g) {
+    if (g === currentCategory) return;
+    var apply = function () {
+      currentCategory = g;
+      renderSettingsCategories();
+      renderSettingsForm();
+    };
+    if (settingsDirtyKeys().length) {
+      confirmDialog(t("settings_unsaved")).then(function (ok) { if (ok) apply(); });
+    } else {
+      apply();
+    }
+  }
+
+  function bindSettingsSearch() {
+    var search = el("qvq-settings-search");
+    if (!search || search.dataset.bound) return;
+    search.dataset.bound = "1";
+    var timer = null;
+    search.oninput = function () {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(renderSettingsForm, 200);
+    };
+  }
+
+  function settingsSearchQuery() {
+    var node = el("qvq-settings-search");
+    return node ? node.value.trim().toLowerCase() : "";
+  }
+
+  function settingsChecksHtml(f, value) {
+    var current = Array.isArray(value) ? value.slice() : [];
+    var known = (settingsEnums[f.items] || []).slice();
+    // 枚举外的存量值（如 eco_* 通配）同样列出，取消勾选即可移除
+    current.forEach(function (v) {
+      if (known.indexOf(v) < 0) known.push(v);
+    });
+    if (!known.length) return "<span class='qvq-tool-desc'>-</span>";
+    return known.map(function (name) {
+      var on = current.indexOf(name) >= 0;
+      return "<label class='qvq-check-row'><input type='checkbox' data-val='" + esc(name) + "'" + (on ? " checked" : "") + "/><span>" + esc(name) + "</span></label>";
+    }).join("");
+  }
+
+  function settingsListEditorHtml(key, value) {
+    var items = Array.isArray(value) ? value : (value == null || value === "" ? [] : [String(value)]);
+    var rows = items.map(function (item) {
+      return "<div class='qvq-list-row'><input class='qvq-input' data-item='1' value='" + esc(item) + "' />" +
+        "<button type='button' class='qvq-btn small ghost' data-list-del='1' title='" + esc(t("del")) + "'>×</button></div>";
+    }).join("");
+    return "<div class='qvq-list-editor' data-key='" + esc(key) + "' data-list='1'>" + rows +
+      "<button type='button' class='qvq-btn small ghost' data-list-add='1'>+ " + esc(t("settings_list_add")) + "</button></div>";
+  }
+
+  // T3 表单分发：按 schema 类型/_widget 渲染，值取 settingsDraft（保留编辑中状态）
   function settingField(f) {
-    var value = f.value;
+    var key = esc(f.key);
+    var value = (f.key in settingsDraft) ? settingsDraft[f.key] : f.value;
+    var widget = f.widget || "text";
+    var type = f.type || "str";
+    var head = "<label class='qvq-label'>" + esc(f.description || f.key) +
+      " <span class='qvq-key-tag'>" + esc(f.key) + "</span>" +
+      (f.dangerous ? " <span class='qvq-danger-tag'>" + esc(t("settings_dangerous")) + "</span>" : "") +
+      "</label>";
     var input;
-    if (f.widget === "lines") {
-      var lines = Array.isArray(value) ? value.join("\n") : String(value == null ? "" : value);
-      input = "<textarea class='qvq-textarea' style='min-height:80px' data-key='" + esc(f.key) + "' data-lines='1' placeholder='line1&#10;line2'>" + esc(lines) + "</textarea>";
-    } else if (f.widget === "select" && f.options && f.options.length) {
-      input = "<select class='qvq-select' data-key='" + esc(f.key) + "'>" + f.options.map(function (o) {
+
+    if (type === "bool" || widget === "switch") {
+      input = "<span class='qvq-switch' data-key='" + key + "' data-bool='1'><input type='checkbox'" + (value ? " checked" : "") + "/><i></i></span>";
+    } else if (widget === "select" && f.options && f.options.length) {
+      input = "<select class='qvq-select' data-key='" + key + "'>" + f.options.map(function (o) {
         return "<option value='" + esc(o) + "'" + (o === value ? " selected" : "") + ">" + esc(o) + "</option>";
       }).join("") + "</select>";
-    } else if (typeof value === "boolean" || f.widget === "switch") {
-      input = "<span class='qvq-switch'><input type='checkbox' data-key='" + esc(f.key) + "' data-switch='1'" + (value ? " checked" : "") + "/><i></i></span>";
-    } else if (Array.isArray(value) || (value && typeof value === "object")) {
-      input = "<textarea class='qvq-textarea' style='min-height:60px' data-key='" + esc(f.key) + "' data-json='1'>" + esc(JSON.stringify(value)) + "</textarea>";
+    } else if (widget === "lines") {
+      var lines = Array.isArray(value) ? value.join("\n") : String(value == null ? "" : value);
+      input = "<textarea class='qvq-textarea' style='min-height:80px' data-key='" + key + "' data-lines='1' placeholder='line1&#10;line2'>" + esc(lines) + "</textarea>";
+    } else if (type === "list") {
+      input = f.items
+        ? "<div class='qvq-list-checks' data-key='" + key + "' data-list='1' data-checks='1'>" + settingsChecksHtml(f, value) + "</div>"
+        : settingsListEditorHtml(f.key, value);
+    } else if (widget === "slider" && (type === "int" || type === "float")) {
+      var sv = Number(value);
+      var svOk = value !== "" && value != null && !isNaN(sv);
+      var sAttrs = "min='" + esc(f.min != null ? f.min : 0) + "' max='" + esc(f.max != null ? f.max : 100) + "' step='" + esc(f.step != null ? f.step : (type === "int" ? 1 : 0.1)) + "'";
+      input = "<div class='qvq-slider-row' data-key='" + key + "' data-slider-wrap='1'>" +
+        "<input type='range' data-slider='1' value='" + esc(svOk ? sv : (f.min != null ? f.min : 0)) + "' " + sAttrs + "/>" +
+        "<input class='qvq-input' type='number' data-num='1' value='" + esc(svOk ? sv : "") + "' " + sAttrs + "/>" +
+        "</div>" +
+        (svOk ? "" : "<div class='qvq-field-err show'>" + esc(t("settings_invalid_value")) + "</div>");
+    } else if (type === "int" || type === "float" || widget === "number") {
+      var nv = Number(value);
+      var nvOk = value !== "" && value != null && typeof value !== "boolean" && !isNaN(nv);
+      if (nvOk) {
+        var nAttrs = "";
+        if (f.min != null) nAttrs += " min='" + esc(f.min) + "'";
+        if (f.max != null) nAttrs += " max='" + esc(f.max) + "'";
+        if (f.step != null) nAttrs += " step='" + esc(f.step) + "'";
+        input = "<input class='qvq-input' type='number' data-key='" + key + "' value='" + esc(nv) + "'" + nAttrs + " />";
+      } else {
+        // 存量已写坏的数字字段：容错显示原文 + 红字提示，保存由后端校验拒收
+        input = "<input class='qvq-input qvq-input-bad' type='text' data-key='" + key + "' value='" + esc(value == null ? "" : value) + "' />" +
+          "<div class='qvq-field-err show'>" + esc(t("settings_invalid_value")) + "</div>";
+      }
+    } else if (f.secret || widget === "password") {
+      input = "<div class='qvq-pw-row' data-key='" + key + "' data-pw-row='1'>" +
+        "<input class='qvq-input' type='password' data-pw-input='1' value='" + esc(value == null ? "" : value) + "' autocomplete='new-password' />" +
+        "<button type='button' class='qvq-btn small ghost' data-pw-toggle='1'>" + esc(t("settings_show")) + "</button></div>";
+    } else if (type === "dict" || (value && typeof value === "object")) {
+      var jsonText;
+      try {
+        jsonText = JSON.stringify(value == null ? {} : value, null, 2);
+      } catch (e) {
+        jsonText = String(value);
+      }
+      input = "<textarea class='qvq-textarea qvq-mono' style='min-height:90px' data-key='" + key + "' data-json='1'>" + esc(jsonText) + "</textarea>";
     } else {
-      input = "<input class='qvq-input' data-key='" + esc(f.key) + "' value='" + esc(value == null ? "" : value) + "' />";
+      var ph = f.placeholder ? " placeholder='" + esc(f.placeholder) + "'" : "";
+      input = "<input class='qvq-input' data-key='" + key + "' value='" + esc(value == null ? "" : value) + "'" + ph + " />";
     }
-    return "<label class='qvq-label'>" + esc(f.description || f.key) +
-      " <span style='color:var(--qvq-tx-t);font-weight:400'>(" + esc(f.key) + ")</span></label>" + input;
+    return "<div class='qvq-field' data-field='" + key + "'>" + head + input +
+      "<div class='qvq-field-err' data-err='" + key + "'></div></div>";
   }
 
   function renderSettingsForm() {
-    var fields = settingsFields.filter(function (f) { return f.group === currentCategory; });
-    fields.sort(function (a, b) { return (a.order || 99) - (b.order || 99); });
-    el("qvq-settings-form").innerHTML = fields.map(settingField).join("") || '<div class="qvq-empty">-</div>';
+    settingsCaptureDraft();  // 重绘前收编当前 DOM 值进 draft，编辑不因切换/搜索丢失
+    var box = el("qvq-settings-form");
+    if (!box) return;
+    var q = settingsSearchQuery();
+    var fields;
+    if (q) {
+      fields = settingsFields.filter(function (f) {
+        return f.key.toLowerCase().indexOf(q) >= 0 || String(f.description || "").toLowerCase().indexOf(q) >= 0;
+      });
+    } else {
+      fields = settingsFields.filter(function (f) { return f.group === currentCategory; });
+      fields.sort(function (a, b) { return (a.order || 99) - (b.order || 99); });
+    }
+    if (!fields.length) {
+      box.innerHTML = '<div class="qvq-empty">' + esc(q ? t("settings_no_match") : "-") + "</div>";
+      settingsUpdateSaveBtn();
+      return;
+    }
+    var html = "";
+    var lastSec = -1;
+    fields.forEach(function (f) {
+      if (q) {
+        html += "<div class='qvq-settings-hit'><span class='qvq-chip'>" + esc(t("group_" + f.group)) + "</span>" + settingField(f) + "</div>";
+        return;
+      }
+      if (f.group === "chat") {
+        for (var si = 0; si < CHAT_SECTIONS.length; si++) {
+          if ((f.order || 99) <= CHAT_SECTIONS[si].max) {
+            if (si !== lastSec) {
+              html += "<div class='qvq-settings-sec'>" + esc(t(CHAT_SECTIONS[si].key)) + "</div>";
+              lastSec = si;
+            }
+            break;
+          }
+        }
+      }
+      html += settingField(f);
+    });
+    box.innerHTML = html;
+    settingsUpdateSaveBtn();
   }
 
-  function syncUsageChart() {
-    var card = el("qvq-usage-card");
-    if (!card) return;
-    var show = currentCategory === "usage";
-    card.style.display = show ? "" : "none";
-    if (show) {
-      api("/api/qvq/usage").then(function (data) {
-        renderUsageChart(data || {}, "qvq-usage-chart");
+  // 按字段 schema 类型从 DOM 读值（保存与 dirty 检测共用）
+  function settingsSerializeField(node, f) {
+    if (f.type === "bool") {
+      var cb = node.querySelector("input[type='checkbox']");
+      return !!(cb && cb.checked);
+    }
+    if (node.hasAttribute("data-list")) {
+      if (node.hasAttribute("data-checks")) {
+        var checked = [];
+        node.querySelectorAll("input[data-val]").forEach(function (c) {
+          if (c.checked) checked.push(c.getAttribute("data-val"));
+        });
+        return checked;
+      }
+      var items = [];
+      node.querySelectorAll("input[data-item]").forEach(function (inp) {
+        var v = inp.value.trim();
+        if (v) items.push(v);
       });
+      return items;
+    }
+    var raw;
+    if (node.hasAttribute("data-slider-wrap")) {
+      raw = node.querySelector("[data-num]").value;
+    } else if (node.hasAttribute("data-pw-row")) {
+      raw = node.querySelector("[data-pw-input]").value;
+    } else {
+      raw = node.value != null ? node.value : "";
+    }
+    if (f.type === "int" || f.type === "float") {
+      var n = parseFloat(raw);
+      // 非数字原文上送：由后端 coerce 拒收并回字段级红字（不再前端猜测类型）
+      return raw.trim() === "" || isNaN(n) ? raw : n;
+    }
+    if (node.hasAttribute("data-json")) {
+      if (raw.trim() === "") return {};
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        return raw;
+      }
+    }
+    if (node.hasAttribute("data-lines")) {
+      return raw.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+    }
+    return raw;
+  }
+
+  function settingsCaptureDraft() {
+    var box = el("qvq-settings-form");
+    if (!box || !settingsFields.length) return;
+    box.querySelectorAll("[data-key]").forEach(function (node) {
+      var f = settingsSchemaOf(node.getAttribute("data-key"));
+      if (f) settingsDraft[f.key] = settingsSerializeField(node, f);
+    });
+    settingsUpdateSaveBtn();
+  }
+
+  function settingsDirtyKeys() {
+    settingsCaptureDraft();
+    var dirty = [];
+    Object.keys(settingsDraft).forEach(function (k) {
+      if (JSON.stringify(settingsDraft[k]) !== JSON.stringify(settingsOriginal[k])) dirty.push(k);
+    });
+    return dirty;
+  }
+
+  function settingsUpdateSaveBtn() {
+    var btn = el("qvq-settings-save");
+    if (!btn) return;
+    var dirty = 0;
+    Object.keys(settingsDraft).forEach(function (k) {
+      if (JSON.stringify(settingsDraft[k]) !== JSON.stringify(settingsOriginal[k])) dirty++;
+    });
+    btn.textContent = t("save") + (dirty ? " (" + dirty + ")" : "");
+  }
+
+  function settingsErrorBox(key) {
+    var form = el("qvq-settings-form");
+    return form ? form.querySelector("[data-err='" + key + "']") : null;
+  }
+
+  function settingsShowError(key, msg) {
+    var box = settingsErrorBox(key);
+    if (box) {
+      box.textContent = msg;
+      box.classList.add("show");
+      box.setAttribute("data-sticky", "1");
+      var wrap = box.closest(".qvq-field");
+      var input = wrap && wrap.querySelector(".qvq-input, .qvq-textarea, .qvq-select");
+      if (input) input.classList.add("qvq-input-bad");
     }
   }
+
+  function settingsClearStickyErrors() {
+    var form = el("qvq-settings-form");
+    if (!form) return;
+    form.querySelectorAll(".qvq-field-err[data-sticky]").forEach(function (node) {
+      node.removeAttribute("data-sticky");
+      node.classList.remove("show");
+      node.textContent = "";
+      var wrap = node.closest(".qvq-field");
+      var input = wrap && wrap.querySelector(".qvq-input-bad");
+      if (input) input.classList.remove("qvq-input-bad");
+    });
+  }
+
+  function settingsValidateJsonField(node) {
+    var key = node.getAttribute("data-key");
+    if (node.value.trim() === "") {
+      node.classList.remove("qvq-input-bad");
+      return true;
+    }
+    try {
+      JSON.parse(node.value);
+      node.classList.remove("qvq-input-bad");
+      var errBox = settingsErrorBox(key);
+      if (errBox && !errBox.getAttribute("data-sticky")) errBox.classList.remove("show");
+      return true;
+    } catch (err) {
+      node.classList.add("qvq-input-bad");
+      settingsShowError(key, t("settings_json_bad"));
+      return false;
+    }
+  }
+
+  // 表单容器事件委托一次绑定（innerHTML 重绘不丢）
+  function bindSettingsFormEvents() {
+    if (settingsEventsBound) return;
+    var box = el("qvq-settings-form");
+    if (!box) return;
+    settingsEventsBound = true;
+    box.addEventListener("input", function (e) {
+      var node = e.target;
+      if (!(node && node.getAttribute)) return;
+      if (node.getAttribute("data-slider")) {
+        var wrap = node.closest("[data-slider-wrap]");
+        if (wrap) wrap.querySelector("[data-num]").value = node.value;
+      } else if (node.getAttribute("data-num")) {
+        var wrap2 = node.closest("[data-slider-wrap]");
+        if (wrap2) wrap2.querySelector("[data-slider]").value = node.value;
+      }
+      settingsCaptureDraft();
+    });
+    box.addEventListener("change", function () { settingsCaptureDraft(); });
+    box.addEventListener("focusout", function (e) {
+      var node = e.target;
+      if (node && node.getAttribute && node.getAttribute("data-json")) {
+        settingsValidateJsonField(node);
+      }
+    });
+    box.addEventListener("click", function (e) {
+      var target = e.target;
+      if (!target || !target.closest) return;
+      var addBtn = target.closest("[data-list-add]");
+      if (addBtn) {
+        var root = addBtn.closest("[data-list]");
+        var row = document.createElement("div");
+        row.className = "qvq-list-row";
+        row.innerHTML = "<input class='qvq-input' data-item='1' />" +
+          "<button type='button' class='qvq-btn small ghost' data-list-del='1' title='" + esc(t("del")) + "'>×</button>";
+        root.insertBefore(row, addBtn);
+        row.querySelector("input").focus();
+        settingsCaptureDraft();
+        return;
+      }
+      var delBtn = target.closest("[data-list-del]");
+      if (delBtn) {
+        var rowEl = delBtn.closest(".qvq-list-row");
+        if (rowEl) rowEl.remove();
+        settingsCaptureDraft();
+        return;
+      }
+      var pwBtn = target.closest("[data-pw-toggle]");
+      if (pwBtn) {
+        var pwWrap = pwBtn.closest("[data-pw-row]");
+        var inp = pwWrap && pwWrap.querySelector("[data-pw-input]");
+        if (inp) {
+          var show = inp.type === "password";
+          inp.type = show ? "text" : "password";
+          pwBtn.textContent = t(show ? "settings_hide" : "settings_show");
+        }
+      }
+    });
+  }
+
+  // T1/T3 类型化保存：只送 dirty 字段，dangerous 变更先确认，错误回填字段级红字
+  function saveSettings() {
+    settingsCaptureDraft();
+    settingsClearStickyErrors();
+    var jsonBad = false;
+    el("qvq-settings-form").querySelectorAll("[data-json]").forEach(function (node) {
+      if (!settingsValidateJsonField(node)) jsonBad = true;
+    });
+    if (jsonBad) {
+      toast(t("settings_json_bad"), true);
+      return;
+    }
+    var dirty = settingsDirtyKeys();
+    if (!dirty.length) {
+      toast(t("settings_no_change"));
+      return;
+    }
+    var payload = {};
+    dirty.forEach(function (k) { payload[k] = settingsDraft[k]; });
+    var dangerKeys = dirty.filter(function (k) {
+      var f = settingsSchemaOf(k);
+      return f && f.dangerous;
+    });
+    var go = function () {
+      api("/api/qvq/config", "POST", payload).then(function (r) {
+        if (r && r.errors && Object.keys(r.errors).length) {
+          Object.keys(r.errors).forEach(function (k) { settingsShowError(k, r.errors[k]); });
+          (r.applied || []).forEach(function (k) { settingsOriginal[k] = settingsDraft[k]; });
+          toast(t("settings_save_partial"), true);
+        } else if (r && r.ok) {
+          dirty.forEach(function (k) { settingsOriginal[k] = settingsDraft[k]; });
+          toast(t("settings_saved"));
+        } else {
+          toast((r && r.error) || "error", true);
+        }
+        settingsUpdateSaveBtn();
+      });
+    };
+    if (dangerKeys.length) {
+      confirmDialog(t("settings_danger_confirm") + "\n" + dangerKeys.join(", ")).then(function (ok) {
+        if (ok) go();
+      });
+    } else {
+      go();
+    }
+  }
+
+  // T4：设置页有未保存修改时，切 tab（捕获阶段拦截导航点击）/ 关页给出离开提示
+  (function initSettingsLeaveGuard() {
+    var nav = document.getElementById("qvq-nav");
+    if (nav) {
+      nav.addEventListener("click", function (e) {
+        if (!window.__qvq_inited__ || !settingsFields.length) return;
+        var btn = e.target && e.target.closest ? e.target.closest(".qvq-nav-btn") : null;
+        if (!btn) return;
+        var active = document.querySelector(".qvq-nav-btn.active");
+        if (active && active.getAttribute("data-tab") === btn.getAttribute("data-tab")) return;
+        if (!settingsDirtyKeys().length) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        confirmDialog(t("settings_unsaved")).then(function (ok) {
+          if (ok) switchTab(btn.getAttribute("data-tab"));
+        });
+      }, true);
+    }
+    window.addEventListener("beforeunload", function (e) {
+      if (settingsFields.length && settingsDirtyKeys().length) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
+  })();
 
   /* ===== 成本可视化：每日成本柱 + 累计线 + 按模型分布 ===== */
 
@@ -1456,35 +1990,6 @@
       tipEl.classList.add("show");
     });
     svgEl.addEventListener("mouseleave", hideTip);
-  }
-
-  function saveSettings() {
-    var payload = {};
-    el("qvq-settings-form").querySelectorAll("[data-key]").forEach(function (node) {
-      var key = node.getAttribute("data-key");
-      if (node.getAttribute("data-switch")) {
-        payload[key] = node.checked;
-        return;
-      }
-      var raw = node.value;
-      if (node.getAttribute("data-lines")) {
-        payload[key] = raw.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
-      } else if (node.getAttribute("data-json")) {
-        try { payload[key] = JSON.parse(raw); } catch (e) { payload[key] = raw; }
-      } else if (raw === "true") {
-        payload[key] = true;
-      } else if (raw === "false") {
-        payload[key] = false;
-      } else if (raw !== "" && /^-?\d+(\.\d+)?$/.test(raw)) {
-        payload[key] = parseFloat(raw);
-      } else {
-        payload[key] = raw;
-      }
-    });
-    api("/api/qvq/config", "POST", payload).then(function () {
-      toast(t("settings_saved"));
-      loadSettings();
-    });
   }
 
   function showLogin() {

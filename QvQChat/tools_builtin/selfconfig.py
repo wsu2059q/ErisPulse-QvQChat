@@ -128,32 +128,41 @@ async def manage_mcp(ctx: ToolContext, action: str = "list", name: str = "", tra
 
 async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: str = "",
                           name: str = "", system: str = "", chat_key: str = "",
-                          persona: str | None = None) -> str:
+                          persona: str | None = None, opening: list | None = None,
+                          tools: list | None = None, owner_title: str = "",
+                          style: dict | None = None, examples: list | None = None,
+                          nickname: str = "") -> str:
     personas = ctx.main.personas
     action = str(action or "list").lower()
     if action == "list":
-        bound = {}
-        for session in ctx.main.sessions.list_sessions():
-            pid = session.get("persona")
-            if pid:
-                bound[session["chat_key"]] = pid
+# KV 绑定为权威源
         return utils.to_text({
             "personas": [
                 {k: p.get(k) for k in ("id", "name", "builtin")}
                 for p in personas.list()
             ],
             "global_default": personas.global_default(),
-            "bindings": bound,
+            "bindings": personas.bindings(),
             "current_chat": ctx.chat_key,
         })
     if action == "save":
-        if not name and not system:
-            return "save needs name and/or system"
-        saved = personas.save({
-            "id": str(persona_id or "") or None,
-            "name": name,
-            "system": system,
-        })
+        if not name and not system and not opening and not owner_title and not style and not examples and not nickname:
+            return "save needs at least one of name / system / opening / owner_title / style / examples / nickname"
+        payload: dict = {"id": str(persona_id or "") or None, "name": name, "system": system}
+# 仅透传显式提供的扩展字段（未提供沿用存量，merge 语义防误清空）
+        if opening is not None:
+            payload["opening"] = opening
+        if tools is not None:
+            payload["tools"] = tools
+        if owner_title:
+            payload["owner_title"] = owner_title
+        if style is not None:
+            payload["style"] = style
+        if examples is not None:
+            payload["examples"] = examples
+        if nickname:
+            payload["nickname"] = nickname
+        saved = personas.save(payload)
         return utils.to_text({"ok": True, "persona": saved})
     if action == "delete":
         return utils.to_text({"ok": personas.delete(str(persona_id or ""))})
@@ -161,13 +170,12 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
         target = str(chat_key or "").strip() or ctx.chat_key
         if persona is None and not persona_id:
             return "bind needs persona (existing persona id); use unbind to clear"
+# 仅写 KV 权威绑定（state.persona 镜像已废弃）
         personas.bind(target, str(persona or persona_id))
-        ctx.main.sessions.set_persona(target, str(persona or persona_id))
         return utils.to_text({"ok": True, "chat_key": target, "persona": str(persona or persona_id)})
     if action == "unbind":
         target = str(chat_key or "").strip() or ctx.chat_key
         personas.bind(target, None)
-        ctx.main.sessions.set_persona(target, None)
         return utils.to_text({"ok": True, "chat_key": target})
     if action == "set_global":
         personas.set_global_default(str(persona_id or "") or None)
@@ -192,14 +200,17 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
     if action == "set":
         if not isinstance(updates, dict) or not updates:
             return "set needs an updates object of {config_key: value}"
-        applied, rejected = [], []
+# 与 Dashboard config_set 走同一 QvQConfig.coerce 校验：类型抝合失败/未知键
+# 拒收并带原因，杜绝把 "" 写进数字字段、字符串写进 list 字段
+        applied, rejected = [], {}
         for config_key, value in updates.items():
-            if config_key in valid:
-                ctx.sdk.config.setConfig(f"QvQChat.{config_key}", value)
-                applied.append(config_key)
+            ok, coerced, err = QvQConfig.coerce(str(config_key), value)
+            if ok:
+                ctx.sdk.config.setConfig(f"QvQChat.{config_key}", coerced)
+                applied.append(str(config_key))
             else:
-                rejected.append(config_key)
-        return utils.to_text({"ok": True, "applied": applied, "rejected": rejected})
+                rejected[str(config_key)] = err
+        return utils.to_text({"ok": not rejected, "applied": applied, "rejected": rejected})
     return f"unknown action: {action} (get / set)"
 
 
@@ -252,6 +263,12 @@ def register(registry: ToolRegistry, main) -> None:
                 "persona_id": _s(type="string", description="Persona id for delete/set_global; optional id for save"),
                 "name": _s(type="string", description="save: persona name"),
                 "system": _s(type="string", description="save: system prompt"),
+                "opening": _s(type="array", description="save: opening message candidates (sent once on first contact)"),
+                "tools": _s(type="array", description="save: tool name whitelist for this persona (empty clears)"),
+                "owner_title": _s(type="string", description="save: how the persona addresses the owner (e.g. 主人/老板)"),
+                "style": _s(type="object", description="save: style dict {emoji_density, verbosity, formality}"),
+                "examples": _s(type="array", description="save: few-shot examples [{user, assistant}]"),
+                "nickname": _s(type="string", description="save: display name on merged-forward cards"),
                 "persona": _s(type="string", description="bind: existing persona id to bind"),
                 "chat_key": _s(type="string", description="bind/unbind target chat; omit for the current chat"),
             },
@@ -263,7 +280,7 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="manage_config",
         access="admin",
-        description="Read or change this module's own settings: get all fields or one key, set key-value updates (valid QvQChat config keys only). Covers triggers, aggregate window, forward behaviour, notice modes, etc. Admin only.",
+        description="Read or change this module's own settings: get all fields or one key, set key-value updates (valid QvQChat config keys only; values are type-checked and invalid ones are rejected with a reason). Covers triggers, aggregate window, forward behaviour, notice modes, etc. Admin only.",
         parameters=_schema(
             {
                 "action": _s(type="string", description="get or set"),

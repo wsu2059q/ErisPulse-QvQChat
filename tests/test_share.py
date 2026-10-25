@@ -51,7 +51,7 @@ async def test_share_budget_trims_old_messages():
     resp = await mgr.session_share(_Req({"chat_key": "dashboard:private:web", "max_tokens": 300}))
     got = await mgr.share_messages(_Req(query={"token": resp["token"]}))
     contents = [m["content"] for m in got["messages"]]
-    # 预算内只保留最新部分；第一条超预算被裁掉
+# 预算内只保留最新部分；第一条超预算被裁掉
     assert "旧" * 500 not in contents
     assert contents[-1] == "新消息"
 
@@ -64,7 +64,7 @@ async def test_share_expired_token_rejected():
     from QvQChat import utils
 
     shares = mgr._shares()
-    shares[token]["expires"] = utils.now_ts() - 100  # 已过期
+    shares[token]["expires"] = utils.now_ts() - 100# 已过期
     mgr.sdk.storage.set("QvQChat:shares", shares)
     denied = await mgr.share_messages(_Req(query={"token": token}))
     assert denied[1] == 403

@@ -1,6 +1,23 @@
 from QvQChat.tools_builtin import erispulse
 
+
 from fakes import FakeSendChain, make_ctx
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _zh_texts():
+    """独立运行时也注册中文文案（修复对其它测试文件注册顺序的依赖）。"""
+    from ErisPulse.Core import i18n
+    from QvQChat import texts as _texts
+
+    _texts.register_texts()
+    i18n.set_language("zh-CN")
+    yield
+    i18n.reset_language()
+
 
 
 def test_markdown_to_text_cleanup():
@@ -168,6 +185,67 @@ async def test_send_message_as_forward_without_forward_method_falls_back():
     )
     names = [name for name, _, _ in chain.calls]
     assert "MergeForward" not in names and "Markdown" in names
+
+
+async def test_send_message_forward_splits_before_strip_on_text_only():
+# D5：先按 Markdown 标题切节、仅 Text-only 平台才剥离（旧实现先剥后切导致标题切块失效）
+    chain = FakeSendChain(sends=("MergeForward", "Text"))
+    main = __import__("fakes").FakeMain(forward_threshold=10)
+    main.sdk.adapter.add("onebot11", chain, sends=("MergeForward", "Text"))
+    text = "## 标题甲\n\n第一块内容。\n\n## 标题乙\n\n第二块内容。"
+    out = await erispulse.send_message(
+        make_ctx(main), platform="onebot11", target_type="user", target_id="1", text=text
+    )
+    assert "[已作为合并转发消息发送]" in out
+    nodes = [a for name, a, _ in chain.calls if name == "MergeForward"][0][0]
+    texts_ = [n["data"]["content"][0]["data"]["text"] for n in nodes]
+    assert len(texts_) >= 2
+    assert any("标题甲" in t for t in texts_) and any("标题乙" in t for t in texts_)
+# Text-only 平台：节点内容已剥离 Markdown 标记
+    assert all("##" not in t for t in texts_)
+
+
+async def test_send_message_forward_keeps_markdown_on_markdown_platform():
+    chain = FakeSendChain(sends=("Markdown", "Text", "MergeForward"))
+    main = __import__("fakes").FakeMain(forward_threshold=10)
+    main.sdk.adapter.add("onebot11", chain, sends=("Markdown", "Text", "MergeForward"))
+    text = "## 标题甲\n\n第一块内容。\n\n## 标题乙\n\n第二块内容。"
+    await erispulse.send_message(
+        make_ctx(main), platform="onebot11", target_type="user", target_id="1", text=text
+    )
+    nodes = [a for name, a, _ in chain.calls if name == "MergeForward"][0][0]
+    texts_ = [n["data"]["content"][0]["data"]["text"] for n in nodes]
+    assert any(t.startswith("## 标题甲") for t in texts_)
+
+
+async def test_send_message_forward_threshold_from_platform_profile():
+# D2：forward_threshold 判定纳入平台 profile（通配命中覆盖全局值）
+    chain = FakeSendChain(sends=("MergeForward", "Text"))
+    main = __import__("fakes").FakeMain(
+        forward_threshold=5000,
+        delivery_profiles={"onebot*": {"forward_threshold": 10}},
+    )
+    main.sdk.adapter.add("onebot11", chain, sends=("MergeForward", "Text"))
+    await erispulse.send_message(
+        make_ctx(main), platform="onebot11", target_type="user", target_id="1",
+        text="这段文本长度超过了十个字符！",
+    )
+    names = [name for name, _, _ in chain.calls]
+    assert "MergeForward" in names
+
+
+async def test_send_message_failure_enqueued_as_pending():
+# D4：方法降级后仍失败 → 入待发队列而不是静默丢弃
+    chain = FakeSendChain(sends=("Text",), fail_on=("Text",))
+    main = __import__("fakes").FakeMain(send_retry=0, retry_delay=0)
+    main.sdk.adapter.add("onebot11", chain, sends=("Text",))
+    out = await erispulse.send_message(
+        make_ctx(main), platform="onebot11", target_type="user", target_id="1", text="重要消息"
+    )
+    assert "待发队列" in out
+    data = main.sdk.storage.get("QvQChat:pending_send:test:private:1")
+    assert data and data[0]["text"] == "重要消息"
+    assert data[0]["platform"] == "onebot11" and data[0]["target_id"] == "1"
 
 
 async def test_handle_request_accept_and_reject():

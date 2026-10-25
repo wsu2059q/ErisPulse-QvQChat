@@ -54,12 +54,20 @@
 
   function renderLiveNode(box, els, live) {
     var stick = nearBottom(box);
-    els.stepsEl.innerHTML = stepsHtml(live.steps, true);
+    var thinkBlock = live.reasoning
+      ? '<details class="qvq-think"' + (live.status !== "running" ? "" : " open") + '><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>'
+      : "";
+    var stepsHtmlText = stepsHtml(live.steps, true);
+    els.stepsEl.innerHTML = (thinkBlock || "") + stepsHtmlText;
+    if (live.reasoning) {
+      var thinkBody = els.stepsEl.querySelector(".qvq-think-body");
+      if (thinkBody) thinkBody.textContent = live.reasoning;
+    }
     bindStepToggles(els.stepsEl);
     if (live.segments.length) {
       els.textEl.innerHTML = '<div class="qvq-rounds">' + renderSerial(live.segments) + "</div>";
       bindStepToggles(els.textEl);
-    } else if (!live.text && live.started) {
+    } else if (!live.text && live.started && !live.reasoning) {
       var secs = Math.max(0, Math.round((Date.now() - live.started) / 1000));
       els.textEl.innerHTML = '<span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "s</span>";
     } else {
@@ -73,7 +81,7 @@
     if (activeLive && activeLive.session === snapshot.session) return;
     var epochAtAttach = chatEpoch;
     var box = el("qvq-chat-box");
-    var live = { status: snapshot.status || "running", text: snapshot.text || "", steps: snapshot.steps || [], error: snapshot.error || null };
+    var live = { status: snapshot.status || "running", text: snapshot.text || "", reasoning: snapshot.reasoning || "", steps: snapshot.steps || [], error: snapshot.error || null };
 /* 流式：SSE、实时输出节点、恢复挂载、消息派发 */
     setSessionBusy(snapshot.session, true);
     var els = makeLiveNode();
@@ -100,6 +108,7 @@
         }
         live.status = snap.status;
         live.text = snap.text || "";
+        live.reasoning = snap.reasoning || "";
         live.steps = snap.steps || [];
         live.segments = snap.segments || [];
         live.error = snap.error || null;
@@ -162,9 +171,9 @@
     setSessionBusy(sessionAtStart, true);
     chatHistory.push({ role: "user", text: text, atts: atts, fresh: true });
     chatHistoryVersion++;
-    renderChat();
+    renderChat({ stick: true });
     var box = el("qvq-chat-box");
-    var live = { status: "running", text: "", steps: [], segments: [], error: null, started: Date.now() };
+    var live = { status: "running", text: "", reasoning: "", steps: [], segments: [], error: null, started: Date.now() };
     var els = makeLiveNode();
     box.appendChild(els.root);
     activeLive = { els: els, session: sessionAtStart };
@@ -193,6 +202,7 @@
       attachments: atts.map(function (a) { return { name: a.name, mime: a.mime, data: a.data }; }),
     };
     var finished = false;
+    var gotEvent = false; // 收到过任一 SSE 事件（meta 除外）即认为流已建立
     setSendStopping(true);
     function settle(reply, stepsOut, isErr) {
       if (finished) return;
@@ -207,7 +217,7 @@
       var roundsOut = segmentsToRounds((typeof live !== "undefined" && live && live.segments) ? live.segments : []);
       chatHistory.push({ role: "assistant", text: reply, steps: stepsOut, rounds: roundsOut.length ? roundsOut : null, err: !!isErr });
       chatHistoryVersion++;
-      renderChat();
+      renderChat({ stick: true });
       loadChatMeta();
       pumpQueue();
     }
@@ -215,8 +225,10 @@
     function reattach() {
       if (finished) return;
       api("/api/qvq/chat/live?session=" + encodeURIComponent(sessionAtStart)).then(function (snap) {
-        if (epochAtStart !== chatEpoch) return;
+        if (epochAtStart !== chatEpoch || finished) return;
         if (snap && snap.status === "running") {
+          // 先清 activeLive 再移除节点，否则 attachLive 的防重守卫会拦截后续挂载
+          if (activeLive && activeLive.session === sessionAtStart) activeLive = null;
           els.root.remove();
           setSessionBusy(sessionAtStart, false);
           attachLive(snap);
@@ -227,8 +239,8 @@
       });
     }
     streamChat(payload, function (ev, data) {
-
       if (epochAtStart !== chatEpoch) return;
+      if (ev !== "meta") gotEvent = true;
       if (ev === "delta" && data.t) {
         live.text += data.t;
         if (data.i != null) {
@@ -243,10 +255,14 @@
         scheduleText();
       } else if (ev === "reset") {
         live.text = "";
+        live.reasoning = "";
         live.steps = [];
         live.segments = [];
         if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
         renderLiveNode(box, els, live);
+      } else if (ev === "reasoning" && data.t) {
+        live.reasoning += data.t;
+        scheduleText();
       } else if (ev === "tool") {
         if (data.phase === "start") {
           live.steps.push({ start: data });
@@ -293,6 +309,7 @@
       if (!finished && result === undefined) {
 
         api("/api/qvq/chat/live?session=" + encodeURIComponent(sessionAtStart)).then(function (snap) {
+          if (snap && snap.status === "running") { reattach(); return; }
           if (snap && snap.reply != null) settle(snap.reply, snap.steps || live.steps, false);
           else if (snap && snap.error) settle(snap.error, snap.steps || live.steps, true);
           else settle(live.text || "…", live.steps, false);
@@ -300,13 +317,20 @@
       }
     }).catch(function () {
       if (finished) return;
+      // 收到过事件说明服务端任务已在跑：断流只做快照重挂，绝不能重发造成双跑
+      if (gotEvent) { reattach(); return; }
       api("/api/qvq/chat", "POST", payload).then(function (data) {
-        if (data && data.error) {
-          settle(data.error || t("chat_err"), [], true);
-          toast(data.error || t("chat_err"), true);
+        if (data && data.__http === 409) { toast(t("chat_busy"), true); reattach(); return; }
+        if (data && (data.error || data.__http === 401)) {
+          settle((data && data.error) || t("chat_err"), [], true);
+          toast((data && data.error) || t("chat_err"), true);
+        } else if (data && data.reply != null) {
+          settle(data.reply, [], false);
         } else {
-          settle((data && data.reply) || "…", [], false);
+          settle(live.text || t("chat_err"), [], true);
         }
+      }, function () {
+        settle(live.text || t("chat_err"), [], true);
       });
     });
   }

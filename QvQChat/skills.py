@@ -63,6 +63,13 @@ def parse_skill_md(text: str) -> tuple[dict, str]:
 
 
 class SkillManager:
+# 技能草稿命名时跳过的英文虚词（提议名只取实义词）
+    _NAME_STOPWORDS = {
+        "the", "and", "for", "with", "this", "that", "then", "from",
+        "please", "help", "me", "you", "your", "use", "using", "used",
+        "how", "what", "when", "where", "why", "can", "could", "would",
+    }
+
     def __init__(self, sdk: Any, config: Any):
         self.sdk = sdk
         self.config = config
@@ -175,3 +182,44 @@ class SkillManager:
         elif not enabled and name not in disabled:
             disabled.append(name)
         self.sdk.config.setConfig("QvQChat.skills_disabled", disabled)
+
+# ===== 技能自动习得：运行结果 → 技能草稿（不落盘）=====
+
+    def propose_from_run(self, user_text: str, result: Any) -> dict | None:
+        """从一次完成的运行中提炼技能草稿，返回 {name, description, steps} 或 None。
+
+        启发式（纯本地，不调模型）：需要用户任务文本 + 至少一次工具调用；
+        name 取用户文本中第一个实义 ASCII 词（短英文 id），无则回退 "task-{首个工具名}"；
+        description 取最终回复首行（空则回退任务文本）；steps 来自连续去重的工具序列。
+        同名技能已存在时返回 None（不重复提议）。草稿仅返回给调用方，绝不写存储。
+        """
+        user_text = str(user_text or "").strip()
+        trace = list(getattr(result, "tool_trace", None) or [])
+        if not user_text or not trace:
+            return None
+        sequence: list[str] = []
+        for entry in trace:
+            name = str(entry.get("tool") or "") if isinstance(entry, dict) else ""
+            if name and (not sequence or sequence[-1] != name):
+                sequence.append(name)
+        if not sequence:
+            return None
+        words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", user_text)]
+        candidates = [w for w in words if w not in self._NAME_STOPWORDS]
+        name = (candidates[0] if candidates else "task-" + sequence[0])[:32]
+        if self.get_skill(name) is not None:
+            return None
+        reply_lines = str(getattr(result, "text", "") or "").strip().splitlines()
+        description = (reply_lines[0].strip() if reply_lines and reply_lines[0].strip() else user_text)[:120]
+        steps: list[str] = []
+        for index, entry in enumerate(trace[:12]):
+            if not isinstance(entry, dict):
+                continue
+            tool = str(entry.get("tool") or "")
+            if not tool:
+                continue
+            arguments = str(entry.get("arguments") or "").strip()
+            steps.append(f"{len(steps) + 1}. 调用 {tool}" + (f"（参数: {arguments[:80]}）" if arguments else ""))
+        if not steps:
+            return None
+        return {"name": name, "description": description, "steps": steps}

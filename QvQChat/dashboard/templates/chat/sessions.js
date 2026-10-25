@@ -248,6 +248,7 @@
     chatSession = key;
     chatHistory = [];
     chatLoading = true;
+    loadingOlder = false;
     // 待发送附件属于上一个会话的草稿，切换即清空
     if (chatAtts.length) {
       chatAtts = [];
@@ -296,27 +297,48 @@
       var sessionAtPoll = chatSession;
       var epochAtPoll = chatEpoch;
       var versionAtPoll = chatHistoryVersion;
-      var windowAtPoll = chatWindowStart;
       api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtPoll) + "&limit=30").then(function (data) {
         if (epochAtPoll !== chatEpoch || sessionAtPoll !== chatSession) return;
         if (versionAtPoll !== chatHistoryVersion) return;
-        if (windowAtPoll < ((data && data.start) || 0)) return;
+        if (chatLoading || loadingOlder) return; // 本地加载在途，不覆盖
+        var start = (data && data.start) || 0;
+        if (chatWindowStart > 0 && start > chatWindowStart) {
+          // 用户上翻加载过更早消息（窗口错位）：增量拉取新尾部并追加，而不是整窗替换
+          var newTotal = (data && data.total) || 0;
+          if (newTotal <= chatTotal) return;
+          var tail = [];
+          api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtPoll) + "&start=" + chatTotal + "&limit=" + (newTotal - chatTotal)).then(function (d2) {
+            if (epochAtPoll !== chatEpoch || sessionAtPoll !== chatSession) return;
+            if (versionAtPoll !== chatHistoryVersion) return;
+            ((d2 && d2.messages) || []).forEach(function (m, idx) {
+              if (m && typeof m === "object" && (m.role === "user" || m.role === "assistant")) tail.push(mapServerMessage(m, (d2 && d2.start) || chatTotal, idx));
+            });
+            if (!tail.length) return;
+            var tailSig = tail.map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
+            var curTailSig = chatHistory.slice(-tail.length).map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
+            if (tailSig === curTailSig) return;
+            var stickTail = nearBottom(box);
+            chatHistory = chatHistory.concat(tail);
+            chatTotal = newTotal;
+            renderChat({ stick: stickTail });
+          });
+          return;
+        }
         var msgs = (data && data.messages) || [];
         var fresh = [];
         msgs.forEach(function (m, idx) {
           if (!m || typeof m !== "object") return;
-          if (m.role === "user" || m.role === "assistant") {
-            var atts = (m.atts || []).map(function (a) {
-              return { isImage: !!a.isImage, name: a.name || "image", data: a.data || "", mime: a.mime || "image/png" };
-            });
-            fresh.push({ role: m.role, text: contentText(m.content), idx: idx, steps: traceToSteps(m.trace), atts: atts });
-          }
+          if (m.role === "user" || m.role === "assistant") fresh.push(mapServerMessage(m, start, idx));
         });
         var sig = fresh.map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
         var curSig = chatHistory.map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
         if (sig !== curSig) {
+          // 上翻阅读时不拽到底部；rounds/idx 经 mapServerMessage 统一映射不再丢失
+          var stick = nearBottom(box);
           chatHistory = fresh;
-          renderChat();
+          chatWindowStart = start;
+          chatTotal = (data && data.total) || fresh.length;
+          renderChat({ stick: stick });
         }
       });
     }, 4000);
@@ -511,14 +533,22 @@
     var rounds = [];
     (segs || []).forEach(function (seg) {
       if (seg.type === "text") {
+        var piece = String(seg.text || "");
+        if (!piece) return; // 跳过空段，避免无排版硬拼
         if (rounds.length && !rounds[rounds.length - 1].tools.length && rounds[rounds.length - 1].text) {
-          rounds[rounds.length - 1].text += seg.text;
+          rounds[rounds.length - 1].text += "\n\n" + piece;
         } else {
-          rounds.push({ text: seg.text, tools: [] });
+          rounds.push({ text: piece, tools: [] });
         }
-      } else if (seg.end) {
+      } else if (seg.type === "tool") {
+        // 未收到 end 的工具段（中断/取消）也保留，不再静默丢弃中间步骤
         if (!rounds.length) rounds.push({ text: "", tools: [] });
-        rounds[rounds.length - 1].tools.push({ tool: seg.start ? seg.start.name : "?", arguments: seg.start ? seg.start.arguments : "", output: seg.end.output || "", ms: seg.end.ms });
+        rounds[rounds.length - 1].tools.push({
+          tool: seg.start ? seg.start.name : "?",
+          arguments: seg.start ? String(seg.start.arguments || "") : "",
+          output: (seg.end && seg.end.output) || "",
+          ms: seg.end ? seg.end.ms : null,
+        });
       }
     });
     return rounds;

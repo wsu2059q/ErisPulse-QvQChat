@@ -398,6 +398,27 @@
   animation: qvq-breathe 1.4s ease-in-out infinite;
 }
 
+.qvq-think {
+  margin: 10px 0 12px;
+  font-size: 12.5px;
+  border-left: 2px solid var(--qvq-line, rgba(128, 128, 128, 0.35));
+  padding-left: 10px;
+  opacity: 0.85;
+}
+.qvq-think summary {
+  cursor: pointer;
+  user-select: none;
+  color: var(--qvq-dim, inherit);
+  opacity: 0.75;
+}
+.qvq-think-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 6px;
+  padding-right: 4px;
+}
 .qvq-steps {
   display: flex;
   flex-direction: column;
@@ -956,4 +977,65 @@
 .qvq-toast.err {
   border-color: var(--qvq-er-bd);
   color: var(--qvq-er-c);
+}
+
+/* ===== 触屏适配（无 hover / 粗指针）：消息操作常显 + 40×40 点击区域 ===== */
+@media (hover: none), (pointer: coarse) {
+  /* 消息操作（复制/编辑）不依赖悬停，常显（半透明） */
+  .qvq-msg-acts {
+    visibility: visible;
+    opacity: 0.85;
+  }
+  .qvq-msg-wrap:hover .qvq-msg-acts {
+    visibility: visible;
+  }
+  .qvq-msg-acts button {
+    width: 40px;
+    height: 40px;
+  }
+  .qvq-msg-acts button svg {
+    width: 16px;
+    height: 16px;
+  }
+  /* composer / 队列 / 编辑器图标按钮统一 40×40 */
+  .qvq-icon-btn {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+  }
+  .qvq-composer-send {
+    width: 40px;
+    height: 40px;
+  }
+  .qvq-mm-btn {
+    padding: 10px;
+  }
+  .qvq-chat-chip {
+    padding: 10px 14px;
+  }
+  .qvq-md-pre .qvq-md-copy {
+    padding: 8px 10px;
+  }
+  /* 附件删除小按钮：视觉不变，命中区扩到 40×40（负 margin 收回占位） */
+  .qvq-att button,
+  .qvq-ed-att button {
+    min-width: 40px;
+    min-height: 40px;
+    margin: -10px -6px;
+  }
+  /* 触屏上的粘滞 hover 高亮清理 */
+  .qvq-step-row:hover,
+  .qvq-mention-opt:hover {
+    background: transparent;
+  }
+  .qvq-msg-acts button:hover {
+    background: transparent;
+  }
+}
+
+/* 窄屏：队列卡片的操作按钮组换行，避免挤压文本 */
+@media (max-width: 860px) {
+  .qvq-q-card {
+    flex-wrap: wrap;
+  }
 }

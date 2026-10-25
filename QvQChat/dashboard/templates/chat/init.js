@@ -199,6 +199,25 @@
     loadOverview();
   }
 
+  // iOS 软键盘不改变 100vh/100dvh：按 visualViewport 实际高度收缩应用容器，
+  // 保证 composer（输入框）在键盘弹起时仍可见
+  (function fitAppToViewport() {
+    var vv = window.visualViewport;
+    var app = el("qvq-app");
+    if (!vv || !app) return;
+    var pending = false;
+    function fit() {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(function () {
+        pending = false;
+        app.style.height = Math.round(vv.height) + "px";
+      });
+    }
+    vv.addEventListener("resize", fit);
+    fit();
+  })();
+
   window.loadQvQChatView = function () {
     resolveToken().then(function (tk) {
       if (tk) {

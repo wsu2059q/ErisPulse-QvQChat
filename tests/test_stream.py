@@ -112,7 +112,7 @@ async def test_stream_chat_emits_deltas_and_tools():
             )
         ),
         _chunk(delta=_delta(tool_calls=[_tool_delta(0, arguments='{"path"'), _tool_delta(1, arguments='{"cmd"')]))
-        ,
+,
         _chunk(delta=_delta(tool_calls=[_tool_delta(0, arguments=': "/app"}'), _tool_delta(1, arguments=': "ls"}')])),
         _chunk(delta=_delta(), usage=SimpleNamespace(prompt_tokens=3, completion_tokens=5, total_tokens=8), finish="tool_calls"),
     ]
@@ -236,3 +236,66 @@ async def test_pool_passes_stream_callbacks():
     )
     assert resp.content == "hi"
     assert deltas == ["hi"]
+
+
+def test_think_filter_keeps_reasoning_and_flushes_unclosed():
+    flt = _ThinkDeltaFilter()
+    assert flt.feed("<think>很长") == ""
+    assert flt.take_reasoning() == ""
+    assert flt.feed("的思考内容，尚未闭合") == ""
+    assert flt.take_reasoning() != ""
+    leftover = flt.flush()
+    assert leftover == ""
+    reasoning = flt.take_reasoning()
+    assert reasoning# 未闭合的思考不再被丢弃
+    assert "的思考内容" in reasoning or "尚未闭合" in reasoning
+
+
+def test_think_filter_reasoning_complete_when_closed():
+    flt = _ThinkDeltaFilter()
+    out = flt.feed("<think>秘密</think>正文")
+    assert out == "正文"
+    assert flt.take_reasoning() == "秘密"
+    assert flt.take_reasoning() == ""
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_forwards_reasoning_content_deltas():
+    chunks = [
+        _chunk(delta=_delta(content="答案", reasoning="推理过程")),
+        _chunk(delta=_delta(reasoning="继续推理")),
+    ]
+    engine, _ = _engine_with(chunks)
+    deltas, reasonings = [], []
+
+    resp = await engine.chat(
+        "",
+        "",
+        ChatRequest(messages=[{"role": "user", "content": "q"}], model="m1"),
+        on_delta=deltas.append,
+        on_reasoning=reasonings.append,
+    )
+    assert resp.content == "答案"
+    assert deltas == ["答案"]
+    assert "".join(reasonings) == "推理过程继续推理"
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_flushes_unclosed_think_to_reasoning():
+    chunks = [
+        _chunk(delta=_delta(content="<think>思考中")),
+        _chunk(delta=_delta(content="，继续思考"), finish="stop"),
+    ]
+    engine, _ = _engine_with(chunks)
+    deltas, reasonings = [], []
+
+    resp = await engine.chat(
+        "",
+        "",
+        ChatRequest(messages=[{"role": "user", "content": "q"}], model="m1"),
+        on_delta=deltas.append,
+        on_reasoning=reasonings.append,
+    )
+    assert resp.content is None# 正文为空但思考完整可见
+    assert deltas == []
+    assert "".join(reasonings) == "思考中，继续思考"
