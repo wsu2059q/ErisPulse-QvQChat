@@ -210,6 +210,18 @@ class InboxMixin(RecoveryMixin):
                         "reply_to_bot": False,
                         "is_command_prefix": False,
                         "images": self._extract_images(event),
+                        "is_reply": any(
+                            isinstance(seg, dict) and seg.get("type") == "reply"
+                            for seg in (event.get_message() or [])
+                        ),
+                        "reply_message_id": next(
+                            (
+                                str(seg.get("data", {}).get("message_id") or "")
+                                for seg in (event.get_message() or [])
+                                if isinstance(seg, dict) and seg.get("type") == "reply"
+                            ),
+                            "",
+                        ),
                         "ts": time.time(),
                     },
                 )
@@ -427,6 +439,14 @@ class InboxMixin(RecoveryMixin):
                 scene += texts.t("scene_speaker_note")
  
                 scene += texts.t("scene_group_attribution", name=sender_name or sender_id, id=sender_id)
+                 
+                if event.is_at_message():
+                    scene += texts.t("scene_at_direct")
+                else:
+                    scene += texts.t("scene_at_narrate")
+                 
+                if any(isinstance(seg, dict) and seg.get("type") == "reply" for seg in (event.get_message() or [])):
+                    scene += texts.t("scene_quote_note")
                 if getattr(self.cfg, "group_isolation", False):
                     scene += texts.t("scene_isolation_note")
             else:
