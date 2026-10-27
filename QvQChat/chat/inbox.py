@@ -210,6 +210,18 @@ class InboxMixin(RecoveryMixin):
                         "reply_to_bot": False,
                         "is_command_prefix": False,
                         "images": self._extract_images(event),
+                        "is_reply": any(
+                            isinstance(seg, dict) and seg.get("type") == "reply"
+                            for seg in (event.get_message() or [])
+                        ),
+                        "reply_message_id": next(
+                            (
+                                str(seg.get("data", {}).get("message_id") or "")
+                                for seg in (event.get_message() or [])
+                                if isinstance(seg, dict) and seg.get("type") == "reply"
+                            ),
+                            "",
+                        ),
                         "ts": time.time(),
                     },
                 )
@@ -427,6 +439,14 @@ class InboxMixin(RecoveryMixin):
                 scene += texts.t("scene_speaker_note")
 # 发言者认知：明确"当前说话的人"，防止把历史对话者误认成当前发言者
                 scene += texts.t("scene_group_attribution", name=sender_name or sender_id, id=sender_id)
+                # 提及感知 + 拟人语气：@ 命中是分内问答，未 @（旁听/插件插话）要像群友随口接话
+                if event.is_at_message():
+                    scene += texts.t("scene_at_direct")
+                else:
+                    scene += texts.t("scene_at_narrate")
+                # 引用回复认知：问题几乎总是关于被引用内容
+                if any(isinstance(seg, dict) and seg.get("type") == "reply" for seg in (event.get_message() or [])):
+                    scene += texts.t("scene_quote_note")
                 if getattr(self.cfg, "group_isolation", False):
                     scene += texts.t("scene_isolation_note")
             else:
