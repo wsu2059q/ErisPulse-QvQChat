@@ -21,7 +21,7 @@
 
   function loadOrchestrate() {
     api("/api/qvq/models").then(function (data) {
-      orchChain = flattenChain((data && data.providers) || []);
+      orchChain = flattenChain(data || {});
       renderOrchChain();
     });
     api("/api/qvq/breakers").then(function (data) {
@@ -42,10 +42,15 @@
     });
   }
 
-  // 故障转移链 = 各 provider 的 models 依序展平；保留 provider 元信息以便重排后回存
-  function flattenChain(providers) {
+  // 链序是跨 provider 的全局顺序：优先后端 chain；旧数据回退到按 provider 展平
+  function flattenChain(data) {
+    if (data && Array.isArray(data.chain) && data.chain.length) {
+      return data.chain.map(function (item) {
+        return { provider: item.provider, name: item.name, base_url: item.base_url, model: item.model };
+      });
+    }
     var chain = [];
-    providers.forEach(function (p) {
+    ((data && data.providers) || []).forEach(function (p) {
       (p.models || []).forEach(function (m) {
         chain.push({ provider: p.id, name: p.name, base_url: p.base_url, model: m });
       });
@@ -92,18 +97,34 @@
     });
   }
 
-  // 按新链序重排各 provider 的 models 数组；api_key 留空由后端保留旧值
+  // 整体链序一次提交；连续拖动时合并保存，避免并发请求乱序覆盖
+  var chainSaveBusy = false;
+  var chainSaveQueued = false;
+
   function saveChainOrder() {
-    var byProvider = {};
-    orchChain.forEach(function (item) {
-      if (!byProvider[item.provider]) {
-        byProvider[item.provider] = { id: item.provider, name: item.name, base_url: item.base_url, api_key: "", models: [] };
+    if (chainSaveBusy) {
+      chainSaveQueued = true;
+      return;
+    }
+    chainSaveBusy = true;
+    var payload = {
+      chain: orchChain.map(function (item) { return { provider: item.provider, model: item.model.id }; })
+    };
+    api("/api/qvq/chain/save", "POST", payload).then(function (data) {
+      if (data && data.ok) {
+        if (!chainSaveQueued) toast(t("orch_chain_saved"));
+      } else {
+        toast((data && data.error) || "error", true);
       }
-      byProvider[item.provider].models.push(item.model);
+    }, function () {
+      toast("error", true);
+    }).then(function () {
+      chainSaveBusy = false;
+      if (chainSaveQueued) {
+        chainSaveQueued = false;
+        saveChainOrder();
+      }
     });
-    Promise.all(Object.keys(byProvider).map(function (pid) {
-      return api("/api/qvq/providers/save", "POST", byProvider[pid]);
-    })).then(function () { toast(t("orch_chain_saved")); });
   }
 
   // 健康状态徽章：正常为右上角小绿标；有熔断时红标并附明细列表
