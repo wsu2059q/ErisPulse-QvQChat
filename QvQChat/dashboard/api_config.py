@@ -4,6 +4,7 @@ mixin 由 DashboardManager 组合，HTTP 路由路径不变（路由表仍在 ma
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import fields as dc_fields
 
 from .. import texts, utils
@@ -18,6 +19,11 @@ class ConfigApiMixin:
         return {f.name: getattr(self.main.cfg, f.name, None) for f in dc_fields(QvQConfig)}
 
     async def models_get(self, request):
+# 首次打开面板时用 models.dev 回填缺失的能力/上下文/价格；失败或超时不影响页面
+        try:
+            await asyncio.wait_for(self.main.pool.enrich_all_providers(), timeout=8)
+        except Exception:
+            pass
         providers = []
         for p in self.main.pool.list_providers():
             item = dict(p)
@@ -59,12 +65,42 @@ class ConfigApiMixin:
         return {"ok": True, "chain": self.main.pool.save_chain(chain)}
 
     async def providers_save(self, request):
-        body = await request.json()
+        body = dict(await request.json() or {})
+        enriched = 0
+        models = body.get("models")
+        if isinstance(models, list):
+            try:
+                body["models"], enriched = await asyncio.wait_for(
+                    self.main.pool.enrich_models(body, models), timeout=8
+                )
+            except Exception:
+                pass
         try:
-            entry = self.main.pool.save_provider(body or {})
-            return {"ok": True, "provider": {**entry, "api_key": ""}}
+            entry = self.main.pool.save_provider(body)
+            return {"ok": True, "provider": {**entry, "api_key": ""}, "enriched": enriched}
         except Exception as e:
             return ({"error": str(e)}, 400)
+
+    async def models_detect(self, request):
+        body = await request.json()
+        model_id = str((body or {}).get("model") or "").strip()
+        if not model_id:
+            return ({"error": "model required"}, 400)
+        provider = (body or {}).get("provider")
+        if not isinstance(provider, dict):
+            provider = {}
+        try:
+            meta = await asyncio.wait_for(self.main.pool.detect_model(provider, model_id), timeout=8)
+        except Exception as e:
+            return ({"error": str(e)}, 502)
+        return {"ok": True, "model": model_id, "meta": meta}
+
+    async def models_enrich(self, request):
+        try:
+            updated = await asyncio.wait_for(self.main.pool.enrich_all_providers(force=True), timeout=30)
+        except Exception as e:
+            return ({"error": str(e)}, 502)
+        return {"ok": True, "updated": updated}
 
     async def providers_delete(self, request):
         body = await request.json()

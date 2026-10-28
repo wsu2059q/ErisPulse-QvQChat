@@ -27,6 +27,16 @@ UPLOAD_DIR = Path("data/QvQChat/uploads")
 DASHBOARD_PLATFORM = "dashboard"
 
 
+def _translation_values(key: str) -> tuple[str, ...]:
+    table = texts.STRINGS.get(key, {})
+    return tuple(str(value) for value in table.values() if value)
+
+
+# 历史回填曾把标注写进 assistant 正文，模型会复读；读取时统一清理旧数据
+SEED_BOT_PREFIXES = tuple(f"[{value}] " for value in _translation_values("seed_bot_note"))
+SEED_HEADER_PREFIXES = tuple(f"{value}\n" for value in _translation_values("seed_history_header"))
+
+
 def make_chat_key(platform: str, detail_type: str, target_id: str) -> str:
     return f"{platform}:{detail_type}:{target_id}"
 
@@ -84,7 +94,27 @@ class ConversationService:
         contexts = state.get("contexts")
         if not isinstance(contexts, list):
             contexts = []
-        state["contexts"] = contexts
+        cleaned: list = []
+        for entry in contexts:
+            if not isinstance(entry, dict):
+                cleaned.append(entry)
+                continue
+            content = entry.get("content")
+            if isinstance(content, str):
+                for prefix in SEED_HEADER_PREFIXES:
+                    if content.startswith(prefix):
+                        content = content[len(prefix):]
+                        break
+                if entry.get("role") == "assistant":
+                    for prefix in SEED_BOT_PREFIXES:
+                        if content.startswith(prefix):
+                            content = content[len(prefix):]
+                            break
+                entry["content"] = content
+            if entry.get("role") in ("user", "assistant") and isinstance(entry.get("content"), str) and not entry["content"].strip():
+                continue
+            cleaned.append(entry)
+        state["contexts"] = cleaned
 # facts 列表懒迁移
         if not isinstance(state.get("facts"), list):
             state["facts"] = []

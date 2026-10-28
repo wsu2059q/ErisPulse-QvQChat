@@ -44,14 +44,14 @@ class OpsApiMixin:
 
     async def costs_get(self, request):
 # 每百万 token 单价 × 用量明细（in/out），换算每日与按模型成本
-        prices = self.main.pool.model_costs()
+        prices = {str(k).lower(): v for k, v in self.main.pool.model_costs().items()}
         daily: list[dict] = []
         by_model: dict[str, float] = {}
         total = 0.0
         for day in self.main._usage_history(14):
             day_cost = 0.0
             for model_id, usage in (day.get("by_model") or {}).items():
-                price = prices.get(str(model_id))
+                price = prices.get(str(model_id).lower())
                 if not price or not isinstance(usage, dict):
                     continue
                 cost = (int(usage.get("in", 0) or 0) / 1e6) * price["input"] + (

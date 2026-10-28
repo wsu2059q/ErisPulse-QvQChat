@@ -223,3 +223,31 @@ async def test_failover_follows_saved_chain():
     resp = await pool.chat(ChatRequest(messages=[{"role": "user", "content": "hi"}]))
     assert tried == ["d", "a"]
     assert resp.model == "p1:a"
+
+
+async def test_failover_keeps_unknown_capability_models_as_backups():
+    pool = ModelPool(FakeSDK(), make_config())
+    pool.save_provider({
+        "id": "p1", "name": "P1", "base_url": "https://a/v1", "api_key": "k",
+        "models": [{"id": "cap", "enabled": True, "tool_call": True}],
+    })
+    pool.save_provider({
+        "id": "p2", "name": "P2", "base_url": "https://b/v1", "api_key": "k",
+        "models": [
+            {"id": "unknown", "enabled": True},
+            {"id": "no", "enabled": True, "tool_call": False},
+        ],
+    })
+    tried = []
+
+    async def fake_chat(base_url, api_key, scoped, on_delta=None, on_reset=None, on_reasoning=None):
+        tried.append(scoped.model)
+        if scoped.model == "cap":
+            raise EngineError("429 quota")
+        return ChatResponse(content="ok", model=scoped.model)
+
+    pool.engine = SimpleNamespace(chat=fake_chat)
+    resp = await pool.chat(ChatRequest(messages=[{"role": "user", "content": "hi"}], needs=["tool_call"]))
+# 能力未知的模型排在明确支持的模型之后作为后备；明确不支持的完全不参与
+    assert tried == ["cap", "unknown"]
+    assert resp.model == "p2:unknown"

@@ -695,7 +695,6 @@ class InboxMixin(RecoveryMixin):
         return picked[-limit:] if len(picked) > limit else picked
 
     async def _label_seed_rows(self, event, rows: list) -> list:
-        bot_note = texts.t("seed_bot_note")
         unknown_note = texts.t("seed_unknown_speaker")
         try:
             is_group = event.is_group_message()
@@ -717,7 +716,8 @@ class InboxMixin(RecoveryMixin):
             if not text:
                 continue
             if row.get("role") == "bot":
-                seeded.append({"role": "assistant", "content": f"[{bot_note}] {text}"})
+# 机器人历史直接作为 assistant 内容；不要内联标签，否则模型会把它当成自己的话复读
+                seeded.append({"role": "assistant", "content": text})
             elif row.get("role") == "user":
                 sid = str(row.get("sender") or "")
                 if sid:
@@ -728,8 +728,6 @@ class InboxMixin(RecoveryMixin):
                     seeded.append({"role": "user", "content": f"[{unknown_note}] {text}"})
             else:
                 seeded.append({"role": "assistant", "content": text})
-        if seeded:
-            seeded[0]["content"] = texts.t("seed_history_header") + "\n" + seeded[0]["content"]
         return seeded
 
     async def _group_nicknames(self, platform: str, group_id: str, uids: list) -> dict:
