@@ -12,6 +12,7 @@ from .openai import OpenAIEngine
 from .router import classify
 
 POOL_KEY = "QvQChat:providers"
+CHAIN_KEY = "QvQChat:model_chain"
 LEGACY_KEY = "QvQChat:models"
 MODELS_DEV_URL = "https://models.dev/api.json"
 MODELS_DEV_CACHE_KEY = "QvQChat:modelsdev"
@@ -137,6 +138,60 @@ class ModelPool:
             return False
         self.sdk.storage.set(POOL_KEY, remaining)
         return True
+
+# 故障转移链是跨 provider 的全局顺序，存在独立键里；provider.models 只能表达组内顺序
+    @staticmethod
+    def _chain_key(item: Any) -> tuple[str, str] | None:
+        if isinstance(item, dict):
+            pid = str(item.get("provider") or "")
+            mid = str(item.get("model") or "")
+            return (pid, mid) if pid and mid else None
+        if isinstance(item, str) and ":" in item:
+            pid, mid = item.split(":", 1)
+            return (pid, mid) if pid and mid else None
+        return None
+
+    def _known_model_keys(self, providers: list[dict] | None = None) -> list[tuple[str, str]]:
+        keys: list[tuple[str, str]] = []
+        for provider in providers if providers is not None else self.list_providers():
+            pid = str(provider.get("id") or "")
+            for model in provider.get("models") or []:
+                if isinstance(model, dict):
+                    mid = str(model.get("id") or "")
+                    if pid and mid:
+                        keys.append((pid, mid))
+        return keys
+
+    def model_chain(self, providers: list[dict] | None = None) -> list[dict]:
+        """全局模型链：先按已保存顺序，未收录的模型按 provider 默认顺序补在末尾。"""
+        known = self._known_model_keys(providers)
+        known_set = set(known)
+        chain: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        raw = self.sdk.storage.get(CHAIN_KEY, [])
+        for item in raw if isinstance(raw, list) else []:
+            key = self._chain_key(item)
+            if key and key in known_set and key not in seen:
+                seen.add(key)
+                chain.append({"provider": key[0], "model": key[1]})
+        for key in known:
+            if key not in seen:
+                seen.add(key)
+                chain.append({"provider": key[0], "model": key[1]})
+        return chain
+
+    def save_chain(self, entries: list) -> list[dict]:
+        """保存编排页拖拽后的全局链序；池中不存在的项直接忽略，缺失项读时自动补齐。"""
+        known_set = set(self._known_model_keys())
+        ordered: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        for item in entries if isinstance(entries, list) else []:
+            key = self._chain_key(item)
+            if key and key in known_set and key not in seen:
+                seen.add(key)
+                ordered.append({"provider": key[0], "model": key[1]})
+        self.sdk.storage.set(CHAIN_KEY, ordered)
+        return self.model_chain()
 
     def presets(self) -> list[dict]:
         return [dict(p) for p in PROVIDER_PRESETS]
@@ -288,27 +343,37 @@ class ModelPool:
         return self.model_capabilities(primary)
 
     def list_models(self) -> list[dict]:
-        models: list[dict] = []
-        for provider in self.list_providers():
+        providers = self.list_providers()
+        pool: dict[tuple[str, str], tuple[dict, dict]] = {}
+        for provider in providers:
+            pid = str(provider["id"])
             for model in provider.get("models") or []:
-                if not isinstance(model, dict) or not model.get("enabled", True):
-                    continue
-                models.append(
-                    {
-                        "id": f"{provider['id']}:{model.get('id', '')}",
-                        "provider": provider["id"],
-                        "provider_name": provider.get("name", ""),
-                        "base_url": provider.get("base_url", ""),
-                        "api_key": provider.get("api_key", ""),
-                        "model": model.get("id", ""),
-                        "temperature": model.get("temperature"),
-                        "max_tokens": model.get("max_tokens"),
-                        "capabilities": self.model_capabilities(model),
+                if isinstance(model, dict):
+                    pool[(pid, str(model.get("id", "")))] = (provider, model)
+        models: list[dict] = []
+        for entry in self.model_chain(providers):
+            found = pool.get((entry["provider"], entry["model"]))
+            if not found:
+                continue
+            provider, model = found
+            if not model.get("enabled", True):
+                continue
+            models.append(
+                {
+                    "id": f"{provider['id']}:{model.get('id', '')}",
+                    "provider": provider["id"],
+                    "provider_name": provider.get("name", ""),
+                    "base_url": provider.get("base_url", ""),
+                    "api_key": provider.get("api_key", ""),
+                    "model": model.get("id", ""),
+                    "temperature": model.get("temperature"),
+                    "max_tokens": model.get("max_tokens"),
+                    "capabilities": self.model_capabilities(model),
 # 透出 models.db 目录数据，否则 context_length/cost 是死数据
-                        "context_length": model.get("context_length"),
-                        "cost": model.get("cost") if isinstance(model.get("cost"), dict) else None,
-                    }
-                )
+                    "context_length": model.get("context_length"),
+                    "cost": model.get("cost") if isinstance(model.get("cost"), dict) else None,
+                }
+            )
         return models
 
     def resolve_model(self, model_id: str | None = None, needs: list | None = None) -> dict:

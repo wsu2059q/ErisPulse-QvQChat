@@ -152,3 +152,74 @@ def test_dispatch_needs_empty_pool_fallback():
         raise AssertionError("should raise")
     except EngineError:
         pass
+
+
+# ===== 编排页全局链序：跨 provider 拖动顺序要能持久化并驱动故障转移 =====
+
+
+def _two_provider_pool():
+    sdk = FakeSDK()
+    pool = ModelPool(sdk, make_config())
+    pool.save_provider({
+        "id": "p1", "name": "P1", "base_url": "https://a/v1", "api_key": "k1",
+        "models": [{"id": "a", "enabled": True}, {"id": "off", "enabled": False}],
+    })
+    pool.save_provider({
+        "id": "p2", "name": "P2", "base_url": "https://b/v1", "api_key": "k2",
+        "models": [{"id": "c", "enabled": True}, {"id": "d", "enabled": True}],
+    })
+    return sdk, pool
+
+
+def test_model_chain_persists_cross_provider_order():
+    sdk, pool = _two_provider_pool()
+    assert [(e["provider"], e["model"]) for e in pool.model_chain()] == [
+        ("p1", "a"), ("p1", "off"), ("p2", "c"), ("p2", "d"),
+    ]
+
+    pool.save_chain([
+        {"provider": "p2", "model": "d"},
+        {"provider": "p1", "model": "off"},
+        {"provider": "p2", "model": "c"},
+        {"provider": "p1", "model": "a"},
+    ])
+# “刷新页面”= 用同一份 storage 重建 pool，顺序保持不变
+    reloaded = ModelPool(sdk, make_config())
+    assert [(e["provider"], e["model"]) for e in reloaded.model_chain()] == [
+        ("p2", "d"), ("p1", "off"), ("p2", "c"), ("p1", "a"),
+    ]
+# 停用模型保留在链里便于编排，但不参与实际故障转移
+    assert [m["id"] for m in reloaded.list_models()] == ["p2:d", "p2:c", "p1:a"]
+
+
+def test_save_chain_ignores_unknown_and_appends_missing():
+    sdk, pool = _two_provider_pool()
+    pool.save_chain([
+        {"provider": "ghost", "model": "x"},
+        {"provider": "p2", "model": "c"},
+        "not-a-chain-entry",
+    ])
+    assert [(e["provider"], e["model"]) for e in ModelPool(sdk, make_config()).model_chain()] == [
+        ("p2", "c"), ("p1", "a"), ("p1", "off"), ("p2", "d"),
+    ]
+
+
+async def test_failover_follows_saved_chain():
+    _, pool = _two_provider_pool()
+    pool.save_chain([
+        {"provider": "p2", "model": "d"},
+        {"provider": "p1", "model": "a"},
+        {"provider": "p2", "model": "c"},
+    ])
+    tried = []
+
+    async def fake_chat(base_url, api_key, scoped, on_delta=None, on_reset=None, on_reasoning=None):
+        tried.append(scoped.model)
+        if len(tried) == 1:
+            raise EngineError("boom")
+        return ChatResponse(content="ok", model=scoped.model)
+
+    pool.engine = SimpleNamespace(chat=fake_chat)
+    resp = await pool.chat(ChatRequest(messages=[{"role": "user", "content": "hi"}]))
+    assert tried == ["d", "a"]
+    assert resp.model == "p1:a"
