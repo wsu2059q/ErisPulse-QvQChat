@@ -52,24 +52,77 @@
     };
   }
 
+  function segSignature(seg) {
+    // segment 内容指纹：只有内容变化的段才重建 DOM，保住其余段的展开状态
+    if (seg.type === "text") {
+      return "t" + String(seg.text || "").length + ":" + String(seg.text || "").slice(-48);
+    }
+    var endMark = seg.end
+      ? "e" + (seg.end.ms != null ? seg.end.ms : "") + ":" + String(seg.end.output || "").length
+      : "r";
+    return "g" + (seg.start && seg.start.step_id ? seg.start.step_id : "") + endMark;
+  }
+
+  // 增量渲染文字/工具交错流：只重建内容变化的段，用户点开的工具详情不再被流式顶掉
+  function renderSegments(container, segments, expMap) {
+    var host = container.querySelector(".qvq-rounds");
+    if (!host) {
+      container.innerHTML = '<div class="qvq-rounds"></div>';
+      host = container.querySelector(".qvq-rounds");
+    }
+    while (host.children.length > segments.length) host.removeChild(host.lastChild);
+    while (host.children.length < segments.length) {
+      var wrap = document.createElement("div");
+      wrap.className = "qvq-seg";
+      host.appendChild(wrap);
+    }
+    for (var i = 0; i < segments.length; i++) {
+      var el = host.children[i];
+      var seg = segments[i];
+      var sig = segSignature(seg);
+      if (el.__qvqSig === sig) continue;
+      el.__qvqSig = sig;
+      if (seg.type === "text") {
+        el.innerHTML = '<div class="qvq-round-text">' + (mdRender(seg.text) || esc(seg.text)) + "</div>";
+      } else {
+        el.innerHTML = toolSegHtml(seg);
+        bindStepToggles(el);
+        restoreExpSteps(el, expMap);
+      }
+    }
+  }
+
   function renderLiveNode(box, els, live) {
     var stick = nearBottom(box);
+    // 重建前收集用户点开的工具详情与思考折叠状态
+    var expSteps = collectExpSteps(els.stepsEl);
+    var expSegSteps = collectExpSteps(els.textEl);
+    var thinkEl = els.stepsEl.querySelector(".qvq-think");
+    var thinkOpen = thinkEl ? thinkEl.hasAttribute("open") : null;
+
+    // 首次渲染跟随 running 状态；之后尊重用户手动收起（thinkOpen === false）
+    var thinkAutoOpen = live.status !== "running" ? "" : " open";
+    var thinkAttr = thinkOpen === false ? "" : thinkAutoOpen;
     var thinkBlock = live.reasoning
-      ? '<details class="qvq-think"' + (live.status !== "running" ? "" : " open") + '><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>'
+      ? '<details class="qvq-think"' + thinkAttr + '><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>'
       : "";
-    var stepsHtmlText = stepsHtml(live.steps, true);
-    els.stepsEl.innerHTML = (thinkBlock || "") + stepsHtmlText;
+    els.stepsEl.innerHTML = (thinkBlock || "") + stepsHtml(live.steps, true);
     if (live.reasoning) {
       var thinkBody = els.stepsEl.querySelector(".qvq-think-body");
       if (thinkBody) thinkBody.textContent = live.reasoning;
     }
+    if (thinkOpen) {
+      var thinkNow = els.stepsEl.querySelector(".qvq-think");
+      if (thinkNow) thinkNow.setAttribute("open", "");
+    }
+    restoreExpSteps(els.stepsEl, expSteps);
     bindStepToggles(els.stepsEl);
+
     if (live.segments.length) {
-      els.textEl.innerHTML = '<div class="qvq-rounds">' + renderSerial(live.segments) + "</div>";
-      bindStepToggles(els.textEl);
+      renderSegments(els.textEl, live.segments, expSegSteps);
     } else if (!live.text && live.started && !live.reasoning) {
       var secs = Math.max(0, Math.round((Date.now() - live.started) / 1000));
-      els.textEl.innerHTML = '<span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "s</span>";
+      els.textEl.innerHTML = '<div class="qvq-live-wait-row"><span class="qvq-dots"><span></span><span></span><span></span></span><span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "s</span></div>";
     } else {
       els.textEl.innerHTML = mdRender(live.text) || '<span class="qvq-cursor"></span>';
     }

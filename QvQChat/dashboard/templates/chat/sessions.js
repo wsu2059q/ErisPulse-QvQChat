@@ -468,7 +468,7 @@
     var n = steps.length;
     if (!n) return "";
     if (chatDensity === "brief" && !running) return "";
-    var rows = steps.map(function (s) {
+    var rows = steps.map(function (s, si) {
       var name = s.start ? s.start.name : (s.end ? s.end.name : "?");
       var args = s.start ? String(s.start.arguments || "") : "";
       var runningStep = s.start && !s.end;
@@ -477,7 +477,8 @@
       var compact = args.replace(/\s+/g, " ");
       var short = compact && compact !== "{}" ? "(" + (compact.length > 52 ? compact.slice(0, 52) + "…" : compact) + ")" : "";
       var cost = runningStep ? t("steps_running") : (ms != null ? (ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : ms + "ms") : "");
-      return '<div class="qvq-step' + (runningStep ? " running" : "") + '">' +
+      var key = s.start && s.start.step_id ? String(s.start.step_id) : "i" + si;
+      return '<div class="qvq-step' + (runningStep ? " running" : "") + '" data-step-key="' + esc(key) + '">' +
         '<div class="qvq-step-row" data-step-toggle="1">' +
         '<span class="qvq-step-ico">' + STEP_ICON_SVG + "</span>" +
         '<span class="qvq-step-name">' + esc(name) + "</span>" +
@@ -489,10 +490,45 @@
     return '<div class="qvq-steps' + (running ? " running" : "") + '">' + rows + "</div>";
   }
 
+  // ── 展开状态保持：流式刷新会重建步骤节点，先收集用户点开的行，渲染后恢复 ──
+  function collectExpSteps(root) {
+    var map = {};
+    if (!root) return map;
+    root.querySelectorAll(".qvq-step.exp[data-step-key]").forEach(function (n) {
+      map[n.getAttribute("data-step-key")] = 1;
+    });
+    return map;
+  }
+
+  function restoreExpSteps(root, map) {
+    if (!root || !map) return;
+    root.querySelectorAll(".qvq-step[data-step-key]").forEach(function (n) {
+      if (map[n.getAttribute("data-step-key")]) n.classList.add("exp");
+    });
+  }
+
   function bindStepToggles(root) {
     root.querySelectorAll("[data-step-toggle]").forEach(function (row) {
       row.onclick = function () { row.closest(".qvq-step").classList.toggle("exp"); };
     });
+  }
+
+  function toolSegHtml(seg) {
+    var runningStep = seg.start && !seg.end;
+    var ms = seg.end && seg.end.ms != null ? seg.end.ms : null;
+    var cost = runningStep ? t("steps_running") : (ms != null ? (ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : ms + "ms") : "");
+    var output = seg.end ? String(seg.end.output || "") : "";
+    var args = seg.start ? String(seg.start.arguments || "") : "";
+    var compact = args.replace(/\s+/g, " ");
+    var short = compact && compact !== "{}" ? "(" + (compact.length > 52 ? compact.slice(0, 52) + "…" : compact) + ")" : "";
+    var key = seg.start && seg.start.step_id ? String(seg.start.step_id) : "";
+    return '<div class="qvq-step' + (runningStep ? " running" : "") + '"' + (key ? ' data-step-key="' + esc(key) + '"' : "") + '><div class="qvq-step-row" data-step-toggle="1">' +
+      '<span class="qvq-step-ico">' + STEP_ICON_SVG + '</span>' +
+      '<span class="qvq-step-name">' + esc(seg.start ? seg.start.name : "?") + "</span>" +
+      (short ? '<span class="qvq-step-args">' + esc(short) + "</span>" : "") +
+      '<span class="qvq-step-ms">' + esc(cost) + "</span></div>" +
+      (output ? '<pre class="qvq-step-detail">' + esc(output) + "</pre>" : "") +
+      "</div>";
   }
 
   function renderSerial(items) {
@@ -501,20 +537,7 @@
       if (seg.type === "text") {
         return '<div class="qvq-round-text">' + (mdRender(seg.text) || esc(seg.text)) + "</div>";
       }
-      var runningStep = seg.start && !seg.end;
-      var ms = seg.end && seg.end.ms != null ? seg.end.ms : null;
-      var cost = runningStep ? t("steps_running") : (ms != null ? (ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : ms + "ms") : "");
-      var output = seg.end ? String(seg.end.output || "") : "";
-      var args = seg.start ? String(seg.start.arguments || "") : "";
-      var compact = args.replace(/\s+/g, " ");
-      var short = compact && compact !== "{}" ? "(" + (compact.length > 52 ? compact.slice(0, 52) + "…" : compact) + ")" : "";
-      return '<div class="qvq-step' + (runningStep ? " running" : "") + '"><div class="qvq-step-row" data-step-toggle="1">' +
-        '<span class="qvq-step-ico">' + STEP_ICON_SVG + '</span>' +
-        '<span class="qvq-step-name">' + esc(seg.start ? seg.start.name : "?") + "</span>" +
-        (short ? '<span class="qvq-step-args">' + esc(short) + "</span>" : "") +
-        '<span class="qvq-step-ms">' + esc(cost) + "</span></div>" +
-        (output ? '<pre class="qvq-step-detail">' + esc(output) + "</pre>" : "") +
-        "</div>";
+      return toolSegHtml(seg);
     }).join("");
   }
 
