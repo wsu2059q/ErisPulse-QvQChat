@@ -167,6 +167,7 @@ class QvQConfig(BaseConfig):
     opening_on_reset: bool = field(default=False, metadata=_desc("opening_on_reset", "/qvq reset 重置会话时同时清除开场白已发标记，下次对话重新发送开场白", "chat", 47, "switch"))
     opening_max_len: int = field(default=200, metadata=_desc("opening_max_len", "开场白单条最大字符数（超出截断）", "chat", 48, "number"))
     reply_narrate: bool = field(default=False, metadata=_desc("reply_narrate", "边做边说：工具任务的每一步先说一句要做什幺、拿到结果简短汇报、结束给简短结论（每句单独发到群里，像真人工作播报）", "chat", 49, "switch"))
+    notify_on_passive_failure: bool = field(default=False, metadata=_desc("notify_on_passive_failure", "被动触发的任务（如插件插话）失败时也在群里回复错误详情；默认关闭只记日志，避免错误刷屏", "chat", 53, "switch"))
 
 # 实例重启恢复（chat/recovery.py）
     recovery_enabled: bool = field(default=True, metadata=_desc("recovery_enabled", "实例重启后自动恢复被中断的回复", "chat", 50, "switch"))

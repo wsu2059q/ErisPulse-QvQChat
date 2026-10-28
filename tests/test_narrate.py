@@ -74,3 +74,42 @@ async def test_intermediate_speech_sent_when_notice_all():
     await Main._on_message(main, ev)
     await asyncio.sleep(0.15)
     assert any("先看看是真的" in str(r) for r in ev.replies)
+
+
+async def test_passive_failure_silent_by_default():
+    """被动任务（origin=plugin）失败默认静默：不把错误详情回进群里。"""
+    import asyncio
+
+    from test_aggregate import make_main as aggregate_make_main
+
+    class FailingRunner:
+        async def run(self, **kwargs):
+            raise RuntimeError("全部模型调用失败 Error 429")
+
+    main = aggregate_make_main(aggregate_window=0.05)
+    main.runner = FailingRunner()
+    ev = FakeChatEvent(text="查一下", group=True, group_id="1", user_id="u2", user_name="活塞头", at=True)
+    # 模拟插件插话来源
+    main._pending.clear()
+    main._batch_message(ev, "onebot11:group:1", "查一下", [], origin="plugin")
+    await asyncio.sleep(0.15)
+    assert not ev.replies, f"被动失败不应回复群聊, replies={ev.replies}"
+    assert main.logger.records and any("process failed" in str(r) for r in main.logger.records)
+
+
+async def test_active_failure_still_replies():
+    """主动触发失败仍回复错误（用户发起了消息，应当收到反馈）。"""
+    import asyncio
+
+    from test_aggregate import make_main as aggregate_make_main
+
+    class FailingRunner:
+        async def run(self, **kwargs):
+            raise RuntimeError("boom")
+
+    main = aggregate_make_main(aggregate_window=0.05)
+    main.runner = FailingRunner()
+    ev = FakeChatEvent(text="查一下", group=True, group_id="1", user_id="u2", user_name="活塞头", at=True)
+    await Main._on_message(main, ev)
+    await asyncio.sleep(0.15)
+    assert any("boom" in str(r) for r in ev.replies), f"主动失败应回复, replies={ev.replies}"
