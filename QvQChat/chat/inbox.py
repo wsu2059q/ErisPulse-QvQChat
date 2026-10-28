@@ -608,7 +608,11 @@ class InboxMixin(RecoveryMixin):
             finally:
                 self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
         except Exception as e:
-            self.logger.warning(f"process failed: {e}")
+             
+             
+            self.logger.warning(f"process failed (origin={origin}): {e}")
+            if origin == "plugin" and not bool(getattr(self.cfg, "notify_on_passive_failure", False)):
+                return
             try:
                 await event.reply(texts.t("run_failed", error=utils.truncate(str(e), 200)))
             except Exception as inner:
