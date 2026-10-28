@@ -25,12 +25,38 @@ class ConfigApiMixin:
             item["api_key_masked"] = ("*" * 8 + key[-4:]) if len(key) > 4 else ("*" * len(key) if key else "")
             item.pop("api_key", None)
             providers.append(item)
+        by_id = {str(p.get("id") or ""): p for p in self.main.pool.list_providers()}
+        chain = []
+        for entry in self.main.pool.model_chain():
+            provider = by_id.get(entry["provider"]) or {}
+            model = next(
+                (m for m in provider.get("models") or [] if isinstance(m, dict) and str(m.get("id") or "") == entry["model"]),
+                None,
+            )
+            if model is None:
+                continue
+            chain.append(
+                {
+                    "provider": entry["provider"],
+                    "name": provider.get("name", ""),
+                    "base_url": provider.get("base_url", ""),
+                    "model": model,
+                }
+            )
         return {
             "providers": providers,
+            "chain": chain,
             "models": self.main.pool.list_models(),
             "presets": self.main.pool.presets(),
             "default": getattr(self.main.cfg, "default_model", ""),
         }
+
+    async def chain_save(self, request):
+        body = await request.json()
+        chain = (body or {}).get("chain")
+        if not isinstance(chain, list):
+            return ({"error": "chain list required"}, 400)
+        return {"ok": True, "chain": self.main.pool.save_chain(chain)}
 
     async def providers_save(self, request):
         body = await request.json()
@@ -224,6 +250,7 @@ class ConfigApiMixin:
             "version": 3,
             "exported_at": utils.now_ts(),
             "providers": self.main.pool.list_providers(),
+            "chain": self.main.pool.model_chain(),
             "personas": {
                 pid: data
                 for pid, data in (self.sdk.storage.get("QvQChat:personas", {}) or {}).items()
@@ -262,6 +289,9 @@ class ConfigApiMixin:
                 except Exception as e:
                     errors.setdefault("models", []).append(str(e))
             applied.append("models")
+        if isinstance(data.get("chain"), list):
+            self.main.pool.save_chain(data["chain"])
+            applied.append("chain")
         if isinstance(data.get("personas"), dict):
             stored = self.sdk.storage.get("QvQChat:personas", {})
             if not isinstance(stored, dict):
