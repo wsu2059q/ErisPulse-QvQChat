@@ -65,11 +65,16 @@
       box.innerHTML = '<div class="qvq-empty">' + esc(t("models_empty")) + "</div>";
       return;
     }
-    box.innerHTML = '<div class="qvq-chain-list">' + orchChain.map(function (item, i) {
+    var firstEnabled = orchChain.filter(function (x) { return x.model.enabled !== false; })[0];
+    var warn = firstEnabled && firstEnabled.model.tool_call !== true
+      ? '<div class="qvq-chain-warn">' + esc(t("orch_chain_top_no_tools")) + "</div>"
+      : "";
+    box.innerHTML = warn + '<div class="qvq-chain-list">' + orchChain.map(function (item, i) {
       var off = item.model.enabled === false;
       return '<div class="qvq-chain-row' + (off ? " off" : "") + '" draggable="true" data-ci="' + i + '">' +
         '<span class="qvq-chain-seq">' + (i + 1) + "</span>" +
         '<span class="qvq-chain-name">' + esc(item.provider + ":" + item.model.id) + "</span>" +
+        '<span class="qvq-chain-caps">' + modelsModelChips(item.model) + "</span>" +
         (off ? "<span class='qvq-chip'>" + esc(t("off")) + "</span>" : "") +
         '<span class="qvq-q-drag" title="⇅">⇅</span></div>';
     }).join("") + "</div>";
@@ -265,55 +270,323 @@
     });
   }
 
+  var modelsCache = [];
+
+  function fmtNum(v) {
+    var n = Number(v);
+    if (!isFinite(n) || n <= 0) return "-";
+    return n >= 10000 ? Math.round(n / 1000) + "k" : (n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n));
+  }
+
+  function numAttr(v) {
+    return v === 0 || v ? String(v) : "";
+  }
+
+  function intOrNull(v) {
+    if (v === "" || v == null) return null;
+    var n = Number(v);
+    return isFinite(n) ? Math.max(0, Math.round(n)) : null;
+  }
+
+  function modelsModelChips(model) {
+    var out = "";
+    if (model.tool_call === true) out += "<span class='qvq-chip o-eco'>" + esc(t("model_cap_tools")) + "</span>";
+    else if (model.tool_call === false) out += "<span class='qvq-chip'>" + esc(t("model_cap_no_tools")) + "</span>";
+    else out += "<span class='qvq-chip o-mcp'>?</span>";
+    if (model.vision === true) out += "<span class='qvq-chip'>" + esc(t("model_cap_vision")) + "</span>";
+    if (model.reasoning === true) out += "<span class='qvq-chip'>" + esc(t("model_cap_reason")) + "</span>";
+    return out;
+  }
+
+  function modelPriceLabel(model) {
+    var cost = model.cost;
+    if (!cost || typeof cost !== "object") return "-";
+    var inp = Math.round(Number(cost.input || 0) * 10000) / 10000;
+    var outp = Math.round(Number(cost.output || 0) * 10000) / 10000;
+    if (!inp && !outp) return "-";
+    return "$" + inp + " / $" + outp;
+  }
+
+  function findProvider(id) {
+    for (var i = 0; i < modelsCache.length; i++) {
+      if (modelsCache[i].id === id) return modelsCache[i];
+    }
+    return null;
+  }
+
+  function reloadModels(cb) {
+    api("/api/qvq/models").then(function (data) {
+      modelsCache = (data && data.providers) || [];
+      modelPresets = (data && data.presets) || [];
+      renderModelsTable();
+      if (cb) cb();
+    });
+  }
+
+  function renderModelsTable() {
+    var providers = modelsCache;
+    var box = el("qvq-models-list");
+    if (!box) return;
+    if (!providers.length) {
+      box.innerHTML = '<div class="qvq-empty qvq-empty-cta">' + esc(t("models_empty")) + "</div>";
+      var cta = box.querySelector(".qvq-empty-cta");
+      if (cta) cta.onclick = function () { openModelModal(null); };
+      return;
+    }
+    var rows = providers.map(function (p) {
+      var models = p.models || [];
+      var enabled = models.filter(function (m) { return m.enabled !== false; });
+      var lines = models.map(function (m) {
+        var off = m.enabled === false;
+        return "<div class='qvq-model-line" + (off ? " off" : "") + "'>" + esc(m.id) +
+          (off ? " <span class='qvq-chip'>" + esc(t("off")) + "</span>" : "") +
+          "<div>" + modelsModelChips(m) + "</div></div>";
+      }).join("") || "<span class='qvq-tool-desc'>" + esc(t("model_none")) + "</span>";
+      var firstModel = enabled.length ? String(enabled[0].id) : "";
+      return "<tr><td><b>" + esc(p.name) + "</b><div class='qvq-tool-desc'>" + esc(p.base_url || "") + "</div></td>" +
+        "<td>" + lines + "</td>" +
+        "<td>" + esc(p.api_key_masked || "-") + "</td>" +
+        "<td><button class='qvq-btn small ghost' data-act='models' data-id='" + esc(p.id) + "'>" + esc(t("model_manage")) + "</button> " +
+        "<button class='qvq-btn small ghost' data-act='edit' data-id='" + esc(p.id) + "'>" + esc(t("edit")) + "</button> " +
+        (firstModel ? "<button class='qvq-btn small ghost' data-act='test' data-model='" + esc(firstModel) + "'>" + esc(t("test")) + "</button> " : "") +
+        "<button class='qvq-btn small danger' data-act='pdel' data-id='" + esc(p.id) + "'>" + esc(t("del")) + "</button></td></tr>";
+    }).join("");
+    box.innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("models_name")) + "</th><th>" +
+      esc(t("models_id")) + "</th><th>key</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    box.querySelectorAll("button[data-act]").forEach(function (btn) {
+      btn.onclick = function () {
+        var pid = btn.getAttribute("data-id");
+        var act = btn.getAttribute("data-act");
+        var provider = findProvider(pid);
+        if (act === "pdel") {
+          confirmDialog(t("confirm_del")).then(function (ok) {
+            if (!ok) return;
+            api("/api/qvq/providers/delete", "POST", { id: pid }).then(function () { toast(t("deleted")); loadModels(); });
+          });
+        } else if (act === "test") {
+          btn.disabled = true;
+          api("/api/qvq/models/test", "POST", { id: btn.getAttribute("data-model") }).then(function (r) {
+            btn.disabled = false;
+            if (r && r.ok) toast(t("model_test_ok") + " · " + (r.model || "") + " · " + r.ms + "ms");
+            else toast((r && r.error) || t("model_test_fail"), true);
+          });
+        } else if (act === "models") {
+          if (provider) openModelsModal(provider);
+        } else if (provider) {
+          openModelModal(provider);
+        }
+      };
+    });
+  }
+
   function loadModels() {
     api("/api/qvq/breakers").then(function (data) {
       renderModelHealth("qvq-models-health", (data && data.breakers) || []);
     });
     api("/api/qvq/models").then(function (data) {
-      var providers = (data && data.providers) || [];
+      modelsCache = (data && data.providers) || [];
       modelPresets = (data && data.presets) || [];
-      if (!providers.length) {
-        el("qvq-models-list").innerHTML = '<div class="qvq-empty qvq-empty-cta">' + esc(t("models_empty")) + "</div>";
-        var cta = el("qvq-models-list").querySelector(".qvq-empty-cta");
-        if (cta) cta.onclick = function () { openModelModal(null); };
+      renderModelsTable();
+    });
+    var enrichBtn = el("qvq-model-enrich");
+    if (enrichBtn && !enrichBtn.onclick) {
+      enrichBtn.onclick = function () {
+        enrichBtn.disabled = true;
+        api("/api/qvq/models/enrich", "POST", {}).then(function (data) {
+          enrichBtn.disabled = false;
+          if (data && data.ok) {
+            toast(t("model_refresh_done").replace("{n}", data.updated || 0));
+            loadModels();
+          } else {
+            toast((data && data.error) || "error", true);
+          }
+        }, function () {
+          enrichBtn.disabled = false;
+          toast("error", true);
+        });
+      };
+    }
+  }
+
+  function saveProviderModels(provider, models, cb) {
+    api("/api/qvq/providers/save", "POST", {
+      id: provider.id, name: provider.name, base_url: provider.base_url,
+      api_key: "", models: models
+    }).then(function (data) {
+      if (data && data.ok) {
+        toast(t("saved"));
+        reloadModels(cb);
+      } else {
+        toast((data && data.error) || "error", true);
+      }
+    });
+  }
+
+  function openModelsModal(provider) {
+    var rows = (provider.models || []).map(function (m, i) {
+      var off = m.enabled === false;
+      return "<tr" + (off ? " class='qvq-row-off'" : "") + "><td><b>" + esc(m.id) + "</b><div class='qvq-tool-desc'>" + modelsModelChips(m) + "</div></td>" +
+        "<td>" + fmtNum(m.context_length) + "</td>" +
+        "<td>" + fmtNum(m.max_output_tokens) + "</td>" +
+        "<td>" + esc(modelPriceLabel(m)) + "</td>" +
+        "<td><button class='qvq-btn small ghost' data-medit='" + i + "'>" + esc(t("edit")) + "</button> " +
+        "<button class='qvq-btn small danger' data-mdel='" + i + "'>" + esc(t("del")) + "</button></td></tr>";
+    }).join("");
+    var table = rows
+      ? "<table class='qvq-table'><thead><tr><th>" + esc(t("models_id")) + "</th><th>" + esc(t("model_context")) + "</th><th>" + esc(t("model_max_output")) + "</th><th>" + esc(t("model_price")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>"
+      : '<div class="qvq-empty">' + esc(t("model_none")) + "</div>";
+    var html = "<div class='qvq-toolbar'><button class='qvq-btn small' data-madd type='button'>+ " + esc(t("model_add_title")) + "</button>" +
+      "<button class='qvq-btn small ghost' data-mrefresh type='button'>" + esc(t("model_refresh")) + "</button></div>" + table;
+    openModal(provider.name + " · " + t("model_manage"), html);
+    var body = el("qvq-modal-body");
+    body.querySelector("[data-madd]").onclick = function () { openModelEditor(provider, null); };
+    body.querySelector("[data-mrefresh]").onclick = function () {
+      api("/api/qvq/models/enrich", "POST", {}).then(function (data) {
+        if (data && data.ok) {
+          toast(t("model_refresh_done").replace("{n}", data.updated || 0));
+          reloadModels(function () {
+            var p = findProvider(provider.id);
+            if (p) openModelsModal(p);
+          });
+        } else {
+          toast((data && data.error) || "error", true);
+        }
+      });
+    };
+    body.querySelectorAll("[data-medit]").forEach(function (btn) {
+      btn.onclick = function () {
+        openModelEditor(provider, provider.models[Number(btn.getAttribute("data-medit"))]);
+      };
+    });
+    body.querySelectorAll("[data-mdel]").forEach(function (btn) {
+      btn.onclick = function () {
+        confirmDialog(t("model_delete_confirm")).then(function (ok) {
+          if (!ok) return;
+          var models = provider.models.slice();
+          models.splice(Number(btn.getAttribute("data-mdel")), 1);
+          saveProviderModels(provider, models, function () {
+            var p = findProvider(provider.id);
+            if (p) openModelsModal(p);
+          });
+        });
+      };
+    });
+  }
+
+  function openModelEditor(provider, model) {
+    var editing = !!model;
+    var m = model || {};
+    var fields =
+      "<div class='qvq-field-row' style='align-items:center;justify-content:space-between'>" +
+        "<label class='qvq-label' style='margin:0'>" + esc(t("model_smart")) + "</label>" +
+        "<span class='qvq-switch'><input type='checkbox' id='qvq-me-smart'" + (m.manual === true ? "" : " checked") + "/><i></i></span>" +
+      "</div>" +
+      "<div class='qvq-tool-desc'>" + esc(t("model_smart_hint")) + "</div>" +
+      "<label class='qvq-label'>" + esc(t("models_id")) + "</label>" +
+      "<input class='qvq-input' id='qvq-me-id' value='" + esc(m.id || "") + "' placeholder='glm-5.3-flash'/>" +
+      "<label class='qvq-label'>" + esc(t("model_context")) + "</label>" +
+      "<input class='qvq-input' id='qvq-me-ctx' type='number' min='0' value='" + numAttr(m.context_length) + "' placeholder='262144'/>" +
+      "<label class='qvq-label'>" + esc(t("model_max_output")) + "</label>" +
+      "<input class='qvq-input' id='qvq-me-maxout' type='number' min='0' value='" + numAttr(m.max_output_tokens) + "' placeholder='65536'/>" +
+      "<div class='qvq-actions' style='margin-top:10px'><button class='qvq-btn small ghost' id='qvq-me-detect' type='button'>" + esc(t("model_detect")) + "</button></div>" +
+      "<div class='qvq-tool-desc' id='qvq-me-status'></div>" +
+      "<details style='margin-top:14px'><summary class='qvq-label' style='cursor:pointer'>" + esc(t("model_advanced")) + "</summary>" +
+        "<label class='qvq-label'>" + esc(t("model_input_types")) + "</label>" +
+        "<label class='qvq-check-row'><input type='checkbox' checked disabled/><span>" + esc(t("model_input_text")) + "</span></label>" +
+        "<label class='qvq-check-row'><input type='checkbox' id='qvq-me-image'" + (m.vision === true ? " checked" : "") + "/><span>" + esc(t("model_input_image")) + "</span></label>" +
+        "<label class='qvq-check-row'><input type='checkbox' id='qvq-me-video'" + (m.video === true ? " checked" : "") + "/><span>" + esc(t("model_input_video")) + "</span></label>" +
+        "<label class='qvq-check-row'><input type='checkbox' id='qvq-me-pdf'" + (m.files === true ? " checked" : "") + "/><span>" + esc(t("model_input_pdf")) + "</span></label>" +
+        "<label class='qvq-label'>" + esc(t("model_caps")) + "</label>" +
+        "<label class='qvq-check-row'><input type='checkbox' id='qvq-me-tool'" + (m.tool_call !== false ? " checked" : "") + "/><span>" + esc(t("model_tool_call")) + "</span></label>" +
+        "<label class='qvq-check-row'><input type='checkbox' id='qvq-me-reason'" + (m.reasoning === true ? " checked" : "") + "/><span>" + esc(t("model_reasoning")) + "</span></label>" +
+        "<label class='qvq-label'>" + esc(t("models_temp")) + "</label>" +
+        "<input class='qvq-input' id='qvq-me-temp' type='number' step='0.1' min='0' value='" + numAttr(m.temperature) + "' placeholder='0.7'/>" +
+        "<label class='qvq-label'>" + esc(t("model_price")) + "</label>" +
+        "<div class='qvq-field-row'><input class='qvq-input' id='qvq-me-price-in' type='number' step='0.0001' min='0' value='" + numAttr(m.cost && m.cost.input) + "' placeholder='" + esc(t("model_price_in")) + "'/>" +
+        "<input class='qvq-input' id='qvq-me-price-out' type='number' step='0.0001' min='0' value='" + numAttr(m.cost && m.cost.output) + "' placeholder='" + esc(t("model_price_out")) + "'/></div>" +
+        "<label class='qvq-check-row' style='margin-top:14px'><input type='checkbox' id='qvq-me-enabled'" + (m.enabled !== false ? " checked" : "") + "/><span>" + esc(t("model_enabled")) + "</span></label>" +
+      "</details>";
+    openForm(editing ? t("model_edit_title") : t("model_add_title"), fields, function (body) {
+      var mid = fv(body, "qvq-me-id");
+      if (!mid) {
+        toast(t("models_fetch_fail"), true);
         return;
       }
-      var rows = providers.map(function (p) {
-        var enabled = (p.models || []).filter(function (m) { return m.enabled !== false; });
-        var names = enabled.map(function (m) { return esc(m.id); }).join("<br>") || "-";
-        var firstModel = enabled.length ? String(enabled[0].id) : "";
-        return "<tr><td><b>" + esc(p.name) + "</b><div class='qvq-tool-desc'>" + esc(p.base_url || "") + "</div></td>" +
-          "<td>" + names + "</td>" +
-          "<td>" + esc(p.api_key_masked || "-") + "</td>" +
-          "<td><button class='qvq-btn small ghost' data-act='edit' data-id='" + esc(p.id) + "'>" + esc(t("edit")) + "</button> " +
-          (firstModel ? "<button class='qvq-btn small ghost' data-act='test' data-model='" + esc(firstModel) + "'>" + esc(t("test")) + "</button> " : "") +
-          "<button class='qvq-btn small danger' data-act='pdel' data-id='" + esc(p.id) + "'>" + esc(t("del")) + "</button></td></tr>";
-      }).join("");
-      el("qvq-models-list").innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("models_name")) + "</th><th>" +
-        esc(t("models_id")) + "</th><th>key</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
-      el("qvq-models-list").querySelectorAll("button[data-act]").forEach(function (btn) {
-        btn.onclick = function () {
-          var pid = btn.getAttribute("data-id");
-          var act = btn.getAttribute("data-act");
-          if (act === "pdel") {
-            confirmDialog(t("confirm_del")).then(function (ok) {
-              if (!ok) return;
-              api("/api/qvq/providers/delete", "POST", { id: pid }).then(function () { toast(t("deleted")); loadModels(); });
-            });
-          } else if (act === "test") {
-            btn.disabled = true;
-            api("/api/qvq/models/test", "POST", { id: btn.getAttribute("data-model") }).then(function (r) {
-              btn.disabled = false;
-              if (r && r.ok) toast(t("model_test_ok") + " · " + (r.model || "") + " · " + r.ms + "ms");
-              else toast((r && r.error) || t("model_test_fail"), true);
-            });
-          } else {
-            var provider = providers.filter(function (pv) { return pv.id === pid; })[0];
-            if (provider) openModelModal(provider);
-          }
-        };
+      var next = {};
+      if (model) { for (var k in model) next[k] = model[k]; }
+      next.id = mid;
+      next.manual = !body.querySelector("#qvq-me-smart").checked;
+      next.enabled = body.querySelector("#qvq-me-enabled").checked;
+      next.context_length = intOrNull(fv(body, "qvq-me-ctx"));
+      next.max_output_tokens = intOrNull(fv(body, "qvq-me-maxout"));
+      next.vision = body.querySelector("#qvq-me-image").checked;
+      next.video = body.querySelector("#qvq-me-video").checked;
+      next.files = body.querySelector("#qvq-me-pdf").checked;
+      next.tool_call = body.querySelector("#qvq-me-tool").checked;
+      next.reasoning = body.querySelector("#qvq-me-reason").checked;
+      var temp = fv(body, "qvq-me-temp");
+      next.temperature = temp === "" ? null : Number(temp);
+      var pin = fv(body, "qvq-me-price-in");
+      var pout = fv(body, "qvq-me-price-out");
+      next.cost = (pin === "" && pout === "") ? null : { input: Number(pin || 0), output: Number(pout || 0) };
+      var models = (provider.models || []).slice();
+      var idx = -1;
+      if (model) {
+        for (var i = 0; i < models.length; i++) {
+          if (String(models[i].id) === String(model.id)) { idx = i; break; }
+        }
+      }
+      if (idx >= 0) models[idx] = next; else models.push(next);
+      saveProviderModels(provider, models, function () {
+        var p = findProvider(provider.id);
+        if (p) openModelsModal(p);
       });
     });
+    var body = el("qvq-modal-body");
+    var cancel = body.querySelector("[data-form-cancel]");
+    if (cancel) cancel.onclick = function () { openModelsModal(provider); };
+    var smart = body.querySelector("#qvq-me-smart");
+    function setVal(id, value) {
+      var node = body.querySelector(id);
+      if (node) node.value = value == null ? "" : value;
+    }
+    function setCheck(id, value) {
+      var node = body.querySelector(id);
+      if (node) node.checked = !!value;
+    }
+    function detect(auto) {
+      if (auto && !smart.checked) return;
+      var mid = fv(body, "qvq-me-id");
+      if (!mid) return;
+      var status = body.querySelector("#qvq-me-status");
+      if (status) status.textContent = t("models_fetching");
+      api("/api/qvq/models/detect", "POST", {
+        provider: { id: provider.id, name: provider.name, base_url: provider.base_url },
+        model: mid
+      }).then(function (data) {
+        var meta = (data && data.ok && data.meta) || {};
+        if (!Object.keys(meta).length) {
+          if (status) status.textContent = t("model_detect_empty");
+          return;
+        }
+        if (meta.context_length != null) setVal("#qvq-me-ctx", meta.context_length);
+        if (meta.max_output_tokens != null) setVal("#qvq-me-maxout", meta.max_output_tokens);
+        setCheck("#qvq-me-image", meta.vision === true);
+        setCheck("#qvq-me-video", meta.video === true);
+        setCheck("#qvq-me-pdf", meta.files === true);
+        setCheck("#qvq-me-tool", meta.tool_call !== false);
+        setCheck("#qvq-me-reason", meta.reasoning === true);
+        if (meta.cost) {
+          if (meta.cost.input != null) setVal("#qvq-me-price-in", meta.cost.input);
+          if (meta.cost.output != null) setVal("#qvq-me-price-out", meta.cost.output);
+        }
+        if (status) status.textContent = t("model_detected");
+      }, function () {
+        if (status) status.textContent = t("model_detect_empty");
+      });
+    }
+    body.querySelector("#qvq-me-detect").onclick = function () { detect(false); };
+    body.querySelector("#qvq-me-id").onblur = function () { detect(true); };
   }
 
   function openModelModal(provider) {
@@ -326,20 +599,30 @@
       "<label class='qvq-label'>" + esc(t("models_baseurl")) + "</label>" +
       "<input class='qvq-input' id='qvq-mf-url' placeholder='https://api.deepseek.com/v1' />" +
       "<label class='qvq-label'>" + esc(t("models_apikey")) + "</label>" +
-      "<input class='qvq-input' id='qvq-mf-key' type='password' placeholder='sk-…' />" +
-      "<label class='qvq-label'>" + esc(t("models_id")) + "</label>" +
-      "<input class='qvq-input' id='qvq-mf-id' placeholder='deepseek-chat' />" +
-      "<div class='qvq-actions' style='margin-top:10px'><button class='qvq-btn small ghost' id='qvq-mf-fetch' type='button'>" + esc(t("models_fetch")) + "</button></div>" +
-      "<div id='qvq-mf-remote'></div>";
+      "<input class='qvq-input' id='qvq-mf-key' type='password' placeholder='sk-…' />";
+    if (!editingId) {
+      fields +=
+        "<label class='qvq-label'>" + esc(t("models_id")) + "</label>" +
+        "<input class='qvq-input' id='qvq-mf-id' placeholder='deepseek-chat' />" +
+        "<div class='qvq-tool-desc'>保存后会自动从 models.dev 补全能力与价格，可在「模型配置」里逐个调整</div>" +
+        "<div class='qvq-actions' style='margin-top:10px'><button class='qvq-btn small ghost' id='qvq-mf-fetch' type='button'>" + esc(t("models_fetch")) + "</button></div>" +
+        "<div id='qvq-mf-remote'></div>";
+    } else {
+      fields +=
+        "<div class='qvq-tool-desc'>模型能力/价格请在「模型配置」里编辑；这里保存不会改动模型列表。</div>" +
+        "<div class='qvq-actions'><button class='qvq-btn small ghost' id='qvq-mf-manage' type='button'>" + esc(t("model_manage")) + "</button></div>";
+    }
     openForm(editingId ? (provider.name || editingId) : t("models_add"), fields, function (body) {
       var payload = {
         id: editingId || fv(body, "qvq-mf-name").toLowerCase().replace(/[^a-z0-9-]/g, "-"),
         name: fv(body, "qvq-mf-name"),
         base_url: fv(body, "qvq-mf-url"),
-        api_key: fv(body, "qvq-mf-key"),
-        models: fv(body, "qvq-mf-id").split(",").map(function (x) { return x.trim(); }).filter(Boolean)
-          .map(function (id) { return { id: id, enabled: true }; })
+        api_key: fv(body, "qvq-mf-key")
       };
+      if (!editingId) {
+        payload.models = fv(body, "qvq-mf-id").split(",").map(function (x) { return x.trim(); }).filter(Boolean)
+          .map(function (id) { return { id: id, enabled: true }; });
+      }
       if (!payload.name || !payload.base_url) {
         toast(t("models_fetch_fail"), true);
         return;
@@ -347,8 +630,11 @@
       api("/api/qvq/providers/save", "POST", payload).then(function (data) {
         if (data && data.ok) {
           toast(t("saved"));
-          closeModal();
-          loadModels();
+          var pid = (data.provider && data.provider.id) || payload.id;
+          reloadModels(function () {
+            var p = findProvider(pid);
+            if (p) openModelsModal(p); else closeModal();
+          });
         } else {
           toast((data && data.error) || "error", true);
         }
@@ -369,7 +655,11 @@
     if (provider) {
       body.querySelector("#qvq-mf-name").value = provider.name || "";
       body.querySelector("#qvq-mf-url").value = provider.base_url || "";
-      body.querySelector("#qvq-mf-id").value = (provider.models || []).filter(function (m) { return m.enabled !== false; }).map(function (m) { return m.id; }).join(", ");
+    }
+    if (editingId) {
+      var manage = body.querySelector("#qvq-mf-manage");
+      if (manage) manage.onclick = function () { openModelsModal(provider); };
+      return;
     }
     body.querySelector("#qvq-mf-fetch").onclick = function () {
       var btn = this;
@@ -383,7 +673,7 @@
       btn.disabled = true;
       btn.textContent = t("models_fetching");
       box.innerHTML = "";
-      api("/api/qvq/providers/remote-models", "POST", { base_url: base_url, api_key: api_key, id: editingId }).then(function (data) {
+      api("/api/qvq/providers/remote-models", "POST", { base_url: base_url, api_key: api_key }).then(function (data) {
         btn.disabled = false;
         btn.textContent = t("models_fetch");
         if (data && data.error) {
@@ -397,7 +687,8 @@
         }
         box.innerHTML = "<div class='qvq-remote-list'>" + models.map(function (m) {
           var meta = [];
-          if (m.context_length) meta.push(m.context_length + " ctx");
+          if (m.context_length) meta.push(fmtNum(m.context_length) + " ctx");
+          if (m.max_output_tokens) meta.push(fmtNum(m.max_output_tokens) + " out");
           if (m.vision) meta.push("vision");
           if (m.tool_call) meta.push("tools");
           return "<label><input type='checkbox' data-mid='" + esc(m.id) + "'/> <span>" + esc(m.id) + "</span>" +

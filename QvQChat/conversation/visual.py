@@ -6,7 +6,10 @@ from .. import texts
 
 
 def _short(text, limit: int = 80) -> str:
-    text = " ".join(str(text or "").split())
+ 
+ 
+    text = str(text or "").replace("\\r", " ").replace("\\n", " ").replace("\\t", " ")
+    text = " ".join(text.split())
     return text if len(text) <= limit else text[:limit] + "…"
 
 
@@ -69,7 +72,7 @@ def build_sections(rounds: list | None, reply: str, tool_trace: list | None) -> 
 
     def flush_tools():
         if tool_group:
-            body = "\n\n".join(visual_call(e) for e in tool_group)
+            body = "\n".join(visual_call(e) for e in tool_group)
             sections.append(texts.t("forward_process_title") + "\n" + body)
             tool_group.clear()
 
