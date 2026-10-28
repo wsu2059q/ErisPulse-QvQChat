@@ -6,7 +6,10 @@ from .. import texts
 
 
 def _short(text, limit: int = 80) -> str:
-    text = " ".join(str(text or "").split())
+# 参数/输出里常见字面量 \n、\t（JSON 转义的代码片段）：先还原成空格再压缩，
+# 避免合并转发卡里出现满屏空行和 \n 字面量
+    text = str(text or "").replace("\\r", " ").replace("\\n", " ").replace("\\t", " ")
+    text = " ".join(text.split())
     return text if len(text) <= limit else text[:limit] + "…"
 
 
@@ -69,7 +72,7 @@ def build_sections(rounds: list | None, reply: str, tool_trace: list | None) -> 
 
     def flush_tools():
         if tool_group:
-            body = "\n\n".join(visual_call(e) for e in tool_group)
+            body = "\n".join(visual_call(e) for e in tool_group)
             sections.append(texts.t("forward_process_title") + "\n" + body)
             tool_group.clear()
 

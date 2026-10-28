@@ -61,6 +61,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin):
             ("GET", "/api/qvq/status", self.status),
             ("GET", "/api/qvq/models", self.models_get),
             ("POST", "/api/qvq/chain/save", self.chain_save),
+            ("POST", "/api/qvq/models/detect", self.models_detect),
+            ("POST", "/api/qvq/models/enrich", self.models_enrich),
             ("POST", "/api/qvq/providers/save", self.providers_save),
             ("POST", "/api/qvq/providers/delete", self.providers_delete),
             ("POST", "/api/qvq/providers/remote-models", self.providers_remote_models),

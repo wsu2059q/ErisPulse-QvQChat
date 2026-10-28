@@ -56,7 +56,6 @@ async def test_seed_labels_user_with_sender():
     assert seeded[0]["role"] == "user"
     assert "路人(u2)" in seeded[0]["content"]
     assert "更新框架到2.11.0" in seeded[0]["content"]
-    assert seeded[0]["content"].startswith(texts.t("seed_history_header"))
 
 
 async def test_seed_marks_bot_rows():
@@ -70,8 +69,8 @@ async def test_seed_marks_bot_rows():
     seeded = await main._seed_history(ev)
     entry = seeded[0]
     assert entry["role"] == "assistant"
-    assert texts.t("seed_bot_note") in entry["content"]
-    assert "📢 框架更新情况说明" in entry["content"]
+    assert entry["content"] == "📢 框架更新情况说明"# 标签不内联，避免被模型复读
+    assert texts.t("seed_bot_note") not in entry["content"]
 
 
 async def test_seed_unknown_sender_fallback():
@@ -207,3 +206,20 @@ async def test_scene_attribution_without_isolation():
     assert "活塞头" in system
     assert texts.t("scene_isolation_note")[:8] not in system
 
+
+
+def test_normalize_state_strips_legacy_seed_labels():
+    from QvQChat.conversation.service import ConversationService
+
+    note = texts.t("seed_bot_note")
+    header = texts.t("seed_history_header")
+    state = ConversationService._normalize_state({
+        "contexts": [
+            {"role": "assistant", "content": f"[{note}] hello"},
+            {"role": "user", "content": f"{header}\n路人(u1): hi"},
+            {"role": "assistant", "content": "keep"},
+        ]
+    })
+    assert state["contexts"][0]["content"] == "hello"
+    assert state["contexts"][1]["content"] == "路人(u1): hi"
+    assert state["contexts"][2]["content"] == "keep"
