@@ -77,9 +77,10 @@ async def test_deep_plan_injected_and_call_order():
     assert plan_request.messages[0]["content"] == REFLEXION_PLAN_PROMPT
     assert plan_request.tools is None
     assert "deploy the site" in plan_request.messages[-1]["content"]
-# 计划注入执行阶段 system 尾部 <task-plan> 块
+# 计划注入执行阶段 system 尾部 <task-plan> 块（system 现含 <session> 会话上下文，判首尾即可）
     exec_request = pool.calls[1][1]
-    assert exec_request.messages[0]["content"] == "SYS\n\n<task-plan>\n" + pool.plan + "\n</task-plan>"
+    assert exec_request.messages[0]["content"].startswith("SYS")
+    assert exec_request.messages[0]["content"].endswith("\n\n<task-plan>\n" + pool.plan + "\n</task-plan>")
     assert result.plan == pool.plan
     assert result.text == "done answer"
 # CRITIQUE 调用：CRITIQUE_PROMPT + 计划/回复/trace 摘要

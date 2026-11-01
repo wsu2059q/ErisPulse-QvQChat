@@ -1,4 +1,39 @@
 /* 登录页与其余视图片段 */
+/* 启动进度条：鉴权链在途时顶部细条流动，不拦截任何交互 */
+.qvq-bootbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 100001;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.qvq-bootbar.on {
+  opacity: 1;
+}
+.qvq-bootbar::before {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 38%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--qvq-accent), transparent);
+  animation: qvq-bootbar-flow 1s linear infinite;
+}
+@keyframes qvq-bootbar-flow {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(290%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qvq-bootbar::before {
+    animation: none;
+    transform: none;
+    width: 100%;
+  }
+}
 .qvq-login {
   position: fixed;
   inset: 0;
@@ -546,27 +581,29 @@
     max-width: none;
     flex: 1 1 120px;
   }
+/* 移动端触屏无 hover：按钮收回文档流尾部（小图标），标题侧省略号截断；
+   时间戳让位隐藏——此前 absolute 悬浮层会盖住标题右侧 */
   .qvq-chat-sacts {
+    position: static;
+    transform: none;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    gap: 0;
     opacity: 1;
+    pointer-events: auto;
   }
-  .qvq-chat-srow:hover .qvq-chat-stime,
-  .qvq-chat-srow .qvq-chat-stime {
-    opacity: 1;
+  .qvq-chat-sacts button {
+    width: 20px;
+    height: 20px;
   }
-/* 移动端触屏无 hover：按钮常显会挤压标题——改为悬浮层（absolute），不占布局位 */
-  .qvq-chat-srow {
-    position: relative;
+  .qvq-chat-sacts button svg {
+    width: 12px;
+    height: 12px;
   }
-  .qvq-chat-sacts {
-    position: absolute;
-    right: 6px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: var(--qvq-bg, rgba(15, 18, 24, 0.92));
-    border: 1px solid var(--qvq-bd);
-    border-radius: 8px;
-    padding: 2px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  .qvq-chat-stime {
+    display: none;
   }
   .qvq-msg {
     max-width: 94%;

@@ -75,6 +75,17 @@ class KnowledgeBase:
         raw = triggers if isinstance(triggers, (list, tuple)) else str(triggers).split(",")
         return [str(t).strip() for t in raw if str(t).strip()]
 
+    @staticmethod
+    def _visible(entry: dict, viewer: str | None) -> bool:
+        """可见域过滤：owner="" 全局对所有人可见；否则仅本会话（chat_key 全等）或
+        本适配器（owner == 平台名）可见。viewer=None（面板运维视角）不过滤。"""
+        if viewer is None:
+            return True
+        owner = str(entry.get("owner") or "")
+        if not owner:
+            return True
+        return owner == viewer or owner == viewer.split(":", 1)[0]
+
     def _default_cooldown(self) -> int:
         try:
             return int(getattr(self.cfg, "kb_cooldown_min", DEFAULT_COOLDOWN_MIN) or 0)
@@ -89,12 +100,14 @@ class KnowledgeBase:
         triggers: list | None = None,
         priority: int = 0,
         cooldown_min: int | None = None,
+        owner: str = "",
     ) -> dict:
         entry = {
             "id": uuid.uuid4().hex[:12],
             "title": str(title or "").strip() or "untitled",
             "content": str(content or ""),
             "source": str(source or ""),
+            "owner": str(owner or ""),
             "created": utils.now_ts(),
         }
         trig = self._norm_triggers(triggers)
@@ -105,6 +118,45 @@ class KnowledgeBase:
         entries = self._load()
         entries[entry["id"]] = entry
         self._save(entries)
+        return entry
+
+    def update(self, kb_id: str, title: str | None = None, content: str | None = None,
+               source: str | None = None, triggers: list | None = None,
+               owner: str | None = None) -> dict | None:
+        """编辑知识库条目：只改传入的字段；triggers 传 [] 清空触发词，None 不动。
+
+        内容变化时同步失效向量缓存，下一次检索按新内容重嵌入。
+        """
+        entries = self._load()
+        entry = entries.get(kb_id)
+        if not isinstance(entry, dict):
+            return None
+        if title is not None:
+            entry["title"] = str(title).strip() or "untitled"
+        content_changed = False
+        if content is not None and str(content) != entry.get("content", ""):
+            entry["content"] = str(content)
+            content_changed = True
+        if source is not None:
+            entry["source"] = str(source)
+        if owner is not None:
+            entry["owner"] = str(owner or "")
+        if triggers is not None:
+            trig = self._norm_triggers(triggers)
+            if trig:
+                entry["triggers"] = trig
+            else:
+                entry.pop("triggers", None)
+                entry.pop("priority", None)
+                entry.pop("cooldown_min", None)
+        entry["updated"] = utils.now_ts()
+        entries[kb_id] = entry
+        self._save(entries)
+        if content_changed:
+            try:
+                self.sdk.storage.delete(VEC_PREFIX + kb_id)
+            except Exception:
+                pass
         return entry
 
     def delete(self, kb_id: str) -> bool:
@@ -122,19 +174,23 @@ class KnowledgeBase:
     def get(self, kb_id: str) -> dict | None:
         return self._load().get(kb_id)
 
-    def _chunks(self) -> list[dict]:
+    def _chunks(self, viewer: str | None = None) -> list[dict]:
         out = []
         for entry in self._load().values():
+            if not self._visible(entry, viewer):
+                continue
             for piece in self.chunk(entry.get("content", "")):
                 out.append({"entry": entry, "text": piece})
         return out
 
 # ===== Lorebook 世界书（触发式注入） =====
 
-    def triggered(self, context_texts: list[str], now: float | None = None) -> list[dict]:
+    def triggered(self, context_texts: list[str], now: float | None = None,
+                  viewer: str | None = None) -> list[dict]:
         """扫描最近消息文本：任一 trigger 关键词命中（大小写不敏感包含）且不在冷却期
         → 按 priority 降序返回条目，并刷新 last_trigger_ts 写回 KV（命中即刷新）。
-        无 triggers 字段的条目不参与（保持词面/语义检索行为，两机制并存互补）。"""
+        无 triggers 字段的条目不参与（保持词面/语义检索行为，两机制并存互补）。
+        viewer 给定时按可见域过滤（会话/适配器私有条目不外泄）。"""
         if not getattr(self.cfg, "kb_triggers_enabled", True):
             return []
         texts = " \n ".join(str(t or "") for t in (context_texts or []) if str(t or "").strip()).lower()
@@ -145,6 +201,8 @@ class KnowledgeBase:
         hits: list[dict] = []
         changed = False
         for entry in entries.values():
+            if not self._visible(entry, viewer):
+                continue
             trig = [str(t).lower() for t in (entry.get("triggers") or []) if str(t).strip()]
             if not trig:
                 continue
@@ -183,7 +241,7 @@ class KnowledgeBase:
         self.sdk.storage.set(cache_key, {"model": model, "size": size, "overlap": overlap, "vecs": vecs})
         return vecs
 
-    def _semantic_search(self, query: str, top_k: int) -> list[dict] | None:
+    def _semantic_search(self, query: str, top_k: int, viewer: str | None = None) -> list[dict] | None:
         """embedding_enabled 且向量层可用时的余弦检索；None = 不可用/失败 → 调用方回退词面。"""
         if not getattr(self.cfg, "embedding_enabled", False) or not self.vectors.available(self.cfg):
             return None
@@ -193,6 +251,8 @@ class KnowledgeBase:
         qvec = qvecs[0]
         scored: list[tuple[float, dict, str]] = []
         for entry in self._load().values():
+            if not self._visible(entry, viewer):
+                continue
             texts = self.chunk(entry.get("content", ""))
             if not texts:
                 continue
@@ -220,15 +280,16 @@ class KnowledgeBase:
             )
         return results
 
-    def search(self, query: str, top_k: int = 2) -> list[dict]:
+    def search(self, query: str, top_k: int = 2, viewer: str | None = None) -> list[dict]:
+        """检索知识库。viewer=None 全量（面板）；给 chat_key 则全局条目 + 该会话/平台私有条目。"""
         tokens = _tokenize(query)
         if not tokens:
             return []
-        semantic = self._semantic_search(query, top_k)
+        semantic = self._semantic_search(query, top_k, viewer)
         if semantic is not None:
             return semantic
         scored = []
-        for chunk in self._chunks():
+        for chunk in self._chunks(viewer):
             chunk_tokens = _tokenize(chunk["text"])
             if not chunk_tokens:
                 continue
@@ -278,6 +339,7 @@ class KnowledgeBase:
                 triggers=item.get("triggers"),
                 priority=int(item.get("priority") or 0),
                 cooldown_min=int(item["cooldown_min"]) if item.get("cooldown_min") is not None else None,
+                owner=str(item.get("owner") or ""),
             )
             added += 1
         return added
