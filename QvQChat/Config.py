@@ -185,6 +185,8 @@ class QvQConfig(BaseConfig):
     humanize_echo_filter: bool = field(default=True, metadata=_desc("humanize_echo_filter", "丢弃适配器回投的自身出站消息（防回声在防抖窗口内触发二次决策）", "humanize", 3, "switch"))
     humanize_filter_enabled: bool = field(default=False, metadata=_desc("humanize_filter_enabled", "输出过滤器：复述对方上条时重答一次；句数超限按句号截断；结尾硬造反问去掉（失败不阻塞发送）", "humanize", 4, "switch"))
     humanize_filter_max_sentences: int = field(default=3, metadata=_desc("humanize_filter_max_sentences", "输出过滤器：单次回复句数上限，超出按句号边界截断（0 关闭句数与复述检测）", "humanize", 5, "number"))
+    humanize_recall_interval_hours: int = field(default=72, metadata=_desc("humanize_recall_interval_hours", "「记得你」记忆回捞提示的最小间隔（小时/用户，0 关闭该提示；相关记忆本身仍正常注入）", "humanize", 6, "number"))
+    humanize_recall_on_cold_only: bool = field(default=True, metadata=_desc("humanize_recall_on_cold_only", "回捞提示仅在对方先发起对话的回合出现，任务/定时触发的回合不提旧事", "humanize", 7, "switch"))
 
     memory_max: int = field(default=200, metadata=_desc("memory_max", "每会话长期记忆条数上限", "memory", 1, "number"))
     memory_recall: int = field(default=6, metadata=_desc("memory_recall", "每次对话注入的相关记忆条数上限", "memory", 2, "number"))
