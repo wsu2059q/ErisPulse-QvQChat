@@ -426,6 +426,8 @@
   function toast(msg, isErr) {
     var box = document.createElement("div");
     box.className = "qvq-toast" + (isErr ? " err" : "");
+    box.setAttribute("role", isErr ? "alert" : "status");
+    box.setAttribute("aria-live", isErr ? "assertive" : "polite");
     box.textContent = msg;
     document.body.appendChild(box);
     setTimeout(function () { box.remove(); }, 2600);
