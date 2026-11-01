@@ -83,3 +83,30 @@ def test_filter_reply_passes_normal():
     text, action = filter_reply("正常回答，一句话讲完。", "在干嘛", 3)
     assert action == "pass"
     assert text == "正常回答，一句话讲完。"
+
+
+ 
+
+
+async def test_recall_hint_gated_by_cooldown_and_initiation():
+    from fakes import FakeMain
+
+    main = FakeMain()
+    svc = main.conversations
+    main.memory_entries = None
+ 
+    main.sdk.storage._data["QvQChat:mem:onebot11:group:1"] = [
+        {"content": "上次一起去吃了火锅", "ts": 1.0, "importance": 5}
+    ] if hasattr(main.sdk.storage, "_data") else None
+    allowed = svc._recall_hint_allowed("onebot11:group:1", "吃什么", "u1")
+    assert allowed is True
+ 
+    main.sdk.storage.set("QvQChat:recall_last:u1", __import__("time").time())
+    assert svc._recall_hint_allowed("onebot11:group:1", "吃什么", "u1") is False
+ 
+    main2 = FakeMain(humanize_recall_interval_hours=0)
+    assert main2.conversations._recall_hint_allowed("k", "吃什么", "u1") is False
+ 
+    main3 = FakeMain(humanize_recall_on_cold_only=True)
+    main3.sdk.storage.set("QvQChat:recall_last:u1", 0)
+    assert main3.conversations._recall_hint_allowed("k", "", "u1") is False

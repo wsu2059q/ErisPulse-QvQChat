@@ -22,6 +22,8 @@ CONV_INDEX_KEY = "QvQChat:conv_index"
  
 USER_SEEN_PREFIX = "QvQChat:user_seen:"
 USER_SEEN_MAX = 20
+ 
+RECALL_LAST_PREFIX = "QvQChat:recall_last:"
 UPLOAD_DIR = Path("data/QvQChat/uploads")
 
 DASHBOARD_PLATFORM = "dashboard"
@@ -409,6 +411,21 @@ class ConversationService:
         state["group_name"] = name
         self._save(chat_key, state)
 
+    def _recall_hint_allowed(self, chat_key: str, text: str, user_id: str) -> bool:
+        """H6：回捞提示准入——仅对方先开口的回合 + 每用户冷却。"""
+        hours = float(getattr(self.config, "humanize_recall_interval_hours", 72) or 0)
+        if hours <= 0:
+            return False
+        if getattr(self.config, "humanize_recall_on_cold_only", True) and not str(text or "").strip():
+            return False
+        if not user_id:
+            return False
+        try:
+            last = float(self.sdk.storage.get(RECALL_LAST_PREFIX + str(user_id), 0) or 0)
+        except (TypeError, ValueError):
+            last = 0.0
+        return (utils.now_ts() - last) >= hours * 3600
+
     def user_name_of(self, chat_key: str) -> str:
         return str(self._state(chat_key).get("user_name") or "")
 
@@ -741,6 +758,14 @@ class ConversationService:
         if recalled:
             lines = "\n".join(f"- {entry.get('content', '')}" for entry in recalled)
             parts.append(SystemPart("memory", "Related memories:\n" + lines))
+ 
+ 
+        if recalled and self._recall_hint_allowed(chat_key, text, sender_id or cross_user_id):
+            parts.append(SystemPart("recall_hint", texts.t("recall_hint_note")))
+            try:
+                self.sdk.storage.set(RECALL_LAST_PREFIX + str(sender_id or cross_user_id), utils.now_ts())
+            except Exception:
+                pass
         user_msg: dict = {"role": "user", "content": text}
         if images:
             pool = getattr(self.main, "pool", None)
