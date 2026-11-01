@@ -1546,60 +1546,91 @@
     };
   }
 
+  var auditLoaded = { entries: [], total: 0 };
+
   function loadAudit() {
-    loadInto("qvq-audit-list", function () { return api("/api/qvq/audit?limit=500"); }, function (box, data) {
-      var entries = (data && data.entries) || [];
-      var filter = el("qvq-audit-filter");
-      var tools = {};
-      var users = {};
-      var last24 = 0;
-      var cutoff = Date.now() / 1000 - 86400;
-      entries.forEach(function (e) {
-        if (e.tool) tools[e.tool] = (tools[e.tool] || 0) + 1;
-        if (e.user_id) users[e.user_id] = (users[e.user_id] || 0) + 1;
-        if ((e.ts || 0) >= cutoff) last24++;
-      });
-      var cards = [
-        { cap: t("audit_total"), num: entries.length },
-        { cap: t("audit_tools_n"), num: Object.keys(tools).length },
-        { cap: t("audit_users_n"), num: Object.keys(users).length },
-        { cap: t("audit_last24h"), num: last24 }
-      ];
-      el("qvq-audit-stats").innerHTML = cards.map(function (c) {
-        return '<div class="qvq-stat"><div class="num">' + esc(c.num) + '</div><div class="cap">' + esc(c.cap) + "</div></div>";
-      }).join("");
-      var render = function (keyword) {
-        var shown = entries.filter(function (e) {
-          if (!keyword) return true;
-          return (e.tool || "").toLowerCase().indexOf(keyword) >= 0 ||
-            (e.user_id || "").indexOf(keyword) >= 0 ||
-            (e.origin || "").toLowerCase().indexOf(keyword) >= 0 ||
-            JSON.stringify(e.detail || {}).toLowerCase().indexOf(keyword) >= 0;
-        });
-        if (!shown.length) {
-          el("qvq-audit-list").innerHTML = '<div class="qvq-empty">' + esc(t("audit_empty")) + "</div>";
-          return;
-        }
-        var rows = shown.map(function (entry, idx) {
-          return "<tr class='qvq-audit-row' data-idx='" + idx + "'>" +
-            "<td class='qvq-col-time'>" + esc(fmtTime(entry.ts)) + "</td>" +
-            "<td><b>" + esc(entry.tool) + "</b></td>" +
-            "<td>" + esc(entry.user_id || "-") + "</td>" +
-            "<td>" + esc(entry.origin || "-") + "</td>" +
-            "<td class='qvq-tool-desc qvq-audit-detail'>" + esc(auditSummary(entry)) + "</td></tr>";
-        }).join("");
-        el("qvq-audit-list").innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("col_time")) + "</th><th>" + esc(t("col_tool")) +
-          "</th><th>" + esc(t("col_user")) + "</th><th>" + esc(t("col_origin")) + "</th><th>" + esc(t("col_detail")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
-        el("qvq-audit-list").querySelectorAll("tr.qvq-audit-row").forEach(function (tr) {
-          tr.onclick = function () {
-            var entry = shown[parseInt(tr.getAttribute("data-idx"), 10)];
-            if (entry) showAuditModal(entry);
-          };
-        });
-      };
-      filter.oninput = function () { render(filter.value.trim().toLowerCase()); };
-      render(filter.value.trim().toLowerCase());
+    auditLoaded.entries = [];
+    loadInto("qvq-audit-list", function () { return fetchAuditPage(0); }, function (box, data) {
+      auditLoaded.entries = (data && data.entries) || [];
+      auditLoaded.total = (data && data.total) || auditLoaded.entries.length;
+      renderAudit();
     });
+  }
+
+  function fetchAuditPage(offset) {
+    return api("/api/qvq/audit?limit=200&offset=" + offset);
+  }
+
+  function renderAudit() {
+    var entries = auditLoaded.entries;
+    var filter = el("qvq-audit-filter");
+    var tools = {};
+    var users = {};
+    var last24 = 0;
+    var cutoff = Date.now() / 1000 - 86400;
+    entries.forEach(function (e) {
+      if (e.tool) tools[e.tool] = (tools[e.tool] || 0) + 1;
+      if (e.user_id) users[e.user_id] = (users[e.user_id] || 0) + 1;
+      if ((e.ts || 0) >= cutoff) last24++;
+    });
+    var cards = [
+      { cap: t("audit_total"), num: auditLoaded.total },
+      { cap: t("audit_tools_n"), num: Object.keys(tools).length },
+      { cap: t("audit_users_n"), num: Object.keys(users).length },
+      { cap: t("audit_last24h"), num: last24 }
+    ];
+    el("qvq-audit-stats").innerHTML = cards.map(function (c) {
+      return '<div class="qvq-stat"><div class="num">' + esc(c.num) + '</div><div class="cap">' + esc(c.cap) + "</div></div>";
+    }).join("");
+    var render = function (keyword) {
+      var shown = entries.filter(function (e) {
+        if (!keyword) return true;
+        return (e.tool || "").toLowerCase().indexOf(keyword) >= 0 ||
+          (e.user_id || "").indexOf(keyword) >= 0 ||
+          (e.origin || "").toLowerCase().indexOf(keyword) >= 0 ||
+          JSON.stringify(e.detail || {}).toLowerCase().indexOf(keyword) >= 0;
+      });
+      if (!shown.length) {
+        el("qvq-audit-list").innerHTML = '<div class="qvq-empty">' + esc(t("audit_empty")) + "</div>";
+        return;
+      }
+      var rows = shown.map(function (entry, idx) {
+        return "<tr class='qvq-audit-row' data-idx='" + idx + "'>" +
+          "<td class='qvq-col-time'>" + esc(fmtTime(entry.ts)) + "</td>" +
+          "<td><b>" + esc(entry.tool) + "</b></td>" +
+          "<td>" + esc(entry.user_id || "-") + "</td>" +
+          "<td>" + esc(entry.origin || "-") + "</td>" +
+          "<td class='qvq-tool-desc qvq-audit-detail'>" + esc(auditSummary(entry)) + "</td></tr>";
+      }).join("");
+      var more = "";
+      if (entries.length < auditLoaded.total) {
+        more = '<div class="qvq-actions" style="justify-content:center"><button type="button" class="qvq-btn small ghost" id="qvq-audit-more">' +
+          esc(t("load_more")) + " (" + entries.length + "/" + auditLoaded.total + ")</button></div>";
+      }
+      el("qvq-audit-list").innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("col_time")) + "</th><th>" + esc(t("col_tool")) +
+        "</th><th>" + esc(t("col_user")) + "</th><th>" + esc(t("col_origin")) + "</th><th>" + esc(t("col_detail")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>" + more;
+      el("qvq-audit-list").querySelectorAll("tr.qvq-audit-row").forEach(function (tr) {
+        tr.onclick = function () {
+          var entry = shown[parseInt(tr.getAttribute("data-idx"), 10)];
+          if (entry) showAuditModal(entry);
+        };
+      });
+      var moreBtn = el("qvq-audit-more");
+      if (moreBtn) {
+        moreBtn.onclick = function () {
+          moreBtn.disabled = true;
+          fetchAuditPage(auditLoaded.entries.length).then(function (data) {
+            if (data && Array.isArray(data.entries)) {
+              auditLoaded.entries = auditLoaded.entries.concat(data.entries);
+              auditLoaded.total = data.total || auditLoaded.total;
+            }
+            renderAudit();
+          }, function () { renderAudit(); });
+        };
+      }
+    };
+    filter.oninput = function () { render(filter.value.trim().toLowerCase()); };
+    render(filter.value.trim().toLowerCase());
   }
 
   var settingsFields = [];

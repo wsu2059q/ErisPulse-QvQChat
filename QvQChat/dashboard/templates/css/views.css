@@ -1031,3 +1031,17 @@
 /* 设置字段名默认隐藏，开发者模式显示 */
 .qvq-key-tag { display: none; }
 body.qvq-show-keys .qvq-key-tag { display: inline; }
+
+/* 移动端表格：窄屏横向滚动而非挤压 */
+@media (max-width: 720px) {
+  .qvq-table {
+    display: block;
+    overflow-x: auto;
+    min-width: 520px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .qvq-table thead, .qvq-table tbody {
+    display: table;
+    width: 100%;
+  }
+}

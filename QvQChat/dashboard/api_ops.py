@@ -122,7 +122,15 @@ class OpsApiMixin:
             limit = max(1, min(int(self._query(request, "limit") or 200), 500))
         except Exception:
             limit = 200
-        return {"entries": list(reversed(entries[-limit:]))}
+# 倒序分页：offset 跳过最新 N 条，返回该页 + 总数（前端“加载更多”用）
+        try:
+            offset = max(0, int(self._query(request, "offset") or 0))
+        except Exception:
+            offset = 0
+        newest_first = list(reversed(entries))
+        total = len(newest_first)
+        page = newest_first[offset : offset + limit]
+        return {"entries": page, "total": total, "offset": offset, "limit": limit}
 
 # ===== 参与决策（participation）观测 =====
 # 提供者目录（qvq_decision 约定服务）+ 输出预算现状 + 最近决策环形日志。
