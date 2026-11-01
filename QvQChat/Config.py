@@ -187,6 +187,10 @@ class QvQConfig(BaseConfig):
     humanize_filter_max_sentences: int = field(default=3, metadata=_desc("humanize_filter_max_sentences", "输出过滤器：单次回复句数上限，超出按句号边界截断（0 关闭句数与复述检测）", "humanize", 5, "number"))
     humanize_recall_interval_hours: int = field(default=72, metadata=_desc("humanize_recall_interval_hours", "「记得你」记忆回捞提示的最小间隔（小时/用户，0 关闭该提示；相关记忆本身仍正常注入）", "humanize", 6, "number"))
     humanize_recall_on_cold_only: bool = field(default=True, metadata=_desc("humanize_recall_on_cold_only", "回捞提示仅在对方先发起对话的回合出现，任务/定时触发的回合不提旧事", "humanize", 7, "switch"))
+    humanize_budget_seconds: float = field(default=7.0, metadata=_desc("humanize_budget_seconds", "单次回复总响应预算（秒，防抖+生成+打字延迟）：超时按 延迟减半→归零→多条合并为一条 降级，话一定说完只是放弃节奏；0 关闭", "humanize", 8, "number", minimum=0, maximum=60))
+    humanize_interrupt: bool = field(default=True, metadata=_desc("humanize_interrupt", "硬打断：上一轮回复还没发完时，收到强信号立即丢弃未发短句，新消息优先处理（已发出的句子不撤）", "humanize", 9, "switch"))
+    humanize_interrupt_signals: list[str] = field(default_factory=lambda: ["mention", "reply", "burst", "urge"], metadata=_desc("humanize_interrupt_signals", "硬打断信号：mention=被@ reply=引用回复 burst=同一人10秒内连发 urge=催促词", "humanize", 10, "checks", options=["mention", "reply", "burst", "urge"], items="interrupt_signals"))
+    humanize_recall_message: bool = field(default=True, metadata=_desc("humanize_recall_message", "打断信号含纠错词（撤回/说错/发错）时，主动撤回机器人上一条消息（平台需支持 delete_msg，失败静默）", "humanize", 11, "switch"))
 
     memory_max: int = field(default=200, metadata=_desc("memory_max", "每会话长期记忆条数上限", "memory", 1, "number"))
     memory_recall: int = field(default=6, metadata=_desc("memory_recall", "每次对话注入的相关记忆条数上限", "memory", 2, "number"))
