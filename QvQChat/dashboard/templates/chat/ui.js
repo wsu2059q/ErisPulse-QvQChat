@@ -105,6 +105,21 @@
     box.querySelector("[data-retry]").onclick = retry;
   }
 
+   
+  function cardifyTables(root) {
+    (root || document).querySelectorAll("table.qvq-table").forEach(function (table) {
+      var ths = table.querySelectorAll("thead th");
+      if (!ths.length) return;
+      table.setAttribute("data-cards", "1");
+      table.querySelectorAll("tbody tr").forEach(function (tr) {
+        var tds = tr.querySelectorAll("td");
+        for (var i = 0; i < tds.length && i < ths.length; i++) {
+          tds[i].setAttribute("data-col", ths[i].textContent.trim());
+        }
+      });
+    });
+  }
+
   function loadInto(boxId, fetcher, render) {
     var box = el(boxId);
     if (!box) return;
@@ -116,6 +131,7 @@
           return;
         }
         render(box, data || {});
+        try { cardifyTables(box); } catch (e) {}
       }, function () {
         listError(box, run);
       });

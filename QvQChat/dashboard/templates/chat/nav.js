@@ -237,17 +237,21 @@
         var patch = { chat_key: key };
         patch[act === "pin" ? "pinned" : "archived"] = !on;
         if (act === "delete") {
-          confirmDialog(t("session_delete_confirm")).then(function (ok) {
-            if (!ok) return;
-            api("/api/qvq/sessions/delete", "POST", { chat_key: key }).then(function () {
-              if (key === chatSession) {
-                var nextKey = chatMeta.sessions.filter(function (s3) { return !s3.archived && s3.chat_key !== key; })[0];
-                chatSession = "pending";
-                switchChatSession(nextKey ? nextKey.chat_key : "dashboard:private:web");
-              }
-              loadChatMeta();
+ 
+          api("/api/qvq/sessions/delete", "POST", { chat_key: key }).then(function (r) {
+            if (key === chatSession) {
+              var nextKey = chatMeta.sessions.filter(function (s3) { return !s3.archived && s3.chat_key !== key; })[0];
+              chatSession = "pending";
+              switchChatSession(nextKey ? nextKey.chat_key : "dashboard:private:web");
+            }
+            loadChatMeta();
+            if (r && r.undo) {
+              toastUndo(t("session_deleted"), function () {
+                api("/api/qvq/trash/restore", "POST", { token: r.undo }).then(function () { loadChatMeta(); });
+              });
+            } else {
               toast(t("session_deleted"));
-            });
+            }
           });
           return;
         }
