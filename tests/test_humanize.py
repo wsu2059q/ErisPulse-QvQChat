@@ -48,3 +48,38 @@ def test_echo_filter_can_be_disabled():
     main = make_main(humanize_echo_filter=False)
     ev = FakeChatEvent(text="回声", group=True, group_id="1", user_id="bot")
     assert is_self_event(main.cfg, main.sdk, ev) is False
+
+
+# ===== H4 输出过滤器 =====
+
+
+def test_filter_reply_parrot_detection():
+    from QvQChat.conversation.rhythm import filter_reply
+
+    text, action = filter_reply("今天天气不错，你说今天天气不错。", "今天天气不错", 3)
+    assert action == "parrot"
+
+
+def test_filter_reply_trims_sentences():
+    from QvQChat.conversation.rhythm import filter_reply
+
+    text, action = filter_reply("一。二。三。四。五。", "别的", 3)
+    assert action == "trimmed"
+    assert text == "一。二。三。"
+
+
+def test_filter_reply_strips_trailing_question():
+    from QvQChat.conversation.rhythm import filter_reply
+
+# 3 句里 2 句是问句（占比过半）→ 去掉结尾硬造的反问，保留真实信息问句
+    text, action = filter_reply("我吃了。你吃了吗？还要去哪？", "在干嘛", 5)
+    assert action == "trimmed"
+    assert text == "我吃了。你吃了吗？"
+
+
+def test_filter_reply_passes_normal():
+    from QvQChat.conversation.rhythm import filter_reply
+
+    text, action = filter_reply("正常回答，一句话讲完。", "在干嘛", 3)
+    assert action == "pass"
+    assert text == "正常回答，一句话讲完。"
