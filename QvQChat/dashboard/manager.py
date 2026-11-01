@@ -117,6 +117,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin):
             ("POST", "/api/qvq/session/share", self.session_share),
             ("POST", "/api/qvq/session/share/revoke", self.session_share_revoke),
             ("POST", "/api/qvq/sessions/reset", self.sessions_reset),
+            ("POST", "/api/qvq/session/rename", self.session_rename),
+            ("POST", "/api/qvq/session/regenerate", self.session_regenerate),
             ("GET", "/api/qvq/audit", self.audit_get),
             ("GET", "/api/qvq/config", self.config_get),
             ("POST", "/api/qvq/config", self.config_set),

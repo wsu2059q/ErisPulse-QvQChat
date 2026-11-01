@@ -15,6 +15,7 @@
     });
     return {
       role: m.role, text: contentText(m.content), idx: start + i,
+      ts: m.ts || 0,
       steps: traceToSteps(m.trace),
       rounds: Array.isArray(m.rounds) ? m.rounds : null,
       atts: atts,
@@ -187,11 +188,21 @@
           "</div>"
         : "";
       var freshCls = m.fresh ? " qvq-msg-new" : "";
+      var timeAttr = m.ts ? ' title="' + esc(new Date(m.ts * 1000).toLocaleString()) + '"' : "";
       if (m.role === "user") {
 
-        return '<div class="qvq-msg-wrap"><div class="qvq-msg me' + freshCls + '">' + inner + body + '</div>' + acts + "</div>";
+        return '<div class="qvq-msg-wrap"' + timeAttr + '><div class="qvq-msg me' + freshCls + '">' + inner + body + '</div>' + acts + "</div>";
       }
-      return '<div class="qvq-msg bot' + freshCls + '">' + stepsBlock + inner + body + "</div>";
+// F2 AI 消息操作条：复制所有；重新生成仅最后一条（弹回原问题走正常发送管线）
+      var lastBot = -1;
+      for (var bi = 0; bi < chatHistory.length; bi++) {
+        if (chatHistory[bi].role === "assistant") lastBot = bi;
+      }
+      var botActs = '<div class="qvq-msg-acts">' +
+        '<button type="button" data-copy-msg="' + i + '" title="' + esc(t("copy")) + '"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
+        (i === lastBot && !chatBusy ? '<button type="button" data-regen="1" title="' + esc(t("regen")) + '"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button>' : "") +
+        "</div>";
+      return '<div class="qvq-msg-wrap"' + timeAttr + '><div class="qvq-msg bot' + freshCls + '">' + stepsBlock + inner + body + "</div>" + botActs + "</div>";
     });
     var prevTop = stick ? 0 : box.scrollTop;
     box.innerHTML = build.join("");
@@ -199,9 +210,28 @@
       img.onclick = function () {
         var m = chatHistory[parseInt(img.getAttribute("data-idx"), 10)] || {};
         var att = ((m.atts || []).filter(function (a) { return a.isImage; })[0]) || {};
-        openModal(att.name || "image", '<img style="max-width:100%;border-radius:12px" src="' + att.data + '" alt=""/>');
+        openImageViewer(att.name || "image", att.data);
       };
     });
+    var regenBtn = box.querySelector("[data-regen]");
+    if (regenBtn) {
+      regenBtn.onclick = function () {
+        regenBtn.disabled = true;
+        api("/api/qvq/session/regenerate", "POST", { chat_key: chatSession }).then(function (r) {
+          regenBtn.disabled = false;
+          if (r && r.ok && r.text) {
+            loadChatHistory();
+            var input = el("qvq-chat-input");
+            if (input) { input.value = r.text; input.dispatchEvent(new Event("input")); }
+            sendChat();
+          } else if (r && r.__http === 409) {
+            toast((r && r.error) || "busy", true);
+          } else {
+            toast((r && r.error) || "error", true);
+          }
+        }, function () { regenBtn.disabled = false; });
+      };
+    }
     box.querySelectorAll("[data-copy-msg]").forEach(function (btn) {
       btn.onclick = function () {
         var m = chatHistory[parseInt(btn.getAttribute("data-copy-msg"), 10)] || {};
@@ -224,6 +254,41 @@
     box.scrollTop = box.scrollHeight;
   }
 
+
+  // F2 图片查看器：滚轮缩放/双击复位/旋转
+  function openImageViewer(name, src) {
+    openModal(name, "<div class='qvq-img-viewer'>" +
+      "<div class='qvq-img-stage'><img src='" + src + "' alt=''/></div>" +
+      "<div class='qvq-img-bar'>" +
+      "<button type='button' data-z='in' title='+'>+</button>" +
+      "<button type='button' data-z='out' title='-'>−</button>" +
+      "<button type='button' data-rot='1' title='↻'>↻</button>" +
+      "<button type='button' data-z='reset' title='⤾'>⤾</button>" +
+      "</div></div>");
+    var body = el("qvq-modal-body");
+    var img = body.querySelector(".qvq-img-stage img");
+    var scale = 1, rotate = 0;
+    function apply() {
+      img.style.transform = "scale(" + scale + ") rotate(" + rotate + "deg)";
+    }
+    body.querySelectorAll("[data-z]").forEach(function (btn) {
+      btn.onclick = function () {
+        var z = btn.getAttribute("data-z");
+        if (z === "in") scale = Math.min(6, scale * 1.25);
+        else if (z === "out") scale = Math.max(0.2, scale / 1.25);
+        else { scale = 1; rotate = 0; }
+        apply();
+      };
+    });
+    var rotBtn = body.querySelector("[data-rot]");
+    if (rotBtn) rotBtn.onclick = function () { rotate = (rotate + 90) % 360; apply(); };
+    img.onwheel = function (e) {
+      e.preventDefault();
+      scale = Math.min(6, Math.max(0.2, scale * (e.deltaY < 0 ? 1.12 : 0.89)));
+      apply();
+    };
+    img.ondblclick = function () { scale = 1; rotate = 0; apply(); };
+  }
 
   function closeMsgEditor() {
     document.querySelectorAll(".qvq-msg-wrap.editing").forEach(function (w) {
