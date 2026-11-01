@@ -107,7 +107,7 @@ async def test_residue_recovers_via_run_prompt_and_pops_duplicated_user():
     chat_key = "test:private:1"
 # 悬空现场：prepare 已把该轮 user 消息持久化为 contexts 末条 + inflight 残留标记
     main.sessions.append_user(chat_key, "在吗？")
-    set_marker(main, chat_key, "在吗？", age=600)
+    set_marker(main, chat_key, "在吗？", age=300)
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
 # 经 run_prompt 重跑（origin=recovery，send=True）
     assert main.prompts == [(chat_key, "在吗？", {"origin": "recovery", "send": True})]
@@ -122,7 +122,7 @@ async def test_residue_pop_mismatch_still_recovers():
 # 末条与记录文本不一致（pop 失败）：上下文原样保留，仍照常重跑
     main.sessions.append(chat_key, "assistant", "旧回答")
     main.sessions.append_user(chat_key, "另一句话")
-    set_marker(main, chat_key, "在吗？", age=600)
+    set_marker(main, chat_key, "在吗？", age=300)
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
     assert main.prompts == [(chat_key, "在吗？", {"origin": "recovery", "send": True})]
     contexts = main.sessions.get_contexts(chat_key)
@@ -133,7 +133,7 @@ async def test_residue_pop_mismatch_still_recovers():
 async def test_recovery_disabled_clears_marker_without_rerun():
     main = RecoveryMain(recovery_enabled=False)
     chat_key = "test:private:1"
-    set_marker(main, chat_key, "在吗？", age=600)
+    set_marker(main, chat_key, "在吗？", age=300)
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
     assert main.prompts == []
     assert inflight_keys(main.sdk) == []
@@ -268,3 +268,29 @@ def test_pop_last_user_if_variants():
     service.replace_contexts(chat_key, [{"role": "user", "content": [{"type": "text", "text": "看图"}]}])
     assert service.pop_last_user_if(chat_key, "看图") is True
     assert service.get_contexts(chat_key) == []
+
+
+async def test_stale_inflight_marks_dropped_not_rerun():
+    """陈旧标记（>RECOVERY_MAX_AGE）直接清除不重跑——重启后不再重放几小时前的旧话题。"""
+    main = RecoveryMain()
+    chat_key = "test:private:1"
+    main.sessions.append_user(chat_key, "几小时前的问题")
+    set_marker(main, chat_key, "几小时前的问题", age=7200)
+    await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
+    assert main.prompts == []  # 陈旧标记不重跑
+# 标记已被清除：再次重启也不会再跑
+    import sqlite3  # noqa: F401
+    assert main.sdk.storage.get("QvQChat:inflight:" + chat_key, None) is None
+
+
+async def test_recovery_run_cap_limits_batch():
+    """单次启动重跑数量有上限，超出部分留待下次（防雪崩式全量重放）。"""
+    main = RecoveryMain()
+    for i in range(8):
+        ck = f"test:private:{i}"
+        main.sessions.append_user(ck, f"问题{i}")
+        set_marker(main, ck, f"问题{i}", age=120)
+    await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
+    from QvQChat.chat.recovery import RECOVERY_RUN_CAP
+
+    assert len(main.prompts) <= RECOVERY_RUN_CAP

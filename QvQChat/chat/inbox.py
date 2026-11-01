@@ -825,7 +825,15 @@ class InboxMixin(RecoveryMixin):
                 await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None))
                 self._drain_waiting(chat_key)
             finally:
-                self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+# 删除失败必须当场暴露并重试：残留标记会在下次重启被恢复例程重放成"自动重发"
+                try:
+                    self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+                except Exception as e:
+                    self.logger.warning(f"inflight marker delete failed ({chat_key}): {e}")
+                    try:
+                        self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+                    except Exception as e2:
+                        self.logger.error(f"inflight marker delete retry failed ({chat_key}): {e2}")
         except Exception as e:
             # 失败通知按来源区分：用户主动触发（chat/dashboard 等才收完整错误）；
             # 被动触发（plugin 插话等）用户没有发起消息，默认静默只记日志，避免错误刷屏
