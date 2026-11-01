@@ -66,7 +66,6 @@
     if (mmBtn) mmBtn.onclick = function (e) { e.stopPropagation(); toggleMmMenu(); };
     var mentionBtn = el("qvq-chat-mention");
     if (mentionBtn) mentionBtn.onclick = function (e) { e.stopPropagation(); toggleMentionMenu(); };
-    startChatSync();
     var settingsBtn = el("qvq-chat-settings");
     if (settingsBtn) settingsBtn.onclick = openSessionSettings;
     var shareBtn = el("qvq-chat-share");
@@ -76,8 +75,6 @@
     document.addEventListener("click", function () { closeAllMenus(); });
     enhanceSelects();
 
-    var activeNav = el("qvq-nav").querySelector(".qvq-nav-btn.active");
-    if (activeNav) switchTab(activeNav.getAttribute("data-tab"));
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && el("qvq-modal").style.display !== "none") closeModal();
 // 焦点圈禁：模态打开时 Tab 循环留在模态内
@@ -226,6 +223,16 @@
       reader.readAsText(file);
       this.value = "";
     };
+  }
+
+  // 数据引导：鉴权就绪后才拉取/触发加载（initApp 只绑交互，二者分离让
+  // 鉴权链在途时界面已可操作，而不是整页假死）
+  function bootData() {
+    if (window.__qvq_booted__) return;
+    window.__qvq_booted__ = true;
+    startChatSync();
+    var activeNav = el("qvq-nav").querySelector(".qvq-nav-btn.active");
+    if (activeNav) switchTab(activeNav.getAttribute("data-tab"));
     renderChat();
     loadOverview();
   }
@@ -250,14 +257,24 @@
   })();
 
   window.loadQvQChatView = function () {
+    initApp();
+    var bar = el("qvq-bootbar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "qvq-bootbar";
+      document.body.appendChild(bar);
+    }
+    bar.classList.add("on");
     resolveToken().then(function (tk) {
       if (tk) {
         activeToken = tk;
         hideLogin();
-        initApp();
+        bootData();
       } else {
         showLogin();
       }
+      bar.classList.remove("on");
+      if (window.__qvqBootDone__) window.__qvqBootDone__();
     });
   };
 

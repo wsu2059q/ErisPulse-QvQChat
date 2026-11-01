@@ -82,7 +82,7 @@ class TrashMixin:
         payload = entry.get("payload")
         try:
             if kind == "session":
-                from .conversation.service import CONV_PREFIX
+                from ..conversation.service import CONV_PREFIX
 
                 self.sdk.storage.set(CONV_PREFIX + str(payload.get("chat_key") or ""), payload.get("state"))
             elif kind == "skill":
@@ -156,6 +156,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, TrashMixin
             ("GET", "/api/qvq/participation", self.participation_get),
             ("GET", "/api/qvq/kb", self.kb_get),
             ("POST", "/api/qvq/kb/add", self.kb_add),
+            ("POST", "/api/qvq/kb/update", self.kb_update),
             ("POST", "/api/qvq/kb/delete", self.kb_delete),
             ("GET", "/api/qvq/kb/export", self.kb_export),
             ("POST", "/api/qvq/kb/import", self.kb_import),

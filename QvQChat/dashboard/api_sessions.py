@@ -99,8 +99,8 @@ class SessionsApiMixin:
         chat_key = str((body or {}).get("chat_key") or "")
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
- 
-        from .conversation.service import CONV_PREFIX
+         
+        from ..conversation.service import CONV_PREFIX
 
         state = self.sdk.storage.get(CONV_PREFIX + chat_key, None)
         undo = ""

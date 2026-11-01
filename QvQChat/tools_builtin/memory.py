@@ -50,13 +50,13 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="remember",
         access="safe",
-        description="Store a long-term memory for the current chat (or globally). Use for stable facts about the user, preferences, ongoing matters.",
+        description="Store a long-term memory. DEFAULT scope is THIS session; use scope=global ONLY when the user explicitly asks to remember it bot-wide (e.g. \"帮我全局记住\"). Use for stable facts, preferences, ongoing matters.",
         parameters=_schema(
             {
                 "content": _s(type="string", description="The fact to remember"),
                 "category": _s(type="string", description="Category like preference / fact / todo"),
                 "importance": _s(type="integer", description="1-5, higher survives longer; default 3"),
-                "scope": _s(type="string", description="chat or global"),
+                "scope": _s(type="string", description="chat (default) / global — global requires the user's explicit request"),
             },
             ["content"],
         ),
@@ -70,7 +70,7 @@ def register(registry: ToolRegistry, main) -> None:
             {
                 "query": _s(type="string", description="Search keywords; empty returns the newest ones"),
                 "limit": _s(type="integer", description="Max entries, default from config"),
-                "scope": _s(type="string", description="chat or global"),
+                "scope": _s(type="string", description="chat (default) / global — global requires the user's explicit request"),
             },
             [],
         ),
@@ -83,7 +83,7 @@ def register(registry: ToolRegistry, main) -> None:
         parameters=_schema(
             {
                 "query": _s(type="string", description="Text that the memories to delete contain"),
-                "scope": _s(type="string", description="chat or global"),
+                "scope": _s(type="string", description="chat (default) / global — global requires the user's explicit request"),
             },
             ["query"],
         ),

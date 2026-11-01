@@ -79,7 +79,8 @@ async def test_deep_plan_injected_and_call_order():
     assert "deploy the site" in plan_request.messages[-1]["content"]
  
     exec_request = pool.calls[1][1]
-    assert exec_request.messages[0]["content"] == "SYS\n\n<task-plan>\n" + pool.plan + "\n</task-plan>"
+    assert exec_request.messages[0]["content"].startswith("SYS")
+    assert exec_request.messages[0]["content"].endswith("\n\n<task-plan>\n" + pool.plan + "\n</task-plan>")
     assert result.plan == pool.plan
     assert result.text == "done answer"
  

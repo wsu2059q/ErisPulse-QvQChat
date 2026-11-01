@@ -64,15 +64,62 @@ def _record_sent(ctx: ToolContext, platform: str, target_type: str, target_id: s
         pass
 
 
-async def send_message(ctx: ToolContext, platform: str, target_type: str, target_id: str,
+def _platform_not_found_msg(ctx: ToolContext, platform: str) -> str:
+    """平台名未注册时的纠错提示：列出全部可用平台 + 模糊建议正确名称。
+
+    模型经常凭印象填平台名（如 bilibili 填成站点名/当前会话平台），
+    只报"不存在"会让它反复撞墙；给出可用清单和最相近名称后下一次调用即可修正。
+    """
+    try:
+        available = [str(n) for n in ctx.sdk.adapter.list_registered()]
+    except Exception:
+        available = []
+    suggest = ""
+     
+    if available:
+        want = str(platform).lower().replace("-", "").replace("_", "")
+        scored = []
+        for name in available:
+            key = str(name).lower().replace("-", "").replace("_", "")
+            if key == want or key.startswith(want) or want.startswith(key) or (len(want) >= 4 and want in key):
+                scored.insert(0, name)
+        if not scored:
+            for name in available:
+                key = str(name).lower()
+                common = sum(1 for a, b in zip(want, key) if a == b)
+                if common >= max(3, len(want) // 2):
+                    scored.append(name)
+        if scored:
+            suggest = texts.t("adapter_suggest", suggestion=scored[0])
+    return texts.t(
+        "adapter_not_found_suggest",
+        platform=platform,
+        available=", ".join(available) or "-",
+        suggest=suggest,
+    )
+
+
+async def send_message(ctx: ToolContext, platform: str = "", target_type: str = "",
+                       target_id: str = "",
                        text: str = "", image_url: str = "", audio_path: str = "",
                        at: str = "", reply_to: str = "", method: str = "",
                        as_forward: bool = False) -> str:
     if not text and not image_url and not audio_path:
         return texts.t("send_need_content")
+     
+    if not platform or not target_type or not target_id:
+        cur_platform = str(getattr(ctx, "platform", "") or "")
+        cur_target = str(getattr(ctx, "target_id", "") or "")
+        cur_type = "group" if str(getattr(ctx, "detail_type", "") or "") == "group" else "user"
+        if not cur_platform or not cur_target:
+            return texts.t("send_no_session_target")
+        platform = platform or cur_platform
+        target_type = target_type or cur_type
+        target_id = target_id or cur_target
+     
     adapter = ctx.sdk.adapter.get(platform)
     if adapter is None:
-        return texts.t("adapter_not_found", platform=platform)
+        return _platform_not_found_msg(ctx, platform)
     if target_type not in ("user", "group", "channel"):
         return texts.t("target_type_invalid")
     try:
@@ -84,14 +131,14 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
 
     from ..conversation.delivery import delivery_profile, dispatch_text
 
- 
+     
     profile = delivery_profile(ctx.config, platform)
     threshold = int(profile.get("forward_threshold", 600) or 0)
     forward_attempted = False
     if text and (as_forward or (not method and threshold and len(text) >= threshold)):
         forward_attempted = True
- 
- 
+         
+         
         sections = utils.split_reply_sections(text)
         if sends and "Markdown" not in sends and "Html" not in sends:
             sections = [utils.markdown_to_text(s) for s in sections]
@@ -128,6 +175,7 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
     used = ""
     result = None
     last_error: Exception | None = None
+    undeliverable: Exception | None = None
     if text:
         queue = {
             "chat_key": str(getattr(ctx, "chat_key", "") or f"{platform}:{target_type}:{target_id}"),
@@ -141,8 +189,16 @@ async def send_message(ctx: ToolContext, platform: str, target_type: str, target
             lambda name, content: getattr(chain, name)(content),
             attempts, text, queue=queue, logger=logger,
         )
+        if last_error is not None:
+            from ..conversation.delivery import is_undeliverable
+
+            undeliverable = last_error if is_undeliverable(last_error) else None
     if text and not used:
         detail = str(last_error) if last_error is not None else "send failed"
+        if undeliverable is not None:
+             
+            return texts.t("send_undeliverable", platform=platform, target_type=target_type,
+                           target_id=target_id, error=detail[:200])
         return texts.t("tool_error", name="send_message", error=f"{detail}；已转入待发队列")
 
     if image_url:
@@ -164,7 +220,7 @@ async def send_dsl(ctx: ToolContext, platform: str, target_type: str, target_id:
                    modifies: list | None = None, rules: dict | None = None) -> str:
     adapter = ctx.sdk.adapter.get(platform)
     if adapter is None:
-        return texts.t("adapter_not_found", platform=platform)
+        return _platform_not_found_msg(ctx, platform)
     if target_type not in ("user", "group", "channel"):
         return texts.t("target_type_invalid")
     try:
@@ -305,12 +361,12 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="send_message",
         access="safe",
-        description="Send a message to any user/group on any platform. The send method is chosen by platform capability automatically (Markdown > Html > Text, with plain-text fallback); pass method to force one. Use list_platforms to discover supported methods.",
+        description="Send a message to a user/group on ANY platform (cross-platform outreach). The send method is chosen by platform capability automatically (Markdown > Html > Text, with plain-text fallback); pass method to force one. DEFAULT TARGET = the CURRENT session: omit platform/target_type/target_id entirely to reply here. Fill them ONLY for a different destination — the platform name MUST be the exact 'platform' value returned by list_platforms, never guessed from the user's wording (e.g. a Bilibili user still needs the registered platform name). If the user asks to reach someone elsewhere but the exact platform/id is unclear, ASK the user instead of guessing.",
         parameters=_schema(
             {
-                "platform": _s(type="string", description="Platform name, e.g. onebot11"),
-                "target_type": _s(type="string", description="Target type: user / group / channel"),
-                "target_id": _s(type="string", description="Target id"),
+                "platform": _s(type="string", description="Exact platform name as returned by list_platforms (e.g. onebot11, bilibili, yunhu). OMIT to use the current session's platform. Not the website name the user mentioned — verify with list_platforms when unsure."),
+                "target_type": _s(type="string", description="user / group / channel. OMIT to use the current session's type."),
+                "target_id": _s(type="string", description="Target id. OMIT to use the current session's id."),
                 "text": _s(type="string", description="Text content (markdown allowed; downgraded to plain text automatically when the platform only supports Text)"),
                 "image_url": _s(type="string", description="Image URL or local path"),
                 "audio_path": _s(type="string", description="Local audio file path"),
@@ -319,7 +375,7 @@ def register(registry: ToolRegistry, main) -> None:
                 "method": _s(type="string", description="Force a specific send method (e.g. Markdown, EmojiFace); empty for auto"),
                 "as_forward": _s(type="boolean", description="Send as a merged-forward card (onebot11 only); long text converts automatically anyway"),
             },
-            ["platform", "target_type", "target_id"],
+            [],
         ),
         handler=send_message,
     ))

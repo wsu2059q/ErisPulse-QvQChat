@@ -8,7 +8,7 @@
       subtitle: "通用智能体",
       nav_overview: "概览", nav_chat: "对话", nav_models: "模型池", nav_personas: "人格",
       nav_tools: "工具", nav_extensions: "扩展", nav_tasks: "定时任务", nav_memory: "记忆", nav_sessions: "会话",
-      nav_knowledge: "知识库", knowledge_desc: "共享资料库：相关片段会自动注入对话，也可用 knowledge_search 检索", kb_add: "添加条目", kb_search_ph: "检索…", kb_stats_line: "条目 {e} · 分块 {c}", kb_list_empty: "还没有条目，点上方按钮添加", kb_title_label: "标题", kb_source_label: "来源（可选）", kb_content_label: "内容", kb_need_title_content: "需要标题与内容", kb_triggers_label: "触发关键词（可选，世界书）", kb_triggers_ph: "如：魔王, 北塔（逗号分隔，命中即注入）", kb_priority_label: "触发优先级（大优先）", kb_cooldown_label: "触发冷却分钟（留空用默认，0 不冷却）",
+      nav_knowledge: "知识库", knowledge_desc: "共享资料库：相关片段会自动注入对话，也可用 knowledge_search 检索", kb_add: "添加条目", kb_search_ph: "检索…", kb_stats_line: "条目 {e} · 分块 {c}", kb_list_empty: "还没有条目，点上方按钮添加", kb_title_label: "标题", kb_source_label: "来源（可选）", kb_content_label: "内容", kb_need_title_content: "需要标题与内容", kb_triggers_label: "触发关键词（可选，世界书）", kb_triggers_ph: "如：魔王, 北塔（逗号分隔，命中即注入）", kb_priority_label: "触发优先级（大优先）", kb_cooldown_label: "触发冷却分钟（留空用默认，0 不冷却）", kb_edit: "编辑条目", kb_scope_label: "可见域", kb_scope_chat: "会话/平台（填 chat_key 或平台名，如 bilibili）", kb_scope_ph: "留空=全局", kb_scope_chip_private: "私有",
       nav_audit: "审计", nav_settings: "设置",
       sess_members: "成员", sess_members_hint: "成员白名单（每行一个用户 ID，* 表示全员；留空恢复全员）", sess_sources_hint: "接受其它会话的输入（每行一个 chat_key，如 onebot11:group:123；这些会话的消息会路由到本会话）", kb_export: "导出", kb_import: "导入",
       nav_orchestrate: "编排", orchestrate_desc: "智能体总览：模型链 · 健康 · 运行状态 · 任务时间线", orch_model_chain: "模型链（故障转移顺序）", orch_chain_hint: "拖拽调整故障转移顺序，松手自动保存", orch_chain_saved: "链序已保存", orch_health: "模型健康", health_ok: "全部模型正常", health_cooldown: "冷却中", health_fails: "连续失败 {n} 次", health_left: "剩余 {s}s", orch_running: "运行状态", running_none: "暂无运行中的任务", orch_timeline: "任务时间线", timeline_empty: "暂无任务与执行记录", orch_capabilities: "能力开关", caps_tools: "工具", caps_skills: "技能", task_next: "下次", task_last: "最近", task_status_error: "上次失败", cost_title: "成本估算", cost_total: "14 天合计", cost_daily: "每日成本（柱）与累计（线）", cost_by_model: "按模型分布", cost_empty: "暂无带单价的用量数据（模型价格来自 models.dev 目录）",
@@ -78,7 +78,7 @@
       subtitle: "通用智慧代理",
       nav_overview: "概覽", nav_chat: "對話", nav_models: "模型池", nav_personas: "人格",
       nav_tools: "工具", nav_extensions: "擴展", nav_tasks: "定時任務", nav_memory: "記憶", nav_sessions: "會話",
-      nav_knowledge: "知識庫", knowledge_desc: "共享資料庫：相關片段會自動注入對話，也可用 knowledge_search 檢索", kb_add: "新增條目", kb_search_ph: "檢索…", kb_stats_line: "條目 {e} · 分塊 {c}", kb_list_empty: "還沒有條目，點上方按鈕新增", kb_title_label: "標題", kb_source_label: "來源（可選）", kb_content_label: "內容", kb_need_title_content: "需要標題與內容", kb_triggers_label: "觸發關鍵詞（可選，世界書）", kb_triggers_ph: "如：魔王, 北塔（逗號分隔，命中即注入）", kb_priority_label: "觸發優先級（大優先）", kb_cooldown_label: "觸發冷卻分鐘（留空用預設，0 不冷卻）",
+      nav_knowledge: "知識庫", knowledge_desc: "共享資料庫：相關片段會自動注入對話，也可用 knowledge_search 檢索", kb_add: "新增條目", kb_search_ph: "檢索…", kb_stats_line: "條目 {e} · 分塊 {c}", kb_list_empty: "還沒有條目，點上方按鈕新增", kb_title_label: "標題", kb_source_label: "來源（可選）", kb_content_label: "內容", kb_need_title_content: "需要標題與內容", kb_triggers_label: "觸發關鍵詞（可選，世界書）", kb_triggers_ph: "如：魔王, 北塔（逗號分隔，命中即注入）", kb_priority_label: "觸發優先級（大優先）", kb_cooldown_label: "觸發冷卻分鐘（留空用預設，0 不冷卻）", kb_edit: "編輯條目", kb_scope_label: "可見域", kb_scope_chat: "會話/平台（填 chat_key 或平台名，如 bilibili）", kb_scope_ph: "留空=全域", kb_scope_chip_private: "私有",
       nav_audit: "審計", nav_settings: "設定",
       sess_members: "成員", sess_members_hint: "成員白名單（每行一個使用者 ID，* 表示全員；留空恢復全員）", sess_sources_hint: "接受其它會話的輸入（每行一個 chat_key，如 onebot11:group:123；這些會話的訊息會路由到本會話）", kb_export: "匯出", kb_import: "匯入",
       nav_orchestrate: "編排", orchestrate_desc: "智能體總覽：模型鏈 · 健康 · 執行狀態 · 任務時間線", orch_model_chain: "模型鏈（故障轉移順序）", orch_chain_hint: "拖曳調整故障轉移順序，鬆手自動儲存", orch_chain_saved: "鏈序已儲存", orch_health: "模型健康", health_ok: "全部模型正常", health_cooldown: "冷卻中", health_fails: "連續失敗 {n} 次", health_left: "剩餘 {s}s", orch_running: "執行狀態", running_none: "暫無執行中的任務", orch_timeline: "任務時間線", timeline_empty: "暫無任務與執行記錄", orch_capabilities: "能力開關", caps_tools: "工具", caps_skills: "技能", task_next: "下次", task_last: "最近", task_status_error: "上次失敗", cost_title: "成本估算", cost_total: "14 天合計", cost_daily: "每日成本（柱）與累計（線）", cost_by_model: "按模型分佈", cost_empty: "暫無帶單價的用量資料（模型價格來自 models.dev 目錄）",
@@ -148,7 +148,7 @@
       subtitle: "universal agent",
       nav_overview: "Overview", nav_chat: "Chat", nav_models: "Models", nav_personas: "Personas",
       nav_tools: "Tools", nav_extensions: "Extensions", nav_tasks: "Tasks", nav_memory: "Memory", nav_sessions: "Sessions",
-      nav_knowledge: "Knowledge", knowledge_desc: "Shared library: relevant passages are auto-injected into chats and searchable via knowledge_search", kb_add: "Add entry", kb_search_ph: "Search…", kb_stats_line: "{e} entries · {c} chunks", kb_list_empty: "No entries yet — use the button above to add one", kb_title_label: "Title", kb_source_label: "Source (optional)", kb_content_label: "Content", kb_need_title_content: "Title and content are required", kb_triggers_label: "Trigger keywords (optional, lorebook)", kb_triggers_ph: "e.g. demon king, north tower (comma separated)", kb_priority_label: "Trigger priority (higher first)", kb_cooldown_label: "Trigger cooldown minutes (blank = default, 0 = none)",
+      nav_knowledge: "Knowledge", knowledge_desc: "Shared library: relevant passages are auto-injected into chats and searchable via knowledge_search", kb_add: "Add entry", kb_search_ph: "Search…", kb_stats_line: "{e} entries · {c} chunks", kb_list_empty: "No entries yet — use the button above to add one", kb_title_label: "Title", kb_source_label: "Source (optional)", kb_content_label: "Content", kb_need_title_content: "Title and content are required", kb_triggers_label: "Trigger keywords (optional, lorebook)", kb_triggers_ph: "e.g. demon king, north tower (comma separated)", kb_priority_label: "Trigger priority (higher first)", kb_cooldown_label: "Trigger cooldown minutes (blank = default, 0 = none)", kb_edit: "Edit entry", kb_scope_label: "Visibility", kb_scope_chat: "Session/platform (chat_key or platform name, e.g. bilibili)", kb_scope_ph: "blank = global", kb_scope_chip_private: "private",
       nav_audit: "Audit", nav_settings: "Settings",
       sess_members: "Members", sess_members_hint: "Member allowlist (one user ID per line, * = everyone; empty resets to everyone)", sess_sources_hint: "Accept input from other chats (one chat_key per line, e.g. onebot11:group:123; their messages route into this chat)", kb_export: "Export", kb_import: "Import",
       nav_orchestrate: "Orchestration", orchestrate_desc: "Agent at a glance: model chain · health · runs · task timeline", orch_model_chain: "Model chain (failover order)", orch_chain_hint: "Drag to reorder the failover chain; saves automatically on drop", orch_chain_saved: "Chain order saved", orch_health: "Model health", health_ok: "All models healthy", health_cooldown: "Cooling down", health_fails: "{n} consecutive failures", health_left: "{s}s left", orch_running: "Running", running_none: "No running tasks", orch_timeline: "Task timeline", timeline_empty: "No tasks or runs yet", orch_capabilities: "Capability switches", caps_tools: "Tools", caps_skills: "Skills", task_next: "Next", task_last: "Last", task_status_error: "Last run failed", cost_title: "Cost estimate", cost_total: "14-day total", cost_daily: "Daily cost (bars) and cumulative (line)", cost_by_model: "By model", cost_empty: "No priced usage yet (model prices come from the models.dev catalog)",
@@ -218,7 +218,7 @@
       subtitle: "汎用エージェント",
       nav_overview: "概要", nav_chat: "チャット", nav_models: "モデル", nav_personas: "ペルソナ",
       nav_tools: "ツール", nav_extensions: "拡張", nav_tasks: "タスク", nav_memory: "記憶", nav_sessions: "セッション",
-      nav_knowledge: "ナレッジ", knowledge_desc: "共有ライブラリ：関連する断片は会話に自動注入され、knowledge_search でも検索できます", kb_add: "項目を追加", kb_search_ph: "検索…", kb_stats_line: "項目 {e} · チャンク {c}", kb_list_empty: "まだ項目がありません。上のボタンから追加してください", kb_title_label: "タイトル", kb_source_label: "ソース（任意）", kb_content_label: "内容", kb_need_title_content: "タイトルと内容が必要です", kb_triggers_label: "トリガーキーワード（任意・ワールドブック）", kb_triggers_ph: "例：魔王, 北塔（カンマ区切り、一致で注入）", kb_priority_label: "トリガー優先度（大きい順）", kb_cooldown_label: "トリガークールダウン分（空欄でデフォルト、0 で無効）",
+      nav_knowledge: "ナレッジ", knowledge_desc: "共有ライブラリ：関連する断片は会話に自動注入され、knowledge_search でも検索できます", kb_add: "項目を追加", kb_search_ph: "検索…", kb_stats_line: "項目 {e} · チャンク {c}", kb_list_empty: "まだ項目がありません。上のボタンから追加してください", kb_title_label: "タイトル", kb_source_label: "ソース（任意）", kb_content_label: "内容", kb_need_title_content: "タイトルと内容が必要です", kb_triggers_label: "トリガーキーワード（任意・ワールドブック）", kb_triggers_ph: "例：魔王, 北塔（カンマ区切り、一致で注入）", kb_priority_label: "トリガー優先度（大きい順）", kb_cooldown_label: "トリガークールダウン分（空欄でデフォルト、0 で無効）", kb_edit: "項目を編集", kb_scope_label: "公開範囲", kb_scope_chat: "セッション/プラットフォーム（chat_key またはプラットフォーム名、例: bilibili）", kb_scope_ph: "空欄=グローバル", kb_scope_chip_private: "非公開",
       nav_audit: "監査", nav_settings: "設定",
       sess_members: "メンバー", sess_members_hint: "メンバー許可リスト（1 行に 1 つのユーザー ID、* は全員。空で全員に戻す）", sess_sources_hint: "他のセッションの入力を受け入れる（1 行に 1 つの chat_key、例 onebot11:group:123。そのメッセージはこのセッションに転送されます）", kb_export: "エクスポート", kb_import: "インポート",
       nav_orchestrate: "オーケストレーション", orchestrate_desc: "エージェント一覧：モデルチェーン · 正常性 · 実行状態 · タスクタイムライン", orch_model_chain: "モデルチェーン（フェイルオーバー順）", orch_chain_hint: "ドラッグでフェイルオーバー順を変更、離すと自動保存", orch_chain_saved: "チェーン順を保存しました", orch_health: "モデル正常性", health_ok: "すべてのモデルは正常", health_cooldown: "クールダウン中", health_fails: "連続 {n} 回失敗", health_left: "残り {s} 秒", orch_running: "実行状態", running_none: "実行中のタスクはありません", orch_timeline: "タスクタイムライン", timeline_empty: "タスクと実行履歴はまだありません", orch_capabilities: "機能スイッチ", caps_tools: "ツール", caps_skills: "スキル", task_next: "次回", task_last: "前回", task_status_error: "前回失敗", cost_title: "コスト概算", cost_total: "14 日合計", cost_daily: "日次コスト（棒）と累積（線）", cost_by_model: "モデル別", cost_empty: "単価付きの使用量はまだありません（モデル価格は models.dev カタログより）",
@@ -288,7 +288,7 @@
       subtitle: "универсальный агент",
       nav_overview: "Обзор", nav_chat: "Чат", nav_models: "Модели", nav_personas: "Личности",
       nav_tools: "Инструменты", nav_extensions: "Расширения", nav_tasks: "Задачи", nav_memory: "Память", nav_sessions: "Сессии",
-      nav_knowledge: "База знаний", knowledge_desc: "Общая библиотека: подходящие фрагменты автоматически попадают в диалог, доступен поиск через knowledge_search", kb_add: "Добавить запись", kb_search_ph: "Поиск…", kb_stats_line: "Записей: {e} · Фрагментов: {c}", kb_list_empty: "Записей пока нет — добавьте через кнопку выше", kb_title_label: "Заголовок", kb_source_label: "Источник (необязательно)", kb_content_label: "Содержимое", kb_need_title_content: "Нужны заголовок и содержимое", kb_triggers_label: "Ключевые слова триггера (опционально, лорбук)", kb_triggers_ph: "напр.: демон, башня (через запятую)", kb_priority_label: "Приоритет триггера (выше — раньше)", kb_cooldown_label: "Кулдаун триггера, мин (пусто — по умолчанию, 0 — нет)",
+      nav_knowledge: "База знаний", knowledge_desc: "Общая библиотека: подходящие фрагменты автоматически попадают в диалог, доступен поиск через knowledge_search", kb_add: "Добавить запись", kb_search_ph: "Поиск…", kb_stats_line: "Записей: {e} · Фрагментов: {c}", kb_list_empty: "Записей пока нет — добавьте через кнопку выше", kb_title_label: "Заголовок", kb_source_label: "Источник (необязательно)", kb_content_label: "Содержимое", kb_need_title_content: "Нужны заголовок и содержимое", kb_triggers_label: "Ключевые слова триггера (опционально, лорбук)", kb_triggers_ph: "напр.: демон, башня (через запятую)", kb_priority_label: "Приоритет триггера (выше — раньше)", kb_cooldown_label: "Кулдаун триггера, мин (пусто — по умолчанию, 0 — нет)", kb_edit: "Изменить запись", kb_scope_label: "Область видимости", kb_scope_chat: "Сессия/платформа (chat_key или имя платформы, напр. bilibili)", kb_scope_ph: "пусто = глобально", kb_scope_chip_private: "приватно",
       nav_audit: "Аудит", nav_settings: "Настройки",
       sess_members: "Участники", sess_members_hint: "Белый список участников (один ID в строке, * = все; пусто — вернуть всех)", sess_sources_hint: "Принимать ввод из других чатов (один chat_key в строке, напр. onebot11:group:123; их сообщения направляются в этот чат)", kb_export: "Экспорт", kb_import: "Импорт",
       nav_orchestrate: "Оркестрация", orchestrate_desc: "Обзор агента: цепочка моделей · здоровье · выполнение · время задач", orch_model_chain: "Цепочка моделей (порядок failover)", orch_chain_hint: "Перетащите, чтобы изменить порядок failover; сохраняется автоматически", orch_chain_saved: "Порядок цепочки сохранён", orch_health: "Здоровье моделей", health_ok: "Все модели исправны", health_cooldown: "Охлаждение", health_fails: "Подряд сбоев: {n}", health_left: "Осталось {s} с", orch_running: "Выполнение", running_none: "Нет запущенных задач", orch_timeline: "Время задач", timeline_empty: "Задач и запусков пока нет", orch_capabilities: "Переключатели возможностей", caps_tools: "Инструменты", caps_skills: "Навыки", task_next: "Далее", task_last: "Прошлый", task_status_error: "Прошлый запуск не удался", cost_title: "Оценка расходов", cost_total: "Сумма за 14 дней", cost_daily: "Расходы по дням (столбцы) и накопительно (линия)", cost_by_model: "По моделям", cost_empty: "Нет данных с ценами (цены моделей из каталога models.dev)",
@@ -497,25 +497,44 @@
     } catch (e) {}
   })();
 
+  // 鉴权链在途标记：initApp 现在立即绑定交互，早期触发的 api 调用先排队，
+  // 待 resolveToken 出结果再发（避免启动期无令牌请求 401 闪登录框）
+  var bootWaiters = [];
+  var bootSettled = false;
+
+  function waitBoot() {
+    if (bootSettled) return Promise.resolve();
+    return new Promise(function (resolve) { bootWaiters.push(resolve); });
+  }
+
+  window.__qvqBootDone__ = function () {
+    bootSettled = true;
+    var waiters = bootWaiters;
+    bootWaiters = [];
+    waiters.forEach(function (fn) { fn(); });
+  };
+
   function api(path, method, body) {
-    var headers = { "Content-Type": "application/json" };
-    var token = getToken();
-    if (token) headers["Authorization"] = "Bearer " + token;
-    return fetch("/QvQChat" + path, {
-      method: method || "GET",
-      headers: headers,
-      body: body ? JSON.stringify(body) : undefined
-    }).then(function (resp) {
-      return resp.json().catch(function () { return {}; }).then(function (data) {
-        data = data && typeof data === "object" ? data : {};
-        // 显式携带 HTTP 状态：错误不再被吞成"空数据/空会话"
-        data.__http = resp.status;
-        if (resp.status === 401) {
-          activeToken = "";
-          try { localStorage.removeItem("qvq_token"); } catch (e) {}
-          if (typeof showLogin === "function") showLogin();
-        }
-        return data;
+    return waitBoot().then(function () {
+      var headers = { "Content-Type": "application/json" };
+      var token = getToken();
+      if (token) headers["Authorization"] = "Bearer " + token;
+      return fetch("/QvQChat" + path, {
+        method: method || "GET",
+        headers: headers,
+        body: body ? JSON.stringify(body) : undefined
+      }).then(function (resp) {
+        return resp.json().catch(function () { return {}; }).then(function (data) {
+          data = data && typeof data === "object" ? data : {};
+          // 显式携带 HTTP 状态：错误不再被吞成"空数据/空会话"
+          data.__http = resp.status;
+          if (resp.status === 401) {
+            activeToken = "";
+            try { localStorage.removeItem("qvq_token"); } catch (e) {}
+            if (typeof showLogin === "function") showLogin();
+          }
+          return data;
+        });
       });
     });
   }
