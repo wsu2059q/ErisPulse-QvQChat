@@ -23,6 +23,7 @@ GROUP_META: dict[str, dict] = {
     "security": {"order": 12},
     "participation": {"order": 13},
     "access": {"order": 14},
+    "humanize": {"order": 15},
 }
 
 
@@ -177,6 +178,11 @@ class QvQConfig(BaseConfig):
     recovery_enabled: bool = field(default=True, metadata=_desc("recovery_enabled", "实例重启后自动恢复被中断的回复", "chat", 50, "switch"))
     recovery_min_age: int = field(default=90, metadata=_desc("recovery_min_age", "标记距今超过该秒数才恢复（防误判正常在跑）", "chat", 51, "number"))
     replay_on_boot: bool = field(default=True, metadata=_desc("replay_on_boot", "启动时重放发送失败队列", "chat", 52, "switch"))
+
+ 
+    debounce_mention_seconds: float = field(default=1.0, metadata=_desc("debounce_mention_seconds", "被 @/前缀命中触发时的防抖窗口（秒）：窗口内后续消息并入本次请求；0 使用群聊窗口", "humanize", 1, "number"))
+    debounce_group_seconds: float = field(default=2.0, metadata=_desc("debounce_group_seconds", "普通群消息的聚合窗口（秒）；0 使用 aggregate_window", "humanize", 2, "number"))
+    humanize_echo_filter: bool = field(default=True, metadata=_desc("humanize_echo_filter", "丢弃适配器回投的自身出站消息（防回声在防抖窗口内触发二次决策）", "humanize", 3, "switch"))
 
     memory_max: int = field(default=200, metadata=_desc("memory_max", "每会话长期记忆条数上限", "memory", 1, "number"))
     memory_recall: int = field(default=6, metadata=_desc("memory_recall", "每次对话注入的相关记忆条数上限", "memory", 2, "number"))
