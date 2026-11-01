@@ -1034,14 +1034,45 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
 
  
 @media (max-width: 720px) {
-  .qvq-table {
+  table.qvq-table[data-cards] {
+    display: block;
+    border: none;
+  }
+  table.qvq-table[data-cards] thead {
+    display: none;
+  }
+  table.qvq-table[data-cards] tbody {
+    display: block;
+  }
+  table.qvq-table[data-cards] tr {
+    display: block;
+    border: 1px solid var(--qvq-bd);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    background: var(--qvq-surface);
+  }
+  table.qvq-table[data-cards] td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    border: none;
+    padding: 5px 0;
+    text-align: right;
+    word-break: break-word;
+  }
+  table.qvq-table[data-cards] td::before {
+    content: attr(data-col);
+    flex: none;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--qvq-tx-t);
+    text-align: left;
+  }
+  table.qvq-table:not([data-cards]) {
     display: block;
     overflow-x: auto;
-    min-width: 520px;
     -webkit-overflow-scrolling: touch;
-  }
-  .qvq-table thead, .qvq-table tbody {
-    display: table;
-    width: 100%;
   }
 }
