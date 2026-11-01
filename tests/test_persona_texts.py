@@ -256,3 +256,21 @@ def test_texts_register_and_translate():
     out = texts.t("tool_not_found", name="zzz")
     assert "zzz" in out
     assert out != texts.t("tool_timeout", name="a", seconds=1)
+
+
+def test_h1_system_parts_switches():
+    """H1：输出规则/智能体认知条款随开关注入，关闭后不出现。"""
+    from fakes import FakeMain
+
+    persona = {"id": "p", "name": "P", "system": "sys"}
+    main = FakeMain()
+    parts_on = main.conversations.build_system_parts(persona, scene="s", chat_key="onebot11:group:1")
+    joined = "\n".join(p.text for p in parts_on)
+    assert "闲聊输出规则" in joined
+    assert "其他机器人或智能体" in joined
+
+    main_off = FakeMain(chat_output_rules=False, identity_note_other_agents=False)
+    parts_off = main_off.conversations.build_system_parts(persona, scene="s", chat_key="onebot11:group:1")
+    joined_off = "\n".join(p.text for p in parts_off)
+    assert "闲聊输出规则" not in joined_off
+    assert "其他机器人或智能体" not in joined_off

@@ -145,10 +145,16 @@ _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 
 async def view_image(ctx: ToolContext, path: str) -> str:
 
+    target_path = Path(str(path)).expanduser().resolve()
     try:
         resolved = _resolve_allowed(ctx, path)
-    except PermissionError as e:
-        return str(e)
+    except PermissionError:
+ 
+        uploads = Path("data/QvQChat/uploads").resolve()
+        norm = os.path.normcase(str(target_path))
+        if not norm.startswith(os.path.normcase(str(uploads)) + os.sep):
+            return texts.t("path_not_allowed", path=path)
+        resolved = str(target_path)
     if _is_sensitive(ctx, resolved) and not ctx.main.is_admin(ctx.user_id, ctx.origin, ctx.platform):
         return texts.t("sensitive_read_denied")
     target = Path(resolved)

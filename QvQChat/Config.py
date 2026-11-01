@@ -168,6 +168,10 @@ class QvQConfig(BaseConfig):
     opening_max_len: int = field(default=200, metadata=_desc("opening_max_len", "开场白单条最大字符数（超出截断）", "chat", 48, "number"))
     reply_narrate: bool = field(default=False, metadata=_desc("reply_narrate", "边做边说：工具任务的每一步先说一句要做什幺、拿到结果简短汇报、结束给简短结论（每句单独发到群里，像真人工作播报）", "chat", 49, "switch"))
     notify_on_passive_failure: bool = field(default=False, metadata=_desc("notify_on_passive_failure", "被动触发的任务（如插件插话）失败时也在群里回复错误详情；默认关闭只记日志，避免错误刷屏", "chat", 53, "switch"))
+    forward_exclude_trace: bool = field(default=False, metadata=_desc("forward_exclude_trace", "合并转发卡不生成「执行过程」工具节点（纯结论卡片，过程仍可在网页端查看）", "chat", 54, "switch"))
+    chat_output_rules: bool = field(default=True, metadata=_desc("chat_output_rules", "闲聊输出规则：禁复述对方上条、禁结尾硬造反问、没把握可只回「？」、群聊短段输出（任务/工具场景不受限）", "chat", 55, "switch"))
+    identity_note_other_agents: bool = field(default=True, metadata=_desc("identity_note_other_agents", "系统提示注入「群内其他智能体不是你」认知条款，防止认领别人的发言", "chat", 56, "switch"))
+    scene_platform_prefix: bool = field(default=True, metadata=_desc("scene_platform_prefix", "会话场景说明附带平台名（如 平台：onebot11）", "chat", 57, "switch"))
 
  
     recovery_enabled: bool = field(default=True, metadata=_desc("recovery_enabled", "实例重启后自动恢复被中断的回复", "chat", 50, "switch"))

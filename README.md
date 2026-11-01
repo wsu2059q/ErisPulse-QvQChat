@@ -179,6 +179,13 @@ pip install -e .[test]
 pytest
 ```
 
+## 交流
+
+问题反馈与功能建议提 [Issue](https://github.com/wsu2059q/ErisPulse-QvQChat/issues)，也欢迎加入 ErisPulse 社区与我们交流：
+
+- Telegram：<https://t.me/ErisPulse>
+- QQ 群：<https://qm.qq.com/q/TOwnCmypcy>
+
 ## 许可证
 
 [MIT](LICENSE)

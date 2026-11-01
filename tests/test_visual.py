@@ -33,3 +33,13 @@ def test_build_sections_keeps_tool_group_compact():
     assert "ls -la pwd" in process
     assert "先查一下" in sections
     assert "done" not in sections   
+
+
+def test_build_sections_excludes_trace_when_configured():
+    rounds = [{
+        "text": "结论在这里",
+        "tools": [{"tool": "run_command", "arguments": "{}", "output": "x", "ms": 5}],
+    }]
+    sections, text_count = build_sections(rounds, "结论在这里", [], include_trace=False)
+    assert sections == ["结论在这里"]   
+    assert text_count == 1

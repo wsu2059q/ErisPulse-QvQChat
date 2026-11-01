@@ -436,6 +436,8 @@ class InboxMixin(RecoveryMixin):
                     scene = texts.t("scene_group", name=group_name, id=group_id)
                 elif group_id:
                     scene = texts.t("scene_group_noid", id=group_id)
+                if getattr(self.cfg, "scene_platform_prefix", True):
+                    scene = texts.t("scene_platform_line", platform=str(event.get_platform() or "")) + scene
                 scene += texts.t("scene_speaker_note")
  
                 scene += texts.t("scene_group_attribution", name=sender_name or sender_id, id=sender_id)
