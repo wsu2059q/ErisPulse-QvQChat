@@ -703,6 +703,35 @@ class InboxMixin(RecoveryMixin):
                     live.status = "done"
                     live.publish("done", {"reply": live.reply, "session": chat_key})
                 reply, force_forward = strip_output_tag(result.text.strip())
+ 
+                if bool(getattr(self.cfg, "humanize_filter_enabled", False)):
+                    try:
+                        from ..conversation.rhythm import filter_reply
+
+                        reply, action = filter_reply(
+                            reply,
+                            combined_text,
+                            int(getattr(self.cfg, "humanize_filter_max_sentences", 3) or 3),
+                        )
+                        if action == "parrot":
+                            self.logger.info("reply filter: parrot detected, rerolling once")
+                            retry = await self.runner.run(
+                                system=system,
+                                messages=contexts
+                                + [user_msg, {"role": "assistant", "content": reply}]
+                                + [{"role": "user", "content": texts.t("parrot_retry_note")}],
+                                ctx=ctx,
+                                persona_tools=persona.get("tools"),
+                            )
+                            retry_reply, _ = strip_output_tag(retry.text.strip())
+                            retry_reply, _2 = filter_reply(
+                                retry_reply, "", int(getattr(self.cfg, "humanize_filter_max_sentences", 3) or 3)
+                            )
+                            if retry_reply.strip():
+                                reply = retry_reply.strip()
+                                result = retry
+                    except Exception as e:
+                        self.logger.debug(f"reply filter failed: {e}")
                 reply = reply or texts.t("no_reply_content")
                 self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""))
                 try:
