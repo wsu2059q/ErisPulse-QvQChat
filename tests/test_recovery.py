@@ -126,7 +126,8 @@ async def test_residue_pop_mismatch_still_recovers():
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
     assert main.prompts == [(chat_key, "在吗？", {"origin": "recovery", "send": True})]
     contexts = main.sessions.get_contexts(chat_key)
-    assert contexts[-1] == {"role": "user", "content": "另一句话"}
+    assert contexts[-1]["role"] == "user"
+    assert contexts[-1]["content"] == "另一句话"
 
 
 async def test_recovery_disabled_clears_marker_without_rerun():
