@@ -221,7 +221,7 @@ class ConversationService:
 
     def append(self, chat_key: str, role: str, content, trace: list | None = None, rounds: list | None = None) -> None:
         state = self._state(chat_key)
-        entry: dict = {"role": role, "content": content}
+        entry: dict = {"role": role, "content": content, "ts": utils.now_ts()}
         if trace:
             entry["trace"] = list(trace)
         if rounds:
@@ -232,7 +232,7 @@ class ConversationService:
     def append_user(self, chat_key: str, content, sender_id: str = "") -> None:
 
         state = self._state(chat_key)
-        entry: dict = {"role": "user", "content": content}
+        entry: dict = {"role": "user", "content": content, "ts": utils.now_ts()}
         if sender_id:
             entry["sender"] = sender_id
         state["contexts"].append(entry)
@@ -240,6 +240,23 @@ class ConversationService:
         self._save(chat_key, state)
         if sender_id:
             self._user_seen_record(sender_id, chat_key, self._text_of(content))
+
+    def pop_last_exchange(self, chat_key: str) -> str:
+        """F2 重新生成：弹出末尾的 assistant 与其前一条 user 消息，返回该 user 文本。
+
+        末条非 assistant（如进行中/异常残留）时不动，返回空串。
+        """
+        state = self._state(chat_key)
+        contexts = state["contexts"]
+        if not contexts or contexts[-1].get("role") != "assistant":
+            return ""
+        contexts.pop()
+        text = ""
+        if contexts and contexts[-1].get("role") == "user":
+            text = self._text_of(contexts[-1].get("content"))
+            contexts.pop()
+        self._save(chat_key, state)
+        return text
 
     def pop_last_user_if(self, chat_key: str, text: str) -> bool:
         """末条上下文为内容匹配的 user 消息时弹出并保存（悬空恢复防重复；仅动末条）。
@@ -328,6 +345,13 @@ class ConversationService:
 
     def persona_of(self, chat_key: str) -> str | None:
         return self._state(chat_key)["persona"]
+
+    def set_name(self, chat_key: str, name: str) -> str:
+        """F2 会话手动改名（空串清除自定义名，回落显示规则）。"""
+        state = self._state(chat_key)
+        state["name"] = str(name or "")
+        self._save_no_touch(chat_key, state)
+        return state["name"]
 
     def set_flags(self, chat_key: str, flags: dict | None = None, pinned: bool | None = None, archived: bool | None = None) -> None:
         """置会话标记。兼容旧签名（pinned/archived 关键字）；起支持任意布尔标记 dict
@@ -631,7 +655,9 @@ class ConversationService:
                     "platform": platform,
                     "detail_type": detail_type,
                     "target_id": target_id,
-                    "name": str(state.get("group_name") or "") or str(state.get("user_name") or ""),
+                    "name": str(state.get("name") or "")
+                    or str(state.get("group_name") or "")
+                    or str(state.get("user_name") or ""),
                     "persona": state["persona"],
                     "turns": len(state["contexts"]),
                     "updated": state["updated"],

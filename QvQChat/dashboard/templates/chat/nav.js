@@ -155,6 +155,7 @@
 
   var PIN_SVG = "<svg viewBox='0 0 24 24'><path d='M12 17v5M9 3h6l-1 7 3 2v2H7v-2l3-2z'/></svg>";
   var DEL_SVG = "<svg viewBox='0 0 24 24'><path d='M3 6h18M8 6V4h8v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6'/></svg>";
+  var REN_SVG = "<svg viewBox='0 0 24 24'><path d='M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z'/></svg>";
   var ARC_SVG = "<svg viewBox='0 0 24 24'><path d='M3 6h18v3H3zM5 9v11h14V9M9 13h6'/></svg>";
 
   function chatSessionTitle(key) {
@@ -173,6 +174,7 @@
       var acts = '<span class="qvq-chat-sacts">' +
         '<button type="button" data-act="pin" data-key="' + esc(s.chat_key) + '" data-on="' + (pinned ? "1" : "0") + '" title="' + esc(t(pinned ? "chat_unpin" : "chat_pin")) + '">' + PIN_SVG + "</button>" +
         '<button type="button" data-act="archive" data-key="' + esc(s.chat_key) + '" data-on="' + (s.archived ? "1" : "0") + '" title="' + esc(t(s.archived ? "chat_unarchive" : "chat_archive")) + '">' + ARC_SVG + "</button>" +
+        '<button type="button" data-act="rename" data-key="' + esc(s.chat_key) + '" title="' + esc(t("session_rename")) + '">' + REN_SVG + "</button>" +
         '<button type="button" data-act="delete" data-key="' + esc(s.chat_key) + '" title="' + esc(t("chat_delete")) + '">' + DEL_SVG + "</button>" +
         "</span>";
       var liveCls = s.live ? " liverun" : "";
@@ -180,6 +182,28 @@
         '<span class="qvq-chat-sname">' + esc(chatSessionTitle(s.chat_key)) + "</span>" +
         '<span class="qvq-chat-stime">' + esc(fmtSmart(s.updated)) + "</span>" + acts + "</div>";
     }).join("");
+  }
+
+  function sessionRename(key) {
+    var cur = "";
+    chatMeta.sessions.forEach(function (s) { if (s.chat_key === key) cur = s.name || ""; });
+    openForm(t("session_rename"),
+      "<label class='qvq-label'>" + esc(t("session_name_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-rename-input' value='" + esc(cur) + "' maxlength='60' placeholder='" + esc(t("session_rename_ph")) + "'/>",
+      function (body) {
+        var name = fv(body, "qvq-rename-input");
+        api("/api/qvq/session/rename", "POST", { chat_key: key, name: name }).then(function (r) {
+          if (r && r.ok) {
+            toast(t("saved"));
+            closeModal();
+            loadChatMeta();
+          } else {
+            toast((r && r.error) || "error", true);
+          }
+        });
+      });
+    var input = el("qvq-rename-input");
+    if (input) { input.focus(); input.select(); }
   }
 
   function bindSessionRows(box, closeAfter) {
@@ -195,6 +219,10 @@
         var key = btn.getAttribute("data-key");
         var on = btn.getAttribute("data-on") === "1";
         var act = btn.getAttribute("data-act");
+        if (act === "rename") {
+          sessionRename(key);
+          return;
+        }
         var patch = { chat_key: key };
         patch[act === "pin" ? "pinned" : "archived"] = !on;
         if (act === "delete") {
