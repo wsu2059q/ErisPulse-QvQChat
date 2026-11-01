@@ -397,9 +397,13 @@
     api("/api/qvq/breakers").then(function (data) {
       renderModelHealth("qvq-models-health", (data && data.breakers) || []);
     });
-    api("/api/qvq/models").then(function (data) {
-      modelsCache = (data && data.providers) || [];
-      modelPresets = (data && data.presets) || [];
+    loadInto("qvq-models-list", function () {
+      return api("/api/qvq/models").then(function (data) {
+        modelsCache = (data && data.providers) || [];
+        modelPresets = (data && data.presets) || [];
+        return data;
+      });
+    }, function (box, data) {
       renderModelsTable();
     });
     var enrichBtn = el("qvq-model-enrich");
@@ -722,7 +726,7 @@
   }
 
   function loadPersonas() {
-    api("/api/qvq/personas").then(function (data) {
+    loadInto("qvq-personas-list", function () { return api("/api/qvq/personas"); }, function (box, data) {
       var personas = (data && data.personas) || [];
       var rows = personas.map(function (p) {
         var chip = p.builtin ? " <span class='qvq-chip'>" + esc(t("personas_builtin")) + "</span>" : "";
@@ -820,7 +824,7 @@
   }
 
   function loadSkills() {
-    api("/api/qvq/skills").then(function (data) {
+    loadInto("qvq-skills-list", function () { return api("/api/qvq/skills"); }, function (box, data) {
       var skills = (data && data.skills) || [];
       if (!skills.length) {
         el("qvq-skills-list").innerHTML = '<div class="qvq-empty qvq-empty-cta">' + esc(t("skills_empty")) + "</div>";
@@ -899,7 +903,7 @@
   }
 
   function loadTools() {
-    api("/api/qvq/tools").then(function (data) {
+    loadInto("qvq-tools-list", function () { return api("/api/qvq/tools"); }, function (box, data) {
       tools = (data && data.tools) || [];
       var riskLabel = (data && data.risk) || "risk";
       renderToolList(tools, "", riskLabel);
@@ -947,7 +951,7 @@
   var mcpServers = [];
 
   function loadMcp() {
-    api("/api/qvq/mcp").then(function (data) {
+    loadInto("qvq-mcp-list", function () { return api("/api/qvq/mcp"); }, function (box, data) {
       mcpServers = (data && data.servers) || [];
       var clients = {};
       ((data && data.clients) || []).forEach(function (c) { clients[c.name] = c; });
@@ -1081,7 +1085,7 @@
   }
 
   function loadTasks() {
-    api("/api/qvq/tasks").then(function (data) {
+    loadInto("qvq-tasks-timeline", function () { return api("/api/qvq/tasks"); }, function (box, data) {
       var tasks = (data && data.tasks) || [];
       renderTaskTimeline(tasks, (data && data.runs) || [], "qvq-tasks-timeline");
       if (!tasks.length) {
@@ -1113,7 +1117,7 @@
 
   function loadKnowledge() {
     var query = (el("qvq-kb-search") || {}).value || "";
-    api("/api/qvq/kb?q=" + encodeURIComponent(query.trim())).then(function (data) {
+    loadInto("qvq-kb-list", function () { return api("/api/qvq/kb?q=" + encodeURIComponent(query.trim())); }, function (box, data) {
       var entries = (data && data.entries) || [];
       var stats = (data && data.stats) || {};
       var statsEl = el("qvq-kb-stats");
@@ -1543,7 +1547,7 @@
   }
 
   function loadAudit() {
-    api("/api/qvq/audit?limit=500").then(function (data) {
+    loadInto("qvq-audit-list", function () { return api("/api/qvq/audit?limit=500"); }, function (box, data) {
       var entries = (data && data.entries) || [];
       var filter = el("qvq-audit-filter");
       var tools = {};
@@ -1628,6 +1632,17 @@
   function loadSettings() {
     bindSettingsSearch();
     bindSettingsFormEvents();
+    var keysBtn = el("qvq-settings-keys");
+    if (keysBtn && !keysBtn.dataset.bound) {
+      keysBtn.dataset.bound = "1";
+      try {
+        if (localStorage.getItem("qvq_show_keys") === "1") document.body.classList.add("qvq-show-keys");
+      } catch (e) {}
+      keysBtn.onclick = function () {
+        var on = document.body.classList.toggle("qvq-show-keys");
+        try { localStorage.setItem("qvq_show_keys", on ? "1" : "0"); } catch (e) {}
+      };
+    }
     api("/api/qvq/config").then(function (data) {
       if (!data || data.error || !Array.isArray(data.fields)) return;
       settingsConfigFields = data.fields;
@@ -1642,6 +1657,25 @@
   }
 
    
+  var SETTINGS_DRAFT_KEY = "qvq_settings_draft";
+
+  function settingsLoadPersistedDraft() {
+ 
+    try {
+      var saved = JSON.parse(localStorage.getItem(SETTINGS_DRAFT_KEY) || "null");
+      if (saved && typeof saved === "object") return saved;
+    } catch (e) {}
+    return null;
+  }
+
+  function settingsPersistDraft() {
+    try { localStorage.setItem(SETTINGS_DRAFT_KEY, JSON.stringify(settingsDraft)); } catch (e) {}
+  }
+
+  function settingsClearPersistedDraft() {
+    try { localStorage.removeItem(SETTINGS_DRAFT_KEY); } catch (e) {}
+  }
+
   function applySettingsState() {
     settingsFields = settingsConfigFields.concat(settingsPluginFields);
     settingsOriginal = {};
@@ -1652,6 +1686,12 @@
     Object.keys(settingsOriginal).forEach(function (k) {
       settingsDraft[k] = settingsOriginal[k];
     });
+    var saved = settingsLoadPersistedDraft();
+    if (saved) {
+      Object.keys(settingsDraft).forEach(function (k) {
+        if (k in saved) settingsDraft[k] = saved[k];
+      });
+    }
     renderSettingsCategories();
     renderSettingsForm();
   }
@@ -2014,6 +2054,7 @@
       if (f) settingsDraft[f.key] = settingsSerializeField(node, f);
     });
     settingsUpdateSaveBtn();
+    settingsPersistDraft();
   }
 
   function settingsDirtyKeys() {
@@ -2192,6 +2233,7 @@
       } else if (r && r.ok) {
         keys.forEach(function (k) { settingsOriginal[k] = settingsDraft[k]; });
         toast(t("settings_saved"));
+        settingsClearPersistedDraft();
       } else {
         toast((r && r.error) || "error", true);
       }
@@ -2222,6 +2264,7 @@
         } else if (r && r.ok) {
           Object.keys(byModule[mod]).forEach(function (rk) { settingsOriginal[full(rk)] = settingsDraft[full(rk)]; });
           toast(t("settings_saved"));
+          settingsClearPersistedDraft();
         } else {
           toast((r && r.error) || "error", true);
         }
