@@ -353,6 +353,10 @@ def make_config(**overrides):
         context_compress_tokens=128000,
         tool_notice_mode="brief",
         aggregate_window=5.0,
+# H2 分级窗口缺省走回退（0=用 aggregate_window），让既有按 aggregate_window 调时的测试保持语义
+        debounce_group_seconds=0.0,
+        debounce_mention_seconds=0.0,
+        humanize_echo_filter=True,
         interrupt_mode="queue",
         skills_dir="data/QvQChat/skills",
         skills_disabled=[],

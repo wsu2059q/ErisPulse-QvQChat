@@ -27,6 +27,54 @@ CONFIRM_WORDS = {"确认", "確認", "确定", "確定", "是", "confirm", "yes"
 RATE_WINDOW_CAP = 512
 
 
+def is_self_event(cfg, sdk, event) -> bool:
+    """H2 自身出站回环判定：sender 等于平台 self_id 或适配器 bot id 即视为回声。"""
+    if not bool(getattr(cfg, "humanize_echo_filter", True)):
+        return False
+    sender = str(event.get_user_id() or "")
+    if not sender:
+        return False
+    for probe in (
+        lambda: event.get_self_account_id(),
+        lambda: event.get("self_id"),
+    ):
+        try:
+            value = probe()
+        except Exception:
+            value = None
+        if value and str(value) == sender:
+            return True
+    try:
+        adapter = sdk.adapter.get(event.get_platform() or "")
+    except Exception:
+        adapter = None
+    for attr in ("self_id", "bot_id", "get_self_id"):
+        value = getattr(adapter, attr, None)
+        if callable(value):
+            try:
+                value = value()
+            except Exception:
+                value = None
+        if value and str(value) == sender:
+            return True
+    return False
+
+
+def debounce_window(cfg, is_group: bool, is_at: bool) -> float:
+    """H2 防抖分级：私聊沿用 aggregate_window；群聊普通消息用群窗口，@ 触发压短。"""
+    base = float(getattr(cfg, "aggregate_window", 5.0) or 0)
+    if not is_group:
+        return base
+    group = float(getattr(cfg, "debounce_group_seconds", 2.0) or 0)
+    if group <= 0:
+        group = base
+    if is_at:
+        mention = float(getattr(cfg, "debounce_mention_seconds", 1.0) or 0)
+        if mention > 0:
+            return mention
+    return group
+
+
 class InboxMixin(RecoveryMixin):
     """Main 的消息入口 mixin（组合 RecoveryMixin：实例重启恢复方法随本链挂到 Main）。
     依赖宿主提供 self.sdk / self.cfg / self.logger /
@@ -179,6 +227,10 @@ class InboxMixin(RecoveryMixin):
     async def _on_message(self, event) -> None:
         try:
             if event.get("replayed"):
+                return
+# H2 回声过滤：适配器把 bot 自己发出的消息回投成事件时直接丢弃——
+# 不参与合并、不作为新触发源、也不进旁听流（否则插件会看到假消息）
+            if is_self_event(self.cfg, self.sdk, event):
                 return
             text = (event.get_alt_message() or "").strip()
             if event.is_command():
@@ -384,6 +436,53 @@ class InboxMixin(RecoveryMixin):
             self._chat_locks[chat_key] = lock
         return lock
 
+    def _is_self_event(self, event) -> bool:
+        """自身出站回环判定：sender 等于平台 self_id 或适配器 bot id 即视为回声。"""
+        if not bool(getattr(self.cfg, "humanize_echo_filter", True)):
+            return False
+        sender = str(event.get_user_id() or "")
+        if not sender:
+            return False
+        for probe in (
+            lambda: event.get_self_account_id(),
+            lambda: event.get("self_id"),
+        ):
+            try:
+                value = probe()
+            except Exception:
+                value = None
+            if value and str(value) == sender:
+                return True
+        try:
+            adapter = self.sdk.adapter.get(event.get_platform() or "")
+        except Exception:
+            adapter = None
+        for attr in ("self_id", "bot_id", "get_self_id"):
+            value = getattr(adapter, attr, None)
+            if callable(value):
+                try:
+                    value = value()
+                except Exception:
+                    value = None
+            if value and str(value) == sender:
+                return True
+        return False
+
+    @staticmethod
+    def _debounce_window(cfg, is_group: bool, is_at: bool) -> float:
+        """H2 防抖分级：私聊沿用 aggregate_window；群聊普通消息用群窗口，@ 触发压短。"""
+        base = float(getattr(cfg, "aggregate_window", 5.0) or 0)
+        if not is_group:
+            return base
+        group = float(getattr(cfg, "debounce_group_seconds", 2.0) or 0)
+        if group <= 0:
+            group = base
+        if is_at:
+            mention = float(getattr(cfg, "debounce_mention_seconds", 1.0) or 0)
+            if mention > 0:
+                return mention
+        return group
+
     def _batch_message(self, event, chat_key: str, text: str, images: list,
                        origin: str = "chat") -> None:
         entry = self._pending.setdefault(chat_key, {"items": [], "event": event, "timer": None})
@@ -399,7 +498,15 @@ class InboxMixin(RecoveryMixin):
         )
         entry["event"] = event
         if entry["timer"] is None:
-            window = float(getattr(self.cfg, "aggregate_window", 5.0) or 0)
+            try:
+                is_group = event.is_group_message()
+            except Exception:
+                is_group = False
+            try:
+                is_at = event.is_at_message()
+            except Exception:
+                is_at = False
+            window = debounce_window(self.cfg, is_group, is_at)
             if window <= 0:
                 entry["timer"] = self.spawn(self._flush_pending(chat_key))
             else:
