@@ -122,7 +122,15 @@ class OpsApiMixin:
             limit = max(1, min(int(self._query(request, "limit") or 200), 500))
         except Exception:
             limit = 200
-        return {"entries": list(reversed(entries[-limit:]))}
+ 
+        try:
+            offset = max(0, int(self._query(request, "offset") or 0))
+        except Exception:
+            offset = 0
+        newest_first = list(reversed(entries))
+        total = len(newest_first)
+        page = newest_first[offset : offset + limit]
+        return {"entries": page, "total": total, "offset": offset, "limit": limit}
 
  
  

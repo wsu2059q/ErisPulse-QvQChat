@@ -1031,3 +1031,17 @@
  
 .qvq-key-tag { display: none; }
 body.qvq-show-keys .qvq-key-tag { display: inline; }
+
+ 
+@media (max-width: 720px) {
+  .qvq-table {
+    display: block;
+    overflow-x: auto;
+    min-width: 520px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .qvq-table thead, .qvq-table tbody {
+    display: table;
+    width: 100%;
+  }
+}
