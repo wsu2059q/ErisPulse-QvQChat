@@ -178,6 +178,72 @@ class Delivery:
         self._identity: dict = {}
         self._rng = rng or random
         self._replay_tried: set[str] = set()
+# H3 响应预算：chat_key → 生成开始时间戳（None=无预算约束）
+        self._budget_start: dict[str, float] = {}
+# H3 硬打断：chat_key 集合，分段发送循环在段间检查并丢弃未发段
+        self._interrupted: set[str] = set()
+# H5 撤回：chat_key → 最近一次成功发送的 message_id 信息
+        self._last_sent: dict[str, dict] = {}
+
+    def begin_budget(self, chat_key: str, seconds: float) -> None:
+        """H3：生成本轮回复前记时；seconds<=0 表示不启用预算。"""
+        if not chat_key:
+            return
+        if seconds and seconds > 0:
+            self._budget_start[chat_key] = time.time()
+        else:
+            self._budget_start.pop(chat_key, None)
+
+    def end_budget(self, chat_key: str) -> None:
+        self._budget_start.pop(chat_key, None)
+
+    def budget_left(self, chat_key: str) -> float | None:
+        """剩余预算秒数；无预算返回 None。"""
+        start = self._budget_start.get(chat_key)
+        if start is None:
+            return None
+        budget = as_float(getattr(self.config, "humanize_budget_seconds", 7.0), 7.0)
+        return budget - (time.time() - start)
+
+    def interrupt(self, chat_key: str) -> None:
+        """H3 硬打断：丢弃该会话未发送的分段（已发出的照发不撤）。"""
+        if chat_key:
+            self._interrupted.add(chat_key)
+
+    def take_interrupt(self, chat_key: str) -> bool:
+        if chat_key in self._interrupted:
+            self._interrupted.discard(chat_key)
+            return True
+        return False
+
+    async def _sleep_interruptible(self, chat_key: str, seconds: float) -> None:
+        """H3：分段间延迟可被硬打断提前唤醒。"""
+        deadline = time.time() + max(0.0, seconds)
+        while True:
+            remain = deadline - time.time()
+            if remain <= 0 or chat_key in self._interrupted:
+                return
+            await asyncio.sleep(min(0.2, remain))
+
+    async def recall_last(self, chat_key: str) -> bool:
+        """H5 撤回最近一条机器人消息（平台不支持/超时静默失败）。"""
+        info = self._last_sent.get(chat_key)
+        if not info or not info.get("message_id"):
+            return False
+        if time.time() - float(info.get("ts") or 0) > 120:
+            return False
+        adapter = self.sdk.adapter.get(str(info.get("platform") or ""))
+        call_api = getattr(adapter, "call_api", None)
+        if not callable(call_api):
+            return False
+        try:
+            await call_api("delete_msg", message_id=info["message_id"])
+            self._last_sent.pop(chat_key, None)
+            self.main.logger.info(f"recalled last message for {chat_key}")
+            return True
+        except Exception as e:
+            self.main.logger.debug(f"recall failed for {chat_key}: {e}")
+            return False
 
     def profile_for(self, platform: str) -> dict:
         """D2：取平台投递 profile（reply/工具两条路径共用）。"""
@@ -357,13 +423,36 @@ class Delivery:
 
     async def _send_plain(self, event, reply: str) -> bool:
         """单条发送：方法降级 -> 重试 -> 最终失败入待发队列（D4）。返回是否发送成功。"""
-        used, _, _ = await dispatch_text(
+        used, result, _ = await dispatch_text(
             self.sdk, self.config,
             lambda name, content: event.reply(content, method=name),
             self._reply_methods(event), reply,
             queue=self._event_queue(event), logger=self.main.logger,
         )
+        if used:
+# H5：记录最近成功发送的 message_id，供撤回使用（各适配器结果结构不一，尽力提取）
+            message_id = self._extract_message_id(result)
+            if message_id is not None:
+                queue = self._event_queue(event) or {}
+                self._last_sent[str(queue.get("chat_key") or self._event_chat_key(event))] = {
+                    "platform": str(event.get_platform() or ""),
+                    "message_id": message_id,
+                    "ts": time.time(),
+                }
         return bool(used)
+
+    @staticmethod
+    def _extract_message_id(result) -> object | None:
+        if isinstance(result, dict):
+            for key in ("message_id", "messageId"):
+                if result.get(key) is not None:
+                    return result[key]
+            data = result.get("data")
+            if isinstance(data, dict) and data.get("message_id") is not None:
+                return data["message_id"]
+        if isinstance(result, (int, str)) and result:
+            return result
+        return getattr(result, "message_id", None)
 
     async def _send_split(self, event, reply: str) -> None:
         profile = self.profile_for(str(event.get_platform() or ""))
@@ -372,9 +461,22 @@ class Delivery:
             segments = [(reply, 0.0)]
         segments = await self._emit_deliver_hook(event, segments)
         queue = self._event_queue(event)
+        chat_key = str((queue or {}).get("chat_key") or self._event_chat_key(event))
+# H3 响应预算：生成耗时吃掉预算时降级——延迟减半 → 归零 → 全部合并为一条发出
+        left = self.budget_left(chat_key)
+        if left is not None:
+            needed = sum(max(0.0, d) for _, d in segments)
+            if left <= 0:
+                segments = [("\n\n".join(t for t, _ in segments), 0.0)]
+            elif needed > left:
+                segments = [(t, d / 2 if d > 0 else 0.0) for t, d in segments]
         for index, (text, delay) in enumerate(segments):
             if delay > 0:
-                await asyncio.sleep(delay)
+                await self._sleep_interruptible(chat_key, delay)
+# H3 硬打断：未发送的段作废（已发出的照发），本轮到此为止
+            if self.take_interrupt(chat_key):
+                self.main.logger.info(f"reply interrupted, dropped {len(segments) - index} segment(s)")
+                break
             if await self._send_plain(event, text):
                 continue
 # D4：分段中途失败——失败段已入队，剩余段一并入队，不中断已发段
@@ -395,10 +497,13 @@ class Delivery:
         if await self._try_forward(event, reply, tool_trace, force=force, rounds=rounds):
             return
         profile = self.profile_for(str(event.get_platform() or ""))
-        if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
-            await self._send_split(event, reply)
-            return
-        await self._send_plain(event, reply)
+        try:
+            if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
+                await self._send_split(event, reply)
+                return
+            await self._send_plain(event, reply)
+        finally:
+            self.end_budget(self._event_chat_key(event))
 
     async def _replay_pending(self, chat_key: str) -> bool:
         """D4 失败重放：顺带尝试重放队首一条；失败保留队列（每个 chat_key 每进程只试一次）。"""

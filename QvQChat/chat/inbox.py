@@ -60,6 +60,34 @@ def is_self_event(cfg, sdk, event) -> bool:
     return False
 
 
+# H3 硬打断信号词：短催促/纠错类。纠错词同时触发 H5 撤回
+INTERRUPT_URGE_WORDS = ("？", "?", "在吗", "在么", "说话", "理我", "回我", "等等")
+RECALL_WORDS = ("撤回", "说错", "发错", "不是这个", "删掉")
+
+
+def detect_interrupt(text: str, is_at: bool, is_reply: bool,
+                     sender_gap: float | None, signals: list) -> tuple[bool, bool]:
+    """H3 硬打断判定：返回 (是否打断, 是否纠错需撤回)。
+
+    signals 来自 humanize_interrupt_signals；sender_gap 为该发送者距上一条消息的秒数
+    （<=10s 视为连发 burst）。
+    """
+    enabled = set(str(x) for x in (signals or []) if str(x))
+    if not enabled:
+        return False, False
+    text = str(text or "").strip()
+    if "mention" in enabled and is_at:
+        return True, False
+    if "reply" in enabled and is_reply:
+        return True, False
+    if "burst" in enabled and sender_gap is not None and 0 < sender_gap <= 10:
+        return True, False
+    if "urge" in enabled and text and len(text) <= 12:
+        if any(w in text for w in INTERRUPT_URGE_WORDS) or any(w in text for w in RECALL_WORDS):
+            return True, any(w in text for w in RECALL_WORDS)
+    return False, False
+
+
 def debounce_window(cfg, is_group: bool, is_at: bool) -> float:
     """H2 防抖分级：私聊沿用 aggregate_window；群聊普通消息用群窗口，@ 触发压短。"""
     base = float(getattr(cfg, "aggregate_window", 5.0) or 0)
@@ -168,6 +196,49 @@ class InboxMixin(RecoveryMixin):
         for key in [k for k, lock in self._chat_locks.items() if not lock.locked()]:
             self._chat_locks.pop(key, None)
 
+    async def _maybe_interrupt(self, event, chat_key: str, text: str) -> None:
+        """H3/H5：打断信号检测。仅在本会话确有未发完的分段时生效；纠错词同时撤回上一条。"""
+        if not bool(getattr(self.cfg, "humanize_interrupt", True)):
+            return
+        delivery = getattr(self, "delivery", None)
+        if delivery is None:
+            return
+        now = time.time()
+        sender = str(event.get_user_id() or "")
+        if not hasattr(self, "_burst_last"):
+            self._burst_last = {}
+        gap = None
+        if sender:
+            last = self._burst_last.get(f"{chat_key}:{sender}")
+            if last:
+                gap = now - last
+            self._burst_last[f"{chat_key}:{sender}"] = now
+# 仅在防抖窗口内或上一轮分段尚未发完时才打断（护栏，防误伤）
+        in_debounce = chat_key in self._pending
+        sending = chat_key in getattr(delivery, "_budget_start", {})
+        if not (in_debounce or sending):
+            return
+        try:
+            is_reply = any(
+                isinstance(seg, dict) and seg.get("type") == "reply"
+                for seg in (event.get_message() or [])
+            )
+        except Exception:
+            is_reply = False
+        hit, wants_recall = detect_interrupt(
+            text,
+            bool(event.is_at_message()),
+            is_reply,
+            gap,
+            list(getattr(self.cfg, "humanize_interrupt_signals", []) or []),
+        )
+        if not hit:
+            return
+        delivery.interrupt(chat_key)
+        self.logger.info(f"hard interrupt triggered for {chat_key}")
+        if wants_recall and bool(getattr(self.cfg, "humanize_recall_message", True)):
+            await delivery.recall_last(chat_key)
+
     def _rate_allow(self, chat_key: str, sender_id: str, event) -> bool:
         """群聊 per-user 滑动窗口限频：超限静默丢弃（每窗口至多提示一次），管理员豁免。"""
         limit = int(getattr(self.cfg, "user_rate_limit", 0) or 0)
@@ -243,6 +314,11 @@ class InboxMixin(RecoveryMixin):
             routed = self.sessions.resolve_route(chat_key)
             if routed:
                 chat_key = routed
+# H3 硬打断：本会话还有未发完的分段时，新消息命中强信号 → 丢弃剩余段
+            try:
+                await self._maybe_interrupt(event, chat_key, text)
+            except Exception as e:
+                self.logger.debug(f"interrupt check failed: {e}")
 #  扩展点 A：qvq.observe 旁听通道——命令过滤后、触发判定前广播纯数据载荷
 # （含未触发回复的消息，插件借此观察全部群聊；异常吞掉不打断主流程）
             try:
@@ -528,6 +604,11 @@ class InboxMixin(RecoveryMixin):
 
     async def _process_locked(self, event, items: list, chat_key: str, origin: str = "chat") -> None:
         try:
+# H3 响应预算：从生成开始计时，发送层据此降级打字延迟
+            try:
+                self.delivery.begin_budget(chat_key, float(getattr(self.cfg, "humanize_budget_seconds", 7.0) or 0))
+            except Exception:
+                pass
             ctx = self._chat_ctx(event, chat_key, origin)
             is_group = event.is_group_message()
             sender_id = str(event.get_user_id() or "")

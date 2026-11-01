@@ -110,3 +110,103 @@ async def test_recall_hint_gated_by_cooldown_and_initiation():
     main3 = FakeMain(humanize_recall_on_cold_only=True)
     main3.sdk.storage.set("QvQChat:recall_last:u1", 0)
     assert main3.conversations._recall_hint_allowed("k", "", "u1") is False
+
+
+# ===== H3 硬打断信号 =====
+
+
+def test_interrupt_signal_detection():
+    from QvQChat.chat.inbox import detect_interrupt
+
+    signals = ["mention", "reply", "burst", "urge"]
+    assert detect_interrupt("随便说", True, False, None, signals) == (True, False)   # @
+    assert detect_interrupt("嗯", False, True, None, signals) == (True, False)       # 引用
+    assert detect_interrupt("嗯", False, False, 5.0, signals) == (True, False)       # 连发
+    assert detect_interrupt("在吗", False, False, None, signals) == (True, False)    # 催促
+    assert detect_interrupt("说错了 撤回", False, False, None, signals)[0] is True   # 纠错→打断
+    assert detect_interrupt("说错了 撤回", False, False, None, signals)[1] is True   # 且要撤回
+    assert detect_interrupt("我们聊点别的吧", False, False, None, signals) == (False, False)
+# 信号集合为空 → 功能关闭
+    assert detect_interrupt("在吗", True, True, 1.0, []) == (False, False)
+
+
+# ===== H3 响应预算降级 + 打断丢弃 =====
+
+
+async def test_budget_merge_and_interrupt_drop(monkeypatch):
+    import QvQChat.conversation.delivery as delivery_mod
+    from fakes import FakeMain
+    from QvQChat.conversation.delivery import Delivery
+
+    main = FakeMain(humanize_budget_seconds=7.0)
+    delivery = Delivery(main, rng=__import__("random"))
+
+    def fake_plan(reply, profile, rng=None):
+        return [("一。", 0.0), ("二。", 0.0), ("三。", 0.0)]
+
+    monkeypatch.setattr(delivery_mod, "plan_segments", fake_plan)
+
+    class Ev:
+        def get_platform(self): return "test"
+        def is_group_message(self): return False
+        def get_group_id(self): return ""
+        def get_user_id(self): return "u1"
+
+        async def reply(self, content, method="Text"):
+            main.sent.append(content)
+            return {"message_id": 1}
+
+    main.sent = []
+    ev = Ev()
+
+# 1) 预算耗尽：多条合并为一条、无延迟
+    delivery.begin_budget("test:private:u1", 7.0)
+    delivery._budget_start["test:private:u1"] = __import__("time").time() - 99
+    await delivery._send_split(ev, "随便什么")
+    assert len(main.sent) == 1
+    assert main.sent[0] == "一。\n\n二。\n\n三。"
+    delivery.end_budget("test:private:u1")
+
+# 2) 硬打断：第二条段发送前打断，剩余段丢弃
+    main.sent = []
+    delivery.begin_budget("test:private:u1", 0)  # 关预算避免合并
+    real_plain = delivery._send_plain
+
+    async def plain_then_interrupt(event, text):
+        await real_plain(event, text)
+        if len(main.sent) >= 1:
+            delivery.interrupt("test:private:u1")
+        return True
+
+    delivery._send_plain = plain_then_interrupt
+    await delivery._send_split(ev, "随便什么")
+    assert main.sent == ["一。"]
+    delivery.end_budget("test:private:u1")
+
+
+# ===== H5 撤回 =====
+
+
+async def test_recall_last_message():
+    from fakes import FakeMain
+    from QvQChat.conversation.delivery import Delivery
+
+    main = FakeMain()
+    delivery = Delivery(main)
+
+    class Adapter:
+        calls = []
+
+        async def call_api(self, endpoint, **params):
+            Adapter.calls.append((endpoint, params))
+            return {"ok": True}
+
+    main.sdk.adapter._adapters["onebot11"] = Adapter()
+    delivery._last_sent["onebot11:group:1"] = {
+        "platform": "onebot11", "message_id": 42, "ts": __import__("time").time(),
+    }
+    assert await delivery.recall_last("onebot11:group:1") is True
+    assert Adapter.calls[0][0] == "delete_msg"
+    assert Adapter.calls[0][1]["message_id"] == 42
+# 撤回后再次调用：无记录 → False
+    assert await delivery.recall_last("onebot11:group:1") is False
