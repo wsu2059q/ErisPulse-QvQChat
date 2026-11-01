@@ -80,6 +80,23 @@
     if (activeNav) switchTab(activeNav.getAttribute("data-tab"));
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && el("qvq-modal").style.display !== "none") closeModal();
+// F3 焦点圈禁：模态打开时 Tab 循环留在模态内
+      if (e.key === "Tab" && el("qvq-modal").style.display !== "none") {
+        var focusables = el("qvq-modal").querySelectorAll(
+          "button, input, select, textarea, [tabindex]:not([tabindex='-1'])"
+        );
+        if (!focusables.length) return;
+        var first = focusables[0];
+        var last = focusables[focusables.length - 1];
+        var active = document.activeElement;
+        if (e.shiftKey && (active === first || !el("qvq-modal").contains(active))) {
+          e.preventDefault();
+          tryFocus(last);
+        } else if (!e.shiftKey && (active === last || !el("qvq-modal").contains(active))) {
+          e.preventDefault();
+          tryFocus(first);
+        }
+      }
     });
     el("qvq-model-add").onclick = function () { openModelModal(null); };
     el("qvq-persona-add").onclick = function () { openPersonaModal(null); };

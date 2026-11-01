@@ -49,14 +49,27 @@
   }
 
 
+  var modalReturnFocus = null;
+
+  function tryFocus(node) {
+    try { node.focus(); } catch (e) {}
+  }
+
   function openModal(title, bodyHtml) {
     el("qvq-modal-title").textContent = title;
     el("qvq-modal-body").innerHTML = bodyHtml;
     el("qvq-modal").style.display = "flex";
+     
+    modalReturnFocus = document.activeElement;
+    var first = el("qvq-modal-body").querySelector("input, textarea, select, button");
+    if (first) tryFocus(first);
   }
   function closeModal() {
     el("qvq-modal").style.display = "none";
     el("qvq-modal-body").innerHTML = "";
+     
+    if (modalReturnFocus && modalReturnFocus.focus) tryFocus(modalReturnFocus);
+    modalReturnFocus = null;
   }
 
 
@@ -72,81 +85,9 @@
   window.addEventListener("resize", closeAllMenus);
 
   function enhanceSelects(root) {
-    (root || document).querySelectorAll("select.qvq-select").forEach(function (sel) {
-      if (sel.getAttribute("data-qvq-dd")) return;
-      sel.setAttribute("data-qvq-dd", "1");
-      var wrap = document.createElement("span");
-      wrap.className = "qvq-dd-wrap";
-      try {
-        var mw = window.getComputedStyle(sel).maxWidth;
-        if (mw && mw !== "none") wrap.style.maxWidth = mw;
-      } catch (e) {}
-      if (sel.parentNode) sel.parentNode.insertBefore(wrap, sel);
-      else return;
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "qvq-dd-btn";
-      var label = document.createElement("span");
-      label.className = "qvq-dd-label";
-      var chev = document.createElement("i");
-      chev.className = "qvq-dd-chev";
-      btn.appendChild(label);
-      btn.appendChild(chev);
-      var menu = document.createElement("span");
-      menu.className = "qvq-dd-menu";
-      document.body.appendChild(menu);
-      wrap.appendChild(btn);
-      wrap.appendChild(sel);
-      function place() {
-        var r = btn.getBoundingClientRect();
-        var openUp = r.bottom + 280 > window.innerHeight && r.top > 300;
-        menu.classList.toggle("up", openUp);
-        menu.style.left = r.left + "px";
-        menu.style.width = r.width + "px";
-        if (openUp) {
-          menu.style.top = "auto";
-          menu.style.bottom = (window.innerHeight - r.top + 6) + "px";
-        } else {
-          menu.style.bottom = "auto";
-          menu.style.top = (r.bottom + 6) + "px";
-        }
-      }
-      function renderMenu() {
-        var cur = sel.value;
-        var opts = Array.prototype.slice.call(sel.options || []).map(function (o) {
-          return '<span class="qvq-dd-opt' + (o.value === cur ? " sel" : "") + (o.disabled ? " dis" : "") + '" data-v="' + esc(o.value) + '">' +
-            "<span>" + esc(o.textContent) + "</span>" + (o.value === cur ? DD_CHECK : "") + "</span>";
-        }).join("");
-        menu.innerHTML = opts;
-        label.textContent = (sel.selectedOptions && sel.selectedOptions[0] && sel.selectedOptions[0].textContent) || cur || " ";
-      }
-      function close() { menu.classList.remove("open"); btn.classList.remove("open"); }
-      btn.onclick = function (e) {
-        e.stopPropagation();
-        var willOpen = !menu.classList.contains("open");
-        closeAllMenus();
-        if (willOpen) {
-          renderMenu();
-          place();
-          menu.classList.add("open");
-          btn.classList.add("open");
-        }
-      };
-      menu.onclick = function (e) {
-        var opt = e.target.closest(".qvq-dd-opt");
-        if (!opt || opt.classList.contains("dis")) return;
-        sel.value = opt.getAttribute("data-v");
-        sel.dispatchEvent(new Event("change"));
-        renderMenu();
-        close();
-        e.stopPropagation();
-      };
-      sel.addEventListener("change", renderMenu);
-      if (window.MutationObserver) {
-        new MutationObserver(function () { renderMenu(); }).observe(sel, { childList: true, attributes: true, subtree: true });
-      }
-      renderMenu();
-    });
+     
+     
+    void root;
   }
 
 
@@ -159,6 +100,8 @@
       var body = el("qvq-modal-body");
       body.querySelector("[data-cf-ok]").onclick = function () { closeModal(); resolve(true); };
       body.querySelector("[data-cf-no]").onclick = function () { closeModal(); resolve(false); };
+       
+      tryFocus(body.querySelector("[data-cf-no]"));
     });
   }
 
