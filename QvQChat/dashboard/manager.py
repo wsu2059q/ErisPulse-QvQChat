@@ -134,6 +134,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin):
             router.register_http_route("QvQChat", path, self._guard(handler), methods=[method])
         public_routes = [
             ("GET", "/api/qvq/share/messages", self.share_messages),
+            ("POST", "/api/qvq/share/chat", self.share_chat),
             ("GET", "/share", self.share_page),
             ("GET", "/v1/models", self.v1_models),
             ("POST", "/v1/chat/completions", self.v1_chat_completions),
