@@ -75,7 +75,8 @@
         var code = parts[pi], nl = code.indexOf("\n");
         var lang = nl >= 0 ? code.slice(0, nl).trim() : "";
         var body = nl >= 0 ? code.slice(nl + 1) : code;
-        out += '<div class="pre"><div class="lang"><span>' + esc(lang || "code") + "</span></div><pre>" + esc(body.replace(/\n$/, "")) + "</pre></div>";
+        var codeText = body.replace(/\n$/, "");
+        out += '<div class="pre"><div class="lang"><span>' + esc(lang || "code") + '</span><button type="button" class="copy">' + esc(L.copy) + '</button></div><pre>' + esc(codeText) + "</pre></div>";
         continue;
       }
       var lines = parts[pi].split("\n");
