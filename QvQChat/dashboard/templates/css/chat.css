@@ -105,6 +105,16 @@
 .qvq-msg-wrap .qvq-msg.me {
   max-width: 100%;
 }
+ 
+.qvq-msg-wrap.bot {
+  align-self: stretch;
+  align-items: stretch;
+  max-width: 100%;
+  margin-left: 0;
+}
+.qvq-msg-wrap .qvq-msg-acts.bot {
+  justify-content: flex-start;
+}
 
 .qvq-msg-acts {
   display: flex;

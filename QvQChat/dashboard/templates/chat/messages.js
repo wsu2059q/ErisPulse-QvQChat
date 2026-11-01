@@ -212,11 +212,11 @@
       for (var bi = 0; bi < chatHistory.length; bi++) {
         if (chatHistory[bi].role === "assistant") lastBot = bi;
       }
-      var botActs = '<div class="qvq-msg-acts">' +
+      var botActs = '<div class="qvq-msg-acts bot">' +
         '<button type="button" data-copy-msg="' + i + '" title="' + esc(t("copy")) + '"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
         (i === lastBot && !chatBusy ? '<button type="button" data-regen="1" title="' + esc(t("regen")) + '"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button>' : "") +
         "</div>";
-      return '<div class="qvq-msg-wrap"' + timeAttr + '><div class="qvq-msg bot' + freshCls + '">' + stepsBlock + inner + body + "</div>" + botActs + "</div>";
+      return '<div class="qvq-msg-wrap bot"' + timeAttr + '><div class="qvq-msg bot' + freshCls + '">' + stepsBlock + inner + body + "</div>" + botActs + "</div>";
     });
     var prevTop = stick ? 0 : box.scrollTop;
     box.innerHTML = build.join("");
