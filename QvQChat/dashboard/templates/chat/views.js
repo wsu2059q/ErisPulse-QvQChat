@@ -2435,6 +2435,7 @@
       if (ok) {
         activeToken = token;
         try { localStorage.setItem("qvq_token", token); } catch (e) {}
+        stripUrlToken();
         hideLogin();
         el("qvq-login-err").textContent = "";
         initApp();
