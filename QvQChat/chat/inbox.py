@@ -825,7 +825,15 @@ class InboxMixin(RecoveryMixin):
                 await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None))
                 self._drain_waiting(chat_key)
             finally:
-                self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+ 
+                try:
+                    self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+                except Exception as e:
+                    self.logger.warning(f"inflight marker delete failed ({chat_key}): {e}")
+                    try:
+                        self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+                    except Exception as e2:
+                        self.logger.error(f"inflight marker delete retry failed ({chat_key}): {e2}")
         except Exception as e:
              
              
