@@ -930,6 +930,10 @@ class ConversationService:
             parts.insert(1, SystemPart("persona_extra", persona_extra))
         if getattr(self.config, "reply_narrate", False):
             parts.append(SystemPart("narrate", NARRATE_PROMPT))
+        if getattr(self.config, "chat_output_rules", True):
+            parts.append(SystemPart("chat_rules", texts.t("chat_output_rules")))
+        if getattr(self.config, "identity_note_other_agents", True):
+            parts.append(SystemPart("identity_note", texts.t("identity_other_agents")))
         if getattr(self.config, "skill_induct", True):
             parts.append(SystemPart("skill_offer", SKILL_OFFER_NOTE))
         if scene:

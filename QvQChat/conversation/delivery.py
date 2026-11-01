@@ -308,7 +308,10 @@ class Delivery:
                 return False
             if not tool_trace and not structure_aware:
                 return False
-        sections, text_segments = build_sections(rounds, reply, tool_trace)
+        sections, text_segments = build_sections(
+            rounds, reply, tool_trace,
+            include_trace=not bool(getattr(self.config, "forward_exclude_trace", False)),
+        )
         if force is not True:
             profile = self.profile_for(platform)
             min_messages = as_int(profile.get("forward_min_messages"), 2)
