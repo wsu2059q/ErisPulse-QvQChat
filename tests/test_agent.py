@@ -85,7 +85,7 @@ async def test_runner_tool_loop():
             return ChatResponse(content="final answer", usage={"total_tokens": 3})
 
     runner = AgentRunner(ScriptedPool(), registry, main.cfg)
-    ctx = make_ctx(main)
+    ctx = make_ctx(main, admins=["1"])
     result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
     assert result.text == "final answer"
     assert result.tool_trace[0]["tool"] == "echo"
@@ -155,7 +155,7 @@ async def test_tools_fallback_strip_default():
     main = FakeMain()
     pool = CapabilityPool("no")
     runner = AgentRunner(pool, make_capability_registry(), main.cfg)
-    ctx = make_ctx(main)
+    ctx = make_ctx(main, admins=["1"])
     result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
     assert result.text == "直接回答"
     request = pool.requests[0]
@@ -169,7 +169,7 @@ async def test_tools_fallback_strict_raises():
 
     main = FakeMain(tools_fallback="strict")
     runner = AgentRunner(CapabilityPool("no"), make_capability_registry(), main.cfg)
-    ctx = make_ctx(main)
+    ctx = make_ctx(main, admins=["1"])
     try:
         await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
         raise AssertionError("strict 分支应抛错")
@@ -182,7 +182,7 @@ async def test_tools_fallback_off_keeps_tools():
     main = FakeMain(tools_fallback="off")
     pool = CapabilityPool("no")
     runner = AgentRunner(pool, make_capability_registry(), main.cfg)
-    ctx = make_ctx(main)
+    ctx = make_ctx(main, admins=["1"])
     result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
     assert result.text == "直接回答"
     request = pool.requests[0]
@@ -195,7 +195,7 @@ async def test_toolcall_needs_added_when_pool_capable():
     main = FakeMain()
     pool = CapabilityPool("yes")
     runner = AgentRunner(pool, make_capability_registry(), main.cfg)
-    ctx = make_ctx(main)
+    ctx = make_ctx(main, admins=["1"])
     result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
     assert result.text == "直接回答"
     request = pool.requests[0]
@@ -206,7 +206,7 @@ async def test_toolcall_needs_added_when_pool_capable():
     pool2 = CapabilityPool("yes")
     runner2 = AgentRunner(pool2, make_capability_registry(), main.cfg)
     await runner2.run(
-        system="s", messages=[{"role": "user", "content": "hi"}], ctx=make_ctx(main), model="m1"
+        system="s", messages=[{"role": "user", "content": "hi"}], ctx=make_ctx(main, admins=["1"]), model="m1"
     )
     assert pool2.requests[0].needs is None
     assert pool2.requests[0].tools
@@ -228,7 +228,37 @@ async def test_runner_dispatch_used_when_available():
     main = FakeMain()
     pool = DispatchPool()
     runner = AgentRunner(pool, make_capability_registry(), main.cfg)
-    ctx = make_ctx(main)
+    ctx = make_ctx(main, admins=["1"])
     result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
     assert result.text == "直接回答"
     assert pool.specs and all(isinstance(s, TaskSpec) and s.kind == "chat" for s in pool.specs)
+
+
+async def test_non_admin_tool_schemas_filtered():
+ 
+    main = FakeMain()
+    registry = make_capability_registry()
+    pool = CapabilityPool("yes")
+    runner = AgentRunner(pool, registry, main.cfg)
+    await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=make_ctx(main))
+    assert pool.requests[0].tools is None
+
+
+async def test_admin_sees_tool_schemas():
+    main = FakeMain()
+    registry = make_capability_registry()
+    pool = CapabilityPool("yes")
+    runner = AgentRunner(pool, registry, main.cfg)
+    await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=make_ctx(main, admins=["1"]))
+    assert pool.requests[0].tools
+
+
+async def test_session_block_injected():
+ 
+    main = FakeMain()
+    pool = CapabilityPool("yes")
+    runner = AgentRunner(pool, make_capability_registry(), main.cfg)
+    await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=make_ctx(main, admins=["1"]))
+    content = pool.requests[0].messages[0]["content"]
+    assert content.startswith("s")
+    assert "<session>" in content and "platform=test" in content and "</session>" in content

@@ -168,6 +168,33 @@ async def test_pending_queue_replayed_on_boot():
     assert called == [chat_key]
 
 
+async def test_stale_pending_purged_on_boot():
+ 
+    import time as _time
+
+    main = RecoveryMain()
+    chat_key = "test:private:1"
+    now = _time.time()
+    main.sdk.storage.set(
+        PENDING_KEY_PREFIX + chat_key,
+        [
+            {"text": "old", "platform": "onebot11", "detail_type": "user", "target_id": "1", "ts": now - 3600},
+            {"text": "fresh", "platform": "onebot11", "detail_type": "user", "target_id": "1", "ts": now - 30},
+        ],
+    )
+    called = []
+
+    async def fake_replay(ck):
+        called.append(ck)
+        return True
+
+    main.delivery.replay_pending = fake_replay
+    await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
+    assert called == [chat_key]
+    data = main.sdk.storage.get(PENDING_KEY_PREFIX + chat_key)
+    assert [e["text"] for e in data] == ["fresh"]
+
+
 async def test_replay_on_boot_disabled_skips():
     main = RecoveryMain(replay_on_boot=False)
     chat_key = "test:private:1"
