@@ -135,15 +135,18 @@
           toast(t("skills_empty"), true);
           return;
         }
+        var ok = 0, fail = 0;
         var chain = Promise.resolve();
         skills.forEach(function (sk) {
           if (!sk || !sk.name) return;
           chain = chain.then(function () {
-            return api("/api/qvq/skills/save", "POST", { name: sk.name, description: sk.description || "", body: sk.body || "" });
+            return api("/api/qvq/skills/save", "POST", { name: sk.name, description: sk.description || "", body: sk.body || "" }).then(function (r) {
+              if (r && r.ok) ok++; else fail++;
+            });
           });
         });
         chain.then(function () {
-          toast(t("saved"));
+          toast(t("batch_result").replace("{ok}", ok).replace("{fail}", fail), fail > 0);
           loadSkills();
         });
       };
@@ -161,13 +164,19 @@
     el("qvq-mcp-connect-all").onclick = function () {
       api("/api/qvq/mcp").then(function (data) {
         var names = ((data && data.servers) || []).map(function (s) { return s.name; });
+        var ok = 0, fail = 0;
         var chain = Promise.resolve();
         names.forEach(function (name) {
           chain = chain.then(function () {
-            return api("/api/qvq/mcp/connect", "POST", { name: name });
+            return api("/api/qvq/mcp/connect", "POST", { name: name }).then(function (r) {
+              if (r && r.ok) ok++; else fail++;
+            });
           });
         });
-        chain.then(function () { loadMcp(); });
+        chain.then(function () {
+          toast(t("batch_result").replace("{ok}", ok).replace("{fail}", fail), fail > 0);
+          loadMcp();
+        });
       });
     };
     el("qvq-backup-export").onclick = function () {
@@ -188,8 +197,13 @@
       reader.onload = function () {
         var data;
         try { data = JSON.parse(reader.result); } catch (e) { toast("invalid json", true); return; }
-        api("/api/qvq/import", "POST", { data: data }).then(function (r) {
-          toast(r && r.ok ? t("saved") + ": " + (r.applied || []).join(", ") : ((r && r.error) || "error"), !(r && r.ok));
+        // 导入是破坏性操作：先列出将影响的数据区段再继续
+        var sections = ["providers", "chain", "personas", "tasks", "memory", "mcp", "skills", "config", "models"].filter(function (k) { return data && data[k]; });
+        confirmDialog(t("backup_import_confirm").replace("{sections}", sections.join(", ") || "-")).then(function (yes) {
+          if (!yes) return;
+          api("/api/qvq/import", "POST", { data: data }).then(function (r) {
+            toast(r && r.ok ? t("saved") + ": " + (r.applied || []).join(", ") : ((r && r.error) || "error"), !(r && r.ok));
+          });
         });
       };
       reader.readAsText(file);
