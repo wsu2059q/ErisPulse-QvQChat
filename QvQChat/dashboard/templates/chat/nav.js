@@ -53,18 +53,29 @@
       var mcpCount = (data.mcp || []).length;
       var extCount = (data.extensions || []).length;
       var cards = [
-        { cap: t("stat_models"), num: data.models || 0, cls: "hl-red" },
-        { cap: t("stat_tools"), num: total, cls: "hl-teal" },
-        { cap: t("stat_eco"), num: tools.eco || 0, cls: "" },
-        { cap: t("stat_extensions"), num: extCount, cls: "" },
-        { cap: t("stat_sessions"), num: data.sessions || 0, cls: "" },
-        { cap: t("stat_tasks"), num: data.tasks || 0, cls: "" },
-        { cap: t("stat_mcp"), num: mcpCount, cls: "" },
-        { cap: t("stat_security"), num: (data.trust_agent ? t("trust_on") : esc(data.security_level || "-")), cls: data.trust_agent ? "hl-red" : "" }
+        { cap: t("stat_models"), num: data.models || 0, cls: "hl-red", tab: "models" },
+        { cap: t("stat_tools"), num: total, cls: "hl-teal", tab: "tools" },
+        { cap: t("stat_eco"), num: tools.eco || 0, cls: "", tab: "tools" },
+        { cap: t("stat_extensions"), num: extCount, cls: "", tab: "tools" },
+        { cap: t("stat_sessions"), num: data.sessions || 0, cls: "", tab: "sessions" },
+        { cap: t("stat_tasks"), num: data.tasks || 0, cls: "", tab: "tasks" },
+        { cap: t("stat_mcp"), num: mcpCount, cls: "", tab: "mcp" },
+        { cap: t("stat_security"), num: (data.trust_agent ? t("trust_on") : esc(data.security_level || "-")), cls: data.trust_agent ? "hl-red" : "", tab: "settings" }
       ];
+ 
       el("qvq-stats").innerHTML = cards.map(function (c) {
-        return '<div class="qvq-stat ' + c.cls + '"><div class="num">' + esc(c.num) + '</div><div class="cap">' + esc(c.cap) + "</div></div>";
+        return '<div class="qvq-stat ' + c.cls + '" data-goto="' + esc(c.tab || "") + '" role="button" tabindex="0"><div class="num">' + esc(c.num) + '</div><div class="cap">' + esc(c.cap) + "</div></div>";
       }).join("");
+      el("qvq-stats").querySelectorAll(".qvq-stat[data-goto]").forEach(function (card) {
+        var go = function () {
+          var tab = card.getAttribute("data-goto");
+          if (tab) switchTab(tab);
+        };
+        card.onclick = go;
+        card.onkeydown = function (e) {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+        };
+      });
       var usage = data.usage_today || {};
       var tokens = usage.tokens || 0;
       var limit = usage.limit || 0;
