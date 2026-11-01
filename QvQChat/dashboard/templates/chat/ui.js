@@ -91,6 +91,38 @@
   }
 
 
+  // 列表三态：骨架屏 / 错误横幅（带重试）/ 正常渲染交回调用方
+  function listSkeleton(box, rows) {
+    var n = rows || 4;
+    var out = "";
+    for (var i = 0; i < n; i++) out += "<div class='qvq-skel-row' style='animation-delay:" + (i * 0.08) + "s'></div>";
+    box.innerHTML = "<div class='qvq-skel'>" + out + "</div>";
+  }
+
+  function listError(box, retry) {
+    box.innerHTML = "<div class='qvq-list-err'><span>" + esc(t("list_load_failed")) + "</span>" +
+      "<button type='button' class='qvq-btn small ghost' data-retry>" + esc(t("retry")) + "</button></div>";
+    box.querySelector("[data-retry]").onclick = retry;
+  }
+
+  function loadInto(boxId, fetcher, render) {
+    var box = el(boxId);
+    if (!box) return;
+    var run = function () {
+      listSkeleton(box);
+      fetcher().then(function (data) {
+        if (data && data.__http >= 400) {
+          listError(box, run);
+          return;
+        }
+        render(box, data || {});
+      }, function () {
+        listError(box, run);
+      });
+    };
+    run();
+  }
+
   function confirmDialog(message) {
     return new Promise(function (resolve) {
       openModal(t("confirm_title"),
