@@ -68,3 +68,60 @@ async def test_share_expired_token_rejected():
     mgr.sdk.storage.set("QvQChat:shares", shares)
     denied = await mgr.share_messages(_Req(query={"token": token}))
     assert denied[1] == 403
+
+
+@pytest.mark.asyncio
+async def test_share_chat_continuation_with_rounds_and_budget():
+    """分享续聊：按轮数/token 配额继续对话，纯文本无工具。"""
+    mgr = _manager_with_context([
+        {"role": "user", "content": "我叫小明"},
+        {"role": "assistant", "content": "你好小明！"},
+    ])
+    resp = await mgr.session_share(_Req({
+        "chat_key": "dashboard:private:web", "rounds": 2, "chat_tokens": 500,
+    }))
+    token = resp["token"]
+
+    calls = []
+
+    class _Resp:
+        content = "我记得你，小明"
+        usage = {"total_tokens": 100}
+        model = "m"
+
+    async def fake_chat(request, **kw):
+        calls.append(request)
+        return _Resp()
+
+    mgr.main.pool.chat = fake_chat
+    out = await mgr.share_chat(_Req({"token": token, "text": "我是谁？"}))
+    assert out["ok"] is True
+    assert out["reply"] == "我记得你，小明"
+    assert out["rounds_left"] == 1
+# 纯文本续聊：请求里没有工具字段，且包含分享上下文与系统说明
+    sent = calls[-1]
+    assert not getattr(sent, "tools", None)
+    joined = " ".join(str(m.get("content")) for m in sent.messages)
+    assert "我叫小明" in joined
+    assert "分享链接" in joined or "只读" in joined or "share" in joined.lower()
+
+# 第二轮耗尽轮数后再问被拒
+    await mgr.share_chat(_Req({"token": token, "text": "再问一句"}))
+    exhausted = await mgr.share_chat(_Req({"token": token, "text": "还想问"}))
+    assert exhausted[1] == 429
+    assert "rounds" in exhausted[0]["error"]
+
+# 续聊记录随 share_messages 返回
+    got = await mgr.share_messages(_Req(query={"token": token}))
+    assert got["rounds_left"] == 0
+    roles = [m["role"] for m in got["continuation"]]
+    assert roles == ["user", "assistant", "user", "assistant"]
+
+
+@pytest.mark.asyncio
+async def test_share_chat_disabled_without_rounds():
+    """rounds=0（默认）是只读分享，不允许续聊。"""
+    mgr = _manager_with_context([{"role": "user", "content": "hi"}])
+    resp = await mgr.session_share(_Req({"chat_key": "dashboard:private:web"}))
+    out = await mgr.share_chat(_Req({"token": resp["token"], "text": "继续"}))
+    assert out[1] == 429

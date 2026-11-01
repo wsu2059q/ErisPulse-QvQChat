@@ -142,6 +142,11 @@
       "<option value='1'>1 h</option><option value='24' selected>24 h</option><option value='72'>72 h</option><option value='168'>7 d</option></select>" +
       "<label class='qvq-label'>" + esc(t("share_max_tokens")) + "</label>" +
       "<input class='qvq-input' id='qvq-share-tokens' type='number' min='200' max='200000' value='4000'/>" +
+      "<label class='qvq-label'>" + esc(t("share_rounds")) + "</label>" +
+      "<input class='qvq-input' id='qvq-share-rounds' type='number' min='0' max='200' value='0'/>" +
+      "<div class='qvq-tool-desc'>" + esc(t("share_rounds_hint")) + "</div>" +
+      "<label class='qvq-label'>" + esc(t("share_chat_tokens")) + "</label>" +
+      "<input class='qvq-input' id='qvq-share-chat-tokens' type='number' min='500' max='500000' value='20000'/>" +
       "<div class='qvq-actions'><button class='qvq-btn' data-share-create>" + esc(t("share_create")) + "</button>" +
       "<button class='qvq-btn ghost' data-share-export>" + esc(t("share_export")) + "</button></div>" +
       "<div id='qvq-share-result' style='display:none'>" +
@@ -158,6 +163,8 @@
         chat_key: chatSession,
         expires_hours: parseInt(fv(body, "qvq-share-exp"), 10) || 24,
         max_tokens: parseInt(fv(body, "qvq-share-tokens"), 10) || 4000,
+        rounds: parseInt(fv(body, "qvq-share-rounds"), 10) || 0,
+        chat_tokens: parseInt(fv(body, "qvq-share-chat-tokens"), 10) || 20000,
       }).then(function (data) {
         if (!data || !data.url) {
           toast((data && data.error) || t("chat_err"), true);
