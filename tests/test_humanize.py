@@ -210,3 +210,27 @@ async def test_recall_last_message():
     assert Adapter.calls[0][1]["message_id"] == 42
 # 撤回后再次调用：无记录 → False
     assert await delivery.recall_last("onebot11:group:1") is False
+
+
+# ===== 审计分页 =====
+
+
+async def test_audit_pagination():
+    from QvQChat.dashboard.manager import DashboardManager
+    from fakes import FakeMain
+
+    main = FakeMain()
+    manager = DashboardManager(main)
+    main.sdk.storage.set("QvQChat:audit", [{"tool": f"t{i}", "ts": 1.0} for i in range(50)])
+
+    class Q:
+        def __init__(self, q): self.query_params = q
+
+    page1 = await manager.audit_get(Q({"limit": "20", "offset": "0"}))
+    assert page1["total"] == 50
+    assert len(page1["entries"]) == 20
+    assert page1["entries"][0]["tool"] == "t49"  # 最新在前
+
+    page3 = await manager.audit_get(Q({"limit": "20", "offset": "40"}))
+    assert len(page3["entries"]) == 10
+    assert page3["entries"][-1]["tool"] == "t0"
