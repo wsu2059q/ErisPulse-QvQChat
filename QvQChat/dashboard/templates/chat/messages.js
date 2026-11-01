@@ -95,6 +95,20 @@
     });
   }
 
+  var unreadCount = 0;
+  var titleBase = document.title || "QvQChat";
+
+  function updateUnreadTitle() {
+    document.title = unreadCount > 0 ? "(" + unreadCount + ") " + titleBase : titleBase;
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) {
+      unreadCount = 0;
+      updateUnreadTitle();
+    }
+  });
+
   var CHIP_KEYS = ["chat_chip_1", "chat_chip_2", "chat_chip_3", "chat_chip_4"];
   var HERO_SVG = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='7' width='16' height='12' rx='3' stroke-dasharray='3 2'/><circle cx='9' cy='13' r='1.2' fill='currentColor'/><circle cx='15' cy='13' r='1.2' fill='currentColor'/><path d='M12 7V4'/><circle cx='12' cy='3' r='1' fill='currentColor'/></svg>";
 
@@ -246,7 +260,12 @@
     });
     bindStepToggles(box);
     bindMdCopy(box);
-    chatHistory.forEach(function (m2) { if (m2.fresh) m2.fresh = false; });
+    var freshNow = 0;
+    chatHistory.forEach(function (m2) { if (m2.fresh) { freshNow++; m2.fresh = false; } });
+    if (freshNow > 0 && document.hidden) {
+      unreadCount += freshNow;
+      updateUnreadTitle();
+    }
 
     if (chatBusy && activeLive && activeLive.session === chatSession && !box.querySelector(".qvq-msg.live")) {
       box.appendChild(activeLive.els.root);
