@@ -1818,7 +1818,7 @@
 
   function settingsChecksHtml(f, value) {
     var current = Array.isArray(value) ? value.slice() : [];
-    var known = (settingsEnums[f.items] || []).slice();
+    var known = (settingsEnums[f.items] && settingsEnums[f.items].length ? settingsEnums[f.items] : (f.options || [])).slice();
      
     current.forEach(function (v) {
       if (known.indexOf(v) < 0) known.push(v);
