@@ -69,7 +69,7 @@
 | 15 冷却参数化 | `participation_cooldown_seconds=300`+小时上限=基础冷却已落地 | 增量概率/衰减系数属决策策略 | 插件（Stalker） | 插件 |
 | 坑1 身份行 | 已修（同 9） | - | - | ✅ |
 | 坑2 view_image 白名单 | `_resolve_allowed` 走 work_dirs，默认不含 `data/QvQChat/uploads` | view_image 对 uploads 目录常直放行（或 work_dirs 默认含） | 核心 H1 顺带 | S |
-| 坑4 JSON 卡片占位 | ErisPulse `Converter.py`（SDK 仓库） | **外部依赖**：SDK 侧修；本模块 inbox 旁路解析兜底可选 | SDK | 外部 |
+| 坑4 JSON 卡片占位 | `Converter.py` 属于**各适配器自带文件**（非框架核心） | **外部依赖（适配器侧）**：onebot11/12 适配器的 Converter 在 json 段→标准消息转换时提取 onebot12 常见字段（title/prompt/preview/desc 等）拼可读文本；框架不解析业务 JSON。适配器仓库不在本工作区 | onebot 适配器仓库 | 外部 |
 | 坑5 WS 重连 notice | SDK/适配器 | **外部依赖** | SDK | 外部 |
 | 坑6 /epsdk -help | SDK | **外部依赖** | SDK | 外部 |
 | 坑7 回声过滤 | 同 13.5 | 与 H2 同批（总纲要求必须同批改） | 核心 H2 | M |
