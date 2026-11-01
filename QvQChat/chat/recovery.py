@@ -24,6 +24,12 @@ INFLIGHT_KEY_PREFIX = "QvQChat:inflight:"
 RECOVERY_BOOT_DELAY = 15.0
  
 RECOVERY_REPLAY_GAP = 2.0
+ 
+ 
+ 
+RECOVERY_MAX_AGE = 600.0
+ 
+RECOVERY_RUN_CAP = 5
 
 
 class RecoveryMixin:
@@ -115,6 +121,7 @@ class RecoveryMixin:
             keys = list(self.sdk.storage.keys())
         except Exception:
             return
+        candidates: list[tuple[str, dict, float]] = []
         for key in keys:
             if not isinstance(key, str) or not key.startswith(INFLIGHT_KEY_PREFIX):
                 continue
@@ -137,11 +144,31 @@ class RecoveryMixin:
             if not enabled:
                 self.logger.info(f"inflight mark cleared, recovery disabled: {chat_key}")
                 continue
-            if now - ts < min_age:
+            age = now - ts
+            if age < min_age:
                 self.logger.info(f"inflight mark too fresh, skip recovery: {chat_key}")
+                continue
+            if age > RECOVERY_MAX_AGE:
+ 
+ 
+                self.logger.warning(
+                    f"stale inflight mark dropped (age={int(age)}s): {chat_key}"
+                )
                 continue
             if not parse_chat_key(strip_isolation(chat_key))[0]:
                 continue
+            candidates.append((chat_key, marker, ts))
+        if not candidates:
+            return
+        candidates.sort(key=lambda item: item[2])   
+        for chat_key, marker, ts in candidates[:RECOVERY_RUN_CAP]:
+            text = str(marker.get("text") or "")
+            origin = str(marker.get("origin") or "chat")
+            dropped = max(0, len(candidates) - RECOVERY_RUN_CAP)
+            if dropped and chat_key == candidates[RECOVERY_RUN_CAP - 1][0]:
+                self.logger.warning(
+                    f"inflight recovery capped: {dropped} candidate(s) deferred to next boot"
+                )
             popped = False
             try:
                 popped = self.sessions.pop_last_user_if(chat_key, text)
