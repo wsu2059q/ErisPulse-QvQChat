@@ -337,8 +337,28 @@
     });
   }
 
+  function modelsSearchText() {
+    var node = el("qvq-models-search");
+    return node ? node.value.trim().toLowerCase() : "";
+  }
+
+  function providerMatches(p, q) {
+    if (!q) return true;
+    if ((p.name || "").toLowerCase().indexOf(q) >= 0 || (p.id || "").toLowerCase().indexOf(q) >= 0) return true;
+    return (p.models || []).some(function (m) { return (m.id || "").toLowerCase().indexOf(q) >= 0; });
+  }
+
+  function bindModelsSearch() {
+    var node = el("qvq-models-search");
+    if (!node || node.dataset.bound) return;
+    node.dataset.bound = "1";
+    node.oninput = function () { renderModelsTable(); };
+  }
+
   function renderModelsTable() {
-    var providers = modelsCache;
+    bindModelsSearch();
+    var q = modelsSearchText();
+    var providers = q ? modelsCache.filter(function (p) { return providerMatches(p, q); }) : modelsCache;
     var box = el("qvq-models-list");
     if (!box) return;
     if (!providers.length) {
@@ -391,6 +411,7 @@
         }
       };
     });
+    try { cardifyTables(box); } catch (e) {}
   }
 
   function loadModels() {
@@ -478,14 +499,20 @@
     });
     body.querySelectorAll("[data-mdel]").forEach(function (btn) {
       btn.onclick = function () {
-        confirmDialog(t("model_delete_confirm")).then(function (ok) {
-          if (!ok) return;
-          var models = provider.models.slice();
-          models.splice(Number(btn.getAttribute("data-mdel")), 1);
-          saveProviderModels(provider, models, function () {
+        var idx = Number(btn.getAttribute("data-mdel"));
+        var removed = provider.models[idx];
+        var models = provider.models.slice();
+        models.splice(idx, 1);
+        saveProviderModels(provider, models, function () {
+          toastUndo(t("deleted"), function () {
             var p = findProvider(provider.id);
-            if (p) openModelsModal(p);
+            if (!p) return;
+            var back = p.models.slice();
+            back.push(removed);
+            saveProviderModels(p, back);
           });
+          var p2 = findProvider(provider.id);
+          if (p2) openModelsModal(p2);
         });
       };
     });
@@ -726,8 +753,15 @@
   }
 
   function loadPersonas() {
+    bindListSearch("qvq-personas-search", function () { loadPersonas(); });
     loadInto("qvq-personas-list", function () { return api("/api/qvq/personas"); }, function (box, data) {
-      var personas = (data && data.personas) || [];
+      var q = listSearchText("qvq-personas-search");
+      var all = (data && data.personas) || [];
+      var personas = q ? all.filter(function (p) {
+        return (p.id || "").toLowerCase().indexOf(q) >= 0 ||
+          (p.name || "").toLowerCase().indexOf(q) >= 0 ||
+          (p.system || "").toLowerCase().indexOf(q) >= 0;
+      }) : all;
       var rows = personas.map(function (p) {
         var chip = p.builtin ? " <span class='qvq-chip'>" + esc(t("personas_builtin")) + "</span>" : "";
         if (p.modified) chip += " <span class='qvq-chip o-eco'>" + esc(t("personas_modified")) + "</span>";
@@ -755,13 +789,21 @@
           var id = btn.getAttribute("data-id");
           if (btn.getAttribute("data-act") === "del") {
             var isBuiltin = id === "assistant";
-            confirmDialog(isBuiltin ? t("personas_reset") : t("confirm_del")).then(function (ok) {
-              if (!ok) return;
-              api("/api/qvq/personas/delete", "POST", { id: id }).then(function () {
-                toast(isBuiltin ? t("personas_reset") : t("deleted"));
+            var doDelete = function () {
+              api("/api/qvq/personas/delete", "POST", { id: id }).then(function (r) {
+                if (r && r.undo) {
+                  toastUndo(t("deleted"), function () {
+                    api("/api/qvq/trash/restore", "POST", { token: r.undo }).then(function () { loadPersonas(); });
+                  });
+                } else {
+                  toast(isBuiltin ? t("personas_reset") : t("deleted"));
+                }
                 loadPersonas();
               });
-            });
+            };
+// 内置人格删除 = 重置（需确认）；自定义人格直接删除（可撤销）
+            if (isBuiltin) confirmDialog(t("personas_reset")).then(function (ok) { if (ok) doDelete(); });
+            else doDelete();
           } else {
             var persona = personas.filter(function (p) { return p.id === id; })[0];
             if (persona) openPersonaModal(persona);
@@ -824,8 +866,14 @@
   }
 
   function loadSkills() {
+    bindListSearch("qvq-skills-search", function () { loadSkills(); });
     loadInto("qvq-skills-list", function () { return api("/api/qvq/skills"); }, function (box, data) {
-      var skills = (data && data.skills) || [];
+      var q = listSearchText("qvq-skills-search");
+      var all = (data && data.skills) || [];
+      var skills = q ? all.filter(function (sk) {
+        return (sk.name || "").toLowerCase().indexOf(q) >= 0 ||
+          (sk.description || "").toLowerCase().indexOf(q) >= 0;
+      }) : all;
       if (!skills.length) {
         el("qvq-skills-list").innerHTML = '<div class="qvq-empty qvq-empty-cta">' + esc(t("skills_empty")) + "</div>";
         var cta = el("qvq-skills-list").querySelector(".qvq-empty-cta");
@@ -852,12 +900,15 @@
         btn.onclick = function () {
           var name = btn.getAttribute("data-name");
           if (btn.getAttribute("data-act") === "del") {
-            confirmDialog(t("confirm_del")).then(function (ok) {
-              if (!ok) return;
-              api("/api/qvq/skills/delete", "POST", { name: name }).then(function () {
+            api("/api/qvq/skills/delete", "POST", { name: name }).then(function (r) {
+              if (r && r.undo) {
+                toastUndo(t("deleted"), function () {
+                  api("/api/qvq/trash/restore", "POST", { token: r.undo }).then(function () { loadSkills(); });
+                });
+              } else {
                 toast(t("deleted"));
-                loadSkills();
-              });
+              }
+              loadSkills();
             });
           } else {
             var skill = skills.filter(function (x) { return x.name === name; })[0];
@@ -951,8 +1002,14 @@
   var mcpServers = [];
 
   function loadMcp() {
+    bindListSearch("qvq-mcp-search", function () { loadMcp(); });
     loadInto("qvq-mcp-list", function () { return api("/api/qvq/mcp"); }, function (box, data) {
-      mcpServers = (data && data.servers) || [];
+      var q = listSearchText("qvq-mcp-search");
+      var allServers = (data && data.servers) || [];
+      mcpServers = q ? allServers.filter(function (srv) {
+        var hay = (srv.name || "") + " " + (srv.command || "") + " " + (srv.url || "");
+        return hay.toLowerCase().indexOf(q) >= 0;
+      }) : allServers;
       var clients = {};
       ((data && data.clients) || []).forEach(function (c) { clients[c.name] = c; });
       var body = mcpServers.length
@@ -1543,6 +1600,22 @@
         ta.remove();
         done();
       }
+    };
+  }
+
+  function listSearchText(id) {
+    var node = el(id);
+    return node ? node.value.trim().toLowerCase() : "";
+  }
+
+  function bindListSearch(id, refresh) {
+    var node = el(id);
+    if (!node || node.dataset.bound) return;
+    node.dataset.bound = "1";
+    var timer = null;
+    node.oninput = function () {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(refresh, 200);
     };
   }
 

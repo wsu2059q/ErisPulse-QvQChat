@@ -38,7 +38,68 @@ FAVICON_HREF = "data:image/svg+xml," + quote(FAVICON_SVG)
 TOKEN_KEY = "QvQChat:auth_token"
 
 
-class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin):
+# ===== 删除回收站（撤销删除）：删除前暂存载荷，10 分钟内可还原 =====
+
+TRASH_PREFIX = "QvQChat:trash:"
+TRASH_TTL = 600.0
+
+
+class TrashMixin:
+    """依赖宿主提供 self.main / self.sdk。"""
+
+    def _trash_put(self, kind: str, payload) -> str:
+        import secrets as _secrets
+
+        token = _secrets.token_urlsafe(9)
+        try:
+            self.sdk.storage.set(TRASH_PREFIX + token, {"kind": kind, "payload": payload, "ts": __import__("time").time()})
+        except Exception:
+            pass
+        return token
+
+    def _trash_pop(self, token: str):
+        key = TRASH_PREFIX + str(token or "")
+        entry = None
+        try:
+            entry = self.sdk.storage.get(key, None)
+            self.sdk.storage.delete(key)
+        except Exception:
+            entry = None
+        if not isinstance(entry, dict):
+            return None
+        import time as _time
+
+        if _time.time() - float(entry.get("ts") or 0) > TRASH_TTL:
+            return None
+        return entry
+
+    async def trash_restore(self, request):
+        body = await request.json()
+        entry = self._trash_pop(str((body or {}).get("token") or ""))
+        if entry is None:
+            return ({"error": "undo expired or invalid"}, 410)
+        kind = str(entry.get("kind") or "")
+        payload = entry.get("payload")
+        try:
+            if kind == "session":
+                from .conversation.service import CONV_PREFIX
+
+                self.sdk.storage.set(CONV_PREFIX + str(payload.get("chat_key") or ""), payload.get("state"))
+            elif kind == "skill":
+                self.main.skills.save_skill(str(payload.get("name") or ""), str(payload.get("description") or ""), str(payload.get("body") or ""))
+            elif kind == "persona":
+                restored = self.main.personas.save(dict(payload))
+                payload = restored
+            elif kind == "provider":
+                self.main.pool.save_provider(dict(payload))
+            else:
+                return ({"error": f"unknown kind: {kind}"}, 400)
+        except Exception as e:
+            return ({"error": str(e)}, 500)
+        return {"ok": True, "kind": kind}
+
+
+class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, TrashMixin):
     """Dashboard 管理器（拆分后）。
 
     会话/配置/运维三个 API 域分别在 api_sessions.py / api_config.py / api_ops.py（mixin），
@@ -119,6 +180,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin):
             ("POST", "/api/qvq/sessions/reset", self.sessions_reset),
             ("POST", "/api/qvq/session/rename", self.session_rename),
             ("POST", "/api/qvq/session/regenerate", self.session_regenerate),
+            ("POST", "/api/qvq/trash/restore", self.trash_restore),
             ("GET", "/api/qvq/audit", self.audit_get),
             ("GET", "/api/qvq/config", self.config_get),
             ("POST", "/api/qvq/config", self.config_set),
@@ -615,3 +677,4 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin):
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+

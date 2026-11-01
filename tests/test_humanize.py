@@ -234,3 +234,50 @@ async def test_audit_pagination():
     page3 = await manager.audit_get(Q({"limit": "20", "offset": "40"}))
     assert len(page3["entries"]) == 10
     assert page3["entries"][-1]["tool"] == "t0"
+
+
+# ===== 撤销删除（回收站） =====
+
+
+async def test_delete_with_undo_roundtrip():
+    from QvQChat.dashboard.manager import DashboardManager
+    from fakes import FakeMain
+
+    main = FakeMain()
+    main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1", "api_key": "k",
+                             "models": [{"id": "m", "enabled": True}]})
+    manager = DashboardManager(main)
+
+    class R:
+        def __init__(self, body): self._b = body
+        async def json(self): return self._b
+
+    resp = await manager.providers_delete(R({"id": "p1"}))
+    assert resp["ok"] is True
+    assert resp["undo"]
+    assert main.pool.get_provider("p1") is None
+
+    restored = await manager.trash_restore(R({"token": resp["undo"]}))
+    assert restored["ok"] is True and restored["kind"] == "provider"
+    assert main.pool.get_provider("p1") is not None
+# 令牌一次性：再次还原失效
+    again = await manager.trash_restore(R({"token": resp["undo"]}))
+    assert again[1] == 410
+
+
+async def test_undo_expired_token_rejected():
+    from QvQChat.dashboard.manager import DashboardManager
+    from fakes import FakeMain
+
+    main = FakeMain()
+    manager = DashboardManager(main)
+
+    class R:
+        def __init__(self, body): self._b = body
+        async def json(self): return self._b
+
+    token = manager._trash_put("skill", {"name": "x", "body": "y"})
+    import time as _time
+    main.sdk.storage.set("QvQChat:trash:" + token, {"kind": "skill", "payload": {"name": "x"}, "ts": _time.time() - 9999})
+    resp = await manager.trash_restore(R({"token": token}))
+    assert resp[1] == 410
