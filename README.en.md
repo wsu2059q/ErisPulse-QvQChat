@@ -124,7 +124,7 @@ Old tool output is slimmed down continuously. When the estimated context size cr
 
 ### Scheduled tasks that survive a restart
 
-The agent creates scheduled tasks itself through tools, described in natural language. Four schedule formats are supported: `cron:0 9 * * 1-5`, `at:2026-10-17 09:00`, `in:30m` and `every:2h`. A task marked as deep runs in three phases: plan, execute, review, with one bounded correction round if the review finds gaps. Task runs are recorded and visible in the console. When ErisPulse-Cron is installed, cron tasks are handed over to it. If the process restarts mid-generation, interrupted replies are detected and rerun, the failed-send queue is replayed, and interrupted task runs are marked (`recovery_enabled` and related settings).
+The agent creates scheduled tasks itself through tools, described in natural language. Four schedule formats are supported: `cron:0 9 * * 1-5`, `at:2026-10-17 09:00`, `in:30m` and `every:2h`. A task marked as deep runs in three phases: plan, execute, review, with one bounded correction round if the review finds gaps. Task runs are recorded and visible in the console. When ErisPulse-Cron is installed, cron tasks are handed over to it. If the process restarts mid-generation, interrupted replies are detected and rerun — only marks newer than 10 minutes count, at most 5 reruns per boot, stale leftovers are dropped so old topics are never re-sent; the failed-send queue is replayed, and interrupted task runs are marked (`recovery_enabled` and related settings).
 
 ### Safety model
 
