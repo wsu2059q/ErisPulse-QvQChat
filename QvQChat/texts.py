@@ -304,6 +304,27 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "現在の会話：{name}（{id}）との私聊。",
         "ru": "Текущий чат: личный диалог с {name} ({id}).",
     },
+    "scene_platform_line": {
+        "zh-CN": "平台：{platform}。",
+        "zh-TW": "平台：{platform}。",
+        "en": "Platform: {platform}.",
+        "ja": "プラットフォーム：{platform}。",
+        "ru": "Платформа: {platform}.",
+    },
+    "chat_output_rules": {
+        "zh-CN": "闲聊输出规则（仅日常聊天，任务与工具场景不受限）：不要复述或改写对方上一条消息；不要在结尾硬造反问去延续话题；没把握或没话可接时，只回一个「？」或「6」或者干脆不展开；群聊里一次只发一小段，不写长篇。",
+        "zh-TW": "閒聊輸出規則（僅日常聊天，任務與工具場景不受限）：不要複述或改寫對方上一條訊息；不要在結尾硬造反問去延續話題；沒把握或沒話可接時，只回一個「？」或「6」或者乾脆不展開；群聊裡一次只發一小段，不寫長篇。",
+        "en": "Casual-chat output rules (daily chat only; tasks and tools unaffected): never restate or rephrase the other side's last message; don't end with a forced question to keep the topic alive; when unsure or with nothing to add, reply with just \"?\" or \"lol\" instead of elaborating; in groups send one short segment at a time.",
+        "ja": "雑談の出力ルール（日常会話のみ。タスク・ツール場面は対象外）：相手の直前のメッセージを言い換えて繰り返さない；話を繋ぐために無理に質問で締めない；確信がないときは「？」や「w」だけにするか深追いしない；グループでは短く一息ずつ送る。",
+        "ru": "Правила бытовой болтовни (только повседневный чат; задачи и инструменты не затронуты): не пересказывать и не перефразировать последнее сообщение собеседника; не заканчивать натянутым встречным вопросом ради продолжения темы; при неуверенности отвечать лишь «?» или «хм» либо не развивать; в группах писать коротко, одним фрагментом.",
+    },
+    "identity_other_agents": {
+        "zh-CN": "群里可能存在其他机器人或智能体。用户提到「那个 AI」「另一个 bot」时指的是它们，不是你——不要把别人的发言或行为认成自己做的，也不要替它们回答。",
+        "zh-TW": "群裡可能存在其他機器人或智慧代理。使用者提到「那個 AI」「另一個 bot」時指的是它們，不是你——不要把別人的發言或行為認成自己做的，也不要替它們回答。",
+        "en": "Other bots or agents may exist in this chat. When the user mentions \"that AI\" or \"the other bot\", they mean those — not you. Don't claim others' messages or actions as your own, and don't answer on their behalf.",
+        "ja": "このチャットには他のボットやエージェントが存在する可能性がある。相手が「あの AI」「別の bot」と言うときはそれらを指し、あなたではない。他人の発言や行動を自分のものと思い込んだり、代わりに答えたりしない。",
+        "ru": "В этом чате могут быть другие боты или агенты. Когда пользователь говорит «тот ИИ» или «другой бот», он имеет в виду их, а не вас. Не приписывайте себе чужие сообщения и действия и не отвечайте за них.",
+    },
     "cross_session_header": {
         "zh-CN": "[以下是当前用户在其他会话（群聊）里的近期发言，供你衔接话题；用户接下来在私聊里说的话大概率与此相关]",
         "zh-TW": "[以下是目前使用者在其他會話（群聊）裡的近期發言，供你銜接話題；使用者接下來在私聊裡說的話大概率與此相關]",

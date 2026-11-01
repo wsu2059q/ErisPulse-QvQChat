@@ -64,17 +64,21 @@ def visual_call(entry: dict) -> str:
     return line
 
 
-def build_sections(rounds: list | None, reply: str, tool_trace: list | None) -> list:
-    """合并卡节点序列：AI 每段发言一条节点，连续工具调用合并为一条节点。"""
+def build_sections(rounds: list | None, reply: str, tool_trace: list | None,
+                   include_trace: bool = True) -> tuple[list, int]:
+    """合并卡节点序列：AI 每段发言一条节点，连续工具调用合并为一条节点。
+
+    include_trace=False 时不生成「执行过程」节点（纯结论卡，H7）。
+    """
     sections: list[str] = []
     text_count = 0
     tool_group: list[dict] = []
 
     def flush_tools():
-        if tool_group:
+        if tool_group and include_trace:
             body = "\n".join(visual_call(e) for e in tool_group)
             sections.append(texts.t("forward_process_title") + "\n" + body)
-            tool_group.clear()
+        tool_group.clear()
 
     for round_data in rounds or []:
         if not isinstance(round_data, dict):
@@ -89,7 +93,7 @@ def build_sections(rounds: list | None, reply: str, tool_trace: list | None) -> 
             text_count += 1
     flush_tools()
 
-    if not sections:
+    if not sections and include_trace:
         for entry in tool_trace or []:
             if isinstance(entry, dict):
                 tool_group.append(entry)
