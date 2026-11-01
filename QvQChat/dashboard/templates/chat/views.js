@@ -246,27 +246,41 @@
         var idx = set.indexOf(name);
         if (cb.checked && idx >= 0) set.splice(idx, 1);
         if (!cb.checked && idx < 0) set.push(name);
-        api("/api/qvq/config", "POST", { disabled_tools: set }).then(function (r) {
-          if (r && r.errors && Object.keys(r.errors).length) {
-            toast(t("settings_save_partial"), true);
-          } else if (r && r.ok) {
-            toast(t("saved"));
-          } else {
-            toast((r && r.error) || "error", true);
-          }
+        optimisticToggle(cb, "/api/qvq/config", { disabled_tools: set }, function (r) {
+          return r && r.ok && !(r.errors && Object.keys(r.errors).length);
         });
       };
     });
     box.querySelectorAll("input[data-cap-skill]").forEach(function (cb) {
       cb.onchange = function () {
-        api("/api/qvq/skills/enabled", "POST", { name: cb.getAttribute("data-cap-skill"), enabled: cb.checked });
+        optimisticToggle(cb, "/api/qvq/skills/enabled", { name: cb.getAttribute("data-cap-skill"), enabled: cb.checked });
       };
     });
     box.querySelectorAll("input[data-cap-mcp]").forEach(function (cb) {
       cb.onchange = function () {
         var path = cb.checked ? "/api/qvq/mcp/connect" : "/api/qvq/mcp/disconnect";
-        api(path, "POST", { name: cb.getAttribute("data-cap-mcp") });
+        optimisticToggle(cb, path, { name: cb.getAttribute("data-cap-mcp") });
       };
+    });
+  }
+
+  // 乐观开关：请求期间禁用；失败回滚勾选并提示，不让界面撒谎
+  function optimisticToggle(cb, path, body, okWhen) {
+    var wanted = cb.checked;
+    cb.disabled = true;
+    api(path, "POST", body).then(function (r) {
+      cb.disabled = false;
+      var ok = okWhen ? !!okWhen(r) : !!(r && r.ok);
+      if (ok) {
+        toast(t("saved"));
+      } else {
+        cb.checked = !wanted;
+        toast((r && r.error) || "error", true);
+      }
+    }, function () {
+      cb.disabled = false;
+      cb.checked = !wanted;
+      toast("error", true);
     });
   }
 
@@ -352,7 +366,7 @@
         "<button class='qvq-btn small danger' data-act='pdel' data-id='" + esc(p.id) + "'>" + esc(t("del")) + "</button></td></tr>";
     }).join("");
     box.innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("models_name")) + "</th><th>" +
-      esc(t("models_id")) + "</th><th>key</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
+      esc(t("models_id")) + "</th><th>" + esc(t("models_key_col")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
     box.querySelectorAll("button[data-act]").forEach(function (btn) {
       btn.onclick = function () {
         var pid = btn.getAttribute("data-id");
@@ -604,12 +618,12 @@
       fields +=
         "<label class='qvq-label'>" + esc(t("models_id")) + "</label>" +
         "<input class='qvq-input' id='qvq-mf-id' placeholder='deepseek-chat' />" +
-        "<div class='qvq-tool-desc'>保存后会自动从 models.dev 补全能力与价格，可在「模型配置」里逐个调整</div>" +
+        "<div class='qvq-tool-desc'>" + esc(t("models_auto_enrich_note")) + "</div>" +
         "<div class='qvq-actions' style='margin-top:10px'><button class='qvq-btn small ghost' id='qvq-mf-fetch' type='button'>" + esc(t("models_fetch")) + "</button></div>" +
         "<div id='qvq-mf-remote'></div>";
     } else {
       fields +=
-        "<div class='qvq-tool-desc'>模型能力/价格请在「模型配置」里编辑；这里保存不会改动模型列表。</div>" +
+        "<div class='qvq-tool-desc'>" + esc(t("models_meta_note")) + "</div>" +
         "<div class='qvq-actions'><button class='qvq-btn small ghost' id='qvq-mf-manage' type='button'>" + esc(t("model_manage")) + "</button></div>";
     }
     openForm(editingId ? (provider.name || editingId) : t("models_add"), fields, function (body) {
@@ -827,9 +841,7 @@
         "</th><th>" + esc(t("on")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
       el("qvq-skills-list").querySelectorAll("input[data-toggle]").forEach(function (cb) {
         cb.onchange = function () {
-          api("/api/qvq/skills/enabled", "POST", { name: cb.getAttribute("data-toggle"), enabled: cb.checked }).then(function () {
-            loadSkills();
-          });
+          optimisticToggle(cb, "/api/qvq/skills/enabled", { name: cb.getAttribute("data-toggle"), enabled: cb.checked });
         };
       });
       el("qvq-skills-list").querySelectorAll("button[data-act]").forEach(function (btn) {
@@ -1726,13 +1738,27 @@
       return value === null || value === "" || value === undefined || isNaN(n) ? String(value == null ? "" : value) : n;
     }
     if (type === "list") {
-      return Array.isArray(value)
-        ? value.map(function (x) { return String(x).trim(); }).filter(Boolean)
-        : String(value == null ? "" : value);
+// 单字符串/多行字符串统一收成数组；序列化端永远输出数组，避免幻影 dirty
+      var arr = Array.isArray(value) ? value : String(value == null ? "" : value).split("\n");
+      return arr.map(function (x) { return String(x).trim(); }).filter(Boolean);
     }
     if (type === "bool") return !!value;
     if (type === "dict") return value && typeof value === "object" ? value : {};
     return String(value == null ? "" : value);
+  }
+
+  // dirty 比较：数组忽略顺序（多选框按枚举顺序渲染，与存储顺序无关），标量走 JSON
+  function settingsSameValue(a, b) {
+    if (Array.isArray(a) && Array.isArray(b)) {
+      if (a.length !== b.length) return false;
+      var ka = a.slice().sort();
+      var kb = b.slice().sort();
+      for (var i = 0; i < ka.length; i++) {
+        if (String(ka[i]) !== String(kb[i])) return false;
+      }
+      return true;
+    }
+    return JSON.stringify(a) === JSON.stringify(b);
   }
 
   function settingsGroups() {
@@ -1768,16 +1794,10 @@
 
   function switchSettingsCategory(g) {
     if (g === currentCategory) return;
-    var apply = function () {
-      currentCategory = g;
-      renderSettingsCategories();
-      renderSettingsForm();
-    };
-    if (settingsDirtyKeys().length) {
-      confirmDialog(t("settings_unsaved")).then(function (ok) { if (ok) apply(); });
-    } else {
-      apply();
-    }
+// 草稿跨分类保留（重绘前收编 DOM 值），切换不阻断
+    currentCategory = g;
+    renderSettingsCategories();
+    renderSettingsForm();
   }
 
   function bindSettingsSearch() {
@@ -2000,7 +2020,7 @@
     settingsCaptureDraft();
     var dirty = [];
     Object.keys(settingsDraft).forEach(function (k) {
-      if (JSON.stringify(settingsDraft[k]) !== JSON.stringify(settingsOriginal[k])) dirty.push(k);
+      if (!settingsSameValue(settingsDraft[k], settingsOriginal[k])) dirty.push(k);
     });
     return dirty;
   }
@@ -2010,7 +2030,7 @@
     if (!btn) return;
     var dirty = 0;
     Object.keys(settingsDraft).forEach(function (k) {
-      if (JSON.stringify(settingsDraft[k]) !== JSON.stringify(settingsOriginal[k])) dirty++;
+      if (!settingsSameValue(settingsDraft[k], settingsOriginal[k])) dirty++;
     });
     btn.textContent = t("save") + (dirty ? " (" + dirty + ")" : "");
   }
@@ -2210,24 +2230,9 @@
     });
   }
 
-  // T4：设置页有未保存修改时，切 tab（捕获阶段拦截导航点击）/ 关页给出离开提示
+  // 设置页有未保存修改时只拦"离开页面"，站内切换不打断——
+  // switchTab 仅切换显示，表单 DOM 与 settingsDraft 都保留，切回来编辑仍在
   (function initSettingsLeaveGuard() {
-    var nav = document.getElementById("qvq-nav");
-    if (nav) {
-      nav.addEventListener("click", function (e) {
-        if (!window.__qvq_inited__ || !settingsFields.length) return;
-        var btn = e.target && e.target.closest ? e.target.closest(".qvq-nav-btn") : null;
-        if (!btn) return;
-        var active = document.querySelector(".qvq-nav-btn.active");
-        if (active && active.getAttribute("data-tab") === btn.getAttribute("data-tab")) return;
-        if (!settingsDirtyKeys().length) return;
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        confirmDialog(t("settings_unsaved")).then(function (ok) {
-          if (ok) switchTab(btn.getAttribute("data-tab"));
-        });
-      }, true);
-    }
     window.addEventListener("beforeunload", function (e) {
       if (settingsFields.length && settingsDirtyKeys().length) {
         e.preventDefault();
