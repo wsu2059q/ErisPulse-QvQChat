@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..engine.base import ChatRequest
+
 from .. import texts, utils
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -313,6 +315,15 @@ class SessionsApiMixin:
             max_tokens = min(200_000, max(200, int((body or {}).get("max_tokens", 4000))))
         except (TypeError, ValueError):
             max_tokens = 4000
+ 
+        try:
+            rounds = min(200, max(0, int((body or {}).get("rounds", 0))))
+        except (TypeError, ValueError):
+            rounds = 0
+        try:
+            chat_tokens = min(500_000, max(500, int((body or {}).get("chat_tokens", 20000))))
+        except (TypeError, ValueError):
+            chat_tokens = 20000
         token = _secrets.token_urlsafe(18)
         shares = self._shares()
         shares[token] = {
@@ -320,6 +331,11 @@ class SessionsApiMixin:
             "created": utils.now_ts(),
             "expires": utils.now_ts() + hours * 3600,
             "max_tokens": max_tokens,
+            "rounds": rounds,
+            "chat_tokens": chat_tokens,
+            "rounds_used": 0,
+            "tokens_used": 0,
+            "cont": [],
             "enabled": True,
         }
         self.sdk.storage.set(SHARES_KEY, shares)
@@ -342,12 +358,74 @@ class SessionsApiMixin:
             return ({"error": "invalid or expired share"}, 403)
         contexts = self._share_contexts(share)
         summary = self.main.sessions.summary_of(str(share.get("chat_key") or ""))
+        rounds = int(share.get("rounds") or 0)
         return {
             "chat_key": share.get("chat_key"),
             "summary": summary,
             "messages": contexts,
             "expires": share.get("expires"),
+            "rounds": rounds,
+            "rounds_left": max(0, rounds - int(share.get("rounds_used") or 0)),
+            "tokens_left": max(0, int(share.get("chat_tokens") or 0) - int(share.get("tokens_used") or 0)),
+            "continuation": share.get("cont") if isinstance(share.get("cont"), list) else [],
         }
+
+    async def share_chat(self, request):
+        """分享续聊：访问者凭 token 继续对话；纯文本、无工具、非管理员权限。"""
+        body = await request.json()
+        token = str((body or {}).get("token") or "")
+        text = str((body or {}).get("text") or "").strip()
+        share = self._share_token(token) if token else None
+        if share is None:
+            return ({"error": "invalid or expired share"}, 403)
+        if not text:
+            return ({"error": "empty text"}, 400)
+        rounds = int(share.get("rounds") or 0)
+        used = int(share.get("rounds_used") or 0)
+        if rounds <= 0 or used >= rounds:
+            return ({"error": "rounds exhausted"}, 429)
+        budget = int(share.get("chat_tokens") or 0)
+        spent = int(share.get("tokens_used") or 0)
+        if budget > 0 and spent >= budget:
+            return ({"error": "token budget exhausted"}, 429)
+ 
+        messages: list = [{"role": "system", "content": texts.t("share_chat_system")}]
+        for message in self._share_contexts(share):
+            role = str(message.get("role") or "user")
+            if role not in ("user", "assistant"):
+                continue
+            messages.append({"role": role, "content": self._share_plain_text(message.get("content"))})
+        for message in share.get("cont") or []:
+            if isinstance(message, dict) and message.get("role") in ("user", "assistant"):
+                messages.append({"role": str(message["role"]), "content": str(message.get("content") or "")})
+        messages.append({"role": "user", "content": text})
+        try:
+            response = await self.main.pool.chat(
+                ChatRequest(messages=messages, max_tokens=1000, temperature=0.7)
+            )
+        except Exception as e:
+            return ({"error": str(e)}, 502)
+        reply = (response.content or "").strip() or texts.t("no_reply_content")
+        cont = share.get("cont") if isinstance(share.get("cont"), list) else []
+        cont = cont + [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
+        share["cont"] = cont[-40:]
+        share["rounds_used"] = used + 1
+        share["tokens_used"] = spent + int(response.usage.get("total_tokens", 0) or 0)
+        shares = self._shares()
+        shares[token] = share
+        self.sdk.storage.set(SHARES_KEY, shares)
+        return {
+            "ok": True,
+            "reply": reply,
+            "rounds_left": max(0, rounds - share["rounds_used"]),
+            "tokens_left": max(0, budget - share["tokens_used"]),
+        }
+
+    @staticmethod
+    def _share_plain_text(content) -> str:
+        if isinstance(content, list):
+            return " ".join(str(p.get("text") or "") for p in content if isinstance(p, dict) and p.get("type") == "text").strip()
+        return str(content or "")
 
     async def share_page(self, request):
         from starlette.responses import HTMLResponse
