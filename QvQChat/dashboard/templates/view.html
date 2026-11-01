@@ -193,6 +193,7 @@
       <p class="qvq-desc" data-i18n="models_desc">OpenAI 兼容端点，按池顺序故障转移</p>
       <div class="qvq-card">
         <div class="qvq-toolbar">
+          <input class="qvq-input qvq-input-sm" id="qvq-models-search" type="text" data-i18n-ph="search_ph" placeholder="搜索…" />
           <button class="qvq-btn" id="qvq-model-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="models_add">添加模型</span></button>
           <button class="qvq-btn ghost" id="qvq-model-enrich"><span data-i18n="model_refresh">刷新能力与价格</span></button>
         </div>
@@ -206,6 +207,7 @@
       <p class="qvq-desc" data-i18n="personas_desc">人格 = 系统提示词 + 工具白名单</p>
       <div class="qvq-card">
         <div class="qvq-toolbar">
+          <input class="qvq-input qvq-input-sm" id="qvq-personas-search" type="text" data-i18n-ph="search_ph" placeholder="搜索…" />
           <button class="qvq-btn" id="qvq-persona-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="personas_new">新建人格</span></button>
         </div>
         <div id="qvq-personas-list"></div>
@@ -217,6 +219,7 @@
       <p class="qvq-desc" data-i18n="skills_desc">可复用指令模板：对话中可手动选用，任务匹配时智能体自动加载</p>
       <div class="qvq-card">
         <div class="qvq-toolbar">
+          <input class="qvq-input qvq-input-sm" id="qvq-skills-search" type="text" data-i18n-ph="search_ph" placeholder="搜索…" />
           <button class="qvq-btn" id="qvq-skill-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="skills_add">新建技能</span></button>
           <button class="qvq-btn ghost" id="qvq-skill-export" data-i18n="skills_export">导出</button>
           <button class="qvq-btn ghost" id="qvq-skill-import" data-i18n="skills_import">导入</button>
@@ -247,6 +250,7 @@
       <h1 class="qvq-h1">MCP</h1>
       <p class="qvq-desc" data-i18n="mcp_desc">Model Context Protocol 服务器与工具接入</p>
       <div class="qvq-toolbar">
+        <input class="qvq-input qvq-input-sm" id="qvq-mcp-search" type="text" data-i18n-ph="search_ph" placeholder="搜索…" />
         <button class="qvq-btn" id="qvq-mcp-add"><svg class="qvq-btn-ico" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n="mcp_add">添加服务器</span></button>
         <button class="qvq-btn ghost" id="qvq-mcp-connect-all" data-i18n="mcp_connect_all">连接全部</button>
       </div>

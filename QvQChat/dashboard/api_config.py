@@ -104,8 +104,11 @@ class ConfigApiMixin:
 
     async def providers_delete(self, request):
         body = await request.json()
-        ok = self.main.pool.delete_provider(str((body or {}).get("id") or ""))
-        return {"ok": ok}
+        provider_id = str((body or {}).get("id") or "")
+        snapshot = self.main.pool.get_provider(provider_id) or {}
+        ok = self.main.pool.delete_provider(provider_id)
+        undo = self._trash_put("provider", snapshot) if ok and snapshot else ""
+        return {"ok": ok, "undo": undo}
 
     async def providers_remote_models(self, request):
         body = await request.json()
@@ -146,9 +149,12 @@ class ConfigApiMixin:
 
     async def personas_delete(self, request):
         body = await request.json()
+        persona_id = str((body or {}).get("id") or "")
+        snapshot = self.main.personas.get(persona_id) or {}
         try:
-            ok = self.main.personas.delete(str((body or {}).get("id") or ""))
-            return {"ok": ok}
+            ok = self.main.personas.delete(persona_id)
+            undo = self._trash_put("persona", snapshot) if ok and snapshot else ""
+            return {"ok": ok, "undo": undo}
         except ValueError as e:
             return ({"error": str(e)}, 400)
 
@@ -255,8 +261,11 @@ class ConfigApiMixin:
 
     async def skills_delete(self, request):
         body = await request.json()
-        ok = self.main.skills.delete_skill(str((body or {}).get("name") or ""))
-        return {"ok": ok}
+        name = str((body or {}).get("name") or "")
+        snapshot = self.main.skills.get_skill(name) or {}
+        ok = self.main.skills.delete_skill(name)
+        undo = self._trash_put("skill", snapshot) if ok and snapshot else ""
+        return {"ok": ok, "undo": undo}
 
     async def skills_enabled(self, request):
         body = await request.json()
