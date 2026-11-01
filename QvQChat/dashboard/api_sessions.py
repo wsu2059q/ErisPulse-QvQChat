@@ -440,4 +440,6 @@ class SessionsApiMixin:
 
         token = request.query_params.get("token") if request.query_params else ""
         html = (TEMPLATES / "share.html").read_text(encoding="utf-8")
-        return HTMLResponse(html.replace("__TOKEN__", token))
+        from starlette.responses import HTMLResponse as _H
+
+        return _H(html.replace("__TOKEN__", token), headers={"Cache-Control": "no-store"})
