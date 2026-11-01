@@ -1026,9 +1026,10 @@ class ConversationService:
                 parts.append(SystemPart("extra", texts.t("dashboard_mcp_hint", tools=", ".join(tools_hint))))
         if getattr(self.config, "kb_auto_inject", True) and kb_query:
             kb = getattr(self.main, "knowledge", None)
-            hits = kb.search(kb_query, top_k=int(getattr(self.config, "kb_top_k", 2) or 0)) if kb else []
+# 可见域：全局条目 + 本会话/本适配器私有条目（AI 默认写会话级，跨会话共享需显式声明）
+            hits = kb.search(kb_query, top_k=int(getattr(self.config, "kb_top_k", 2) or 0), viewer=chat_key) if kb else []
 # Lorebook：最近上下文命中触发条目优先排前合并注入（[triggered] 标记，同条目去重）
-            lore = kb.triggered(kb_texts or []) if (kb and kb_texts) else []
+            lore = kb.triggered(kb_texts or [], viewer=chat_key) if (kb and kb_texts) else []
             hit_ids = {e.get("id") for e in lore}
             hits = [h for h in hits if h.get("id") not in hit_ids]
             if hits or lore:

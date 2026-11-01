@@ -77,7 +77,11 @@ class RecoveryMixin:
                 self.logger.debug(f"task run {task_id} interrupt mark failed: {e}")
 
     async def _replay_pending_on_boot(self, gap: float | None = None) -> None:
-        """待发队列启动重放：replay_on_boot 开启时逐会话串行各重放一条，失败跳过。"""
+        """待发队列启动重放：replay_on_boot 开启时逐会话串行各重放一条，失败跳过。
+
+        超龄条目（>RECOVERY_MAX_AGE）启动时直接清除不重放——隔了几小时甚至几天
+        还把旧消息发进群是用户明确反对的行为；不可送达死信由 replay_pending 内部丢弃。
+        """
         if not bool(getattr(self.cfg, "replay_on_boot", True)):
             return
         wait = RECOVERY_REPLAY_GAP if gap is None else max(0.0, float(gap))
@@ -85,6 +89,7 @@ class RecoveryMixin:
             keys = list(self.sdk.storage.keys())
         except Exception:
             return
+        now = time.time()
         first = True
         for key in keys:
             if not isinstance(key, str) or not key.startswith(PENDING_KEY_PREFIX):
@@ -97,6 +102,23 @@ class RecoveryMixin:
             except Exception:
                 continue
             if not isinstance(data, list) or not data:
+                continue
+            # 先清超龄死信（无 ts 的旧格式条目无法判龄，保留照常重放）
+            fresh = [
+                e for e in data
+                if not isinstance(e, dict)
+                or not e.get("ts")
+                or 0 < now - float(e["ts"]) <= RECOVERY_MAX_AGE
+            ]
+            if len(fresh) != len(data):
+                try:
+                    self.sdk.storage.set(key, fresh)
+                    self.logger.warning(
+                        f"boot dropped {len(data) - len(fresh)} stale pending send(s) for {chat_key}"
+                    )
+                except Exception as e:
+                    self.logger.debug(f"stale pending purge failed for {chat_key}: {e}")
+            if not fresh:
                 continue
             if not first and wait > 0:
                 await asyncio.sleep(wait)
