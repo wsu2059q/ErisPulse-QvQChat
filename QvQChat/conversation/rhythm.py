@@ -206,3 +206,64 @@ def structure_signals(rounds: list | None, reply: str) -> dict:
 def forward_score(rounds: list | None, reply: str) -> float:
     """结构感知转发的综合信号分（0~1），达到 STRUCTURE_FORWARD_RATIO 视为结构化内容。"""
     return structure_signals(rounds, reply)["score"]
+
+
+# ===== H4 输出过滤器（总纲条 8）：复述检测 / 疑问句占比 / 句数截断 =====
+
+# 复述判定：与上一条用户消息的 bigram 重合度阈值（短回复才容易整句复述）
+PARROT_THRESHOLD = 0.62
+PARROT_MIN_CHARS = 6
+QUESTION_TAIL_RE = re.compile(r"[？?]\s*$")
+QUESTION_RATIO_MAX = 0.5
+
+
+def _bigrams(text: str) -> set:
+    cleaned = re.sub(r"[\s\W_]+", "", str(text).lower())
+    if len(cleaned) < 2:
+        return {cleaned} if cleaned else set()
+    return {cleaned[i : i + 2] for i in range(len(cleaned) - 1)}
+
+
+def parrot_score(reply: str, last_user: str) -> float:
+    """回复与上一条用户消息的重合度（0~1）。"""
+    q = _bigrams(last_user)
+    if not q:
+        return 0.0
+    c = _bigrams(reply)
+    if not c:
+        return 0.0
+    return len(q & c) / len(q)
+
+
+def filter_reply(reply: str, last_user: str, max_sentences: int = 3) -> tuple[str, str]:
+    """返回 (过滤后回复, 动作)。
+
+    动作："pass" 原样 / "parrot" 复述需重 roll / "trimmed" 已截断或去问句。
+    失败安全：任何异常路径由调用方兜底返回原文。
+    """
+    text = str(reply or "").strip()
+    if not text:
+        return reply, "pass"
+    action = "pass"
+    if (
+        max_sentences > 0
+        and len(text) >= PARROT_MIN_CHARS
+        and parrot_score(text, str(last_user or "")) >= PARROT_THRESHOLD
+    ):
+        return text, "parrot"
+    if max_sentences > 0:
+        sentences = [s for s in SENTENCE_SPLIT_RE.split(text) if s.strip()]
+        if len(sentences) > max_sentences:
+            text = "".join(sentences[:max_sentences]).strip()
+            action = "trimmed"
+    # 结尾硬造反问：以问句收尾且疑问句占比过半时去掉最后一个问句（仅一次）
+    if QUESTION_TAIL_RE.search(text):
+        sentences = [s for s in SENTENCE_SPLIT_RE.split(text) if s.strip()]
+        if len(sentences) > 1:
+            questions = sum(1 for s in sentences if QUESTION_TAIL_RE.search(s))
+            if questions / len(sentences) > QUESTION_RATIO_MAX:
+                text = "".join(sentences[:-1]).strip()
+                action = "trimmed"
+    if not text:
+        return str(reply or ""), "pass"
+    return text, action

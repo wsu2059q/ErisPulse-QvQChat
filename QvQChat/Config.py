@@ -183,6 +183,8 @@ class QvQConfig(BaseConfig):
     debounce_mention_seconds: float = field(default=1.0, metadata=_desc("debounce_mention_seconds", "被 @/前缀命中触发时的防抖窗口（秒）：窗口内后续消息并入本次请求；0 使用群聊窗口", "humanize", 1, "number"))
     debounce_group_seconds: float = field(default=2.0, metadata=_desc("debounce_group_seconds", "普通群消息的聚合窗口（秒）；0 使用 aggregate_window", "humanize", 2, "number"))
     humanize_echo_filter: bool = field(default=True, metadata=_desc("humanize_echo_filter", "丢弃适配器回投的自身出站消息（防回声在防抖窗口内触发二次决策）", "humanize", 3, "switch"))
+    humanize_filter_enabled: bool = field(default=False, metadata=_desc("humanize_filter_enabled", "输出过滤器：复述对方上条时重答一次；句数超限按句号截断；结尾硬造反问去掉（失败不阻塞发送）", "humanize", 4, "switch"))
+    humanize_filter_max_sentences: int = field(default=3, metadata=_desc("humanize_filter_max_sentences", "输出过滤器：单次回复句数上限，超出按句号边界截断（0 关闭句数与复述检测）", "humanize", 5, "number"))
 
     memory_max: int = field(default=200, metadata=_desc("memory_max", "每会话长期记忆条数上限", "memory", 1, "number"))
     memory_recall: int = field(default=6, metadata=_desc("memory_recall", "每次对话注入的相关记忆条数上限", "memory", 2, "number"))
