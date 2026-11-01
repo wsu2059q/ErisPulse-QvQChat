@@ -99,7 +99,15 @@ class SessionsApiMixin:
         chat_key = str((body or {}).get("chat_key") or "")
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
-        return {"ok": self.main.conversations.delete(chat_key)}
+# 撤销删除：删除前把完整会话状态放进回收站
+        from .conversation.service import CONV_PREFIX
+
+        state = self.sdk.storage.get(CONV_PREFIX + chat_key, None)
+        undo = ""
+        if isinstance(state, dict):
+            undo = self._trash_put("session", {"chat_key": chat_key, "state": state})
+        ok = self.main.conversations.delete(chat_key)
+        return {"ok": ok, "undo": undo if ok else ""}
 
     async def sessions_create(self, request):
         body = await request.json()
