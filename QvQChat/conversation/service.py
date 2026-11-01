@@ -1026,9 +1026,10 @@ class ConversationService:
                 parts.append(SystemPart("extra", texts.t("dashboard_mcp_hint", tools=", ".join(tools_hint))))
         if getattr(self.config, "kb_auto_inject", True) and kb_query:
             kb = getattr(self.main, "knowledge", None)
-            hits = kb.search(kb_query, top_k=int(getattr(self.config, "kb_top_k", 2) or 0)) if kb else []
  
-            lore = kb.triggered(kb_texts or []) if (kb and kb_texts) else []
+            hits = kb.search(kb_query, top_k=int(getattr(self.config, "kb_top_k", 2) or 0), viewer=chat_key) if kb else []
+ 
+            lore = kb.triggered(kb_texts or [], viewer=chat_key) if (kb and kb_texts) else []
             hit_ids = {e.get("id") for e in lore}
             hits = [h for h in hits if h.get("id") not in hit_ids]
             if hits or lore:

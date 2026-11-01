@@ -265,3 +265,43 @@ async def test_list_platforms_reports_sends():
     main.sdk.adapter.add("onebot11", FakeSendChain(), sends=("Markdown", "Text"))
     out = await erispulse.list_platforms(make_ctx(main))
     assert "onebot11" in out and "Markdown" in out
+
+
+async def test_send_message_defaults_to_current_session():
+ 
+    main = __import__("fakes").FakeMain()
+    chain = FakeSendChain()
+    main.sdk.adapter.add("onebot11", chain, sends=("Text",))
+    ctx = make_ctx(main)
+    ctx.platform = "onebot11"
+    ctx.detail_type = "private"
+    ctx.target_id = "42"
+    out = await erispulse.send_message(ctx, text="hi there")
+    kinds = [c[0] for c in chain.calls]
+    assert "Text" in kinds
+     
+    to_calls = [c for c in chain.calls if c[0] == "To"]
+    assert to_calls and to_calls[0][1] == ("user", "42")
+
+
+async def test_send_message_undeliverable_not_queued_as_pending():
+ 
+    from QvQChat.conversation.delivery import is_undeliverable
+
+    class FriendChain(FakeSendChain):
+        def __getattr__(self, name):
+            if name in ("Markdown", "Html", "Text"):
+                def deny(*a, **k):
+                    raise RuntimeError("发送失败: 该用户不是机器人好友")
+                return deny
+            return FakeSendChain.__getattr__(self, name)
+
+    main = __import__("fakes").FakeMain()
+    main.sdk.adapter.add("onebot11", FriendChain(), sends=("Text",))
+    ctx = make_ctx(main)
+    ctx.platform = "onebot11"
+    ctx.detail_type = "private"
+    ctx.target_id = "42"
+    out = await erispulse.send_message(ctx, text="hello friend")
+    assert "不是机器人好友" in out or "不可送达" in out or "undeliverable" in out.lower()
+    assert "待发队列" not in out

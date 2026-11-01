@@ -19,6 +19,13 @@ PENDING_KEY_PREFIX = "QvQChat:pending_send:"
  
 RETRYABLE_EXC = (asyncio.TimeoutError, TimeoutError, ConnectionError, OSError)
 RETRYABLE_NAME_HINTS = ("timeout", "timed out", "connection", "network", "temporarily", "unavailable", "reset")
+ 
+ 
+UNDELIVERABLE_HINTS = (
+    "不是机器人好友", "recvId值错误", "not friend", "no such user", "user not found",
+    "no relation", "blocked", "blacklist", "拉黑", "rejected", "无权限发送", "forbidden",
+    "group not found", "群不存在", "已退出", "not in group", "kicked",
+)
 
 
 def strip_output_tag(reply: str) -> tuple[str, bool | None]:
@@ -83,6 +90,14 @@ def delivery_profile(config, platform: str) -> dict:
                     if key in profile:
                         profile[key] = value
     return profile
+
+
+def is_undeliverable(exc: Exception | None) -> bool:
+    """目标级不可送达（非网络抖动）：换方法/重试/入队重放都无意义。"""
+    if exc is None:
+        return False
+    name = f"{type(exc).__name__} {exc}".lower()
+    return any(hint.lower() in name for hint in UNDELIVERABLE_HINTS)
 
 
 def is_retryable(exc: Exception | None) -> bool:
@@ -155,6 +170,15 @@ async def dispatch_text(sdk, config, sender, methods, text: str,
                         logger.warning(f"send via {name} failed: {e}")
                     except Exception:
                         pass
+                 
+                 
+                if is_undeliverable(e):
+                    if logger is not None:
+                        try:
+                            logger.warning(f"send undeliverable, aborting all methods: {e}")
+                        except Exception:
+                            pass
+                    return "", None, e
         if not is_retryable(last_error):
             break
     if queue:
@@ -531,12 +555,21 @@ class Delivery:
         methods = [m for m in REPLY_PREFERENCE if not sends or m in sends]
         if "Text" not in methods:
             methods.append("Text")
-        used, _, _ = await dispatch_text(
+        used, _, last_error = await dispatch_text(
             self.sdk, self.config,
             lambda name, content: getattr(adapter.Send.To(detail_type, target_id), name)(content),
             methods, text, queue=None, logger=self.main.logger,
         )
         if not used:
+             
+            if is_undeliverable(last_error):
+                try:
+                    self.sdk.storage.set(pending_key(chat_key), data[1:])
+                    self.main.logger.warning(
+                        f"pending send dropped (undeliverable target {platform}/{detail_type}/{target_id}): {last_error}"
+                    )
+                except Exception:
+                    pass
             return False
         try:
             self.sdk.storage.set(pending_key(chat_key), data[1:])

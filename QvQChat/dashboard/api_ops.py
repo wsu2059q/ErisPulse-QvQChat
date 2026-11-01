@@ -89,6 +89,7 @@ class OpsApiMixin:
         if not title or not content.strip():
             return ({"error": texts.t("kb_need_title_content")}, 400)
  
+ 
         cooldown = (body or {}).get("cooldown_min")
         entry = self.main.knowledge.add(
             title,
@@ -97,7 +98,32 @@ class OpsApiMixin:
             triggers=(body or {}).get("triggers"),
             priority=int((body or {}).get("priority") or 0),
             cooldown_min=int(cooldown) if cooldown is not None else None,
+            owner=str((body or {}).get("scope") or ""),
         )
+        return {"ok": True, "entry": entry}
+
+    async def kb_update(self, request):
+        body = await request.json()
+        kb_id = str((body or {}).get("id") or "")
+        if not kb_id:
+            return ({"error": "id required"}, 400)
+        updates: dict = {}
+        if (body or {}).get("title") is not None:
+            updates["title"] = str((body or {}).get("title") or "")
+        if (body or {}).get("content") is not None:
+            updates["content"] = str((body or {}).get("content") or "")
+        if (body or {}).get("source") is not None:
+            updates["source"] = str((body or {}).get("source") or "")
+        if (body or {}).get("triggers") is not None:
+            raw = (body or {}).get("triggers")
+            if isinstance(raw, str):
+                raw = [t.strip() for t in raw.split(",") if t.strip()]
+            updates["triggers"] = raw
+        if (body or {}).get("scope") is not None:
+            updates["owner"] = str((body or {}).get("scope") or "")
+        entry = self.main.knowledge.update(kb_id, **updates)
+        if entry is None:
+            return ({"error": texts.t("kb_not_found", kb_id=kb_id)}, 404)
         return {"ok": True, "entry": entry}
 
     async def kb_delete(self, request):

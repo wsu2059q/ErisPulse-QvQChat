@@ -31,6 +31,46 @@ class AgentRunner:
         self.registry = registry
         self.config = config
 
+    def _session_block(self, ctx: ToolContext) -> str:
+        """当前会话事实块：平台/会话类型/目标 ID/触发者 + 发送路由约定。
+
+        模型"不知道发给谁/发错平台"的根因是缺上下文——把它就在哪、默认去哪、
+        跨会话要怎么做一次讲清，与 send_message 的缺省目标约定配套。
+        """
+        platform = str(getattr(ctx, "platform", "") or "")
+        if not platform:
+            return ""
+        detail_type = str(getattr(ctx, "detail_type", "") or "")
+        kind = "group" if detail_type == "group" else ("channel" if detail_type == "channel" else "private")
+        return texts.t(
+            "session_context",
+            platform=platform,
+            kind=kind,
+            target_id=str(getattr(ctx, "target_id", "") or "-"),
+            user_id=str(getattr(ctx, "user_id", "") or "-"),
+        )
+
+    def _ctx_is_admin(self, ctx: ToolContext) -> bool:
+        """非管理员不注入其无权调用的工具 schema（与 invoke 期 tool_allowed 同一判定）。"""
+        if ctx.main is None:
+            return True
+        try:
+            return bool(ctx.main.is_admin(str(ctx.user_id or ""), ctx.origin, ctx.platform))
+        except Exception:
+            return True
+
+    def _tool_visible_nonadmin(self, name: str) -> bool:
+        """tool_allowed 的非管理员分支复刻：admin_tools 强制隐藏；safe 或 safe_tools 放行。"""
+        tool = self.registry.get(name)
+        if tool is None:
+            return False
+        if utils.match_pattern(name, list(getattr(self.config, "admin_tools", []) or [])):
+            return False
+        if getattr(tool, "access", "admin") == "safe":
+            return True
+        return utils.match_pattern(name, list(getattr(self.config, "safe_tools", []) or []))
+
+
     def _assistant_message(self, content: str | None, tool_calls: list) -> dict:
         message: dict = {"role": "assistant", "content": content or ""}
         serialized = []
@@ -327,6 +367,9 @@ class AgentRunner:
         task_kind: str = "chat",
     ) -> AgentResult:
         contexts = self._sanitize_contexts(list(messages))
+        session_block = self._session_block(ctx)
+        if session_block:
+            system = system + "\n\n" + session_block
  
         usage_total: dict = {}
         plan = ""
@@ -396,6 +439,9 @@ class AgentRunner:
             whitelist=persona_tools,
             disabled=list(getattr(self.config, "disabled_tools", []) or []),
         )
+ 
+        if schemas and not self._ctx_is_admin(ctx):
+            schemas = [s for s in schemas if self._tool_visible_nonadmin(str(s.get("function", {}).get("name") or ""))]
         max_rounds = int(getattr(self.config, "max_tool_rounds", 50) or 50)
         max_calls = int(getattr(self.config, "max_tool_calls", 150) or 150)
         total_calls = 0

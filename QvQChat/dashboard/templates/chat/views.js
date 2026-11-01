@@ -1188,8 +1188,10 @@
       box.innerHTML = entries.map(function (entry) {
         return '<div class="qvq-tool-row" data-kb="' + esc(entry.id) + '"><span class="qvq-tool-name">' + esc(entry.title) +
           (entry.source ? " <span class='qvq-chip'>" + esc(entry.source) + "</span>" : "") +
-          (entry.triggers && entry.triggers.length ? " <span class='qvq-chip'>@" + esc(entry.triggers.join(", ")) + "</span>" : "") + "</span>" +
+          (entry.triggers && entry.triggers.length ? " <span class='qvq-chip'>@" + esc(entry.triggers.join(", ")) + "</span>" : "") +
+          (entry.owner ? " <span class='qvq-chip'>" + esc(t("kb_scope_chip_private")) + ": " + esc(entry.owner) + "</span>" : "") + "</span>" +
           "<span class='qvq-tool-desc'>" + esc((entry.content || "").slice(0, 160)) + "</span>" +
+          "<button class='qvq-btn small' data-kb-edit='" + esc(entry.id) + "'>" + esc(t("kb_edit")) + "</button> " +
           "<button class='qvq-btn small danger' data-kb-del='" + esc(entry.id) + "'>" + esc(t("del")) + "</button></div>";
       }).join("");
       box.querySelectorAll("button[data-kb-del]").forEach(function (btn) {
@@ -1200,6 +1202,15 @@
               toast(t("deleted"));
               loadKnowledge();
             });
+          });
+        };
+      });
+      box.querySelectorAll("button[data-kb-edit]").forEach(function (btn) {
+        btn.onclick = function () {
+          var id = btn.getAttribute("data-kb-edit");
+          api("/api/qvq/kb").then(function (data) {
+            var entry = ((data && data.entries) || []).filter(function (e) { return e.id === id; })[0];
+            if (entry) openKbEditModal(entry);
           });
         };
       });
@@ -1242,6 +1253,47 @@
       var cdRaw = parseInt(fv(body, "qvq-kbf-cooldown"), 10);
       var cooldownMin = isNaN(cdRaw) ? null : Math.max(0, cdRaw);
       api("/api/qvq/kb/add", "POST", { title: title, content: content, source: fv(body, "qvq-kbf-source"), triggers: triggers, priority: priority, cooldown_min: cooldownMin }).then(function (r) {
+        if (r && r.ok) {
+          toast(t("saved"));
+          closeModal();
+          loadKnowledge();
+        } else {
+          toast((r && r.error) || "error", true);
+        }
+      });
+    });
+  }
+
+   
+  function openKbEditModal(entry) {
+    var fields =
+      "<label class='qvq-label'>" + esc(t("kb_title_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-kbe-title' value='" + esc(entry.title || "") + "' />" +
+      "<label class='qvq-label'>" + esc(t("kb_source_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-kbe-source' value='" + esc(entry.source || "") + "' />" +
+      "<label class='qvq-label'>" + esc(t("kb_triggers_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-kbe-triggers' value='" + esc((entry.triggers || []).join(", ")) + "' placeholder='" + esc(t("kb_triggers_ph")) + "' />" +
+      "<label class='qvq-label'>" + esc(t("kb_scope_label")) + "</label>" +
+      "<input class='qvq-input' id='qvq-kbe-scope' value='" + esc(entry.owner || "") + "' placeholder='" + esc(t("kb_scope_ph")) + "' />" +
+      "<div class='qvq-hint'>" + esc(t("kb_scope_chat")) + "</div>" +
+      "<label class='qvq-label'>" + esc(t("kb_content_label")) + "</label>" +
+      "<textarea class='qvq-textarea' id='qvq-kbe-content' style='min-height:180px'>" + esc(entry.content || "") + "</textarea>";
+    openForm(t("kb_edit"), fields, function (body) {
+      var title = fv(body, "qvq-kbe-title");
+      var content = body.querySelector("#qvq-kbe-content").value;
+      if (!title.trim() || !content.trim()) {
+        toast(t("kb_need_title_content"), true);
+        return;
+      }
+      var triggers = fv(body, "qvq-kbe-triggers").split(/[,，、\s]+/).filter(Boolean);
+      api("/api/qvq/kb/update", "POST", {
+        id: entry.id,
+        title: title,
+        content: content,
+        source: fv(body, "qvq-kbe-source"),
+        triggers: triggers,
+        scope: fv(body, "qvq-kbe-scope").trim()
+      }).then(function (r) {
         if (r && r.ok) {
           toast(t("saved"));
           closeModal();
@@ -2585,7 +2637,7 @@
         stripUrlToken();
         hideLogin();
         el("qvq-login-err").textContent = "";
-        initApp();
+        bootData();
       } else {
         el("qvq-login-err").textContent = t("login_failed");
       }
