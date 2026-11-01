@@ -24,6 +24,12 @@ INFLIGHT_KEY_PREFIX = "QvQChat:inflight:"
 RECOVERY_BOOT_DELAY = 15.0
 # 待发队列逐会话重放间隔
 RECOVERY_REPLAY_GAP = 2.0
+# 标记新鲜度上限：超过该秒数的残留视为陈旧垃圾（写入标记的会话早已完成/放弃，
+# 残留源于退出期删除失败等异常路径），直接清除不重跑——重跑几小时前的旧话题
+# 是用户明确反对的行为
+RECOVERY_MAX_AGE = 600.0
+# 单次启动重跑上限：防雪崩（历史积压一次全重放）
+RECOVERY_RUN_CAP = 5
 
 
 class RecoveryMixin:
@@ -115,6 +121,7 @@ class RecoveryMixin:
             keys = list(self.sdk.storage.keys())
         except Exception:
             return
+        candidates: list[tuple[str, dict, float]] = []
         for key in keys:
             if not isinstance(key, str) or not key.startswith(INFLIGHT_KEY_PREFIX):
                 continue
@@ -137,11 +144,31 @@ class RecoveryMixin:
             if not enabled:
                 self.logger.info(f"inflight mark cleared, recovery disabled: {chat_key}")
                 continue
-            if now - ts < min_age:
+            age = now - ts
+            if age < min_age:
                 self.logger.info(f"inflight mark too fresh, skip recovery: {chat_key}")
+                continue
+            if age > RECOVERY_MAX_AGE:
+# 陈旧标记（>10 分钟）：正常生成早已结束，残留源于退出期删除失败等异常路径；
+# 重跑几小时前的旧话题是错误行为，直接清除
+                self.logger.warning(
+                    f"stale inflight mark dropped (age={int(age)}s): {chat_key}"
+                )
                 continue
             if not parse_chat_key(strip_isolation(chat_key))[0]:
                 continue
+            candidates.append((chat_key, marker, ts))
+        if not candidates:
+            return
+        candidates.sort(key=lambda item: item[2])  # 旧的优先
+        for chat_key, marker, ts in candidates[:RECOVERY_RUN_CAP]:
+            text = str(marker.get("text") or "")
+            origin = str(marker.get("origin") or "chat")
+            dropped = max(0, len(candidates) - RECOVERY_RUN_CAP)
+            if dropped and chat_key == candidates[RECOVERY_RUN_CAP - 1][0]:
+                self.logger.warning(
+                    f"inflight recovery capped: {dropped} candidate(s) deferred to next boot"
+                )
             popped = False
             try:
                 popped = self.sessions.pop_last_user_if(chat_key, text)
