@@ -153,6 +153,28 @@ class SessionsApiMixin:
             saved["members"] = self.main.sessions.set_members(chat_key, members)
         return {"ok": True, "ui": saved}
 
+    async def session_rename(self, request):
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        name = str((body or {}).get("name") or "").strip()[:60]
+        if not chat_key:
+            return ({"error": "chat_key required"}, 400)
+        self.main.sessions.set_name(chat_key, name)
+        return {"ok": True, "name": name}
+
+    async def session_regenerate(self, request):
+        """F2 重新生成：弹出末轮交换并返回 user 文本，前端再走正常发送管线。"""
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        if not chat_key:
+            return ({"error": "chat_key required"}, 400)
+        if self._live.busy(chat_key):
+            return ({"error": "session busy"}, 409)
+        text = str(self.main.sessions.pop_last_exchange(chat_key) or "")
+        if not text:
+            return ({"error": "nothing to regenerate"}, 409)
+        return {"ok": True, "text": text}
+
     async def session_routes(self, request):
         body = await request.json()
         target = str((body or {}).get("target") or "").strip()

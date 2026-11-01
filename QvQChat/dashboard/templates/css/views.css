@@ -944,3 +944,44 @@
 .qvq-ext-fold .qvq-tool-desc {
   margin-bottom: 10px;
 }
+
+ 
+.qvq-img-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+.qvq-img-stage {
+  max-width: 100%;
+  max-height: 62vh;
+  overflow: hidden;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qvq-img-stage img {
+  max-width: 100%;
+  max-height: 62vh;
+  border-radius: 12px;
+  transition: transform 0.12s ease;
+  cursor: zoom-in;
+}
+.qvq-img-bar {
+  display: flex;
+  gap: 8px;
+}
+.qvq-img-bar button {
+  width: 34px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx);
+  cursor: pointer;
+  font-size: 15px;
+}
+.qvq-img-bar button:hover {
+  border-color: var(--qvq-bd-h);
+}
