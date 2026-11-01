@@ -105,6 +105,16 @@
 .qvq-msg-wrap .qvq-msg.me {
   max-width: 100%;
 }
+/* F2 引入操作条时误把所有 wrap 都靠右：AI 消息必须独占左侧整行 */
+.qvq-msg-wrap.bot {
+  align-self: stretch;
+  align-items: stretch;
+  max-width: 100%;
+  margin-left: 0;
+}
+.qvq-msg-wrap .qvq-msg-acts.bot {
+  justify-content: flex-start;
+}
 
 .qvq-msg-acts {
   display: flex;

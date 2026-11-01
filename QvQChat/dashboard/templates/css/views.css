@@ -549,8 +549,24 @@
   .qvq-chat-sacts {
     opacity: 1;
   }
-  .qvq-chat-srow:hover .qvq-chat-stime {
-    display: block;
+  .qvq-chat-srow:hover .qvq-chat-stime,
+  .qvq-chat-srow .qvq-chat-stime {
+    opacity: 1;
+  }
+/* 移动端触屏无 hover：按钮常显会挤压标题——改为悬浮层（absolute），不占布局位 */
+  .qvq-chat-srow {
+    position: relative;
+  }
+  .qvq-chat-sacts {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--qvq-bg, rgba(15, 18, 24, 0.92));
+    border: 1px solid var(--qvq-bd);
+    border-radius: 8px;
+    padding: 2px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
   }
   .qvq-msg {
     max-width: 94%;

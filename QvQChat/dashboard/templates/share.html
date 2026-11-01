@@ -95,27 +95,27 @@
     "zh": { title: "会话分享", loading: "加载中…", empty: "没有可显示的消息", empty_hint: "分享内容为空或超出预算。",
         summary: "上下文摘要", user: "用户", invalid: "链接无效或已过期", invalid_hint: "请向分享者索取新的链接。",
         valid_until: "有效至", budget_note: "仅显示预算内的最近消息", tool: "工具",
-        copy: "复制", copied: "已复制", continue_ph: "基于这段对话继续问…", send: "发送", you: "访问者", bot: "AI",
+        copy: "复制", copied: "已复制", load_failed: "加载失败，请稍后刷新重试（链接仍有效）", continue_ph: "基于这段对话继续问…", send: "发送", you: "访问者", bot: "AI",
         rounds_left: "剩余 {n} 轮 · 额度 {t} tokens", done: "续聊轮数或额度已用完", cont_title: "继续对话" },
     "zh-tw": { title: "會話分享", loading: "載入中…", empty: "沒有可顯示的訊息", empty_hint: "分享內容為空或超出預算。",
         summary: "上下文摘要", user: "使用者", invalid: "連結無效或已過期", invalid_hint: "請向分享者索取新的連結。",
         valid_until: "有效至", budget_note: "僅顯示預算內的最近訊息", tool: "工具",
-        copy: "複製", copied: "已複製", continue_ph: "基於這段對話繼續問…", send: "傳送", you: "訪問者", bot: "AI",
+        copy: "複製", copied: "已複製", load_failed: "載入失敗，請稍後重新整理重試（連結仍有效）", continue_ph: "基於這段對話繼續問…", send: "傳送", you: "訪問者", bot: "AI",
         rounds_left: "剩餘 {n} 輪 · 額度 {t} tokens", done: "續聊輪數或額度已用完", cont_title: "繼續對話" },
     "ja": { title: "セッション共有", loading: "読み込み中…", empty: "表示できるメッセージがありません", empty_hint: "共有内容が空か、予算を超えています。",
         summary: "コンテキスト要約", user: "ユーザー", invalid: "リンクが無効または期限切れです", invalid_hint: "共有者に新しいリンクを請求してください。",
         valid_until: "有効期限", budget_note: "予算内の最近のメッセージのみ表示", tool: "ツール",
-        copy: "コピー", copied: "コピーしました", continue_ph: "この会話に基づいて質問を続ける…", send: "送信", you: "訪問者", bot: "AI",
+        copy: "コピー", copied: "コピーしました", load_failed: "読み込みに失敗しました。再試行してください（リンクは有効です）", continue_ph: "この会話に基づいて質問を続ける…", send: "送信", you: "訪問者", bot: "AI",
         rounds_left: "残り {n} 回 · 残 {t} tokens", done: "続きの回数または残高を使い切りました", cont_title: "会話を続ける" },
     "ru": { title: "Общая сессия", loading: "Загрузка…", empty: "Нет сообщений для показа", empty_hint: "Общее содержимое пусто или превышает лимит.",
         summary: "Сводка контекста", user: "Пользователь", invalid: "Ссылка недействительна или истекла", invalid_hint: "Попросите у отправителя новую ссылку.",
         valid_until: "действует до", budget_note: "Показаны только недавние сообщения в пределах лимита", tool: "Инструмент",
-        copy: "Копировать", copied: "Скопировано", continue_ph: "Продолжить вопрос по этому диалогу…", send: "Отправить", you: "Гость", bot: "AI",
+        copy: "Копировать", copied: "Скопировано", load_failed: "Не удалось загрузить — обновите страницу (ссылка действительна)", continue_ph: "Продолжить вопрос по этому диалогу…", send: "Отправить", you: "Гость", bot: "AI",
         rounds_left: "Осталось {n} раундов · {t} tokens", done: "Раунды или лимит исчерпаны", cont_title: "Продолжить диалог" },
     "en": { title: "Shared session", loading: "Loading…", empty: "Nothing to show", empty_hint: "The shared content is empty or over budget.",
         summary: "Context summary", user: "User", invalid: "Link invalid or expired", invalid_hint: "Please ask the sender for a fresh link.",
         valid_until: "valid until", budget_note: "Showing only the most recent messages within budget", tool: "Tool",
-        copy: "Copy", copied: "Copied", continue_ph: "Ask more based on this chat…", send: "Send", you: "Visitor", bot: "AI",
+        copy: "Copy", copied: "Copied", load_failed: "Load failed — refresh to retry (the link is still valid)", continue_ph: "Ask more based on this chat…", send: "Send", you: "Visitor", bot: "AI",
         rounds_left: "{n} rounds left · {t} tokens", done: "Continuation rounds or budget used up", cont_title: "Continue this chat" }
   };
   var nav = (navigator.language || "en").toLowerCase();
@@ -259,9 +259,18 @@ document.title = "QvQChat · " + L.title;
   }
 
   document.querySelector("#loading b").textContent = L.loading;
-  fetch("/QvQChat/api/qvq/share/messages?token=" + encodeURIComponent("__TOKEN__"))
-    .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
+  fetch("/QvQChat/api/qvq/share/messages?token=" + encodeURIComponent("__TOKEN__"), { cache: "no-store" })
+    .then(function (r) {
+      if (r.status === 403) {
+        document.getElementById("content").innerHTML =
+          '<div class="expired"><b>' + L.invalid + '</b>' + L.invalid_hint + '</div>';
+        return null;
+      }
+      if (!r.ok) throw new Error("bad");
+      return r.json();
+    })
     .then(function (data) {
+      if (!data) return;
       var msgs = data.messages || [];
       var box = document.getElementById("content");
       var exp = data.expires ? new Date((data.expires || 0) * 1000) : null;
@@ -309,8 +318,9 @@ document.title = "QvQChat · " + L.title;
       renderContinuation(box, data, token);
     })
     .catch(function () {
+      // 403 已在 then 内分流；走到这里的是网络/代理失败——不再误报"链接无效"
       document.getElementById("content").innerHTML =
-        '<div class="expired"><b>' + L.invalid + '</b>' + L.invalid_hint + '</div>';
+        '<div class="expired"><b>' + (L.load_failed || L.invalid) + '</b>' + (L.load_failed ? "" : L.invalid_hint) + '</div>';
     });
 })();
 </script>
