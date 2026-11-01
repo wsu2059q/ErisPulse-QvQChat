@@ -353,6 +353,10 @@ def make_config(**overrides):
         context_compress_tokens=128000,
         tool_notice_mode="brief",
         aggregate_window=5.0,
+ 
+        debounce_group_seconds=0.0,
+        debounce_mention_seconds=0.0,
+        humanize_echo_filter=True,
         interrupt_mode="queue",
         skills_dir="data/QvQChat/skills",
         skills_disabled=[],
