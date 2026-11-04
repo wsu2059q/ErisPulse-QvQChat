@@ -1034,6 +1034,17 @@ class ConversationService:
                 hint = ""
             if hint:
                 parts.append(SystemPart("eco_hint", texts.t("eco_system_note") + "\n" + hint))
+ 
+        if eco is not None and hasattr(eco, "external_prompts"):
+            try:
+                advice = eco.external_prompts()
+            except Exception:
+                advice = []
+            if advice:
+                parts.append(SystemPart(
+                    "eco_prompt",
+                    texts.t("eco_prompt_note") + "\n" + "\n".join(f"- {line}" for line in advice),
+                ))
         if getattr(self.config, "kb_auto_inject", True) and kb_query:
             kb = getattr(self.main, "knowledge", None)
  

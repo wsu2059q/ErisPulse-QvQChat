@@ -62,3 +62,24 @@ def test_build_system_injects_kb_hits():
     system = main.sessions.build_system(persona, chat_key="onebot11:group:1", kb_query="霸王龙生活在哪个时期")
     assert "kb-doc" in system and "霸王龙" in system
     assert main.sessions.build_system(persona, chat_key="onebot11:group:1", kb_query="潜艇怎么下潜").count("kb-doc") == 0
+
+
+def test_knowledge_external_entries_searchable_and_readonly():
+    from QvQChat.conversation.knowledge import KnowledgeBase
+
+    kb = KnowledgeBase(FakeMain().sdk, FakeMain().cfg)
+    kb.set_external_provider(lambda: [{
+        "id": "ext:TTS:0",
+        "title": "语音合成",
+        "content": "语音合成使用 CosyVoice 模型，默认音色 alex。",
+        "triggers": ["语音合成"],
+        "owner": "",
+        "external": True,
+        "source": "TTS",
+    }])
+    hits = kb.search("CosyVoice 音色")
+    assert any(h["title"] == "语音合成" for h in hits)
+    triggered = kb.triggered(["我们聊聊语音合成吧"])
+    assert triggered and triggered[0]["title"] == "语音合成"
+ 
+    assert kb.list() == []

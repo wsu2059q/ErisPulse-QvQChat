@@ -49,6 +49,8 @@ def chunk_text(content: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLA
 class KnowledgeBase:
     def __init__(self, sdk, cfg=None):
         self.sdk = sdk
+         
+        self._external_provider = None
         self.cfg = cfg
  
         self.vectors = vectors
@@ -68,6 +70,19 @@ class KnowledgeBase:
 
     def _save(self, entries: dict) -> None:
         self.sdk.storage.set(KB_KEY, entries)
+
+    def set_external_provider(self, provider) -> None:
+        """注入生态模块贡献的只读知识条目（经 qvq_extensions）。"""
+        self._external_provider = provider
+
+    def _external_entries(self) -> list[dict]:
+        if self._external_provider is None:
+            return []
+        try:
+            items = self._external_provider() or []
+        except Exception:
+            return []
+        return [item for item in items if isinstance(item, dict) and item.get("content")]
 
     def _norm_triggers(self, triggers) -> list[str]:
         if triggers is None:
@@ -176,7 +191,8 @@ class KnowledgeBase:
 
     def _chunks(self, viewer: str | None = None) -> list[dict]:
         out = []
-        for entry in self._load().values():
+        entries = list(self._load().values()) + self._external_entries()
+        for entry in entries:
             if not self._visible(entry, viewer):
                 continue
             for piece in self.chunk(entry.get("content", "")):
@@ -198,9 +214,11 @@ class KnowledgeBase:
             return []
         ts = float(now if now is not None else time.time())
         entries = self._load()
+         
+        external = self._external_entries()
         hits: list[dict] = []
         changed = False
-        for entry in entries.values():
+        for entry in list(entries.values()) + external:
             if not self._visible(entry, viewer):
                 continue
             trig = [str(t).lower() for t in (entry.get("triggers") or []) if str(t).strip()]
