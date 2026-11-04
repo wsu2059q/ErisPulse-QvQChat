@@ -117,5 +117,16 @@ def test_build_forward_nodes():
     assert nodes[0]["type"] == "node"
     data = nodes[0]["data"]
     assert data["user_id"] == "42" and data["nickname"] == "Bot"
+ 
+    assert data["uin"] == "42" and data["nick"] == "Bot"
     assert data["content"][0]["data"]["text"] == "第一段"
     assert "续行" in nodes[1]["data"]["content"][0]["data"]["text"]
+
+
+def test_strip_output_tag():
+    from QvQChat.utils import strip_output_tag
+
+    assert strip_output_tag("[[转发]]报告正文") == ("报告正文", True)
+    assert strip_output_tag("[[直发]]好的") == ("好的", False)
+    assert strip_output_tag("普通回复") == ("普通回复", None)
+    assert strip_output_tag("[[转发]]  带空格") == ("带空格", True)

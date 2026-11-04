@@ -23,6 +23,9 @@ class AgentResult:
  
     plan: str = ""
     critique: str = ""
+ 
+ 
+    delivery_hint: bool | None = None
 
 
 class AgentRunner:
@@ -30,6 +33,10 @@ class AgentRunner:
         self.pool = pool
         self.registry = registry
         self.config = config
+ 
+        from .toolselect import ToolSelector
+
+        self.selector = ToolSelector(self)
 
     def _session_block(self, ctx: ToolContext) -> str:
         """当前会话事实块：平台/会话类型/目标 ID/触发者 + 发送路由约定。
@@ -344,9 +351,11 @@ class AgentRunner:
                                      on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
                                      chat_key=chat_key)
         self._merge_usage(result.usage, final)
-        final_text = (final.content or "").strip()
+        final_text, tag_hint = utils.strip_output_tag((final.content or "").strip())
         result.text = final_text
         result.model = final.model or result.model
+        if result.delivery_hint is None and tag_hint is not None:
+            result.delivery_hint = tag_hint
         result.rounds.append({"text": final_text, "tools": []})
 
     async def run(
@@ -442,12 +451,23 @@ class AgentRunner:
  
         if schemas and not self._ctx_is_admin(ctx):
             schemas = [s for s in schemas if self._tool_visible_nonadmin(str(s.get("function", {}).get("name") or ""))]
+ 
+        hidden_by_select: list[str] = []
+        if schemas and getattr(self, "selector", None) is not None:
+            visible_names = {str(s.get("function", {}).get("name") or "") for s in schemas}
+            user_text = self._last_user_text(contexts)
+            selected = await self.selector.select(user_text, schemas, chat_key=ctx.chat_key)
+            if len(selected) < len(schemas):
+                kept = {str(s.get("function", {}).get("name") or "") for s in selected}
+                hidden_by_select = sorted(visible_names - kept)
+                schemas = selected
         max_rounds = int(getattr(self.config, "max_tool_rounds", 50) or 50)
         max_calls = int(getattr(self.config, "max_tool_calls", 150) or 150)
         total_calls = 0
         rounds: list = []
  
         schemas, system, chat_needs = self._apply_tools_fallback(schemas, system, model)
+        delivery_hint: bool | None = None
         for loop_index in range(max_rounds):
             request = ChatRequest(
                 messages=[{"role": "system", "content": system}] + contexts,
@@ -459,18 +479,38 @@ class AgentRunner:
             response = await self._dispatch("chat", request, needs=chat_needs, model=model,
                                             on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
              chat_key=ctx.chat_key)
+ 
+            if getattr(response, "images_stripped", False):
+                urls = list(getattr(response, "stripped_image_urls", []) or [])
+                if urls:
+                    described = await self.pool.describe_images(urls, on_error="text")
+                    lines = [f"[image {i + 1}] {d}" for i, d in enumerate(described) if d]
+                    if lines:
+                        contexts.append(
+                            {
+                                "role": "user",
+                                "content": texts.t("vision_stripped_note") + "\n" + "\n".join(lines),
+                            }
+                        )
             for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
                 usage_total[key] = usage_total.get(key, 0) + response.usage.get(key, 0)
             used_model = response.model or used_model
             if not response.tool_calls:
-                final_text = (response.content or "").strip()
+                final_text, tag_hint = utils.strip_output_tag((response.content or "").strip())
+ 
+                if tag_hint is not None:
+                    delivery_hint = tag_hint
                 rounds.append({"text": final_text, "tools": []})
-                return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds, model=used_model)
+                return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds,
+                                   model=used_model, delivery_hint=delivery_hint)
             trace_before = len(trace)
-            rounds.append({"text": (response.content or "").strip(), "tools": []})
+ 
+            speech, tag_hint = utils.strip_output_tag((response.content or "").strip())
+            if delivery_hint is None and tag_hint is not None:
+                delivery_hint = tag_hint
+            rounds.append({"text": speech, "tools": []})
             contexts.append(self._assistant_message(response.content, response.tool_calls))
             if on_intermediate is not None:
-                speech = (response.content or "").strip()
                 if speech:
                     try:
                         callback_result = on_intermediate(speech)
@@ -495,6 +535,20 @@ class AgentRunner:
                     for i, tc in enumerate(response.tool_calls)
                 ]
             )
+ 
+            if hidden_by_select:
+                missing = [str(tc.name) for tc in response.tool_calls if str(tc.name) in hidden_by_select]
+                for name in missing:
+                    entry = next(
+                        (s for s in self.registry.llm_schemas(
+                            whitelist=persona_tools,
+                            disabled=list(getattr(self.config, "disabled_tools", []) or []),
+                        ) if s.get("function", {}).get("name") == name),
+                        None,
+                    )
+                    if entry is not None:
+                        schemas.append(entry)
+                        hidden_by_select.remove(name)
             remaining = max_rounds - (loop_index + 1)
             if remaining in (3, 2, 1) and remaining > 0:
                 contexts.append({"role": "user", "content": texts.t("tool_budget_hint", n=remaining)})
@@ -553,9 +607,14 @@ class AgentRunner:
              chat_key=ctx.chat_key)
         for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
             usage_total[key] = usage_total.get(key, 0) + final.usage.get(key, 0)
-        final_text = (final.content or "").strip()
+        raw_text = (final.content or "").strip()
+        final_text, tag_hint = utils.strip_output_tag(raw_text)
+ 
+        if tag_hint is not None:
+            delivery_hint = tag_hint
         rounds.append({"text": final_text, "tools": []})
-        return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds, model=used_model or final.model)
+        return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds,
+                           model=used_model or final.model, delivery_hint=delivery_hint)
 
     def _pool_has_vision(self) -> bool:
  

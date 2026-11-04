@@ -202,3 +202,13 @@ async def test_manage_personas_bind_and_global():
     assert out["ok"] is True
     out = json.loads(await selfconfig.manage_personas(ctx, action="delete", persona_id="terse"))
     assert out["ok"] is True
+
+
+async def test_manage_config_get_full_is_parseable_and_masks_secrets():
+    """全量读取不再被 4000 字符截断（JSON 可解析），secret 字段脱敏。"""
+    ctx = make_ctx()
+    ctx.config.view_token = "super-secret-token"
+    everything = json.loads(await selfconfig.manage_config(ctx, action="get"))
+    assert len(everything) > 100
+    assert everything["view_token"] == "***"
+    assert "forward_external_reply" in everything and "eco_admin" in everything

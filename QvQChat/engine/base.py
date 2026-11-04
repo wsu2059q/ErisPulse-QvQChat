@@ -40,6 +40,9 @@ class ChatResponse:
     tool_calls: list[ToolCall] = field(default_factory=list)
     model: str = ""
     usage: dict = field(default_factory=dict)
+ 
+    images_stripped: bool = False
+    stripped_image_urls: list = field(default_factory=list)
 
 
 class EngineError(RuntimeError):
