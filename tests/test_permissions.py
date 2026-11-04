@@ -38,6 +38,72 @@ def test_is_admin_semantics():
     assert is_admin_user(cfg, "1", "chat") is False
 
 
+def test_master_checker_failure_logged_not_silent(monkeypatch):
+    """框架主人判定抛错时不再静默（限频 warning），且退回 admins 名单。"""
+    import importlib
+
+    main_module = importlib.import_module("QvQChat.Main")
+    main_module._WARNED.clear()
+    logged = []
+
+    class Logger:
+        def warning(self, msg):
+            logged.append(msg)
+
+    def boom(platform, user_id):
+        raise RuntimeError("framework broken")
+
+    cfg = make_policy_config(admins=["777"])
+    assert is_admin_user(cfg, "777", "chat", "onebot11", boom, Logger()) is True
+    assert any("master_checker failed" in m for m in logged)
+
+
+def test_global_master_fallback_list(monkeypatch):
+    """框架 is_master 判否时直读主人表兜底：全局 list 主人默认就是管理员。"""
+    import importlib
+
+    main_module = importlib.import_module("QvQChat.Main")
+    monkeypatch.setattr(main_module, "framework_masters", lambda: ({"42", "43"}, {}))
+    cfg = make_policy_config()
+    assert is_admin_user(cfg, "42", "chat", "onebot11", lambda p, u: False) is True
+    assert is_admin_user(cfg, "99", "chat", "onebot11", lambda p, u: False) is False
+
+
+def test_platform_master_matching_tolerates_platform_alias(monkeypatch):
+    """平台主人：配置写 onebot、事件平台是 onebot11 也要认（前缀宽容匹配）。"""
+    import importlib
+
+    main_module = importlib.import_module("QvQChat.Main")
+    monkeypatch.setattr(main_module, "framework_masters", lambda: (set(), {"onebot": {"42"}}))
+    cfg = make_policy_config()
+    assert is_admin_user(cfg, "42", "chat", "onebot11", lambda p, u: False) is True
+# 不相关平台不认
+    assert is_admin_user(cfg, "42", "chat", "telegram", lambda p, u: False) is False
+
+
+def test_no_master_and_no_admins_means_no_chat_admin(monkeypatch):
+    """两者都没配时不瞎猜：聊天侧无人是管理员（Dashboard/本地来源除外）。"""
+    import importlib
+
+    main_module = importlib.import_module("QvQChat.Main")
+    monkeypatch.setattr(main_module, "framework_masters", lambda: (set(), {}))
+    cfg = make_policy_config()
+    assert is_admin_user(cfg, "42", "chat", "onebot11", lambda p, u: False) is False
+    assert is_admin_user(cfg, "42", "dashboard") is True
+
+
+def test_framework_masters_reads_runtime_list(monkeypatch):
+    """master.list() 可用时以它为准（含运行时 add 的主人）。"""
+    import importlib
+
+    main_module = importlib.import_module("QvQChat.Main")
+    fake_master = type("M", (), {"list": staticmethod(lambda: {"global": ["7"], "onebot11": ["8"]})})
+    monkeypatch.setattr(main_module, "_master_config_users", lambda: None)
+    monkeypatch.setitem(__import__("sys").modules, "ErisPulse.Core", __import__("types").SimpleNamespace(master=fake_master))
+    global_ids, platform_ids = main_module.framework_masters()
+    assert global_ids == {"7"} and platform_ids == {"onebot11": {"8"}}
+
+
 def test_base_safe_tools_allowed_for_everyone():
     cfg = make_policy_config()
     for name in ("send_message", "send_dsl", "read_file", "list_dir", "recall", "create_scheduled_task"):

@@ -173,6 +173,23 @@ class OpenAIEngine:
         return False
 
     @staticmethod
+    def _image_urls(messages: list) -> list[str]:
+        """提取消息里所有 image_url 分片的 URL（剥图重试后供上层补视觉描述）。"""
+        urls: list[str] = []
+        for message in messages:
+            if not isinstance(message, dict):
+                continue
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    url = str((part.get("image_url") or {}).get("url") or "")
+                    if url:
+                        urls.append(url)
+        return urls
+
+    @staticmethod
     def _without_images(messages: list) -> list:
         cleaned = []
         for message in messages:
@@ -337,6 +354,8 @@ class OpenAIEngine:
         if streaming:
             kwargs["stream"] = True
             kwargs["stream_options"] = {"include_usage": True}
+        images_stripped = False
+        stripped_urls: list[str] = []
         try:
             try:
                 if streaming:
@@ -352,7 +371,9 @@ class OpenAIEngine:
             except APIStatusError as e:
                 status = getattr(e, "status_code", 0) or 0
                 if status in (400, 404, 415, 422) and self._has_image_parts(kwargs["messages"]):
+                    stripped_urls = self._image_urls(kwargs["messages"])
                     kwargs["messages"] = self._without_images(kwargs["messages"])
+                    images_stripped = True
                     if streaming:
                         if on_reset is not None:
                             try:
@@ -367,6 +388,12 @@ class OpenAIEngine:
                 else:
                     raise
             if streaming:
+                if images_stripped:
+                    try:
+                        resp.images_stripped = True
+                        resp.stripped_image_urls = list(stripped_urls)
+                    except Exception:
+                        pass
                 return resp
             choice = resp.choices[0] if getattr(resp, "choices", None) else None
             message = choice.message if choice else None
@@ -398,4 +425,6 @@ class OpenAIEngine:
             tool_calls=tool_calls,
             model=getattr(resp, "model", "") or "",
             usage=usage,
+            images_stripped=images_stripped,
+            stripped_image_urls=list(stripped_urls),
         )

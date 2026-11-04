@@ -127,6 +127,30 @@ class InboxMixin(RecoveryMixin):
             return ""
 
     @staticmethod
+    def _quote_content(event, limit: int = 300) -> str:
+        """从 reply 段尽力提取被引用消息的原文（QQ/NapCat 等实现里在 data.text 或 data.content）。"""
+        try:
+            for segment in event.get_message() or []:
+                if not isinstance(segment, dict) or segment.get("type") != "reply":
+                    continue
+                data = segment.get("data") or {}
+                raw = str(data.get("text") or "").strip()
+                if not raw:
+                    content = data.get("content")
+                    if isinstance(content, list):
+                        raw = "".join(
+                            str(seg.get("data", {}).get("text") or "") if isinstance(seg, dict) else str(seg)
+                            for seg in content
+                        ).strip()
+                    elif content:
+                        raw = str(content).strip()
+                if raw:
+                    return raw[:limit]
+        except Exception:
+            return ""
+        return ""
+
+    @staticmethod
     def _extract_images(event) -> list[str]:
         urls: list[str] = []
         try:
@@ -627,16 +651,24 @@ class InboxMixin(RecoveryMixin):
                 if getattr(self.cfg, "scene_platform_prefix", True):
                     scene = texts.t("scene_platform_line", platform=str(event.get_platform() or "")) + scene
                 scene += texts.t("scene_speaker_note")
-# 发言者认知：明确"当前说话的人"，防止把历史对话者误认成当前发言者
-                scene += texts.t("scene_group_attribution", name=sender_name or sender_id, id=sender_id)
-                # 提及感知 + 拟人语气：@ 命中是分内问答，未 @（旁听/插件插话）要像群友随口接话
-                if event.is_at_message():
-                    scene += texts.t("scene_at_direct")
+# 触发来源认知：插件插话（origin=plugin）不是"有人在跟你说话"——否则模型会当成被点名
+                if origin == "plugin":
+                    scene += texts.t("scene_plugin_trigger", name=sender_name or sender_id, id=sender_id)
                 else:
-                    scene += texts.t("scene_at_narrate")
-                # 引用回复认知：问题几乎总是关于被引用内容
+                    # 发言者认知：明确"当前说话的人"，防止把历史对话者误认成当前发言者
+                    scene += texts.t("scene_group_attribution", name=sender_name or sender_id, id=sender_id)
+                    # 提及感知 + 拟人语气：@ 命中是分内问答，未 @（旁听/插件插话）要像群友随口接话
+                    if event.is_at_message():
+                        scene += texts.t("scene_at_direct")
+                    else:
+                        scene += texts.t("scene_at_narrate")
+                # 引用回复认知：优先注入被引原文，提取不到再退回泛化提示
                 if any(isinstance(seg, dict) and seg.get("type") == "reply" for seg in (event.get_message() or [])):
-                    scene += texts.t("scene_quote_note")
+                    quoted = self._quote_content(event)
+                    if quoted:
+                        scene += texts.t("scene_quote_content", content=quoted)
+                    else:
+                        scene += texts.t("scene_quote_note")
                 if getattr(self.cfg, "group_isolation", False):
                     scene += texts.t("scene_isolation_note")
             else:
@@ -784,6 +816,9 @@ class InboxMixin(RecoveryMixin):
                     live.status = "done"
                     live.publish("done", {"reply": live.reply, "session": chat_key})
                 reply, force_forward = strip_output_tag(result.text.strip())
+# 标签合并：最终回复自身的标签 > 运行过程中任一段发言声明的标签 > None（自动规则）
+                if force_forward is None:
+                    force_forward = getattr(result, "delivery_hint", None)
 # H4 输出过滤器：复述→重 roll 一次；句数超限/结尾硬造反问→就地截断
                 if bool(getattr(self.cfg, "humanize_filter_enabled", False)):
                     try:

@@ -7,10 +7,15 @@ import time
 
 from .. import texts, utils
 from ..tools_builtin.erispulse import REPLY_PREFERENCE
+from ..utils import OUTPUT_TAG_RE, strip_output_tag
 from .rhythm import STRUCTURE_FORWARD_RATIO, as_float, as_int, plan_segments, structure_signals
 from .visual import build_sections
 
-OUTPUT_TAG_RE = re.compile(r"^\[\[(转发|直发)\]\]\s*")
+# 标签工具已上移 utils（agent/runner 也要用）；此处保留原名再导出供既有引用
+__all__ = [
+    "OUTPUT_TAG_RE", "strip_output_tag", "Delivery",
+    "split_paragraphs", "match_platform", "delivery_profile",
+]
 
 RECAP_RE = re.compile(r"^(已[经把完成向]|好[的了]|已发送|已发出|done|sent)")
 
@@ -26,14 +31,6 @@ UNDELIVERABLE_HINTS = (
     "no relation", "blocked", "blacklist", "拉黑", "rejected", "无权限发送", "forbidden",
     "group not found", "群不存在", "已退出", "not in group", "kicked",
 )
-
-
-def strip_output_tag(reply: str) -> tuple[str, bool | None]:
-
-    tag = OUTPUT_TAG_RE.match(reply)
-    if not tag:
-        return reply, None
-    return reply[tag.end():].strip(), tag.group(1) == "转发"
 
 
 def split_paragraphs(text: str, min_length: int = 120, max_parts: int = 6) -> list[str]:
@@ -81,6 +78,8 @@ def delivery_profile(config, platform: str) -> dict:
         "reply_split": str(getattr(config, "reply_split", "paragraph")),
         "forward_min_messages": as_int(getattr(config, "forward_min_messages", 2), 2),
         "forward_threshold": as_int(getattr(config, "forward_threshold", 600), 600),
+        "forward_args_chars": as_int(getattr(config, "forward_args_chars", 140), 140) or 140,
+        "forward_output_chars": as_int(getattr(config, "forward_output_chars", 500), 500) or 500,
     }
     patterns = getattr(config, "delivery_profiles", None)
     if isinstance(patterns, dict):
@@ -273,6 +272,10 @@ class Delivery:
         """D2：取平台投递 profile（reply/工具两条路径共用）。"""
         return delivery_profile(self.config, platform)
 
+    def quote_enabled(self) -> bool:
+        """常规回复是否引用触发消息（reply_quote 开关；平台无 Reply 修饰时框架自动跳过引用）。"""
+        return str(getattr(self.config, "reply_quote", "on") or "on") == "on"
+
     def merges(self, platform: str) -> bool:
         if platform in [b for b in [str(x) for x in (getattr(self.config, "no_forward_platforms", []) or [])] if platform == b or (b.endswith("*") and platform.startswith(b[:-1]))]:
             return False
@@ -393,6 +396,7 @@ class Delivery:
         except Exception:
             sends = []
         structure_aware = bool(getattr(self.config, "forward_structure_aware", False))
+        profile = self.profile_for(platform)
         if force is not True:
             if not self.merges(platform):
                 return False
@@ -401,9 +405,14 @@ class Delivery:
         sections, text_segments = build_sections(
             rounds, reply, tool_trace,
             include_trace=not bool(getattr(self.config, "forward_exclude_trace", False)),
+# 卡外直发结论开启时，最终结论不进卡（剔除后卡内只剩过程与中间发言；
+# 剔空则下方 not sections 兜底放弃转发，整体回退直发）
+            exclude_final_reply=bool(getattr(self.config, "forward_external_reply", True))
+            and bool(str(reply or "").strip()),
+            args_chars=as_int(profile.get("forward_args_chars"), 140) or None,
+            output_chars=as_int(profile.get("forward_output_chars"), 180) or None,
         )
         if force is not True:
-            profile = self.profile_for(platform)
             min_messages = as_int(profile.get("forward_min_messages"), 2)
             if structure_aware:
 # D3 结构感知：结构化占比达标、或多段且含代码块/表格才转发；纯寒暄多段直发
@@ -445,11 +454,14 @@ class Delivery:
             return False
         return bool(used)
 
-    async def _send_plain(self, event, reply: str) -> bool:
-        """单条发送：方法降级 -> 重试 -> 最终失败入待发队列（D4）。返回是否发送成功。"""
+    async def _send_plain(self, event, reply: str, quote: bool = False) -> bool:
+        """单条发送：方法降级 -> 重试 -> 最终失败入待发队列（D4）。返回是否发送成功。
+
+        quote=True 时引用回复触发消息（event.reply 原生支持，平台无 Reply 修饰自动跳过）。
+        """
         used, result, _ = await dispatch_text(
             self.sdk, self.config,
-            lambda name, content: event.reply(content, method=name),
+            lambda name, content: event.reply(content, method=name, quote=quote),
             self._reply_methods(event), reply,
             queue=self._event_queue(event), logger=self.main.logger,
         )
@@ -478,7 +490,7 @@ class Delivery:
             return result
         return getattr(result, "message_id", None)
 
-    async def _send_split(self, event, reply: str) -> None:
+    async def _send_split(self, event, reply: str, quote: bool = False) -> None:
         profile = self.profile_for(str(event.get_platform() or ""))
         segments = plan_segments(reply, profile, rng=self._rng)
         if not segments:
@@ -501,7 +513,7 @@ class Delivery:
             if self.take_interrupt(chat_key):
                 self.main.logger.info(f"reply interrupted, dropped {len(segments) - index} segment(s)")
                 break
-            if await self._send_plain(event, text):
+            if await self._send_plain(event, text, quote=quote and index == 0):
                 continue
 # D4：分段中途失败——失败段已入队，剩余段一并入队，不中断已发段
             if queue is not None:
@@ -513,19 +525,27 @@ class Delivery:
 
     async def deliver_reply(self, event, reply: str, tool_trace: list, force: bool | None = None,
                             rounds: list | None = None) -> None:
-
-        if self._is_recap(reply, tool_trace):
-            self.main.logger.info("reply suppressed as send recap")
-            return
-        await self._replay_pending(self._event_chat_key(event))
-        if await self._try_forward(event, reply, tool_trace, force=force, rounds=rounds):
-            return
-        profile = self.profile_for(str(event.get_platform() or ""))
         try:
-            if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
-                await self._send_split(event, reply)
+            if self._is_recap(reply, tool_trace):
+                self.main.logger.info("reply suppressed as send recap")
                 return
-            await self._send_plain(event, reply)
+            await self._replay_pending(self._event_chat_key(event))
+            quote = self.quote_enabled()
+            if await self._try_forward(event, reply, tool_trace, force=force, rounds=rounds):
+# 卡外直发结论：转发卡只装过程与中间发言，最终结论以普通消息直发到卡外
+# （结论仍在卡内重复时可关闭 forward_external_reply）
+                if bool(getattr(self.config, "forward_external_reply", True)) and str(reply or "").strip():
+                    profile = self.profile_for(str(event.get_platform() or ""))
+                    if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
+                        await self._send_split(event, reply, quote=quote)
+                    else:
+                        await self._send_plain(event, reply, quote=quote)
+                return
+            profile = self.profile_for(str(event.get_platform() or ""))
+            if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
+                await self._send_split(event, reply, quote=quote)
+                return
+            await self._send_plain(event, reply, quote=quote)
         finally:
             self.end_budget(self._event_chat_key(event))
 

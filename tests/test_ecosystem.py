@@ -114,3 +114,52 @@ async def test_lifecycle_subscription_registered():
     bridge.start()
     events = [name for name, _ in main.sdk.lifecycle.registered]
     assert "module.load" in events and "module.unload" in events
+
+
+async def test_eco_access_declared_by_module():
+    """模块经 qvq_access 自声明 safe：只读服务对所有人开放，写库服务保持 admin。"""
+    catalog = {
+        "QvQMemes": [
+            {"name": "send_sticker", "signature": "(query: str)", "description": "发表情包"},
+            {"name": "sticker_add", "signature": "(url: str = '')", "description": "收录表情包"},
+        ],
+    }
+    main, bridge = make_bridge(catalog)
+    main.sdk.module.handlers[("QvQMemes", "qvq_access")] = {
+        "send_sticker": "safe",
+        "sticker_add": "admin",
+    }
+    await bridge.refresh()
+    assert main.registry.get("eco_QvQMemes_send_sticker").access == "safe"
+    assert main.registry.get("eco_QvQMemes_sticker_add").access == "admin"
+    hint = bridge.safe_tool_hint()
+    assert "eco_QvQMemes_send_sticker" in hint
+    assert "sticker_add" not in hint
+
+
+async def test_eco_access_default_admin_without_declaration():
+    catalog = {"Weather": [{"name": "get_weather", "signature": "(city: str)"}]}
+    main, bridge = make_bridge(catalog)
+    await bridge.refresh()
+    assert main.registry.get("eco_Weather_get_weather").access == "admin"
+
+
+async def test_eco_access_operator_overrides():
+    """运营方 eco_admin 能否决自声明 safe；eco_safe 可抬高未声明服务。"""
+    catalog = {
+        "QvQMemes": [{"name": "send_sticker", "signature": "(query: str)"}],
+        "Weather": [{"name": "get_weather", "signature": "(city: str)"}],
+    }
+    main, bridge = make_bridge(catalog, eco_admin=["QvQMemes:*"], eco_safe=["Weather:get_weather"])
+    main.sdk.module.handlers[("QvQMemes", "qvq_access")] = {"send_sticker": "safe"}
+    await bridge.refresh()
+    assert main.registry.get("eco_QvQMemes_send_sticker").access == "admin"
+    assert main.registry.get("eco_Weather_get_weather").access == "safe"
+
+
+async def test_eco_access_inline_meta_forward_compat():
+    """未来框架透传服务条目自定义字段时，access 字段自动生效。"""
+    catalog = {"Pic": [{"name": "search", "signature": "(q: str)", "access": "safe"}]}
+    main, bridge = make_bridge(catalog)
+    await bridge.refresh()
+    assert main.registry.get("eco_Pic_search").access == "safe"

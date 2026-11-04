@@ -40,19 +40,119 @@ AUDIT_LIMIT = 500
 LOCAL_ORIGINS = ("dashboard", "rpc")
 
 
+def _master_config_users() -> object:
+    """读取框架主人配置原始 users 值（list=全局主人 / dict=按平台）。失败返回 None。"""
+    try:
+        from ErisPulse.runtime.frame_config import get_master_config
+
+        return (get_master_config() or {}).get("users")
+    except Exception:
+        return None
+
+
+def framework_masters() -> tuple[set[str], dict[str, set[str]]]:
+    """直接读取框架主人表（不依赖 is_master 的版本行为）。
+
+    返回 (全局主人集合, {平台: 主人集合})。优先用 master.list()（含运行时 add 的
+    主人），失败则退回原始配置 users。这样即便旧框架的 is_master 判否/抛错，
+    「默认以框架主人为管理员」的语义仍然成立。
+    """
+    try:
+        from ErisPulse.Core import master as master_manager
+
+        data = master_manager.list()
+    except Exception:
+        data = None
+    if isinstance(data, dict):
+        global_ids: set[str] = set()
+        platform_ids: dict[str, set[str]] = {}
+        for key, ids in data.items():
+            if not isinstance(ids, (list, tuple, set)):
+                continue
+            normalized = {str(i) for i in ids if str(i).strip()}
+            if str(key).lower() == "global":
+                global_ids |= normalized
+            else:
+                platform_ids[str(key)] = normalized
+        if global_ids or platform_ids:
+            return global_ids, platform_ids
+    users = _master_config_users()
+    if isinstance(users, list):
+        return {str(u) for u in users if str(u).strip()}, {}
+    if isinstance(users, dict):
+        platform_ids = {}
+        for key, ids in users.items():
+            if isinstance(ids, (list, tuple, set)):
+                platform_ids[str(key)] = {str(i) for i in ids if str(i).strip()}
+            else:
+                platform_ids[str(key)] = {str(ids)}
+        return set(), platform_ids
+    return set(), {}
+
+
+def _platform_matches(config_platform: str, actual_platform: str) -> bool:
+    """平台名宽容匹配：精确 / 前缀（onebot vs onebot11）/ 通配（onebot*）。"""
+    config_platform = str(config_platform or "").strip().lower()
+    actual_platform = str(actual_platform or "").strip().lower()
+    if not config_platform or not actual_platform:
+        return False
+    if config_platform == actual_platform:
+        return True
+    if config_platform.endswith("*") and actual_platform.startswith(config_platform[:-1]):
+        return True
+    return actual_platform.startswith(config_platform) or config_platform.startswith(actual_platform)
+
+
+def is_framework_master(user_id: str, platform: str = "") -> bool:
+    """是否为框架主人（全局，或本平台的平台主人）。"""
+    uid = str(user_id or "")
+    if not uid:
+        return False
+    global_ids, platform_ids = framework_masters()
+    if uid in global_ids:
+        return True
+    for configured, ids in platform_ids.items():
+        if uid in ids and _platform_matches(configured, platform):
+            return True
+    return False
+
+
 def is_admin_user(config, user_id: str, origin: str = "chat", platform: str = "",
-                  master_checker=None) -> bool:
+                  master_checker=None, logger=None) -> bool:
+    """管理员判定：本地来源 > 框架主人（is_master 或直读主人表）> admins 名单。
+
+    默认没有配置 admins 时，框架主人就是管理员——is_master 若因框架版本/签名
+    差异判否，这里直接读主人表兜底，不把判定权交给单一实现。
+    """
     if origin in LOCAL_ORIGINS:
         return True
+    uid = str(user_id or "")
     if master_checker is not None:
         try:
-            if master_checker(platform, str(user_id)):
+            if master_checker(platform, uid):
                 return True
-        except Exception:
-# 主人判定失败时退回 admins 名单（权限兜底语义，不做噪音日志）
-            pass
+        except Exception as e:
+# 不再静默吞：框架主人判定故障必须可见（限频，避免刷屏）
+            _warn_once(logger, f"master_checker failed ({platform}/{uid}): {e}")
+    if is_framework_master(uid, platform):
+        return True
     admins = [str(a) for a in (getattr(config, "admins", []) or [])]
-    return bool(admins) and str(user_id) in admins
+    return bool(admins) and uid in admins
+
+
+_WARNED: set[str] = set()
+
+
+def _warn_once(logger, message: str) -> None:
+    key = message[:80]
+    if key in _WARNED:
+        return
+    _WARNED.add(key)
+    if logger is not None:
+        try:
+            logger.warning(message)
+        except Exception:
+            pass
 
 
 def _match_tool_rules(name: str, rules) -> bool:
@@ -162,6 +262,10 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         self.runner = AgentRunner(self.pool, self.registry, self.cfg)
         self.eco = EcosystemBridge(self)
         self.mcp = MCPManager(self)
+# 内置 ErisPulse 文档检索（版本跟随已安装框架，零 MCP 依赖）
+        from .bridge.docs import ErisPulseDocs
+
+        self.docs = ErisPulseDocs(self)
 # 参与决策（qvq.observe 旁听窗口 + qvq_decision 提供者发现，默认关闭）
         from .participation import ParticipationManager
 
@@ -212,6 +316,11 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         except Exception as e:
             self.logger.warning(f"mcp connect failed: {e}")
         try:
+            docs_info = await self.docs.ensure_synced()
+            self.logger.info(f"docs: {docs_info}")
+        except Exception as e:
+            self.logger.warning(f"docs sync failed: {e}")
+        try:
             await self.scheduler.start()
         except Exception as e:
             self.logger.warning(f"scheduler start failed: {e}")
@@ -227,6 +336,11 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         agent.register(self.registry, self)
         selfconfig.register(self.registry, self)
         takumi.register(self.registry, self)
+        from .tools_builtin import dev as dev_tools, docs as docs_tools, web as web_tools
+
+        docs_tools.register(self.registry, self)
+        web_tools.register(self.registry, self)
+        dev_tools.register(self.registry, self)
 
     def _register_handlers(self) -> None:
         message.on_message(priority=50)(self._on_message)
@@ -265,7 +379,49 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
             self.logger.warning(f"home entry register failed: {e}")
 
     def is_admin(self, user_id: str, origin: str = "chat", platform: str = "") -> bool:
-        return is_admin_user(self.cfg, user_id, origin, platform, self._master_checker())
+        return is_admin_user(self.cfg, user_id, origin, platform, self._master_checker(), self.logger)
+
+    def diagnose_admin(self, user_id: str, origin: str = "chat", platform: str = "") -> dict:
+        """管理员判定诊断：框架版本/主人配置形态/各判定分支结果（whoami 命令与排障用）。"""
+        framework_version = ""
+        try:
+            from importlib.metadata import version as _pkg_version
+
+            framework_version = _pkg_version("ErisPulse")
+        except Exception:
+            try:
+                import ErisPulse as _ep
+
+                framework_version = str(getattr(_ep, "__version__", "") or "")
+            except Exception:
+                framework_version = "unknown"
+        users = _master_config_users()
+        global_ids, platform_ids = framework_masters()
+        master_call = None
+        master_error = ""
+        try:
+            master_call = bool(self._master_checker()(platform, str(user_id)))
+        except Exception as e:
+            master_error = str(e)
+        admins = [str(a) for a in (getattr(self.cfg, "admins", []) or [])]
+        uid = str(user_id)
+        return {
+            "framework_version": framework_version,
+            "user_id": uid,
+            "platform": str(platform or ""),
+            "origin": str(origin or ""),
+            "is_admin": self.is_admin(user_id, origin, platform),
+            "master_is_master": master_call,
+            "master_error": master_error,
+            "master_users_shape": "list(global)" if isinstance(users, list) else ("dict(per-platform)" if isinstance(users, dict) else "missing"),
+            "master_users": users if isinstance(users, (list, dict)) else None,
+            # 直读主人表的判定（不依赖 is_master）：whoami 里能直接看出是哪条路径放行
+            "framework_global_masters": sorted(global_ids),
+            "framework_platform_masters": {k: sorted(v) for k, v in platform_ids.items()},
+            "framework_master_matched": is_framework_master(uid, platform),
+            "admins": admins,
+            "admins_matched": bool(admins) and uid in admins,
+        }
 
     def check_tool_permission(self, tool, ctx) -> tuple[bool, str]:
         return tool_allowed(self.cfg, tool.name, ctx.user_id, ctx.origin, ctx.platform, self._master_checker())
@@ -300,7 +456,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
 
     async def run_prompt(self, chat_key: str, prompt: str, persona_id: str = "",
                          origin: str = "task", send: bool = True, user_id: str = "",
-                         model: str = "", task_kind: str = "chat") -> str:
+                         model: str = "", task_kind: str = "chat", scene: str = "") -> str:
         platform, detail_type, target_id = parse_chat_key(strip_isolation(chat_key))
         ctx = ToolContext(
             main=self,
@@ -325,7 +481,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                     self.logger.debug(f"task model resolve failed: {e}")
 # 与聊天/面板同一把 per-chat 锁（本方法不与 _process_locked 互相嵌套，无死锁）
         async with self._lock_for(chat_key):
-            prepared = await self.sessions.prepare(chat_key, prompt, persona_id=persona_id, persist=False)
+            prepared = await self.sessions.prepare(chat_key, prompt, persona_id=persona_id, persist=False, scene=scene)
             messages: list = []
             if send and platform:
                 messages.append({"role": "system", "content": texts.t("task_run_note")})
@@ -473,12 +629,15 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
             self.logger.info(f"proactive speak denied ({chat_key}): {why}")
             return why
         budget.record(chat_key, "proactive")
+# 主动唤醒场景：明确"没人对你说话"，否则模型会把引导语当成有人在提问
+        scene = texts.t("scene_proactive", reason=str(reason or "").strip() or texts.t("scene_proactive_noreason"))
         reply = await self.run_prompt(
             chat_key,
             str(prompt or "") or texts.t("participate_speak_prompt"),
             persona_id=str(persona_id or ""),
             origin="proactive",
             send=True,
+            scene=scene,
         )
         _log_proactive(True, "")
         return reply
