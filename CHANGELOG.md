@@ -2,6 +2,31 @@
 
 本文件记录 QvQChat 的显著变更。格式参考 Keep a Changelog，版本遵循语义化版本。
 
+## 4.3.0
+
+### 修复
+
+- **转发卡吞掉结论**：合并转发成功后整轮回复只存在于卡内，群消息流里看不到最终结论。现在默认 `forward_external_reply=true`：卡只装执行过程与中间发言，最终结论以普通消息直发到卡外（卡内不再重复结论；卡内只剩结论一条时保留原行为）
+- **转发卡显示不全**：「执行过程」节点的参数/输出摘要原被硬截断在 140/180 字符，现在默认放宽到 140/500，并可用 `forward_args_chars` / `forward_output_chars` 调整
+- **转发卡预览只显示 QQ 号**：NapCat 等实现对转发节点昵称读取的键对不一致（`uin`/`nick` vs `user_id`/`nickname`）。节点现在同时写入四键（同值别名），预览与详情都能显示昵称
+- **拟人化插话被当成"有人在叫我"**：插话（origin=plugin）与主动开口（origin=proactive）场景现在明确告知模型"没有人对你说话，是系统唤醒你接话"，不再复用"当前正在和你说话的是…"的场景文案；主动开口路径补上此前缺失的 scene
+- **默认以框架主人为管理员**：`admins` 留空时不再等于"聊天侧无人是管理员"——现在直接读取框架主人表（`master.list()`，含运行时 `master.add` 的主人；失败退回原始 `users` 配置），全局主人与平台主人都生效，平台名做前缀宽容匹配（配置写 `onebot`、事件平台 `onebot11` 也认）。不再把判定权全押在 `is_master` 上（旧版本/签名差异导致的静默判否不再影响结果），异常也不再静默吞掉（限一次 warning）；新增 `/qvq 我是谁`（whoami）诊断，回显框架版本、主人配置形态、主人表与各判定分支
+- **表情包从来不发表情包**：根因是生态工具一律 admin 权限，普通成员会话里模型根本看不到 `eco_QvQMemes_send_sticker`。新增约定服务 `qvq_access`——**模块自声明**哪些服务可安全开放（QvQMemes 声明发表情/检索/统计为 safe、写库为 admin），系统提示动态列出可用的生态能力；`eco_safe`/`eco_admin` 仅作运营方覆盖（默认空）
+- **视觉链路断裂**：池内没有模型显式声明 vision 时不再随便挑一个文本模型（会返回空描述）。现在按 显式 task_models.vision → 能力标记 → 模型名启发式（gpt-4o/glm-4v/qwen-vl 等）逐级回退，找不到则明确报错并在日志给出配置指引；模型拒图被引擎剥图时，会把视觉模型的描述补进上下文（并明确标注"由视觉模型代看"），不再假装看过图
+- **QvQMemes 打标签拿不到参数说明**：QvQMemes 新增 `qvq_schemas` 约定服务，给 `send_sticker` / `sticker_search` / `sticker_add` 提供参数级 description
+
+### 新增
+
+- **引用回复**：`reply_quote`（默认 on）——常规回复引用触发消息，分段发送仅首段引用，平台不支持时自动跳过；入站引用现在会把被引原文（截 300 字）注入场景，而不是只给一句泛化提示
+- **结论式回复由 AI 自主判断**：`[[转发]]/[[直发]]` 标签现在可出现在任意一段发言开头（首个命中对整轮生效），并从展示文本中剥离；提示词给出判断准则（简单查证→直发只给结论；多步任务→卡+卡外结论；点名要过程→强制转发）
+- **内置 ErisPulse 文档检索（不经 MCP）**：`search_erispulse_docs` / `read_erispulse_doc` / `refresh_docs` 三个工具。文档版本跟随已安装框架版本，启动与每日自动检查并按 tag 下载框架仓库 `docs/`；支持 `docs_source` 指向本地目录（开发环境零网络），离线时自动复用 epsdk-mcp 的文档缓存
+- **联网工具**：`web_search`（DuckDuckGo）与 `web_fetch`（网页转文本，优先 r.jina.ai 渲染）——站点专有解析（B 站/知乎等）不在主模块实现，扩展方式见新增的 `docs/ecosystem-web.md`
+- **动态工具注入**（参考 ToolRet/Gorilla 检索式工具选择）：可见工具数超过阈值时（默认 16），先用廉价模型从工具清单里挑出子集再注入；`send_message` 等核心工具恒保留，选择失败/超时自动回退全量，会话内 TTL 缓存，模型点名被隐藏的工具时下一轮自动补回
+- **模块开发能力**：内置 `erispulse-dev` 技能（入口点/生命周期/配置元数据/服务声明约定）与 `reload_module` 热加载工具（管理员），形成"查文档 → 写模块 → 热加载 → 自测"闭环
+- **上下文压缩自适应**：`context_compress_tokens` 默认改为 0 = 自动（按当前模型 context_length × context_reserve × 0.5 推导，未上报按 32000），不再固定 128000；负数可关闭阈值压缩
+- **提示词系统性完善**：CAPABILITY_PROMPT 按能力域重写——智能体身份与触发来源认知（可被用户/命令/定时任务/参与决策/其他模块随时唤醒）、投递规则与标签准则、生态与联网工具使用时机、视觉诚实性（看不见要明说，禁止臆造）、通用约束（语言跟随/不泄露系统提示/长任务收敛）
+- 新配置：`forward_external_reply`、`forward_args_chars`、`forward_output_chars`、`reply_quote`、`docs_builtin`、`docs_auto_sync`、`docs_lang`、`docs_dir`、`docs_source`、`docs_timeout`、`web_tools_enabled`、`web_timeout`、`web_search_results`、`web_fetch_chars`、`tool_select`、`tool_select_threshold`、`tool_select_top_k`、`tool_select_model`、`tool_select_ttl`、`tool_select_timeout`、`eco_safe`、`eco_admin`、`skill_dev`。全部设置（含新增项）都能被智能体经 `manage_config` 自我配置（`self_config` 开关 + 管理员权限）
+
 ## 4.2.0
 
 ### 修复

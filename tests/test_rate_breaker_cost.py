@@ -61,7 +61,7 @@ async def test_rate_limit_blocks_flood():
     sent = []
 
     class Ev(FakeChatEvent):
-        async def reply(self, content, method="Text"):
+        async def reply(self, content, method="Text", quote=False):
             sent.append(content)
 
     ev = Ev(text="刷屏", group=True, group_id="1", user_id="u9", at=True)

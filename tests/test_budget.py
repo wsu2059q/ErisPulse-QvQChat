@@ -138,3 +138,30 @@ async def test_prepare_budget_off_keeps_legacy_behavior():
  
     assert len(prepared["contexts"]) == 6
     assert prepared["user_msg"]["content"] == "你好"
+
+
+ 
+
+
+def test_compactor_threshold_auto_from_model_context():
+    from QvQChat.conversation.compactor import Compactor
+
+    main = FakeMain(context_compress_tokens=0, context_reserve=0.85)
+    main.conversations._resolve_chat_model = lambda: {"id": "m", "context_length": 32000}
+    compactor = Compactor(main)
+ 
+    assert compactor._threshold() == 13600
+
+
+def test_compactor_threshold_fallback_and_overrides():
+    from QvQChat.conversation.compactor import Compactor
+
+    main = FakeMain(context_compress_tokens=0)
+    main.conversations._resolve_chat_model = lambda: None
+    assert Compactor(main)._threshold() == 13600   
+
+    main2 = FakeMain(context_compress_tokens=50000)
+    assert Compactor(main2)._threshold() == 50000   
+
+    main3 = FakeMain(context_compress_tokens=-1)
+    assert Compactor(main3)._threshold() == 0   

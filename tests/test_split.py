@@ -34,7 +34,10 @@ def test_split_all_main_names_still_resolvable():
 def test_split_capability_prompt_single_source():
     """常量本体在 prompts.py，Main 为兼容再导出，两者一致。"""
     assert prompts.CAPABILITY_PROMPT is CAPABILITY_PROMPT
-    assert CAPABILITY_PROMPT.startswith("Sending messages:")
+ 
+    assert CAPABILITY_PROMPT.startswith("You are an agent running on the ErisPulse bot framework")
+    assert "Sending messages:" in CAPABILITY_PROMPT
+    assert "[[直发]]" in CAPABILITY_PROMPT and "[[转发]]" in CAPABILITY_PROMPT
 
 
 def test_match_pattern_semantics():

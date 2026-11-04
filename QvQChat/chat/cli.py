@@ -49,6 +49,20 @@ class CliMixin:
             elif sub in ("compact", "压缩", "壓縮"):
                 report = await self.sessions.compact_now(chat_key)
                 await event.reply(texts.t("compact_done", actions=", ".join(report.get("actions") or ["noop"])))
+            elif sub in ("whoami", "身份", "我是谁", "我是誰"):
+                info = self.diagnose_admin(user_id, "chat", event.get_platform() or "")
+                await event.reply(texts.t(
+                    "cmd_whoami",
+                    admin=str(info["is_admin"]),
+                    uid=info["user_id"],
+                    platform=info["platform"] or "-",
+                    version=info["framework_version"],
+                    master=str(info["master_is_master"]),
+                    shape=info["master_users_shape"],
+                    fallback=str(info["framework_master_matched"]),
+                    admins=", ".join(info["admins"]) or "-",
+                    error=info["master_error"] or "-",
+                ))
             elif sub in ("status", "状态", "狀態"):
                 counts = self.registry.count_by_origin()
                 await event.reply(

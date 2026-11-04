@@ -152,7 +152,7 @@ async def test_budget_merge_and_interrupt_drop(monkeypatch):
         def get_group_id(self): return ""
         def get_user_id(self): return "u1"
 
-        async def reply(self, content, method="Text"):
+        async def reply(self, content, method="Text", quote=False):
             main.sent.append(content)
             return {"message_id": 1}
 
@@ -172,8 +172,8 @@ async def test_budget_merge_and_interrupt_drop(monkeypatch):
     delivery.begin_budget("test:private:u1", 0)   
     real_plain = delivery._send_plain
 
-    async def plain_then_interrupt(event, text):
-        await real_plain(event, text)
+    async def plain_then_interrupt(event, text, quote=False):
+        await real_plain(event, text, quote=quote)
         if len(main.sent) >= 1:
             delivery.interrupt("test:private:u1")
         return True

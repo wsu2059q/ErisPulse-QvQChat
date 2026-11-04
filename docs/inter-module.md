@@ -23,9 +23,24 @@ class Main(BaseModule):
 
 装上模块即上线，卸载即消失。无需重启 QvQChat。
 
-## 两条可选深度集成服务
+## 可选深度集成服务
 
 模块可以额外实现以下约定服务，参与智能体的行为定制：
+
+### `qvq_access()` → 自声明服务访问级别
+
+返回 `dict[服务名, "safe" | "admin"]`。`safe` 表示该服务对**所有成员**开放（例如发表情包、只读检索），
+`admin` 表示仅管理员可用（默认值）。
+
+```python
+async def qvq_access(self, **_):
+    return {"send_sticker": "safe", "sticker_search": "safe", "sticker_add": "admin"}
+```
+
+> 为什么是服务而不是 `get_meta` 字段：框架的 `sdk.module.services()` 只透传
+> `{name, signature, description}`，`services` 条目里的自定义字段会被丢弃，所以访问级别
+> 必须经约定服务传出来。运营方仍可在 QvQChat 设置里用 `eco_admin`（否决 safe）/
+> `eco_safe`（强行开放）覆盖，两者优先级最高。
 
 ### `qvq_personas()` → 注册人格预设
 

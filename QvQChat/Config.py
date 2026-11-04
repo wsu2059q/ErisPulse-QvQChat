@@ -123,7 +123,7 @@ class QvQConfig(BaseConfig):
     compact_model: str = field(default="", metadata=_desc("compact_model", "压缩摘要使用的模型（模型池 id），留空用当前默认模型", "chat", 6, "text", placeholder="provider:model"))
     max_context_turns: int = field(default=0, metadata=_desc("max_context_turns", "每请求最多携带最近 N 轮对话（发送级裁剪，不修改存储历史），0 不限", "chat", 7, "number"))
     tool_output_keep: int = field(default=300, metadata=_desc("tool_output_keep", "历史中旧工具输出的保留字符数，超出截断瘦身（0 关闭）", "chat", 8, "number"))
-    context_compress_tokens: int = field(default=128000, metadata=_desc("context_compress_tokens", "上下文压缩阈值（估算 token）：估算口径为中文≈1字1token（约为旧口径\"字符数/2\"的 2 倍），超过时自动把旧对话压缩为摘要后再请求，0 关闭。默认 128000 约对应 200k+ 上下文模型；小上下文模型可调低", "chat", 9, "number"))
+    context_compress_tokens: int = field(default=0, metadata=_desc("context_compress_tokens", "上下文压缩阈值（估算 token）。0 = 自动：按当前模型 context_length × context_reserve × 0.5 推导（未上报则按 32000）；填正数则用固定阈值；填 -1 关闭阈值压缩（仍保留轮次压缩）", "chat", 9, "number"))
     forward_platforms: list[str] = field(default_factory=lambda: ["*"], metadata=_desc("forward_platforms", "允许合并转发的平台（支持通配 * 与前缀，如 onebot*）；* 表示全部", "chat", 10, "list"))
     no_forward_platforms: list[str] = field(default_factory=list, metadata=_desc("no_forward_platforms", "禁止合并转发的平台黑名单（命中即使支持也不合并，优先级高于白名单）", "chat", 11, "list"))
     forward_min_messages: int = field(default=3, metadata=_desc("forward_min_messages", "合并转发的最小 AI 发言段数：本次运行中 AI 的回复达到该段数才打包合并卡（0 关闭自动合并，仍可用 [[转发]] 强制）", "chat", 12, "number"))
@@ -173,6 +173,10 @@ class QvQConfig(BaseConfig):
     chat_output_rules: bool = field(default=True, metadata=_desc("chat_output_rules", "闲聊输出规则：禁复述对方上条、禁结尾硬造反问、没把握可只回「？」、群聊短段输出（任务/工具场景不受限）", "chat", 55, "switch"))
     identity_note_other_agents: bool = field(default=True, metadata=_desc("identity_note_other_agents", "系统提示注入「群内其他智能体不是你」认知条款，防止认领别人的发言", "chat", 56, "switch"))
     scene_platform_prefix: bool = field(default=True, metadata=_desc("scene_platform_prefix", "会话场景说明附带平台名（如 平台：onebot11）", "chat", 57, "switch"))
+    forward_external_reply: bool = field(default=True, metadata=_desc("forward_external_reply", "转发卡外直发结论：合并转发只装执行过程与中间发言，最终结论性回复以普通消息直发到卡外（结论不进卡，避免重复）；关闭则回到旧行为（结论只在卡内）", "chat", 58, "switch"))
+    forward_args_chars: int = field(default=140, metadata=_desc("forward_args_chars", "转发卡「执行过程」节点参数摘要的截断字符数（0 恢复默认 140；调大可减少显示不全）", "chat", 59, "number"))
+    forward_output_chars: int = field(default=500, metadata=_desc("forward_output_chars", "转发卡「执行过程」节点输出摘要的截断字符数（默认 500，旧值 180 常显示不全；0 恢复默认）", "chat", 60, "number"))
+    reply_quote: str = field(default="on", metadata=_desc("reply_quote", "引用回复：常规回复引用触发消息（分段发送仅首段引用；平台不支持引用时自动跳过）。工具发送的引用由模型经 send_message 的 reply_to 显式指定", "chat", 61, "select", ["on", "off"]))
 
  
     recovery_enabled: bool = field(default=True, metadata=_desc("recovery_enabled", "实例重启后自动恢复被中断的回复", "chat", 50, "switch"))
@@ -209,11 +213,39 @@ class QvQConfig(BaseConfig):
     tools_fallback: str = field(default="strip", metadata=_desc("tools_fallback", "池中无支持工具调用的模型时的降级：strip 去掉工具并在提示词中说明（默认，保证必答）/ strict 直接报错 / off 照常携带工具", "tools", 5, "select", ["strip", "strict", "off"]))
     tool_self_heal: bool = field(default=True, metadata=_desc("tool_self_heal", "工具自愈：同一工具连续两次调用失败时向模型注入一条修正提示（含错误摘要），让它自行调整参数重试；调用成功即重置计数", "tools", 6, "switch"))
     skill_induct: bool = field(default=True, metadata=_desc("skill_induct", "技能自动习得：注册 save_skill 工具并在系统提示中说明——用户要求\"记住这个做法\"时把多步任务的做法保存为可复用技能", "tools", 7, "switch"))
+    tool_select: str = field(default="auto", metadata=_desc("tool_select", "动态工具注入：auto 可见工具数超过阈值时先用廉价模型挑子集 / on 总是挑 / off 关闭（全量注入）。选择失败或超时自动回退全量", "tools", 8, "select", ["auto", "on", "off"]))
+    tool_select_threshold: int = field(default=16, metadata=_desc("tool_select_threshold", "工具数超过该值才启用动态注入（auto 模式）", "tools", 9, "number"))
+    tool_select_top_k: int = field(default=12, metadata=_desc("tool_select_top_k", "动态注入最多保留的工具数（send_message 等核心工具始终保留）", "tools", 10, "number"))
+    tool_select_model: str = field(default="", metadata=_desc("tool_select_model", "工具选择用的模型（模型池 id），留空跟随 task_models.toolselect 或池内最便宜模型", "tools", 11, "text", placeholder="provider:model"))
+    tool_select_ttl: int = field(default=180, metadata=_desc("tool_select_ttl", "工具选择结果的会话级缓存秒数（同一话题连续回合跳过小模型调用，0 不缓存）", "tools", 12, "number"))
+    tool_select_timeout: float = field(default=3.0, metadata=_desc("tool_select_timeout", "工具选择调用超时（秒），超时回退全量注入", "tools", 13, "number"))
+
+ 
+    web_tools_enabled: bool = field(default=True, metadata=_desc("web_tools_enabled", "内置联网工具：注册 web_search（DuckDuckGo 搜索）与 web_fetch（网页转文本）", "tools", 14, "switch"))
+    web_timeout: int = field(default=20, metadata=_desc("web_timeout", "联网请求超时（秒）", "tools", 15, "number"))
+    web_search_results: int = field(default=5, metadata=_desc("web_search_results", "web_search 返回结果条数", "tools", 16, "number"))
+    web_fetch_chars: int = field(default=6000, metadata=_desc("web_fetch_chars", "web_fetch 返回正文最大字符数", "tools", 17, "number"))
 
     eco_exclude: list[str] = field(default_factory=lambda: ["QvQChat"], metadata=_desc("eco_exclude", "不桥接服务目录的模块名单", "eco", 1, "list"))
     eco_include: list[str] = field(default_factory=list, metadata=_desc("eco_include", "仅桥接这些模块的服务，留空表示全部", "eco", 2, "list"))
+    eco_safe: list[str] = field(
+        default_factory=list,
+        metadata=_desc("eco_safe", "运营方覆盖：强制对所有人开放的服务（「模块:服务」，支持通配）。默认留空——正常由模块经 qvq_access 约定服务自声明；此配置用于抬高未声明服务的权限", "eco", 3, "list", dangerous=True),
+    )
+    eco_admin: list[str] = field(
+        default_factory=list,
+        metadata=_desc("eco_admin", "运营方覆盖：强制仅管理员可用的服务（「模块:服务」，支持通配）。优先级最高——用于否决模块的 safe 自声明", "eco", 4, "list", dangerous=True),
+    )
 
     mcp_timeout: int = field(default=30, metadata=_desc("mcp_timeout", "MCP 请求超时（秒）", "mcp", 1, "number"))
+
+ 
+    docs_builtin: bool = field(default=True, metadata=_desc("docs_builtin", "内置 ErisPulse 文档检索：注册 search_erispulse_docs 等工具，AI 写模块/查 API 时先查证文档", "mcp", 2, "switch"))
+    docs_auto_sync: bool = field(default=True, metadata=_desc("docs_auto_sync", "文档自动同步：启动时与每日检查，本地文档版本与已安装框架版本不一致时自动下载对应 tag 的文档包（网络失败保留旧版，不阻塞）", "mcp", 3, "switch"))
+    docs_lang: str = field(default="zh-CN", metadata=_desc("docs_lang", "文档语言目录（框架仓库 docs/ 下的语言目录，如 zh-CN / en / ja）", "mcp", 4, "select", ["zh-CN", "zh-TW", "en", "ja", "ru"]))
+    docs_dir: str = field(default="data/QvQChat/docs", metadata=_desc("docs_dir", "文档缓存目录（按 版本/语言 存放）", "mcp", 5))
+    docs_source: str = field(default="", metadata=_desc("docs_source", "文档来源覆盖：本地 docs 目录（开发环境可指向框架仓库 docs/，零网络）或自定义 zip URL；留空按 GitHub tag 下载", "mcp", 6))
+    docs_timeout: int = field(default=30, metadata=_desc("docs_timeout", "文档下载超时（秒）", "mcp", 7, "number"))
 
     task_check_interval: int = field(default=20, metadata=_desc("task_check_interval", "任务轮询间隔（秒）", "task", 1, "number"))
     task_use_cron_module: bool = field(default=True, metadata=_desc("task_use_cron_module", "装有 ErisPulse-Cron 时把 cron 任务交给它托管", "task", 2, "switch"))
@@ -236,6 +268,7 @@ class QvQConfig(BaseConfig):
     embedding_provider: dict = field(default_factory=dict, metadata=_desc("embedding_provider", "embedding 服务提供者（JSON：{\"base_url\": \"https://…/v1\", \"api_key\": \"sk-…\", \"model\": \"text-embedding-3-small\"}，OpenAI 兼容 /v1/embeddings；api_key 为敏感信息）", "kb", 10, "json", secret=True))
     skills_dir: str = field(default="data/QvQChat/skills", metadata=_desc("skills_dir", "技能目录（每个 .md 文件一个技能，frontmatter 含 name/description）", "skills", 1))
     skills_disabled: list[str] = field(default_factory=list, metadata=_desc("skills_disabled", "禁用的技能名列表", "skills", 2, "list", items="skills"))
+    skill_dev: bool = field(default=True, metadata=_desc("skill_dev", "模块开发能力：启用内置 erispulse-dev 技能（开发流程/约定）与 reload_module 热加载工具（仅管理员）", "skills", 3, "switch"))
 
  
     participation_enabled: bool = field(default=False, metadata=_desc("participation_enabled", "群聊参与决策：未被 @/前缀命中时问询生态插件的 qvq_decision 服务判断是否插话（默认关闭，需自行开启）", "participation", 1, "switch", dangerous=True))

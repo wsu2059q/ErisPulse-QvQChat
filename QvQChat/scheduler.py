@@ -260,6 +260,13 @@ class Scheduler:
 
     async def _tick(self) -> None:
         now = utils.now_ts()
+ 
+        docs = getattr(self.main, "docs", None)
+        if docs is not None:
+            try:
+                await docs.maybe_sync_daily()
+            except Exception as e:
+                self.main.logger.debug(f"docs daily check failed: {e}")
         tasks = self._load()
         remaining: list[dict] = []
         to_fire: list[dict] = []
