@@ -1034,6 +1034,17 @@ class ConversationService:
                 hint = ""
             if hint:
                 parts.append(SystemPart("eco_hint", texts.t("eco_system_note") + "\n" + hint))
+# 模块贡献的使用建议（qvq_extensions.prompts）：只给判断依据，是否调用由 AI 自行决定
+        if eco is not None and hasattr(eco, "external_prompts"):
+            try:
+                advice = eco.external_prompts()
+            except Exception:
+                advice = []
+            if advice:
+                parts.append(SystemPart(
+                    "eco_prompt",
+                    texts.t("eco_prompt_note") + "\n" + "\n".join(f"- {line}" for line in advice),
+                ))
         if getattr(self.config, "kb_auto_inject", True) and kb_query:
             kb = getattr(self.main, "knowledge", None)
 # 可见域：全局条目 + 本会话/本适配器私有条目（AI 默认写会话级，跨会话共享需显式声明）

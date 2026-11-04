@@ -262,6 +262,11 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         self.runner = AgentRunner(self.pool, self.registry, self.cfg)
         self.eco = EcosystemBridge(self)
         self.mcp = MCPManager(self)
+# 统一扩展入口：生态模块经 qvq_extensions 贡献的技能/知识只读并入本模块
+        if self.skills is not None:
+            self.skills.set_external_provider(self.eco.external_skills)
+        if self.knowledge is not None:
+            self.knowledge.set_external_provider(self.eco.external_knowledge)
 # 内置 ErisPulse 文档检索（版本跟随已安装框架，零 MCP 依赖）
         from .bridge.docs import ErisPulseDocs
 

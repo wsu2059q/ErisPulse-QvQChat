@@ -2,9 +2,10 @@
 
 简体中文 | [繁體中文](README.zh-TW.md) | [English](README.en.md) | [日本語](README.ja.md) | [Русский](README.ru.md)
 
+<img src="https://raw.githubusercontent.com/ErisPulse/ErisPulse/main/.github/assets/ErisPulseLogo.png" width="180" alt="QvQChat" />
+
 <img src="https://raw.githubusercontent.com/ErisPulse/.github/main/assets/badges/module.svg" alt="ErisPulse Module" />
 
-<img src="https://raw.githubusercontent.com/ErisPulse/ErisPulse/main/.github/assets/ErisPulseLogo.png" width="180" alt="QvQChat" />
 </div>
 
 # QvQChat
@@ -18,11 +19,17 @@ QvQChat 的核心是一个工具循环。你给它接上模型之后，模型可
 模块需要 ErisPulse 2.8.0 或更高版本，以及至少一个平台适配器。它自带一个网页控制台，脱离 Dashboard 也能独立使用；聊天侧和网页侧走同一条管道，从 QQ 发起的任务会实时出现在浏览器里，也可以在浏览器里直接停掉。
 
 <p>
+
   <a href="https://pypi.org/project/ErisPulse-QvQChat/"><img src="https://img.shields.io/pypi/v/ErisPulse-QvQChat?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI"></a>
+
   <a href="https://pypi.org/project/ErisPulse-QvQChat/"><img src="https://img.shields.io/badge/Python-3.10+-FFD43B?style=for-the-badge&logo=python&logoColor=blue" alt="Python"></a>
+
   <a href="https://github.com/wsu2059q/ErisPulse-QvQChat/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/wsu2059q/ErisPulse-QvQChat/ci.yml?style=for-the-badge&label=CI" alt="CI"></a>
+
   <a href="https://github.com/wsu2059q/ErisPulse-QvQChat/pkgs/container/erispulse-qvqchat"><img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"></a>
+
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
+
 </p>
 
 <img src=".github/assets/overview.png" width="860" alt="QvQChat 网页控制台" />
@@ -85,6 +92,8 @@ admins = ["123456"]   # 你在聊天平台上的用户 id
 ### 带着一整套实用工具的工具循环
 
 内置工具覆盖消息收发（`send_message`、`send_dsl`）、平台 API、文件访问、shell 与 Python 执行、长期记忆、知识库、定时任务和人格。`run_python_sdk` 在主进程内执行 Python，脚本可以直接使用 sdk、适配器和 storage。`spawn_agent` 会为值得单独探索的任务派出一个独立会话的子智能体，只把结论带回主对话。同一个工具连续失败两次时，会注入一条带错误摘要的修正提示，让模型自己调整参数重试（`tool_self_heal`，默认开启）。
+
+生态模块还可以经 `qvq_extensions` 一个入口提交只读技能、知识库条目与使用建议（提示词）；是否采纳、何时调用工具由 AI 自行判断。
 
 工具还有另外两个来源：你连接的每个 MCP 服务器都会贡献自己的工具（支持 stdio 和 Streamable HTTP）；装了声明 `services` 的 ErisPulse 模块，它的服务也会被自动调用——模块可通过 `qvq_access` 自声明哪些服务对普通成员安全（如发表情包），运营方可用 `eco_admin`/`eco_safe` 覆盖。见下文[扩展 QvQChat](#扩展-qvqchat)。
 
