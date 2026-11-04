@@ -261,7 +261,7 @@ class FakeChatEvent:
     def done(self, *args, **kwargs):
         self.claimed = True
 
-    async def reply(self, content, method="Text"):
+    async def reply(self, content, method="Text", quote=False):
         self.replies.append((method, content))
 
     async def history(self, n):

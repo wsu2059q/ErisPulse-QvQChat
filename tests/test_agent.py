@@ -97,6 +97,72 @@ async def test_runner_tool_loop():
     assert followup[-1]["role"] == "tool" and followup[-1]["tool_call_id"] == "c1"
 
 
+async def test_runner_delivery_hint_from_mid_run_tag():
+    """中间发言开头的 [[转发]] 记录为 run 级投递意图，并从展示文本剥离。"""
+    main = FakeMain()
+    registry = ToolRegistry()
+    registry.register(make_tool())
+    requests = []
+
+    class ScriptedPool:
+        async def chat(self, request, **kwargs):
+            requests.append(request)
+            if len(requests) == 1:
+                return ChatResponse(
+                    content="[[转发]]先查一下",
+                    tool_calls=[ToolCall(call_id="c1", name="echo", arguments={"text": "x"})],
+                    usage={},
+                )
+            return ChatResponse(content="最终结论")
+
+    runner = AgentRunner(ScriptedPool(), registry, main.cfg)
+    ctx = make_ctx(main, admins=["1"])
+    result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
+    assert result.delivery_hint is True
+    assert result.rounds[0]["text"] == "先查一下"
+    assert result.text == "最终结论"
+
+
+async def test_runner_delivery_hint_final_tag_wins():
+    """最终回复的标签优先于过程中声明的标签。"""
+    main = FakeMain()
+    registry = ToolRegistry()
+    registry.register(make_tool())
+    requests = []
+
+    class ScriptedPool:
+        async def chat(self, request, **kwargs):
+            requests.append(request)
+            if len(requests) == 1:
+                return ChatResponse(
+                    content="[[转发]]先查一下",
+                    tool_calls=[ToolCall(call_id="c1", name="echo", arguments={"text": "x"})],
+                    usage={},
+                )
+            return ChatResponse(content="[[直发]]结论")
+
+    runner = AgentRunner(ScriptedPool(), registry, main.cfg)
+    ctx = make_ctx(main, admins=["1"])
+    result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
+    assert result.delivery_hint is False
+    assert result.text == "结论"
+
+
+async def test_runner_limits_output_tag():
+    main = FakeMain()
+    registry = ToolRegistry()
+
+    class Pool:
+        async def chat(self, request, **kwargs):
+            return ChatResponse(content="[[直发]]就一句话")
+
+    runner = AgentRunner(Pool(), registry, main.cfg)
+    ctx = make_ctx(main, admins=["1"])
+    result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
+    assert result.delivery_hint is False
+    assert result.text == "就一句话"
+
+
 async def test_runner_forces_final_answer_at_limit():
     main = FakeMain(max_tool_rounds=1, max_tool_calls=1)
     registry = ToolRegistry()

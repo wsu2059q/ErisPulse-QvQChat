@@ -801,7 +801,8 @@ class ConversationService:
             except Exception:
                 caps = {}
             if caps.get("vision") is False:
-                described = await pool.describe_images(images) if pool else []
+ 
+                described = await pool.describe_images(images, on_error="text") if pool else []
                 lines = [f"[image {i + 1}] {d}" for i, d in enumerate(described) if d]
                 if lines:
                     merged = (text + "\n\n" if text else "") + texts.t("vision_delegate_note") + "\n" + "\n".join(lines)
@@ -1024,6 +1025,15 @@ class ConversationService:
             tools_hint = [str(t) for t in mcp_tools if str(t)]
             if tools_hint:
                 parts.append(SystemPart("extra", texts.t("dashboard_mcp_hint", tools=", ".join(tools_hint))))
+ 
+        eco = getattr(self.main, "eco", None)
+        if eco is not None and hasattr(eco, "safe_tool_hint"):
+            try:
+                hint = eco.safe_tool_hint()
+            except Exception:
+                hint = ""
+            if hint:
+                parts.append(SystemPart("eco_hint", texts.t("eco_system_note") + "\n" + hint))
         if getattr(self.config, "kb_auto_inject", True) and kb_query:
             kb = getattr(self.main, "knowledge", None)
  
