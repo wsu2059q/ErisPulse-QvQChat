@@ -119,6 +119,35 @@ class SkillManager:
         self.sdk = sdk
         self.config = config
         self._store_key = "QvQChat:skills"
+ 
+        self._external_provider = None
+
+    def set_external_provider(self, provider) -> None:
+        """注入外部技能来源（返回 [{name, description, body, enabled, source}]）。"""
+        self._external_provider = provider
+
+    def _external_skills(self) -> list[dict]:
+        if self._external_provider is None:
+            return []
+        try:
+            items = self._external_provider() or []
+        except Exception:
+            return []
+        result = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            result.append({
+                "name": name,
+                "description": str(item.get("description") or ""),
+                "body": str(item.get("body") or ""),
+                "source": str(item.get("source") or "module"),
+                "enabled": bool(item.get("enabled", True)) and name not in self._disabled(),
+            })
+        return result
 
     def skills_dir(self) -> Path:
         raw = str(getattr(self.config, "skills_dir", "") or "data/QvQChat/skills")
@@ -189,6 +218,9 @@ class SkillManager:
 
     def list_skills(self) -> list[dict]:
         merged = {s["name"]: s for s in self._builtin_skills()}
+ 
+        for s in self._external_skills():
+            merged.setdefault(s["name"], s)
         for s in self._file_skills():
             merged.setdefault(s["name"], s)
         for s in self._stored_skills():

@@ -263,6 +263,11 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         self.eco = EcosystemBridge(self)
         self.mcp = MCPManager(self)
  
+        if self.skills is not None:
+            self.skills.set_external_provider(self.eco.external_skills)
+        if self.knowledge is not None:
+            self.knowledge.set_external_provider(self.eco.external_knowledge)
+ 
         from .bridge.docs import ErisPulseDocs
 
         self.docs = ErisPulseDocs(self)

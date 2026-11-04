@@ -27,6 +27,33 @@ class Main(BaseModule):
 
 模块可以额外实现以下约定服务，参与智能体的行为定制：
 
+### `qvq_extensions()` → 一个入口提交技能 / 知识库 / 使用建议
+
+返回 dict，字段均可选：
+
+```python
+async def qvq_extensions(self, **_):
+    return {
+        # 只读技能：进入 QvQChat 技能清单，随模块卸载消失
+        "skills": [
+            {"name": "voice-style", "description": "语音风格", "body": "1. 短句
+2. 去 Markdown"},
+        ],
+        # 只读知识库条目：参与检索与世界书触发；owner 固定为全局
+        "knowledge": [
+            {"title": "主播设定", "content": "夜间电台主播，语速偏慢。", "triggers": ["电台"]},
+        ],
+        # 使用建议：注入系统提示，由 AI 自行判断是否采纳/调用工具
+        "prompts": [
+            {"text": "短句口语可用 tts_speak 发语音；代码/长文保持文字", "priority": 5},
+        ],
+    }
+```
+
+- 技能同名时**内置优先**，文件/面板技能可覆盖外部技能
+- 知识条目只读（不落库、命中不写冷却），卸载即消失
+- 提示词按 priority 降序注入；QvQChat 不解析内容，只负责转交
+
 ### `qvq_access()` → 自声明服务访问级别
 
 返回 `dict[服务名, "safe" | "admin"]`。`safe` 表示该服务对**所有成员**开放（例如发表情包、只读检索），
