@@ -11,6 +11,7 @@ SCHEMA_SERVICE = "qvq_schemas"
 PERSONAS_SERVICE = "qvq_personas"
 SETTINGS_SERVICE = "qvq_settings"
 ACCESS_SERVICE = "qvq_access"
+EXTENSIONS_SERVICE = "qvq_extensions"
 EXT_CALL_TIMEOUT = 15.0
 
 
@@ -38,6 +39,9 @@ class EcosystemBridge:
         self.info: dict = {"modules": 0, "tools": 0, "updated": 0.0}
         self._schemas: dict[str, dict] = {}
         self._access: dict[str, dict[str, str]] = {}
+        self._ext_skills: list[dict] = []
+        self._ext_knowledge: list[dict] = []
+        self._ext_prompts: list[dict] = []
         self._ext_personas: dict[str, list[str]] = {}
         self._prev_ext_personas: dict[str, list[str]] = {}
 
@@ -77,6 +81,9 @@ class EcosystemBridge:
         self.registry.unregister_prefix(PREFIX)
         self._schemas = {}
         self._access = {}
+        self._ext_skills = []
+        self._ext_knowledge = []
+        self._ext_prompts = []
         self.main.plugin_settings_catalog = {}
         self._prev_ext_personas = self._ext_personas
         self._ext_personas = {}
@@ -93,6 +100,7 @@ class EcosystemBridge:
             module_count += 1
             await self._collect_schemas(module_name)
             await self._collect_access(module_name)
+            await self._collect_extensions(module_name)
             await self._collect_settings(module_name)
             for service in services:
                 tool = self._build_tool(module_name, service, used)
@@ -142,6 +150,102 @@ class EcosystemBridge:
                 declared[str(name)] = level
         if declared:
             self._access[module] = declared
+
+    async def _collect_extensions(self, module: str) -> None:
+        """qvq_extensions：模块用**一个服务**提交全部贡献（技能 / 知识库条目 / 工具说明）。
+
+        返回 dict：
+        - prompts: [str 或 {text, priority?}] 使用建议，注入系统提示由 AI 自行判断
+        - skills: [{name, description, body, enabled?}]
+        - knowledge: [{title, content, source?, triggers?, priority?, cooldown_min?}]
+        条目只读、随模块卸载自动消失；同名内置技能优先，不被覆盖。
+        """
+        data = await self._call_optional(module, EXTENSIONS_SERVICE)
+        if not isinstance(data, dict):
+            return
+        prompts = data.get("prompts")
+        if isinstance(prompts, list):
+            for index, item in enumerate(prompts):
+                if isinstance(item, str):
+                    text, priority = item.strip(), 0
+                elif isinstance(item, dict):
+                    text = str(item.get("text") or "").strip()
+                    priority = item.get("priority", 0)
+                else:
+                    continue
+                if text:
+                    self._ext_prompts.append({
+                        "text": text,
+                        "priority": priority,
+                        "module": module,
+                        "index": index,
+                    })
+        skills = data.get("skills")
+        if isinstance(skills, list):
+            for index, item in enumerate(skills):
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or "").strip()
+                body = str(item.get("body") or "").strip()
+                if not name or not body:
+                    continue
+                self._ext_skills.append({
+                    "name": name,
+                    "description": str(item.get("description") or "").strip(),
+                    "body": body,
+                    "enabled": bool(item.get("enabled", True)),
+                    "module": module,
+                    "index": index,
+                })
+        knowledge = data.get("knowledge")
+        if isinstance(knowledge, list):
+            for index, item in enumerate(knowledge):
+                if not isinstance(item, dict):
+                    continue
+                title = str(item.get("title") or "").strip()
+                content = str(item.get("content") or "").strip()
+                if not title or not content:
+                    continue
+                self._ext_knowledge.append({
+                    "title": title,
+                    "content": content,
+                    "source": str(item.get("source") or module).strip(),
+                    "triggers": item.get("triggers") or [],
+                    "priority": item.get("priority", 0),
+                    "cooldown_min": item.get("cooldown_min"),
+                    "module": module,
+                    "index": index,
+                })
+
+    def external_prompts(self) -> list[str]:
+        """模块贡献的使用建议（按 priority 降序；注入系统提示，由 AI 自行判断）。"""
+        ordered = sorted(
+            self._ext_prompts,
+            key=lambda item: (-float(item.get("priority", 0) or 0), item["module"], item["index"]),
+        )
+        return [item["text"] for item in ordered]
+
+    def external_skills(self) -> list[dict]:
+        """模块贡献的技能（只读，source=module:<模块名>）。"""
+        return [dict(item, source=f"module:{item['module']}") for item in self._ext_skills]
+
+    def external_knowledge(self) -> list[dict]:
+        """模块贡献的知识库条目（只读，owner=全局；id 形如 ext:<模块>:<序号>）。"""
+        result = []
+        for item in self._ext_knowledge:
+            result.append({
+                "id": f"ext:{item['module']}:{item['index']}",
+                "title": item["title"],
+                "content": item["content"],
+                "source": item["source"],
+                "triggers": list(item.get("triggers") or []),
+                "priority": item.get("priority", 0),
+                "cooldown_min": item.get("cooldown_min"),
+                "owner": "",
+                "external": True,
+                "module": item["module"],
+            })
+        return result
 
     async def _collect_settings(self, module: str) -> None:
 # qvq_settings 只作归属标记（返回 {"title": ...}）：登记"谁出现在设置页插件分区"，
@@ -268,6 +372,9 @@ class EcosystemBridge:
 
     def extensions_status(self) -> list[dict]:
         names = set(self._ext_personas) | set(self._schemas)
+        names |= {s["module"] for s in self._ext_skills}
+        names |= {k["module"] for k in self._ext_knowledge}
+        names |= {p["module"] for p in self._ext_prompts}
         result = []
         for module in sorted(names):
             result.append(
@@ -275,6 +382,9 @@ class EcosystemBridge:
                     "module": module,
                     "personas": len(self._ext_personas.get(module, [])),
                     "schemas": len(self._schemas.get(module, {})),
+                    "skills": len([s for s in self._ext_skills if s["module"] == module]),
+                    "knowledge": len([k for k in self._ext_knowledge if k["module"] == module]),
+                    "prompts": len([p for p in self._ext_prompts if p["module"] == module]),
                 }
             )
         return result

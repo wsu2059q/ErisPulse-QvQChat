@@ -261,3 +261,19 @@ def test_build_system_injects_facts_section():
     assert all(p.required for p in parts if p.kind in ("persona", "capability"))
     facts_part = next(p for p in parts if p.kind == "facts")
     assert "喜欢蓝色" in facts_part.text
+
+
+def test_skills_merge_external_and_builtin_wins():
+    from QvQChat.skills import SkillManager
+
+    main = FakeMain()
+    manager = SkillManager(main.sdk, main.cfg)
+    manager.set_external_provider(lambda: [
+        {"name": "ext-skill", "description": "外部技能", "body": "步骤", "source": "module:TTS"},
+        {"name": "self-config", "description": "试图覆盖内置", "body": "x", "source": "module:TTS"},
+    ])
+    skills = {s["name"]: s for s in manager.list_skills()}
+    assert skills["ext-skill"]["source"] == "module:TTS"
+    assert skills["ext-skill"]["enabled"] is True
+# 内置同名优先
+    assert skills["self-config"]["source"] == "builtin"
