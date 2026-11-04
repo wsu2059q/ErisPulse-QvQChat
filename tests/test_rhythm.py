@@ -58,12 +58,14 @@ class FakePlainEvent:
     def supports(self, method):
         return method == "Text"
 
-    async def reply(self, content, method="Text"):
+    async def reply(self, content, method="Text", quote=False):
         self.attempts += 1
+        self.quotes = getattr(self, "quotes", [])
         if self.fail_times > 0:
             self.fail_times -= 1
             raise self.exc
         self.sent.append(content)
+        self.quotes.append(quote)
 
 
 BASE_PROFILE = {

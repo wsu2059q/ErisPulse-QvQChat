@@ -228,6 +228,29 @@ class Compactor:
             )
         return str(content or "")
 
+    def _threshold(self) -> int:
+        """压缩阈值：显式正数直接用；0 = auto，按当前对话模型 context_length 推导。
+
+        自动口径：context_length × context_reserve × 0.5（留一半给输出与后续轮次）；
+        模型未上报 context_length 时兜底 32000，避免小上下文模型撑爆请求。
+        """
+        configured = int(getattr(self.config, "context_compress_tokens", 0) or 0)
+        if configured > 0:
+            return configured
+        if configured < 0:
+            return 0# 负数 = 关闭阈值压缩（轮次压缩仍生效）
+        length = 0
+        try:
+            model = self.main.conversations._resolve_chat_model()
+            if isinstance(model, dict):
+                length = int(model.get("context_length") or 0)
+        except Exception:
+            length = 0
+        if length <= 0:
+            length = 32000
+        reserve = float(getattr(self.config, "context_reserve", 0.85) or 0.85)
+        return max(4000, int(length * reserve * 0.5))
+
     async def compact(self, chat_key: str, force: bool = False, reason: str = "") -> dict:
 
         service = self.main.conversations
@@ -241,7 +264,7 @@ class Compactor:
             actions.append(f"microcompact:{changed}")
             contexts = slimmed
 
-        threshold = int(getattr(self.config, "context_compress_tokens", 128000) or 0)
+        threshold = self._threshold()
         over = bool(threshold and context_tokens(contexts) > threshold)
         turns_since = service.turns_since_compact(chat_key)
         every = int(getattr(self.config, "compact_every_turns", 10) or 0)

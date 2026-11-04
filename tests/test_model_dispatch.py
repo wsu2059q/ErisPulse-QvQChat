@@ -251,3 +251,40 @@ async def test_failover_keeps_unknown_capability_models_as_backups():
 # 能力未知的模型排在明确支持的模型之后作为后备；明确不支持的完全不参与
     assert tried == ["cap", "unknown"]
     assert resp.model == "p2:unknown"
+
+
+# ===== 视觉任务回退链 =====
+
+
+def test_vision_task_name_fallback_when_capability_unknown():
+    """无模型声明 vision 时按模型名启发式挑（glm-4v / gpt-4o 等），而不是随便选文本模型。"""
+    pool = ModelPool(FakeSDK(), make_config())
+    pool.save_provider({
+        "id": "p1", "name": "P1", "base_url": "https://x/v1", "api_key": "k",
+        "models": [
+            {"id": "text-only", "enabled": True},
+            {"id": "glm-4v-flash", "enabled": True},
+        ],
+    })
+    model = pool.resolve_task_model(TaskSpec(kind="vision", needs=["vision"]))
+    assert model["id"] == "p1:glm-4v-flash"
+
+
+def test_vision_task_explicit_mark_wins():
+    pool = make_pool()
+    model = pool.resolve_task_model(TaskSpec(kind="vision", needs=["vision"]))
+    assert model["id"] == "p1:smart"
+
+
+def test_vision_task_no_candidate_raises():
+    pool = ModelPool(FakeSDK(), make_config())
+    pool.save_provider({
+        "id": "p1", "name": "P1", "base_url": "https://x/v1", "api_key": "k",
+        "models": [{"id": "text-only", "enabled": True}],
+    })
+    try:
+        pool.resolve_task_model(TaskSpec(kind="vision", needs=["vision"]))
+    except EngineError as e:
+        assert "task_models.vision" in str(e) or "视觉" in str(e)
+    else:
+        raise AssertionError("expected EngineError")

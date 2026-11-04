@@ -26,6 +26,7 @@ PRIORITY: dict[str, float] = {
     "kb": 6,
     "skill_full": 7,
     "skill_list": 8,
+    "eco_hint": 8.5,
     "extra": 9,
 }
 

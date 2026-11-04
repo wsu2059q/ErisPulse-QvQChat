@@ -10,7 +10,23 @@ PREFIX = "eco_"
 SCHEMA_SERVICE = "qvq_schemas"
 PERSONAS_SERVICE = "qvq_personas"
 SETTINGS_SERVICE = "qvq_settings"
+ACCESS_SERVICE = "qvq_access"
 EXT_CALL_TIMEOUT = 15.0
+
+
+def _match_service_rules(module: str, service: str, rules) -> bool:
+    """「模块:服务」规则匹配：两侧均支持前缀通配；只写模块名等价于该模块全部服务。"""
+    for entry in rules or []:
+        text = str(entry or "").strip()
+        if not text:
+            continue
+        if ":" in text:
+            mod_pat, _, svc_pat = text.partition(":")
+        else:
+            mod_pat, svc_pat = text, "*"
+        if utils.match_pattern(module, [mod_pat]) and utils.match_pattern(service, [svc_pat]):
+            return True
+    return False
 
 
 class EcosystemBridge:
@@ -21,6 +37,7 @@ class EcosystemBridge:
         self._refresh_task: asyncio.Task | None = None
         self.info: dict = {"modules": 0, "tools": 0, "updated": 0.0}
         self._schemas: dict[str, dict] = {}
+        self._access: dict[str, dict[str, str]] = {}
         self._ext_personas: dict[str, list[str]] = {}
         self._prev_ext_personas: dict[str, list[str]] = {}
 
@@ -59,6 +76,7 @@ class EcosystemBridge:
         exclude = set(getattr(self.main.cfg, "eco_exclude", []) or ["QvQChat"])
         self.registry.unregister_prefix(PREFIX)
         self._schemas = {}
+        self._access = {}
         self.main.plugin_settings_catalog = {}
         self._prev_ext_personas = self._ext_personas
         self._ext_personas = {}
@@ -74,6 +92,7 @@ class EcosystemBridge:
                 continue
             module_count += 1
             await self._collect_schemas(module_name)
+            await self._collect_access(module_name)
             await self._collect_settings(module_name)
             for service in services:
                 tool = self._build_tool(module_name, service, used)
@@ -110,6 +129,19 @@ class EcosystemBridge:
                 for name, schema in schemas.items()
                 if isinstance(schema, dict)
             }
+
+    async def _collect_access(self, module: str) -> None:
+        """qvq_access 约定服务：模块自声明哪些服务对所有人开放（"safe"）或仅管理员（"admin"）。"""
+        data = await self._call_optional(module, ACCESS_SERVICE)
+        if not isinstance(data, dict):
+            return
+        declared = {}
+        for name, value in data.items():
+            level = str(value or "").strip().lower()
+            if level in ("safe", "admin"):
+                declared[str(name)] = level
+        if declared:
+            self._access[module] = declared
 
     async def _collect_settings(self, module: str) -> None:
 # qvq_settings 只作归属标记（返回 {"title": ...}）：登记"谁出现在设置页插件分区"，
@@ -191,9 +223,48 @@ class EcosystemBridge:
             parameters=schema,
             handler=handler,
             origin="eco",
-            access="admin",
+            access=self.service_access(module_name, service_name, service),
             meta={"module": module_name, "service": service_name},
         )
+
+    def service_access(self, module: str, service: str, service_meta: dict | None = None) -> str:
+        """服务访问级别：运营方覆盖 > 模块自声明 > 默认 admin。
+
+        声明来源（优先级从高到低）：
+        1. 运营方配置 eco_admin / eco_safe（「模块:服务」，两侧支持通配）——最终否决权
+        2. qvq_access 约定服务返回的 {"服务名": "safe"|"admin"}
+        3. 服务条目自带 access 字段（未来框架透传 metadata 时自动生效）
+        4. 默认 admin
+        """
+        cfg = self.main.cfg
+        if _match_service_rules(module, service, getattr(cfg, "eco_admin", []) or []):
+            return "admin"
+        if _match_service_rules(module, service, getattr(cfg, "eco_safe", []) or []):
+            return "safe"
+        declared = (self._access.get(module) or {}).get(service)
+        if declared:
+            return declared
+        if isinstance(service_meta, dict):
+            inline = str(service_meta.get("access") or "").strip().lower()
+            if inline in ("safe", "admin"):
+                return inline
+        return "admin"
+
+    def is_safe_service(self, module: str, service: str) -> bool:
+        """兼容旧调用名：判定服务是否对所有人开放。"""
+        return self.service_access(module, service) == "safe"
+
+    def safe_tool_hint(self, limit: int = 12) -> str:
+        """给系统提示的生态能力清单：仅列出非管理员也能用的 eco 工具（一行一个）。"""
+        lines: list[str] = []
+        for tool in self.registry.list(origin="eco"):
+            if getattr(tool, "access", "admin") != "safe":
+                continue
+            desc = str(getattr(tool, "description", "") or "").split("\n")[0]
+            lines.append(f"- {tool.name}: {desc}")
+            if len(lines) >= limit:
+                break
+        return "\n".join(lines)
 
     def extensions_status(self) -> list[dict]:
         names = set(self._ext_personas) | set(self._schemas)

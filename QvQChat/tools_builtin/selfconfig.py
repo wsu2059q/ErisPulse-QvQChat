@@ -186,6 +186,18 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
     return f"unknown action: {action} (list / save / delete / bind / unbind / set_global / clear_global)"
 
 
+def _read_setting(ctx: ToolContext, name: str):
+    """读取配置值；标记 secret 的字段脱敏（不把访问令牌等交给模型/模型日志）。"""
+    from ..Config import QvQConfig
+
+    value = getattr(ctx.config, name, None)
+    field = QvQConfig.field_map().get(name)
+    ui = ((field.metadata or {}).get("ui") or {}) if field is not None else {}
+    if ui.get("secret") and value:
+        return "***"
+    return value
+
+
 async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", updates: dict | None = None) -> str:
     from ..Config import QvQConfig
 
@@ -195,8 +207,12 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
         if key:
             if key not in valid:
                 return f"unknown config key: {key}"
-            return utils.to_text({key: getattr(ctx.config, key, None)})
-        return utils.to_text({name: getattr(ctx.config, name, None) for name in sorted(valid)})
+            return utils.to_text({key: _read_setting(ctx, key)})
+# 全量读取会超过工具输出默认 4000 字符上限：放宽到 20000，否则 JSON 被截断成不可解析
+        return utils.to_text(
+            {name: _read_setting(ctx, name) for name in sorted(valid)},
+            limit=20000,
+        )
     if action == "set":
         if not isinstance(updates, dict) or not updates:
             return "set needs an updates object of {config_key: value}"

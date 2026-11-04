@@ -54,6 +54,109 @@ class QvQI18n(BaseI18n):
 
     mcp_timeout = _key("MCP 请求超时（秒）", "MCP 請求逾時（秒）", "MCP request timeout in seconds", "MCP リクエストのタイムアウト（秒）", "Тайм-аут запроса MCP (сек)")
 
+    skill_dev = _key(
+        "模块开发能力：启用内置 erispulse-dev 技能（开发流程/约定）与 reload_module 热加载工具（仅管理员）",
+        "模組開發能力：啟用內建 erispulse-dev 技能與 reload_module 熱載入工具（僅管理員）",
+        "Module development: enables the erispulse-dev skill and the reload_module hot-reload tool (admins only)",
+        "モジュール開発：erispulse-dev スキルと reload_module ツールを有効化（管理者のみ）",
+        "Разработка модулей: включает навык erispulse-dev и инструмент reload_module (только админы)",
+    )
+    web_tools_enabled = _key(
+        "内置联网工具：注册 web_search（DuckDuckGo 搜索）与 web_fetch（网页转文本）",
+        "內建聯網工具：註冊 web_search 與 web_fetch",
+        "Built-in web tools: registers web_search (DuckDuckGo) and web_fetch (page to text)",
+        "組み込み Web ツール：web_search と web_fetch を登録",
+        "Встроенные веб-инструменты: web_search и web_fetch",
+    )
+    web_timeout = _key("联网请求超时（秒）", "聯網請求逾時（秒）", "Web request timeout in seconds", "Web リクエストのタイムアウト（秒）", "Тайм-аут веб-запросов (сек)")
+    web_search_results = _key("web_search 返回结果条数", "web_search 回傳結果條數", "Number of web_search results", "web_search の結果件数", "Число результатов web_search")
+    web_fetch_chars = _key("web_fetch 返回正文最大字符数", "web_fetch 回傳正文最大字元數", "Max characters returned by web_fetch", "web_fetch が返す最大文字数", "Максимум символов от web_fetch")
+
+    tool_select = _key(
+        "动态工具注入：auto 可见工具数超过阈值时先用廉价模型挑子集 / on 总是挑 / off 关闭（全量注入）。选择失败或超时自动回退全量",
+        "動態工具注入：auto 超過閾值時先挑子集 / on 總是挑 / off 關閉（全量注入）。失敗或逾時自動回退全量",
+        "Dynamic tool injection: auto picks a subset via a cheap model once the tool count passes the threshold / on always / off = full list. Failures fail open.",
+        "動的ツール注入：auto は閾値超過時に安価モデルでサブセット選択 / on 常に / off は全量。失敗時は全量にフォールバック",
+        "Динамическая инъекция инструментов: auto выбирает подмножество дешёвой моделью после порога / on всегда / off — весь список. При сбое — откат к полному списку",
+    )
+    tool_select_threshold = _key(
+        "工具数超过该值才启用动态注入（auto 模式）",
+        "工具數超過該值才啟用動態注入（auto 模式）",
+        "Dynamic injection kicks in only above this tool count (auto mode)",
+        "このツール数以上で動的注入を有効化（auto）",
+        "Динамическая инъекция включается выше этого числа инструментов (auto)",
+    )
+    tool_select_top_k = _key(
+        "动态注入最多保留的工具数（send_message 等核心工具始终保留）",
+        "動態注入最多保留的工具數（核心工具始終保留）",
+        "Max tools kept by dynamic injection (core tools like send_message always stay)",
+        "動的注入で保持する最大ツール数（send_message などは常に保持）",
+        "Максимум инструментов при динамической инъекции (send_message и др. остаются всегда)",
+    )
+    tool_select_model = _key(
+        "工具选择用的模型（模型池 id），留空跟随 task_models.toolselect 或池内最便宜模型",
+        "工具選擇用的模型（模型池 id），留空跟隨 task_models.toolselect 或最便宜模型",
+        "Model used for tool selection (pool id); empty = task_models.toolselect or the cheapest model",
+        "ツール選択に使うモデル（空欄は task_models.toolselect または最安モデル）",
+        "Модель для выбора инструментов (id из пула); пусто — task_models.toolselect или самая дешёвая",
+    )
+    tool_select_ttl = _key(
+        "工具选择结果的会话级缓存秒数（同一话题连续回合跳过小模型调用，0 不缓存）",
+        "工具選擇結果的會話級快取秒數（0 不快取）",
+        "Per-session cache TTL for the tool selection (0 = no cache)",
+        "ツール選択結果のセッション内キャッシュ TTL（0 で無効）",
+        "TTL кэша выбора инструментов на сессию (0 — без кэша)",
+    )
+    tool_select_timeout = _key(
+        "工具选择调用超时（秒），超时回退全量注入",
+        "工具選擇呼叫逾時（秒），逾時回退全量注入",
+        "Tool-selection call timeout in seconds; timeout falls back to the full list",
+        "ツール選択呼び出しのタイムアウト（秒）。超過時は全量にフォールバック",
+        "Тайм-аут вызова выбора инструментов (сек); при превышении — полный список",
+    )
+    docs_builtin = _key(
+        "内置 ErisPulse 文档检索：注册 search_erispulse_docs 等工具，AI 写模块/查 API 时先查证文档",
+        "內建 ErisPulse 文件檢索：註冊 search_erispulse_docs 等工具，AI 寫模組/查 API 時先查證文件",
+        "Built-in ErisPulse docs search: registers search_erispulse_docs so the agent verifies APIs instead of guessing",
+        "組み込み ErisPulse ドキュメント検索：API を推測せず確認するため search_erispulse_docs を登録",
+        "Встроенный поиск по документации ErisPulse: регистрирует search_erispulse_docs, чтобы агент проверял API",
+    )
+    docs_auto_sync = _key(
+        "文档自动同步：启动时与每日检查，本地文档版本与已安装框架版本不一致时自动下载对应 tag 的文档包（网络失败保留旧版，不阻塞）",
+        "文件自動同步：啟動時與每日檢查，版本不一致時自動下載對應 tag 的文件包（失敗保留舊版）",
+        "Auto-sync docs to the installed framework version at startup and daily (failures keep the old copy)",
+        "起動時と毎日、インストール済みフレームワーク版に合わせてドキュメントを自動同期（失敗時は旧版を保持）",
+        "Автосинхронизация документации с версией фреймворка при старте и ежедневно (при сбое остаётся старая копия)",
+    )
+    docs_lang = _key(
+        "文档语言目录（框架仓库 docs/ 下的语言目录，如 zh-CN / en / ja）",
+        "文件語言目錄（框架倉庫 docs/ 下的語言目錄，如 zh-CN / en / ja）",
+        "Docs language directory under the framework repo's docs/ (zh-CN / en / ja …)",
+        "ドキュメントの言語ディレクトリ（zh-CN / en / ja など）",
+        "Каталог языка документации (zh-CN / en / ja …)",
+    )
+    docs_dir = _key(
+        "文档缓存目录（按 版本/语言 存放）",
+        "文件快取目錄（按 版本/語言 存放）",
+        "Docs cache directory (stored per version/language)",
+        "ドキュメントのキャッシュディレクトリ（版/言語ごと）",
+        "Каталог кэша документации (по версии/языку)",
+    )
+    docs_source = _key(
+        "文档来源覆盖：本地 docs 目录（开发环境可指向框架仓库 docs/，零网络）或自定义 zip URL；留空按 GitHub tag 下载",
+        "文件來源覆寫：本機 docs 目錄或自訂 zip URL；留空按 GitHub tag 下載",
+        "Docs source override: local docs directory or a custom zip URL; empty = download by GitHub tag",
+        "ドキュメントのソース上書き：ローカル docs ディレクトリまたは zip URL。空欄は GitHub tag から取得",
+        "Переопределение источника документации: локальный каталог docs или свой zip URL; пусто — по GitHub tag",
+    )
+    docs_timeout = _key(
+        "文档下载超时（秒）",
+        "文件下載逾時（秒）",
+        "Docs download timeout in seconds",
+        "ドキュメント取得のタイムアウト（秒）",
+        "Тайм-аут загрузки документации (сек)",
+    )
+
     task_check_interval = _key("任务轮询间隔（秒）", "任務輪詢間隔（秒）", "Task polling interval in seconds", "タスクのポーリング間隔（秒）", "Интервал опроса задач (сек)")
     task_use_cron_module = _key("装有 ErisPulse-Cron 时把 cron 任务交给它托管", "裝有 ErisPulse-Cron 時把 cron 任務交給它託管", "Delegate cron tasks to ErisPulse-Cron when installed", "ErisPulse-Cron 導入時に cron タスクを委譲", "Передавать cron-задачи ErisPulse-Cron при наличии")
 
@@ -206,6 +309,53 @@ class QvQI18n(BaseI18n):
         "Minimum AI segments before a reply is packed as merged-forward (0 disables auto-pack)",
         "Minimum AI segments before a 返信 is packed as merged-転送 (0 disables auto-pack)（詳細はドキュメント参照）",
         "Minimum AI segments before a ответ is packed as merged-пересылка (0 disables auto-pack) (см. документацию)",
+    )
+
+    forward_external_reply = _key(
+        "转发卡外直发结论：合并转发只装执行过程与中间发言，最终结论性回复以普通消息直发到卡外（结论不进卡，避免重复）；关闭则回到旧行为（结论只在卡内）",
+        "轉發卡外直發結論：合併轉發只裝執行過程與中間發言，最終結論性回覆以普通訊息直發到卡外（結論不進卡，避免重複）；關閉則回到舊行為",
+        "Send the final conclusion outside the forward card: the card carries only the process and mid-run messages. Off restores the old behavior (conclusion only inside the card).",
+        "転送カードの外に最終結論を直送：カードには実行過程と途中発言のみ。オフで従来動作（結論はカード内のみ）。",
+        "Отправлять финальный вывод вне карты пересылки: в карте только процесс и промежуточные реплики. Выкл. — прежнее поведение (вывод только в карте).",
+    )
+
+    forward_args_chars = _key(
+        "转发卡「执行过程」节点参数摘要的截断字符数（0 恢复默认 140；调大可减少显示不全）",
+        "轉發卡「執行過程」節點參數摘要的截斷字元數（0 恢復預設 140）",
+        "Character limit for tool-argument summaries in the forward card's process nodes (0 = default 140)",
+        "転送カードの実行過程ノードの引数要約の文字数上限（0 = 既定 140）",
+        "Лимит символов для сводки аргументов в узлах процесса карты (0 = по умолчанию 140)",
+    )
+
+    forward_output_chars = _key(
+        "转发卡「执行过程」节点输出摘要的截断字符数（默认 500，旧值 180 常显示不全；0 恢复默认）",
+        "轉發卡「執行過程」節點輸出摘要的截斷字元數（預設 500；0 恢復預設）",
+        "Character limit for tool-output summaries in the forward card's process nodes (default 500)",
+        "転送カードの実行過程ノードの出力要約の文字数上限（既定 500）",
+        "Лимит символов для сводки вывода инструментов в узлах процесса (по умолчанию 500)",
+    )
+
+    reply_quote = _key(
+        "引用回复：常规回复引用触发消息（分段发送仅首段引用；平台不支持引用时自动跳过）。工具发送的引用由模型经 send_message 的 reply_to 显式指定",
+        "引用回覆：常規回覆引用觸發訊息（分段僅首段引用；平台不支援時自動跳過）。工具發送的引用由模型經 send_message 的 reply_to 指定",
+        "Quote the triggering message on normal replies (only the first segment when splitting; skipped when unsupported). Tool sends quote via send_message's reply_to.",
+        "通常の返信でトリガーメッセージを引用（分割時は最初のみ。非対応プラットフォームではスキップ）。ツール送信の引用は send_message の reply_to で指定。",
+        "Цитировать сообщение-триггер в обычных ответах (при разбиении — только первый фрагмент; пропускается, если платформа не поддерживает). Для инструментов — reply_to в send_message.",
+    )
+
+    eco_safe = _key(
+        "运营方覆盖：强制对所有人开放的服务（「模块:服务」，支持通配）。默认留空——正常由模块经 qvq_access 约定服务自声明安全调用",
+        "營運方覆寫：強制對所有人開放的服務（「模組:服務」，支援萬用）。預設留空——由模組經 qvq_access 自宣告",
+        "Operator override: force these services open to everyone (module:service, wildcards). Empty by default — modules self-declare via qvq_access",
+        "運用者による上書き：全員に開放するサービス（module:service、ワイルドカード可）。通常はモジュールが qvq_access で自己宣言",
+        "Переопределение оператора: принудительно открыть сервисы всем (модуль:сервис, маски). Обычно модули сами объявляют через qvq_access",
+    )
+    eco_admin = _key(
+        "运营方覆盖：强制仅管理员可用的服务（「模块:服务」，支持通配）。优先级最高，用于否决模块的 safe 自声明",
+        "營運方覆寫：強制僅管理員可用的服務（支援萬用）。優先級最高，用於否決模組的 safe 自宣告",
+        "Operator override: force these services admin-only (module:service, wildcards). Highest priority — vetoes a module's safe declaration",
+        "運用者による上書き：管理者専用を強制（ワイルドカード可）。モジュールの safe 宣言を否決",
+        "Переопределение оператора: принудительно только для админов (маски). Отменяет объявление safe модулем",
     )
 
     reply_split = _key(

@@ -10,6 +10,49 @@ FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 
 BUILTIN_SKILLS: list[dict] = [
     {
+        "name": "erispulse-dev",
+        "description": texts.t("skill.erispulse_dev.desc"),
+        "body": """Develop or modify an ErisPulse module, then hot-reload it. Always verify APIs with
+search_erispulse_docs / read_erispulse_doc instead of guessing — the docs are synced to the installed framework version.
+
+## 0. Locate the target
+- Find the module package (e.g. `Module/ErisPulse-Foo/Foo/Main.py`) and read `pyproject.toml` + the entry module before editing.
+- Check how the module currently registers handlers/services: `get_meta()`, `get_load_strategy()`, `on_load`, `on_unload`.
+
+## 1. Package skeleton (new module)
+- `pyproject.toml` needs the entry point:
+  ```toml
+  [project.entry-points."erispulse.module"]
+  Foo = "Foo:Main"
+  ```
+- `Foo/__init__.py` exports `Main`; `Foo/Main.py` defines `class Main(BaseModule)` with `ConfigClass` / `I18nClass`.
+- Declare services in `get_meta(services=[{"name","description","signature"}, ...])` — `sdk.module.call` rejects undeclared services.
+- Use `get_load_strategy()` priority to control load order (higher priority loads earlier).
+
+## 2. Config & i18n conventions (this repo's style)
+- Config is a dataclass (`BaseConfig`) where every field carries `_desc(key, text, group, order, widget...)` metadata for the settings UI.
+- Text goes through a `texts.py` dict (zh-CN/zh-TW/en/ja/ru) or `I18nClass`; never hardcode user-facing strings.
+- Storage: `sdk.storage.get/set` with a namespaced key like `Foo:state`; don't create your own DB.
+
+## 3. Interop with QvQChat (optional)
+- Register `qvq_settings` to appear in the QvQChat settings page.
+- Register `qvq_schemas` to give QvQChat's eco bridge parameter-level schemas (otherwise only a weak signature-derived schema is used).
+- Register `qvq_personas` to contribute personas; `qvq.observe` / `qvq.replied` lifecycle events to observe chat.
+- To let members (not just admins) use your service through QvQChat, the operator must list it in `eco_safe` (`Module:service`).
+
+## 4. Verify
+- Syntax: `python -m compileall Foo` (or import the package).
+- Unit tests: add `tests/` with pytest; run `python -m pytest tests/ -q`.
+- Hot reload: call `reload_module` with the module name, then re-run the failing scenario.
+- Check logs for `module reload` / lifecycle events; if reload fails, fix the import error and reload again.
+
+## 5. Common pitfalls
+- Service not declared in `get_meta` → call rejected even though the method exists.
+- Forgetting `await` on async sdk calls; blocking I/O inside handlers (use `asyncio.to_thread`).
+- Catching `Exception` and returning silently — log at least at debug level.
+- Holding state on the class instead of the instance → survives reload incorrectly.""",
+    },
+    {
         "name": "self-config",
         "description": texts.t("skill.self_config.desc"),
         "body": """The manage_* tools are your configuration interface (admin/master only). Use them when the user asks in natural language — no dashboard needed.
@@ -38,9 +81,11 @@ BUILTIN_SKILLS: list[dict] = [
 
 ## Module settings — manage_config
 - action="get": all QvQChat settings, or one key.
-- action="set" with updates={key: value}: valid QvQChat config keys only (unknown keys are rejected). E.g. reply triggers, aggregate_window, forward_platforms, tool_notice_mode.
+- action="set" with updates={key: value}: valid QvQChat config keys only (unknown keys are rejected, values are type-checked). Covers every section: triggers, aggregate_window, forward behaviour (forward_external_reply / forward_args_chars / forward_output_chars), reply_quote, tool_select*, web_*, docs_*, eco_*, context_compress_tokens, participation_*, etc.
+- Examples: turn off auto-forwarding outside the card (`forward_external_reply=false`), widen the process summary (`forward_output_chars=800`), disable quoting (`reply_quote="off"`), let members use a module's service (`eco_safe=["Mod:service"]`) or veto a module's safe self-declaration (`eco_admin=["Mod:*"]`).
+- Eco access is normally self-declared by the module via its `qvq_access` service; `eco_safe`/`eco_admin` are operator overrides only.
 
-Rules: never read back or repeat api keys in your replies; sanity-check a changed model pool with a quick ping if the user asks; settings that affect safety (security_level, trust_agent, owner_only, admin lists) deserve an explicit confirmation even from an admin.""",
+Rules: never read back or repeat api keys in your replies; sanity-check a changed model pool with a quick ping if the user asks; settings that affect safety (security_level, trust_agent, owner_only, admin lists, eco_admin) deserve an explicit confirmation even from an admin.""",
     },
 ]
 
@@ -124,8 +169,11 @@ class SkillManager:
         return sorted(result, key=lambda s: s["name"])
 
     def _builtin_skills(self) -> list[dict]:
-        if not bool(getattr(self.config, "self_config", True)):
-            return []
+        """内置技能按各自开关过滤：self-config 跟 self_config，erispulse-dev 跟 skill_dev。"""
+        gates = {
+            "self-config": bool(getattr(self.config, "self_config", True)),
+            "erispulse-dev": bool(getattr(self.config, "skill_dev", True)),
+        }
         disabled = set(self._disabled())
         return [
             {
@@ -136,6 +184,7 @@ class SkillManager:
                 "enabled": s["name"] not in disabled,
             }
             for s in BUILTIN_SKILLS
+            if gates.get(s["name"], True)
         ]
 
     def list_skills(self) -> list[dict]:

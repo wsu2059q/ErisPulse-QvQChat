@@ -20,20 +20,20 @@ def _loads(text: str):
         return None
 
 
-def visual_args(args: str) -> str:
+def visual_args(args: str, limit: int = 140) -> str:
     data = _loads(str(args or ""))
     if isinstance(data, dict):
         pairs = []
         for key, value in data.items():
             v = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
             pairs.append(f"{key}={_short(v, 40)}")
-        return _short("、".join(pairs) or "无参数", 140)
+        return _short("、".join(pairs) or "无参数", limit)
     if data is None:
-        return _short(args, 100)
-    return _short(data if isinstance(data, str) else json.dumps(data, ensure_ascii=False), 100)
+        return _short(args, limit)
+    return _short(data if isinstance(data, str) else json.dumps(data, ensure_ascii=False), limit)
 
 
-def visual_output(output: str) -> str:
+def visual_output(output: str, limit: int = 180) -> str:
     text = str(output or "").strip()
     if not text:
         return ""
@@ -44,39 +44,47 @@ def visual_output(output: str) -> str:
             v = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
             pairs.append(f"{key}={_short(v, 40)}")
         more = "" if len(data) <= 3 else f"（共 {len(data)} 项）"
-        return _short("、".join(pairs), 180) + more
+        return _short("、".join(pairs), limit) + more
     if isinstance(data, list):
-        return _short(f"共 {len(data)} 项：{json.dumps(data[:2], ensure_ascii=False)}", 180)
-    return _short(text, 180)
+        return _short(f"共 {len(data)} 项：{json.dumps(data[:2], ensure_ascii=False)}", limit)
+    return _short(text, limit)
 
 
-def visual_call(entry: dict) -> str:
+def visual_call(entry: dict, args_limit: int = 140, output_limit: int = 180) -> str:
     name = str(entry.get("tool") or "")
     label = texts.t(f"tool.{name}.name", default=name)
     ms = entry.get("ms")
     args = str(entry.get("arguments") or "")
-    line = label + ("：" + visual_args(args) if args else "")
+    line = label + ("：" + visual_args(args, args_limit) if args else "")
     if ms is not None:
         line += f"（{ms}ms）"
-    out = visual_output(entry.get("output"))
+    out = visual_output(entry.get("output"), output_limit)
     if out:
         line += "\n" + texts.t("forward_result", output=out)
     return line
 
 
 def build_sections(rounds: list | None, reply: str, tool_trace: list | None,
-                   include_trace: bool = True) -> tuple[list, int]:
+                   include_trace: bool = True, exclude_final_reply: bool = False,
+                   args_chars: int | None = None, output_chars: int | None = None) -> tuple[list, int]:
     """合并卡节点序列：AI 每段发言一条节点，连续工具调用合并为一条节点。
 
     include_trace=False 时不生成「执行过程」节点（纯结论卡，H7）。
+    exclude_final_reply=True 时最后一条 AI 发言（结论）不进卡，供卡外直发
+    （Delivery.forward_external_reply）；返回的 text_count 仍含结论段——
+    转发阈值判定口径不变（先判阈值再剔除）。
+    args_chars/output_chars 覆盖执行过程节点的参数/输出摘要截断上限（None=默认）。
     """
     sections: list[str] = []
+    text_indices: list[int] = []
     text_count = 0
     tool_group: list[dict] = []
+    args_limit = int(args_chars) if args_chars else 140
+    output_limit = int(output_chars) if output_chars else 180
 
     def flush_tools():
         if tool_group and include_trace:
-            body = "\n".join(visual_call(e) for e in tool_group)
+            body = "\n".join(visual_call(e, args_limit, output_limit) for e in tool_group)
             sections.append(texts.t("forward_process_title") + "\n" + body)
         tool_group.clear()
 
@@ -89,6 +97,7 @@ def build_sections(rounds: list | None, reply: str, tool_trace: list | None,
         text = str(round_data.get("text") or "").strip()
         if text:
             flush_tools()
+            text_indices.append(len(sections))
             sections.append(text)
             text_count += 1
     flush_tools()
@@ -100,6 +109,12 @@ def build_sections(rounds: list | None, reply: str, tool_trace: list | None,
         flush_tools()
     if not sections:
         sections = [reply]
+        text_indices = [0]
+        text_count = 1
+# 剔结论仅在卡内还有其它内容时进行：只剩结论一条时保留在卡里（否则强制转发会变空卡）
+    if exclude_final_reply and text_indices and len(sections) > 1:
+        del sections[text_indices[-1]]
+# text_count 不减：阈值判定仍按含结论的发言段数
     if len(sections) > 40:
         sections = sections[:39] + ["…"]
     return sections, text_count

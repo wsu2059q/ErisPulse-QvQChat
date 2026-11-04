@@ -23,6 +23,9 @@ class AgentResult:
 # 计划-执行-反思（deep 任务）：阶段产物，普通 chat 任务保持空串
     plan: str = ""
     critique: str = ""
+# 投递意图标签：任意一段 AI 发言开头的 [[转发]]/[[直发]] 首个命中（True=转发/False=直发）。
+# 最终回复自身的标签优先（inbox 合并），None=模型未表态（走自动规则）
+    delivery_hint: bool | None = None
 
 
 class AgentRunner:
@@ -30,6 +33,10 @@ class AgentRunner:
         self.pool = pool
         self.registry = registry
         self.config = config
+# 动态工具注入（auto：可见工具数超阈值才启用；fail-open）
+        from .toolselect import ToolSelector
+
+        self.selector = ToolSelector(self)
 
     def _session_block(self, ctx: ToolContext) -> str:
         """当前会话事实块：平台/会话类型/目标 ID/触发者 + 发送路由约定。
@@ -344,9 +351,11 @@ class AgentRunner:
                                      on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
                                      chat_key=chat_key)
         self._merge_usage(result.usage, final)
-        final_text = (final.content or "").strip()
+        final_text, tag_hint = utils.strip_output_tag((final.content or "").strip())
         result.text = final_text
         result.model = final.model or result.model
+        if result.delivery_hint is None and tag_hint is not None:
+            result.delivery_hint = tag_hint
         result.rounds.append({"text": final_text, "tools": []})
 
     async def run(
@@ -442,12 +451,23 @@ class AgentRunner:
 # 权限对齐：非管理员看不到调不动的工具（避免模型反复调用然后被拒浪费轮次）
         if schemas and not self._ctx_is_admin(ctx):
             schemas = [s for s in schemas if self._tool_visible_nonadmin(str(s.get("function", {}).get("name") or ""))]
+# 动态工具注入（权限过滤之后：只从"本来就能用"的工具里挑）
+        hidden_by_select: list[str] = []
+        if schemas and getattr(self, "selector", None) is not None:
+            visible_names = {str(s.get("function", {}).get("name") or "") for s in schemas}
+            user_text = self._last_user_text(contexts)
+            selected = await self.selector.select(user_text, schemas, chat_key=ctx.chat_key)
+            if len(selected) < len(schemas):
+                kept = {str(s.get("function", {}).get("name") or "") for s in selected}
+                hidden_by_select = sorted(visible_names - kept)
+                schemas = selected
         max_rounds = int(getattr(self.config, "max_tool_rounds", 50) or 50)
         max_calls = int(getattr(self.config, "max_tool_calls", 150) or 150)
         total_calls = 0
         rounds: list = []
 # tool_call 能力闭环（schemas 非空且未显式指定模型时）
         schemas, system, chat_needs = self._apply_tools_fallback(schemas, system, model)
+        delivery_hint: bool | None = None
         for loop_index in range(max_rounds):
             request = ChatRequest(
                 messages=[{"role": "system", "content": system}] + contexts,
@@ -459,18 +479,38 @@ class AgentRunner:
             response = await self._dispatch("chat", request, needs=chat_needs, model=model,
                                             on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
              chat_key=ctx.chat_key)
+# 引擎剥图重试过 → 模型本轮没看见图：补一份视觉描述，避免它装作看过
+            if getattr(response, "images_stripped", False):
+                urls = list(getattr(response, "stripped_image_urls", []) or [])
+                if urls:
+                    described = await self.pool.describe_images(urls, on_error="text")
+                    lines = [f"[image {i + 1}] {d}" for i, d in enumerate(described) if d]
+                    if lines:
+                        contexts.append(
+                            {
+                                "role": "user",
+                                "content": texts.t("vision_stripped_note") + "\n" + "\n".join(lines),
+                            }
+                        )
             for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
                 usage_total[key] = usage_total.get(key, 0) + response.usage.get(key, 0)
             used_model = response.model or used_model
             if not response.tool_calls:
-                final_text = (response.content or "").strip()
+                final_text, tag_hint = utils.strip_output_tag((response.content or "").strip())
+# 最终回复自身的标签优先级最高（覆盖过程中声明的意图）
+                if tag_hint is not None:
+                    delivery_hint = tag_hint
                 rounds.append({"text": final_text, "tools": []})
-                return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds, model=used_model)
+                return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds,
+                                   model=used_model, delivery_hint=delivery_hint)
             trace_before = len(trace)
-            rounds.append({"text": (response.content or "").strip(), "tools": []})
+# 中间发言也可携带 [[转发]]/[[直发]] 标签（首个命中记录为整轮投递意图，并从展示文本剥离）
+            speech, tag_hint = utils.strip_output_tag((response.content or "").strip())
+            if delivery_hint is None and tag_hint is not None:
+                delivery_hint = tag_hint
+            rounds.append({"text": speech, "tools": []})
             contexts.append(self._assistant_message(response.content, response.tool_calls))
             if on_intermediate is not None:
-                speech = (response.content or "").strip()
                 if speech:
                     try:
                         callback_result = on_intermediate(speech)
@@ -495,6 +535,20 @@ class AgentRunner:
                     for i, tc in enumerate(response.tool_calls)
                 ]
             )
+# 自愈：模型点名了被工具选择器隐藏（但本来有权限）的工具 → 下一轮补回 schema
+            if hidden_by_select:
+                missing = [str(tc.name) for tc in response.tool_calls if str(tc.name) in hidden_by_select]
+                for name in missing:
+                    entry = next(
+                        (s for s in self.registry.llm_schemas(
+                            whitelist=persona_tools,
+                            disabled=list(getattr(self.config, "disabled_tools", []) or []),
+                        ) if s.get("function", {}).get("name") == name),
+                        None,
+                    )
+                    if entry is not None:
+                        schemas.append(entry)
+                        hidden_by_select.remove(name)
             remaining = max_rounds - (loop_index + 1)
             if remaining in (3, 2, 1) and remaining > 0:
                 contexts.append({"role": "user", "content": texts.t("tool_budget_hint", n=remaining)})
@@ -553,9 +607,14 @@ class AgentRunner:
              chat_key=ctx.chat_key)
         for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
             usage_total[key] = usage_total.get(key, 0) + final.usage.get(key, 0)
-        final_text = (final.content or "").strip()
+        raw_text = (final.content or "").strip()
+        final_text, tag_hint = utils.strip_output_tag(raw_text)
+# 最终回复自身的标签优先级最高
+        if tag_hint is not None:
+            delivery_hint = tag_hint
         rounds.append({"text": final_text, "tools": []})
-        return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds, model=used_model or final.model)
+        return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds,
+                           model=used_model or final.model, delivery_hint=delivery_hint)
 
     def _pool_has_vision(self) -> bool:
 # 修近似探测——优先 pool.has_model(["vision"])（老式池对象退回旧近似逻辑）

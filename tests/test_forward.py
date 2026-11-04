@@ -58,11 +58,13 @@ async def test_tool_run_with_multiple_replies_merges():
     event = FakeForwardEvent()
     assert await Delivery(harness)._try_forward(event, "综上是结论", tool_trace(), rounds=rounds_multi_replies()) is True
     calls = forward_calls(harness)
+# 默认 forward_external_reply：结论不进卡，卡内只装过程与中间发言
     assert calls and len(calls[0][0]) >= 3
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
     assert any("call_module" in t for t in texts)
     assert any("installed" in t for t in texts)
-    assert any("综上是结论" in t for t in texts)
+    assert any("先说中间发现" in t for t in texts)
+    assert not any("综上是结论" in t for t in texts)
 
 
 async def test_single_reply_stays_plain_even_with_tools():
@@ -86,11 +88,11 @@ async def test_consecutive_tools_merge_into_one_node():
     ]
     assert await Delivery(harness)._try_forward(event, "完成", tools, rounds=rounds) is True
     calls = forward_calls(harness)
-    assert calls and len(calls[0][0]) == 2
+# 结论卡外直发 → 卡内只剩执行过程节点
+    assert calls and len(calls[0][0]) == 1
     tool_node = calls[0][0][0]["data"]["content"][0]["data"]["text"]
     assert tool_node.count("call_module") == 2
-    reply_node = calls[0][0][1]["data"]["content"][0]["data"]["text"]
-    assert reply_node == "完成"
+    assert "完成" not in tool_node
 
 
 async def test_tool_and_message_alternate_stay_separate():
@@ -106,9 +108,11 @@ async def test_tool_and_message_alternate_stay_separate():
     assert await Delivery(harness)._try_forward(event, "最终结论", trace, rounds=rounds) is True
     calls = forward_calls(harness)
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
-    assert len(texts) == 4
+# 结论卡外直发 → 卡内 3 个节点（过程/中间说明/过程）
+    assert len(texts) == 3
     assert "中间说明" in texts[1]
     assert "read_file" in texts[0] and "list_dir" in texts[2]
+    assert "最终结论" not in "".join(texts)
 
 
 async def test_platform_blocklist_never_forwards():
@@ -172,7 +176,7 @@ def test_split_paragraphs():
     assert split_paragraphs("只有一段", min_length=10) == []
 
 
-def _split_event(sent):
+def _split_event(sent, quotes=None):
     class FakeEvent:
         def get_platform(self):
             return "onebot11"
@@ -189,8 +193,10 @@ def _split_event(sent):
         def supports(self, method):
             return method == "Text"
 
-        async def reply(self, content, method="Text"):
+        async def reply(self, content, method="Text", quote=False):
             sent.append(content)
+            if quotes is not None:
+                quotes.append(quote)
 
     return FakeEvent()
 
@@ -204,9 +210,35 @@ async def test_deliver_reply_splits_plain_chat():
     assert len(sent) == 2 and sent[0].startswith("甲段")
 
 
-async def test_deliver_reply_merged_run_sends_nothing_plain():
+async def test_deliver_reply_quote_only_first_segment():
+    sent, quotes = [], []
+    harness = make_harness(split_min_length=5, split_delay=0, reply_quote="on")
+    delivery = Delivery(harness)
+    text = "甲段内容长一点。" + "\n\n" + "乙段也长一点。"
+    await delivery.deliver_reply(_split_event(sent, quotes), text, [], force=None)
+    assert quotes == [True, False]
+
+
+async def test_deliver_reply_quote_off():
+    sent, quotes = [], []
+    harness = make_harness(split_min_length=5, split_delay=0, reply_quote="off")
+    delivery = Delivery(harness)
+    await delivery.deliver_reply(_split_event(sent, quotes), "单条回复", [], force=None)
+    assert quotes == [False]
+
+
+async def test_deliver_reply_merged_run_sends_conclusion_outside():
     sent = []
     harness = make_harness()
+    delivery = Delivery(harness)
+    await delivery.deliver_reply(_split_event(sent), "综上", tool_trace(), rounds=rounds_multi_replies())
+# 转发卡发出后，结论以普通消息直发到卡外
+    assert sent == ["综上"]
+
+
+async def test_deliver_reply_external_reply_disabled_sends_nothing():
+    sent = []
+    harness = make_harness(forward_external_reply=False)
     delivery = Delivery(harness)
     await delivery.deliver_reply(_split_event(sent), "综上", tool_trace(), rounds=rounds_multi_replies())
     assert sent == []

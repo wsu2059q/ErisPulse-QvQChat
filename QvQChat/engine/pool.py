@@ -603,6 +603,20 @@ class ModelPool:
             capable = [m for m in candidates if self._meets_needs(m, needs)]
             if capable:
                 candidates = capable
+            elif "vision" in needs:
+# 视觉任务：能力标记缺失/未知时按模型名启发式兜底（池里常有 gpt-4o/glm-4v 等）
+                hinted = [m for m in candidates if self._vision_name_hint(m)]
+                if hinted:
+                    self.sdk.logger.info(
+                        f"no model advertises vision; using name-based candidate {hinted[0]['id']!r}"
+                    )
+                    candidates = hinted
+                else:
+                    self.sdk.logger.warning(
+                        "no vision-capable model found: set task_models.vision in config "
+                        "(e.g. {\"vision\": \"provider:model\"}) or use a vision model"
+                    )
+                    raise EngineError(texts.t("no_vision_model"))
             else:
                 self.sdk.logger.warning(f"no model meets needs {needs} for task {spec.kind!r}, falling back to full pool")
         if str(spec.prefer or "").lower() == "cheap" and len(candidates) > 1:
@@ -612,6 +626,18 @@ class ModelPool:
             priced.sort(key=lambda m: costs[m["id"]]["input"] + costs[m["id"]]["output"])
             candidates = priced + rest
         return candidates[0]
+
+# 保守的视觉模型名启发式：宁可漏判也不错配（错配会让描述变成空串/幻觉）
+    _VISION_HINTS = (
+        "gpt-4o", "gpt-4.1", "gpt-5", "o4-", "gemini", "claude-3", "claude-4",
+        "glm-4v", "glm-4.1v", "glm-4.5v", "qwen-vl", "qwen2-vl", "qwen2.5-vl", "qwen3-vl",
+        "-vl-", "-vl", "llava", "pixtral", "internvl", "minicpm-v", "vision",
+    )
+
+    @classmethod
+    def _vision_name_hint(cls, model: dict) -> bool:
+        name = f"{model.get('id', '')} {model.get('model', '')}".lower()
+        return any(hint in name for hint in cls._VISION_HINTS)
 
 # ===== 难度感知路由（V1 启发式，cfg.routing_enabled 默认关闭） =====
 
@@ -755,7 +781,12 @@ class ModelPool:
             return response
         raise EngineError(texts.t("engine_all_failed", errors=" | ".join(errors)))
 
-    async def describe_images(self, image_urls: list, prompt: str = "") -> list[str]:
+    async def describe_images(self, image_urls: list, prompt: str = "", on_error: str = "empty") -> list[str]:
+        """逐张图片走视觉模型描述。
+
+        on_error="empty"：失败返回空串（打标签路径依赖此语义，空=未分类）
+        on_error="text"：失败返回明确占位文本（对话路径用——宁可说看不见，也不要装作看过）
+        """
 
         descriptions: list[str] = []
         for url in image_urls[:3]:
@@ -776,6 +807,8 @@ class ModelPool:
             except Exception as e:
                 self.sdk.logger.warning(f"vision delegate failed: {e}")
                 text = ""
+            if not text and on_error == "text":
+                text = texts.t("vision_unavailable")
             descriptions.append(text)
         return descriptions
 

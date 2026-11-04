@@ -40,6 +40,9 @@ class ChatResponse:
     tool_calls: list[ToolCall] = field(default_factory=list)
     model: str = ""
     usage: dict = field(default_factory=dict)
+# 引擎因模型/平台拒图而剥图重试过：上层据此补视觉描述，避免模型"没看见图"却当成看过
+    images_stripped: bool = False
+    stripped_image_urls: list = field(default_factory=list)
 
 
 class EngineError(RuntimeError):
