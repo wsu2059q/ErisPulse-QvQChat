@@ -409,6 +409,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "ドキュメント更新完了：ソース {source}、バージョン {version}、{files} ファイル、エラー：{error}",
         "ru": "Документация обновлена: источник {source}, версия {version}, файлов {files}, ошибка: {error}",
     },
+    "eco_prompt_note": {
+        "zh-CN": "生态模块给出的使用建议（是否需要、何时使用由你自行判断，不要机械照做）：",
+        "zh-TW": "生態模組給出的使用建議（是否需要、何時使用由你自行判斷）：",
+        "en": "Usage advice from ecosystem modules (you decide whether and when to act on it — do not apply mechanically):",
+        "ja": "エコシステムモジュールからの利用提案（必要かどうか・いつ使うかはあなたが判断してください）：",
+        "ru": "Рекомендации экосистемных модулей (решайте сами, нужно ли и когда это применять):",
+    },
     "eco_system_note": {
         "zh-CN": "已安装的生态模块提供以下能力（普通成员会话可用）：",
         "zh-TW": "已安裝的生態模組提供以下能力（一般成員會話可用）：",

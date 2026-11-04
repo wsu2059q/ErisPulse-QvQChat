@@ -35,7 +35,7 @@ async def test_refresh_builds_tools_from_catalog():
 
 
 async def test_extension_prompts_channel_removed():
-    """qvq_prompts 注入通道已删除：不调用、不存储，服务改为由签名实时生成工具。"""
+    """旧的 qvq_prompts 注入通道保持删除：提示词统一走 qvq_extensions.prompts。"""
     catalog = {"Notes": [{"name": "search", "signature": "(q: str)"}]}
     main, bridge = make_bridge(catalog)
     main.sdk.module.handlers[("Notes", "qvq_prompts")] = [
@@ -44,7 +44,7 @@ async def test_extension_prompts_channel_removed():
     ]
     await bridge.refresh()
     assert not any(call[1] == "qvq_prompts" for call in main.sdk.module.calls)
-    assert all("prompts" not in entry for entry in bridge.extensions_status())
+    assert bridge.external_prompts() == []
 
 
 async def test_extension_personas_registered_and_cleaned():
@@ -163,3 +163,47 @@ async def test_eco_access_inline_meta_forward_compat():
     main, bridge = make_bridge(catalog)
     await bridge.refresh()
     assert main.registry.get("eco_Pic_search").access == "safe"
+
+
+async def test_qvq_extensions_contributes_skills_and_knowledge():
+    """统一扩展入口：一个服务提交技能与知识；只读、随模块卸载消失。"""
+    catalog = {"TTS": [{"name": "tts_speak", "signature": "(text: str)"}]}
+    main, bridge = make_bridge(catalog)
+    main.sdk.module.handlers[("TTS", "qvq_extensions")] = {
+        "skills": [
+            {"name": "voice-style", "description": "语音风格", "body": "1. 短句\n2. 去 Markdown"},
+        ],
+        "knowledge": [
+            {"title": "主播设定", "content": "夜间电台主播，语速偏慢。", "triggers": ["电台"]},
+        ],
+    }
+    await bridge.refresh()
+    skills = bridge.external_skills()
+    assert skills[0]["name"] == "voice-style"
+    assert skills[0]["source"] == "module:TTS"
+    knowledge = bridge.external_knowledge()
+    assert knowledge[0]["id"] == "ext:TTS:0"
+    assert knowledge[0]["owner"] == "" and knowledge[0]["external"] is True
+    status = {row["module"]: row for row in bridge.extensions_status()}
+    assert status["TTS"]["skills"] == 1 and status["TTS"]["knowledge"] == 1
+ 
+    main.sdk.module.handlers.pop(("TTS", "qvq_extensions"))
+    await bridge.refresh()
+    assert bridge.external_skills() == [] and bridge.external_knowledge() == []
+
+
+async def test_qvq_extensions_prompts_sorted_by_priority():
+    catalog = {"TTS": [{"name": "tts_speak", "signature": "(text: str)"}]}
+    main, bridge = make_bridge(catalog)
+    main.sdk.module.handlers[("TTS", "qvq_extensions")] = {
+        "prompts": [
+            "普通建议",
+            {"text": "高优先建议", "priority": 5},
+            "",
+            {"text": ""},
+        ],
+    }
+    await bridge.refresh()
+    assert bridge.external_prompts() == ["高优先建议", "普通建议"]
+    status = {row["module"]: row for row in bridge.extensions_status()}
+    assert status["TTS"]["prompts"] == 2
