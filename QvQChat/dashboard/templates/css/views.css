@@ -1127,3 +1127,131 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* ===== 设置页改版：字段卡片化 + 全分组语义小节 ===== */
+#qvq-settings-form .qvq-field {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--qvq-bd, rgba(128, 128, 128, 0.22));
+  border-radius: 10px;
+  background: var(--qvq-surface, rgba(128, 128, 128, 0.06));
+}
+#qvq-settings-form .qvq-field.dangerous {
+  border-color: rgba(229, 72, 77, 0.45);
+  background: rgba(229, 72, 77, 0.06);
+}
+#qvq-settings-form .qvq-field .qvq-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+#qvq-settings-form .qvq-field .qvq-key-tag {
+  margin-left: auto;
+  font-size: 10.5px;
+  opacity: 0.6;
+}
+#qvq-settings-form .qvq-settings-sec {
+  margin-top: 26px;
+  padding: 10px 2px 8px;
+  border-bottom: 1px solid var(--qvq-bd);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+}
+#qvq-settings-form .qvq-settings-sec:first-child {
+  margin-top: 4px;
+}
+
+/* ===== 批量操作条 / 提供商卡片 / 模型网格 ===== */
+.qvq-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px dashed var(--qvq-bd, rgba(128, 128, 128, 0.25));
+  border-radius: 8px;
+}
+.qvq-check-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--qvq-tx-s, inherit);
+  cursor: pointer;
+}
+.qvq-col-check {
+  width: 28px;
+  text-align: center;
+}
+.qvq-tool-row .qvq-kb-check {
+  flex: none;
+  margin-right: 10px;
+}
+.qvq-provider-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.qvq-provider-card {
+  border: 1px solid var(--qvq-bd, rgba(128, 128, 128, 0.22));
+  border-radius: 12px;
+  background: var(--qvq-surface, rgba(128, 128, 128, 0.05));
+  padding: 12px 16px;
+}
+.qvq-provider-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.qvq-provider-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.qvq-provider-title .mono {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+}
+.qvq-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.qvq-model-chip {
+  border: 1px solid var(--qvq-bd, rgba(128, 128, 128, 0.2));
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  overflow: hidden;
+}
+.qvq-model-chip.off {
+  opacity: 0.55;
+}
+.qvq-model-chip-id {
+  display: block;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qvq-model-chip-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.qvq-provider-fold summary {
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.75;
+  margin-top: 8px;
+}

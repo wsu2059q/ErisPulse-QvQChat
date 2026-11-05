@@ -43,10 +43,11 @@
   function makeLiveNode() {
     var root = document.createElement("div");
     root.className = "qvq-msg bot live";
-    root.innerHTML = '<div class="qvq-live-steps"></div><div class="qvq-live-text"><span class="qvq-cursor"></span></div>';
+// 单容器：思考/工具/文本全部按消息流顺序内联渲染（不再有独立的步骤表区）
+    root.innerHTML = '<div class="qvq-live-text"><span class="qvq-cursor"></span></div>';
     return {
       root: root,
-      stepsEl: root.querySelector(".qvq-live-steps"),
+      stepsEl: root.querySelector(".qvq-live-text"),
       textEl: root.querySelector(".qvq-live-text"),
       timer: null,
     };
@@ -82,6 +83,15 @@
       var sig = segSignature(seg);
       if (el.__qvqSig === sig) continue;
       el.__qvqSig = sig;
+      if (seg.type === "think") {
+        var thinkBody = seg.text || "";
+        var sigLen = String(thinkBody).length;
+        el.innerHTML = '<details class="qvq-think" open><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>';
+        var bodyNode = el.querySelector(".qvq-think-body");
+        if (bodyNode) bodyNode.textContent = thinkBody;
+        el.__qvqSig = "k" + sigLen + ":" + sigLen;
+        return;
+      }
       if (seg.type === "text") {
         el.innerHTML = '<div class="qvq-round-text">' + (mdRender(seg.text) || esc(seg.text)) + "</div>";
       } else {
@@ -94,40 +104,32 @@
 
   function renderLiveNode(box, els, live) {
     var stick = nearBottom(box);
-    var expSteps = collectExpSteps(els.stepsEl);
-    var expSegSteps = collectExpSteps(els.textEl);
-    var thinkEl = els.stepsEl.querySelector(".qvq-think");
+    var expMap = collectExpSteps(els.textEl);
+    var thinkEl = els.textEl.querySelector(".qvq-think");
     var thinkOpen = thinkEl ? thinkEl.hasAttribute("open") : null;
 
-    // 首次渲染跟随 running 状态；之后尊重用户手动收起（thinkOpen === false）
-    var thinkAutoOpen = live.status !== "running" ? "" : " open";
-    var thinkAttr = thinkOpen === false ? "" : thinkAutoOpen;
-    var thinkBlock = live.reasoning
-      ? '<details class="qvq-think"' + thinkAttr + '><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>'
-      : "";
-    els.stepsEl.innerHTML = (thinkBlock || "") + stepsHtml(live.steps, true);
-    if (live.reasoning) {
-      var thinkBody = els.stepsEl.querySelector(".qvq-think-body");
-      if (thinkBody) thinkBody.textContent = live.reasoning;
-    }
-    if (thinkOpen) {
-      var thinkNow = els.stepsEl.querySelector(".qvq-think");
-      if (thinkNow) thinkNow.setAttribute("open", "");
-    }
-    restoreExpSteps(els.stepsEl, expSteps);
-    bindStepToggles(els.stepsEl);
+// 统一段列表：思考作为首段内联，其后是文本/工具交错段——与消息流渲染一致
+    var segments = [];
+    if (live.reasoning) segments.push({ type: "think", text: live.reasoning });
+    (live.segments || []).forEach(function (seg) { segments.push(seg); });
 
-    if (live.segments.length) {
-      renderSegments(els.textEl, live.segments, expSegSteps);
+    if (segments.length) {
+      renderSegments(els.textEl, segments, expMap);
+// 思考块展开状态：跟随 running；用户手动收起后尊重选择
+      var thinkNow = els.textEl.querySelector(".qvq-think");
+      if (thinkNow) {
+        if (thinkOpen === false) thinkNow.removeAttribute("open");
+        else if (live.status !== "running" || thinkOpen) thinkNow.setAttribute("open", "");
+      }
     } else if (!live.text && live.started && !live.reasoning) {
       var secs = Math.max(0, Math.round((Date.now() - live.started) / 1000));
-      els.textEl.innerHTML = '<div class="qvq-live-wait-row"><span class="qvq-dots"><span></span><span></span><span></span></span><span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "s</span></div>";
+      els.textEl.innerHTML = '<div class="qvq-live-wait-row"><span class="qvq-dots"><span></span><span></span><span></span></span><span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "</span></div>";
     } else {
-      els.textEl.innerHTML = mdRender(live.text) || '<span class="qvq-cursor"></span>';
+      var textHtml = mdRender(live.text);
+      els.textEl.innerHTML = (textHtml || '<span class="qvq-cursor"></span>');
     }
     if (stick) box.scrollTop = box.scrollHeight;
   }
-
 
   function attachLive(snapshot) {
     if (activeLive && activeLive.session === snapshot.session) return;
