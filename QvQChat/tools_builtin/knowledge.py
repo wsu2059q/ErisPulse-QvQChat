@@ -51,7 +51,7 @@ async def knowledge_update(ctx: ToolContext, kb_id: str, title: str = "", conten
         updates["content"] = content
     if source:
         updates["source"] = source
-    if triggers is not None: 
+    if triggers is not None:# None（省略）=不动；空串=清空触发词
         updates["triggers"] = [t.strip() for t in str(triggers or "").split(",") if t.strip()]
     if scope:
         updates["owner"] = _owner_of(ctx, scope)

@@ -186,7 +186,7 @@ async def test_qvq_extensions_contributes_skills_and_knowledge():
     assert knowledge[0]["owner"] == "" and knowledge[0]["external"] is True
     status = {row["module"]: row for row in bridge.extensions_status()}
     assert status["TTS"]["skills"] == 1 and status["TTS"]["knowledge"] == 1
- 
+# 刷新后清空（模块卸载语义）
     main.sdk.module.handlers.pop(("TTS", "qvq_extensions"))
     await bridge.refresh()
     assert bridge.external_skills() == [] and bridge.external_knowledge() == []

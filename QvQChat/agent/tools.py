@@ -46,7 +46,7 @@ class Tool:
 def _allowed(name: str, whitelist: list[str] | None) -> bool:
     if whitelist is None:
         return True
- 
+# 收编到 utils.match_pattern（保持原语义：前缀通配 + 全等）
     return utils.match_pattern(name, whitelist)
 
 
@@ -83,7 +83,7 @@ class ToolRegistry:
 
     @staticmethod
     def _disabled_match(name: str, disabled: list[str]) -> bool:
- 
+# 收编到 utils.match_pattern
         return utils.match_pattern(name, disabled)
 
     def llm_schemas(self, whitelist: list[str] | None = None, disabled: list[str] | None = None) -> list[dict]:

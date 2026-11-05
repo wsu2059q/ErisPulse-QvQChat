@@ -51,7 +51,7 @@ async def test_share_budget_trims_old_messages():
     resp = await mgr.session_share(_Req({"chat_key": "dashboard:private:web", "max_tokens": 300}))
     got = await mgr.share_messages(_Req(query={"token": resp["token"]}))
     contents = [m["content"] for m in got["messages"]]
- 
+# 预算内只保留最新部分；第一条超预算被裁掉
     assert "旧" * 500 not in contents
     assert contents[-1] == "新消息"
 
@@ -64,7 +64,7 @@ async def test_share_expired_token_rejected():
     from QvQChat import utils
 
     shares = mgr._shares()
-    shares[token]["expires"] = utils.now_ts() - 100 
+    shares[token]["expires"] = utils.now_ts() - 100# 已过期
     mgr.sdk.storage.set("QvQChat:shares", shares)
     denied = await mgr.share_messages(_Req(query={"token": token}))
     assert denied[1] == 403
@@ -98,20 +98,20 @@ async def test_share_chat_continuation_with_rounds_and_budget():
     assert out["ok"] is True
     assert out["reply"] == "我记得你，小明"
     assert out["rounds_left"] == 1
- 
+# 纯文本续聊：请求里没有工具字段，且包含分享上下文与系统说明
     sent = calls[-1]
     assert not getattr(sent, "tools", None)
     joined = " ".join(str(m.get("content")) for m in sent.messages)
     assert "我叫小明" in joined
     assert "分享链接" in joined or "只读" in joined or "share" in joined.lower()
 
- 
+# 第二轮耗尽轮数后再问被拒
     await mgr.share_chat(_Req({"token": token, "text": "再问一句"}))
     exhausted = await mgr.share_chat(_Req({"token": token, "text": "还想问"}))
     assert exhausted[1] == 429
     assert "rounds" in exhausted[0]["error"]
 
- 
+# 续聊记录随 share_messages 返回
     got = await mgr.share_messages(_Req(query={"token": token}))
     assert got["rounds_left"] == 0
     roles = [m["role"] for m in got["continuation"]]

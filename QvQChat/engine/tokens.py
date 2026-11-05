@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
- 
+# 每条消息的固定开销（近似 chat-completions 的消息框架开销）
 PER_MESSAGE_OVERHEAD = 4
 
 _config: Any = None
@@ -55,13 +55,13 @@ def _get_encoder():
 def _is_cjk(ch: str) -> bool:
     code = ord(ch)
     return (
-        0x4E00 <= code <= 0x9FFF 
-        or 0x3400 <= code <= 0x4DBF 
-        or 0xF900 <= code <= 0xFAFF 
-        or 0x3040 <= code <= 0x30FF 
-        or 0xAC00 <= code <= 0xD7AF 
-        or 0x3000 <= code <= 0x303F 
-        or 0xFF00 <= code <= 0xFFEF 
+        0x4E00 <= code <= 0x9FFF# CJK 统一表意
+        or 0x3400 <= code <= 0x4DBF# 扩展 A
+        or 0xF900 <= code <= 0xFAFF# 兼容表意
+        or 0x3040 <= code <= 0x30FF# 平假名/片假名
+        or 0xAC00 <= code <= 0xD7AF# 谚文音节
+        or 0x3000 <= code <= 0x303F# CJK 标点
+        or 0xFF00 <= code <= 0xFFEF# 全角形式
     )
 
 

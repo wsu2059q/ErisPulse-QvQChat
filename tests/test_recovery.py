@@ -75,16 +75,16 @@ def set_marker(main, chat_key, text, age=600):
     )
 
 
- 
+# ==================== inflight 标记：_process_locked 落/清 ====================
 
 async def test_full_message_run_sets_then_clears_inflight():
     main = make_chat_main()
     ev = FakeChatEvent(text="你好", group=False)
     await Main._on_message(main, ev)
     await asyncio.sleep(0.1)
- 
+# 执行期标记在位（进入 runner 前落盘）
     assert main.inflight_seen == [True]
- 
+# 完成后无残留
     assert inflight_keys(main.sdk) == []
     assert main.captured
 
@@ -96,22 +96,22 @@ async def test_runner_exception_still_clears_inflight():
     await asyncio.sleep(0.1)
     assert main.inflight_seen == [True]
     assert inflight_keys(main.sdk) == []
- 
+# 异常路径用户收到失败提示
     assert any("收到" not in content for _, content in ev.replies)
 
 
- 
+# ==================== 残留恢复：run_prompt 重跑 + 防 user 重复 ====================
 
 async def test_residue_recovers_via_run_prompt_and_pops_duplicated_user():
     main = RecoveryMain()
     chat_key = "test:private:1"
- 
+# 悬空现场：prepare 已把该轮 user 消息持久化为 contexts 末条 + inflight 残留标记
     main.sessions.append_user(chat_key, "在吗？")
     set_marker(main, chat_key, "在吗？", age=300)
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
- 
+# 经 run_prompt 重跑（origin=recovery，send=True）
     assert main.prompts == [(chat_key, "在吗？", {"origin": "recovery", "send": True})]
- 
+# 标记已删；末条重复 user 被 pop，不再留在上下文
     assert inflight_keys(main.sdk) == []
     assert main.sessions.get_contexts(chat_key) == []
 
@@ -119,7 +119,7 @@ async def test_residue_recovers_via_run_prompt_and_pops_duplicated_user():
 async def test_residue_pop_mismatch_still_recovers():
     main = RecoveryMain()
     chat_key = "test:private:1"
- 
+# 末条与记录文本不一致（pop 失败）：上下文原样保留，仍照常重跑
     main.sessions.append(chat_key, "assistant", "旧回答")
     main.sessions.append_user(chat_key, "另一句话")
     set_marker(main, chat_key, "在吗？", age=300)
@@ -148,7 +148,7 @@ async def test_fresh_marker_below_min_age_skipped():
     assert inflight_keys(main.sdk) == []
 
 
- 
+# ==================== 待发队列启动重放 ====================
 
 async def test_pending_queue_replayed_on_boot():
     main = RecoveryMain()
@@ -169,7 +169,7 @@ async def test_pending_queue_replayed_on_boot():
 
 
 async def test_stale_pending_purged_on_boot():
- 
+# 超龄（>10 分钟）待发条目启动即清除不重放；新鲜条目保留
     import time as _time
 
     main = RecoveryMain()
@@ -210,13 +210,13 @@ async def test_replay_on_boot_disabled_skips():
     assert called == []
 
 
- 
+# ==================== 定时任务执行中断标记 ====================
 
 async def test_running_task_run_residue_marked_interrupted():
     main = RecoveryMain()
     main.sdk.storage.set(TASK_RUN_STATE_PREFIX + "t1", {"status": "running", "ts": 1})
     main.sdk.storage.set(TASK_RUN_STATE_PREFIX + "t2", {"status": "done", "ts": 1})
- 
+# 聚合执行历史键（列表）不受影响
     main.sdk.storage.set("QvQChat:task_runs", [{"task_id": "t1", "status": "ok"}])
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
     assert main.sdk.storage.get(TASK_RUN_STATE_PREFIX + "t1")["status"] == "interrupted"
@@ -276,7 +276,7 @@ async def test_scheduler_start_tolerates_missing_recovery():
     assert all(c.cr_code.co_name != "recover_inflight_routine" for c in spawned)
 
 
- 
+# ==================== pop_last_user_if 精确锚点 ====================
 
 def test_pop_last_user_if_variants():
     main = FakeMain()
@@ -285,13 +285,13 @@ def test_pop_last_user_if_variants():
     service.append_user(chat_key, "hello")
     assert service.pop_last_user_if(chat_key, "hello") is True
     assert service.get_contexts(chat_key) == []
- 
+# 末条非 user / 文本不匹配：不动
     service.append(chat_key, "assistant", "hi")
     assert service.pop_last_user_if(chat_key, "hello") is False
     service.append_user(chat_key, "别的")
     assert service.pop_last_user_if(chat_key, "hello") is False
     assert len(service.get_contexts(chat_key)) == 2
- 
+# 多模态 content（parts 列表）按文本部分拼接比对
     service.replace_contexts(chat_key, [{"role": "user", "content": [{"type": "text", "text": "看图"}]}])
     assert service.pop_last_user_if(chat_key, "看图") is True
     assert service.get_contexts(chat_key) == []
@@ -304,9 +304,9 @@ async def test_stale_inflight_marks_dropped_not_rerun():
     main.sessions.append_user(chat_key, "几小时前的问题")
     set_marker(main, chat_key, "几小时前的问题", age=7200)
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
-    assert main.prompts == []   
- 
-    import sqlite3   
+    assert main.prompts == []  # 陈旧标记不重跑
+# 标记已被清除：再次重启也不会再跑
+    import sqlite3  # noqa: F401
     assert main.sdk.storage.get("QvQChat:inflight:" + chat_key, None) is None
 
 

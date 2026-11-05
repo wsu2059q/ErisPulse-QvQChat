@@ -43,7 +43,7 @@ class OpsApiMixin:
         return {"breakers": self.main.pool.breaker_state()}
 
     async def costs_get(self, request):
- 
+# 每百万 token 单价 × 用量明细（in/out），换算每日与按模型成本
         prices = {str(k).lower(): v for k, v in self.main.pool.model_costs().items()}
         daily: list[dict] = []
         by_model: dict[str, float] = {}
@@ -88,8 +88,8 @@ class OpsApiMixin:
         content = str((body or {}).get("content") or "")
         if not title or not content.strip():
             return ({"error": texts.t("kb_need_title_content")}, 400)
- 
- 
+# Lorebook 透传：triggers（世界书触发关键词）/ priority / cooldown_min
+# 可见域透传：scope 空=全局（运维默认）；chat:<key> / <platform> 为私有域
         cooldown = (body or {}).get("cooldown_min")
         entry = self.main.knowledge.add(
             title,
@@ -148,7 +148,7 @@ class OpsApiMixin:
             limit = max(1, min(int(self._query(request, "limit") or 200), 500))
         except Exception:
             limit = 200
- 
+# 倒序分页：offset 跳过最新 N 条，返回该页 + 总数（前端“加载更多”用）
         try:
             offset = max(0, int(self._query(request, "offset") or 0))
         except Exception:
@@ -158,8 +158,8 @@ class OpsApiMixin:
         page = newest_first[offset : offset + limit]
         return {"entries": page, "total": total, "offset": offset, "limit": limit}
 
- 
- 
+# ===== 参与决策（participation）观测 =====
+# 提供者目录（qvq_decision 约定服务）+ 输出预算现状 + 最近决策环形日志。
 
     async def participation_get(self, request):
         status = getattr(self.main, "participation_status", None)

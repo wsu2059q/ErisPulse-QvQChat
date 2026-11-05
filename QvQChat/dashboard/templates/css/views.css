@@ -1,5 +1,5 @@
- 
- 
+/* 登录页与其余视图片段 */
+/* 启动进度条 */
 .qvq-bootbar {
   position: fixed;
   top: 0;
@@ -581,8 +581,7 @@
     max-width: none;
     flex: 1 1 120px;
   }
-
-
+/* 移动端触屏无 hover */
   .qvq-chat-sacts {
     position: static;
     transform: none;
@@ -705,7 +704,7 @@
   }
 }
 
- 
+/* ===== 编排页：模型链拖拽 / 健康 / 时间线 / 能力开关 / 成本分布 ===== */
 .qvq-orch-top {
   display: flex;
   align-items: flex-start;
@@ -750,7 +749,6 @@
     opacity: 0.35;
   }
 }
- 
 .qvq-tab[data-section="orchestrate"] .qvq-grid .qvq-card {
   height: auto;
 }
@@ -961,7 +959,7 @@
   opacity: 0.75;
 }
 
- 
+/* ===== 设置页：搜索命中/语义小节/备份卡片/工具页扩展小节 ===== */
 .qvq-settings-sec {
   margin: 20px 0 2px;
   padding-bottom: 6px;
@@ -998,7 +996,7 @@
   margin-bottom: 10px;
 }
 
- 
+/* 图片查看器 */
 .qvq-img-viewer {
   display: flex;
   flex-direction: column;
@@ -1039,7 +1037,7 @@
   border-color: var(--qvq-bd-h);
 }
 
- 
+/* 列表三态 */
 .qvq-skel {
   display: flex;
   flex-direction: column;
@@ -1069,7 +1067,7 @@
   padding: 10px 14px;
   font-size: 13px;
 }
- 
+/* 设置保存条吸底 */
 .qvq-tab[data-section="settings"] .qvq-card .qvq-actions {
   position: sticky;
   bottom: 8px;
@@ -1081,11 +1079,11 @@
   box-shadow: 0 6px 18px rgba(0,0,0,.18);
   z-index: 5;
 }
- 
+/* 设置字段名默认隐藏，开发者模式显示 */
 .qvq-key-tag { display: none; }
 body.qvq-show-keys .qvq-key-tag { display: inline; }
 
- 
+/* 移动端表格：data-cards 表格窄屏渲染为卡片；其余横向滚动兜底 */
 @media (max-width: 720px) {
   table.qvq-table[data-cards] {
     display: block;

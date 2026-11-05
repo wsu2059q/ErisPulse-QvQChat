@@ -188,7 +188,7 @@ async def test_send_message_as_forward_without_forward_method_falls_back():
 
 
 async def test_send_message_forward_splits_before_strip_on_text_only():
- 
+# D5：先按 Markdown 标题切节、仅 Text-only 平台才剥离（旧实现先剥后切导致标题切块失效）
     chain = FakeSendChain(sends=("MergeForward", "Text"))
     main = __import__("fakes").FakeMain(forward_threshold=10)
     main.sdk.adapter.add("onebot11", chain, sends=("MergeForward", "Text"))
@@ -201,7 +201,7 @@ async def test_send_message_forward_splits_before_strip_on_text_only():
     texts_ = [n["data"]["content"][0]["data"]["text"] for n in nodes]
     assert len(texts_) >= 2
     assert any("标题甲" in t for t in texts_) and any("标题乙" in t for t in texts_)
- 
+# Text-only 平台：节点内容已剥离 Markdown 标记
     assert all("##" not in t for t in texts_)
 
 
@@ -219,7 +219,7 @@ async def test_send_message_forward_keeps_markdown_on_markdown_platform():
 
 
 async def test_send_message_forward_threshold_from_platform_profile():
- 
+# D2：forward_threshold 判定纳入平台 profile（通配命中覆盖全局值）
     chain = FakeSendChain(sends=("MergeForward", "Text"))
     main = __import__("fakes").FakeMain(
         forward_threshold=5000,
@@ -235,7 +235,7 @@ async def test_send_message_forward_threshold_from_platform_profile():
 
 
 async def test_send_message_failure_enqueued_as_pending():
- 
+# D4：方法降级后仍失败 → 入待发队列而不是静默丢弃
     chain = FakeSendChain(sends=("Text",), fail_on=("Text",))
     main = __import__("fakes").FakeMain(send_retry=0, retry_delay=0)
     main.sdk.adapter.add("onebot11", chain, sends=("Text",))
@@ -268,7 +268,7 @@ async def test_list_platforms_reports_sends():
 
 
 async def test_send_message_defaults_to_current_session():
- 
+# platform/target 缺省 = 当前会话目标（<session> 约定配套）
     main = __import__("fakes").FakeMain()
     chain = FakeSendChain()
     main.sdk.adapter.add("onebot11", chain, sends=("Text",))
@@ -279,13 +279,13 @@ async def test_send_message_defaults_to_current_session():
     out = await erispulse.send_message(ctx, text="hi there")
     kinds = [c[0] for c in chain.calls]
     assert "Text" in kinds
-     
+    # FakeSendChain.To(type, id) 记录目标
     to_calls = [c for c in chain.calls if c[0] == "To"]
     assert to_calls and to_calls[0][1] == ("user", "42")
 
 
 async def test_send_message_undeliverable_not_queued_as_pending():
- 
+# 不可送达错误（非好友）：明确回给模型"目标不可达"，不再谎称已入队
     from QvQChat.conversation.delivery import is_undeliverable
 
     class FriendChain(FakeSendChain):

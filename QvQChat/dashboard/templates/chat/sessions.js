@@ -1,4 +1,4 @@
- 
+/* 会话操作：导出/分享、会话设置、模型与强度菜单、提名 */
   function exportSession() {
     api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(chatSession)).then(function (data) {
       var msgs = (data && data.messages) || [];
@@ -246,8 +246,8 @@
     });
   }
 
-   
-   
+  // 会话切换入口：代际自增使过期异步回调失效；
+  // 旧会话流留在服务端继续，切回时经 checkLive 重挂
   function switchChatSession(key) {
     if (!key || key === chatSession) return;
     chatEpoch++;
@@ -256,7 +256,7 @@
     chatHistory = [];
     chatLoading = true;
     loadingOlder = false;
-     
+    // 待发送附件属于上一会话，切换时清空
     if (chatAtts.length) {
       chatAtts = [];
       renderAttach();
@@ -291,7 +291,7 @@
     });
   }
 
-   
+  // 平台侧新消息实时同步：对话页激活且空闲时轻量轮询
   function startChatSync() {
     if (chatSyncTimer) return;
     chatSyncTimer = setInterval(function () {
@@ -300,17 +300,17 @@
       if (!section || !section.classList.contains("active")) return;
       var box = el("qvq-chat-box");
       if (!box) return;
-       
+      // 过期防护：请求发出后会话可能已切走，响应只作用于发出时的会话
       var sessionAtPoll = chatSession;
       var epochAtPoll = chatEpoch;
       var versionAtPoll = chatHistoryVersion;
       api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtPoll) + "&limit=30").then(function (data) {
         if (epochAtPoll !== chatEpoch || sessionAtPoll !== chatSession) return;
         if (versionAtPoll !== chatHistoryVersion) return;
-        if (chatLoading || loadingOlder) return;  
+        if (chatLoading || loadingOlder) return; // 本地加载在途，不覆盖
         var start = (data && data.start) || 0;
         if (chatWindowStart > 0 && start > chatWindowStart) {
-           
+          // 用户上翻加载过更早消息（窗口错位）：增量拉取新尾部并追加，而不是整窗替换
           var newTotal = (data && data.total) || 0;
           if (newTotal <= chatTotal) return;
           var tail = [];
@@ -340,7 +340,7 @@
         var sig = fresh.map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
         var curSig = chatHistory.map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
         if (sig !== curSig) {
-           
+          // 上翻阅读时不拽到底部
           var stick = nearBottom(box);
           chatHistory = fresh;
           chatWindowStart = start;
@@ -352,8 +352,7 @@
   }
 
   function checkLive() {
-     
-     
+    // 已有该会话的活跃节点则无需重复挂
     if (activeLive && activeLive.session === chatSession) return;
     var sessionAtCall = chatSession;
     var epochAtCall = chatEpoch;
@@ -363,13 +362,13 @@
       if (live.status === "running") {
         attachLive(live);
       } else if (live.reply != null || live.error) {
-         
+        // 离开期间已结束：服务端已写入最终回复，直接刷新历史
         loadChatHistory();
       }
     });
   }
 
-   
+  // ── mini-markdown 安全渲染：先转义再转换有限语法 ──
   function mdInline(s) {
     return s
       .replace(/`([^`\n]+)`/g, "<code>$1</code>")
@@ -468,7 +467,7 @@
     });
   }
 
-   
+  // ── 工具步骤时间线 ──
   var STEP_ICON_SVG = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='16' rx='2'/><path d='M7 9l3 3-3 3M13 15h4'/></svg>";
 
   function stepsHtml(steps, running) {
@@ -497,7 +496,7 @@
     return '<div class="qvq-steps' + (running ? " running" : "") + '">' + rows + "</div>";
   }
 
-   
+  // ── 展开状态保持 ──
   function collectExpSteps(root) {
     var map = {};
     if (!root) return map;
@@ -539,7 +538,7 @@
   }
 
   function renderSerial(items) {
-     
+    // items: [{type:"text",text} | {type:"tool",start,end}] → AI 消息内串行交错 HTML
     return items.map(function (seg) {
       if (seg.type === "text") {
         return '<div class="qvq-round-text">' + (mdRender(seg.text) || esc(seg.text)) + "</div>";
@@ -564,14 +563,14 @@
     (segs || []).forEach(function (seg) {
       if (seg.type === "text") {
         var piece = String(seg.text || "");
-        if (!piece) return;  
+        if (!piece) return; // 跳过空段
         if (rounds.length && !rounds[rounds.length - 1].tools.length && rounds[rounds.length - 1].text) {
           rounds[rounds.length - 1].text += "\n\n" + piece;
         } else {
           rounds.push({ text: piece, tools: [] });
         }
       } else if (seg.type === "tool") {
-         
+        // 未收到 end 的工具段（中断/取消）也保留
         if (!rounds.length) rounds.push({ text: "", tools: [] });
         rounds[rounds.length - 1].tools.push({
           tool: seg.start ? seg.start.name : "?",

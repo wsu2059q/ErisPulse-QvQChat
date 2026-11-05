@@ -17,18 +17,18 @@ from ..conversation.delivery import PENDING_KEY_PREFIX
 from ..conversation.service import parse_chat_key, strip_isolation
 from ..scheduler import TASK_RUN_STATE_PREFIX
 
- 
+# 悬空回复标记前缀（chat/inbox.py _process_locked 写入/删除）
 INFLIGHT_KEY_PREFIX = "QvQChat:inflight:"
 
- 
+# 启动恢复延迟：避开模块加载期（适配器/连接未就绪）
 RECOVERY_BOOT_DELAY = 15.0
- 
+# 待发队列逐会话重放间隔
 RECOVERY_REPLAY_GAP = 2.0
- 
- 
- 
+# 标记新鲜度上限：超过该秒数的残留视为陈旧垃圾（写入标记的会话早已完成/放弃，
+# 残留源于退出期删除失败等异常路径），直接清除不重跑——重跑几小时前的旧话题
+# 是用户明确反对的行为
 RECOVERY_MAX_AGE = 600.0
- 
+# 单次启动重跑上限：防雪崩（历史积压一次全重放）
 RECOVERY_RUN_CAP = 5
 
 
@@ -103,7 +103,7 @@ class RecoveryMixin:
                 continue
             if not isinstance(data, list) or not data:
                 continue
-             
+            # 先清超龄死信（无 ts 的旧格式条目无法判龄，保留照常重放）
             fresh = [
                 e for e in data
                 if not isinstance(e, dict)
@@ -171,8 +171,8 @@ class RecoveryMixin:
                 self.logger.info(f"inflight mark too fresh, skip recovery: {chat_key}")
                 continue
             if age > RECOVERY_MAX_AGE:
- 
- 
+# 陈旧标记（>10 分钟）：正常生成早已结束，残留源于退出期删除失败等异常路径；
+# 重跑几小时前的旧话题是错误行为，直接清除
                 self.logger.warning(
                     f"stale inflight mark dropped (age={int(age)}s): {chat_key}"
                 )
@@ -182,7 +182,7 @@ class RecoveryMixin:
             candidates.append((chat_key, marker, ts))
         if not candidates:
             return
-        candidates.sort(key=lambda item: item[2])   
+        candidates.sort(key=lambda item: item[2])  # 旧的优先
         for chat_key, marker, ts in candidates[:RECOVERY_RUN_CAP]:
             text = str(marker.get("text") or "")
             origin = str(marker.get("origin") or "chat")

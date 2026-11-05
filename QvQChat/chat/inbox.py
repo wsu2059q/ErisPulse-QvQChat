@@ -23,7 +23,7 @@ from .recovery import INFLIGHT_KEY_PREFIX, RecoveryMixin
 
 CONFIRM_WORDS = {"确认", "確認", "确定", "確定", "是", "confirm", "yes", "y", "ok"}
 
- 
+# 限频滑窗字典容量上限（群聊×用户数远达不到，防极端场景只增不减）
 RATE_WINDOW_CAP = 512
 
 
@@ -60,7 +60,7 @@ def is_self_event(cfg, sdk, event) -> bool:
     return False
 
 
- 
+# H3 硬打断信号词：短催促/纠错类。纠错词同时触发 H5 撤回
 INTERRUPT_URGE_WORDS = ("？", "?", "在吗", "在么", "说话", "理我", "回我", "等等")
 RECALL_WORDS = ("撤回", "说错", "发错", "不是这个", "删掉")
 
@@ -123,7 +123,7 @@ class InboxMixin(RecoveryMixin):
             data = base64.b64encode(path.read_bytes()).decode()
             return f"data:{mime};base64,{data}"
         except Exception:
- 
+# 本地图片转 base64 失败即放弃该图（降级语义：返回空串由调用方过滤）
             return ""
 
     @staticmethod
@@ -208,15 +208,15 @@ class InboxMixin(RecoveryMixin):
                     lease.release()
                 except Exception as e:
                     self.logger.debug(f"takeover lease release failed: {e}")
- 
- 
+# 顺带回收内存态（每条入站消息都会走到这里；同步无 await，回收安全）
+# 1) 限频滑窗：窗口已空的键连同提示标记一并清掉
         for key in [
             k for k, w in self._rate_window.items()
             if not w or now - max(w) >= 60
         ]:
             self._rate_window.pop(key, None)
             self._rate_notice_shown.pop(key, None)
- 
+# 2) per-chat 锁：仅回收未持有且无等待者的锁
         for key in [k for k, lock in self._chat_locks.items() if not lock.locked()]:
             self._chat_locks.pop(key, None)
 
@@ -237,7 +237,7 @@ class InboxMixin(RecoveryMixin):
             if last:
                 gap = now - last
             self._burst_last[f"{chat_key}:{sender}"] = now
- 
+# 仅在防抖窗口内或上一轮分段尚未发完时才打断（护栏，防误伤）
         in_debounce = chat_key in self._pending
         sending = chat_key in getattr(delivery, "_budget_start", {})
         if not (in_debounce or sending):
@@ -284,7 +284,7 @@ class InboxMixin(RecoveryMixin):
         self._rate_window[key] = window
         if now - max(window[:-1], default=now) > 120:
             self._rate_notice_shown.pop(key, None)
- 
+# 容量上限，超出时优先淘汰已过期键，仍超则按插入序淘汰最旧键
         if len(self._rate_window) > RATE_WINDOW_CAP:
             for stale in [
                 k for k, w in self._rate_window.items()
@@ -323,8 +323,8 @@ class InboxMixin(RecoveryMixin):
         try:
             if event.get("replayed"):
                 return
- 
- 
+# H2 回声过滤：适配器把 bot 自己发出的消息回投成事件时直接丢弃——
+# 不参与合并、不作为新触发源、也不进旁听流（否则插件会看到假消息）
             if is_self_event(self.cfg, self.sdk, event):
                 return
             text = (event.get_alt_message() or "").strip()
@@ -338,13 +338,13 @@ class InboxMixin(RecoveryMixin):
             routed = self.sessions.resolve_route(chat_key)
             if routed:
                 chat_key = routed
- 
+# H3 硬打断：本会话还有未发完的分段时，新消息命中强信号 → 丢弃剩余段
             try:
                 await self._maybe_interrupt(event, chat_key, text)
             except Exception as e:
                 self.logger.debug(f"interrupt check failed: {e}")
- 
- 
+#  扩展点 A：qvq.observe 旁听通道——命令过滤后、触发判定前广播纯数据载荷
+# （含未触发回复的消息，插件借此观察全部群聊；异常吞掉不打断主流程）
             try:
                 is_group = event.is_group_message()
                 await self.sdk.lifecycle.emit(
@@ -380,8 +380,8 @@ class InboxMixin(RecoveryMixin):
             except Exception as e:
                 self.logger.debug(f"emit qvq.observe failed: {e}")
             if not self._should_trigger(event, chat_key, text):
- 
- 
+#  扩展点 B：未被 @/前缀命中时问询参与决策提供者（默认关闭），
+# speak 则过输出预算后以 origin="plugin" 进入聚合回复，不消耗发送者限频
                 manager = getattr(self, "participation", None)
                 if (
                     manager is not None
@@ -413,14 +413,14 @@ class InboxMixin(RecoveryMixin):
         budget_ok, budget_reason = True, ""
         if decision.get("speak"):
             sender_id = str(event.get_user_id() or "")
- 
+# 成员准入（按会话整体）：白名单非 * 时仅名单内发送者可作为插话由头
             if not self.sessions.member_allowed(chat_key, sender_id, event.get_platform() or ""):
                 budget_ok, budget_reason = False, texts.t("participate_member_denied")
             else:
                 budget_ok, budget_reason = manager.budget.allow(chat_key, "interject")
                 if budget_ok:
                     manager.budget.record(chat_key, "interject")
-                    event.done() 
+                    event.done()# 插话由头不消耗发送者 _rate_allow 限额
                     self._batch_message(
                         event, chat_key, text, self._extract_images(event), origin="plugin"
                     )
@@ -505,7 +505,7 @@ class InboxMixin(RecoveryMixin):
         )
         reply = ""
         try:
- 
+# A2: 排队播报迁 TaskSpec 分派（kind=announce，成本偏好 cheap），池无 dispatch 时回退 pool.chat
             request = ChatRequest(messages=[{"role": "user", "content": prompt}], max_tokens=80, temperature=0.7)
             dispatch = getattr(self.pool, "dispatch", None)
             if callable(dispatch):
@@ -586,7 +586,7 @@ class InboxMixin(RecoveryMixin):
     def _batch_message(self, event, chat_key: str, text: str, images: list,
                        origin: str = "chat") -> None:
         entry = self._pending.setdefault(chat_key, {"items": [], "event": event, "timer": None})
- 
+# origin（chat/plugin）随聚合条目传递，进 ToolContext 记账可观测
         entry.setdefault("origin", origin)
         entry["items"].append(
             {
@@ -620,7 +620,7 @@ class InboxMixin(RecoveryMixin):
         entry = self._pending.pop(chat_key, None)
         if not entry:
             return
- 
+# per-chat 锁真正生效——聚合触发与定时任务/面板并发互斥，防止交错写上下文
         async with self._lock_for(chat_key):
             await self._process_locked(
                 entry["event"], entry["items"], chat_key, entry.get("origin", "chat")
@@ -628,7 +628,7 @@ class InboxMixin(RecoveryMixin):
 
     async def _process_locked(self, event, items: list, chat_key: str, origin: str = "chat") -> None:
         try:
- 
+# H3 响应预算：从生成开始计时，发送层据此降级打字延迟
             try:
                 self.delivery.begin_budget(chat_key, float(getattr(self.cfg, "humanize_budget_seconds", 7.0) or 0))
             except Exception:
@@ -651,18 +651,18 @@ class InboxMixin(RecoveryMixin):
                 if getattr(self.cfg, "scene_platform_prefix", True):
                     scene = texts.t("scene_platform_line", platform=str(event.get_platform() or "")) + scene
                 scene += texts.t("scene_speaker_note")
- 
+# 触发来源认知：插件插话（origin=plugin）不是"有人在跟你说话"——否则模型会当成被点名
                 if origin == "plugin":
                     scene += texts.t("scene_plugin_trigger", name=sender_name or sender_id, id=sender_id)
                 else:
-                     
+                    # 发言者认知：明确"当前说话的人"，防止把历史对话者误认成当前发言者
                     scene += texts.t("scene_group_attribution", name=sender_name or sender_id, id=sender_id)
-                     
+                    # 提及感知 + 拟人语气：@ 命中是分内问答，未 @（旁听/插件插话）要像群友随口接话
                     if event.is_at_message():
                         scene += texts.t("scene_at_direct")
                     else:
                         scene += texts.t("scene_at_narrate")
-                 
+                # 引用回复认知：优先注入被引原文，提取不到再退回泛化提示
                 if any(isinstance(seg, dict) and seg.get("type") == "reply" for seg in (event.get_message() or [])):
                     quoted = self._quote_content(event)
                     if quoted:
@@ -724,7 +724,7 @@ class InboxMixin(RecoveryMixin):
             if registry is not None:
                 old_live = registry.get(chat_key)
                 if old_live and old_live.status == "running" and old_live.text.strip():
- 
+# queue：当前任务后台继续，新消息排到任务完成后处理；interrupt：取消旧任务
                     if str(getattr(self.cfg, "interrupt_mode", "queue")) == "queue":
                         self._enqueue_waiting(chat_key, event, items)
                         return
@@ -752,7 +752,7 @@ class InboxMixin(RecoveryMixin):
             contexts = prepared["contexts"]
             user_msg = prepared["user_msg"]
             persona = prepared["persona"]
- 
+# 首次接触且未发过开场白 → await 先发开场白再进 runner（时序保证）
             await self._maybe_send_opening(event, chat_key, prepared, persona)
             if interrupted_note:
                 contexts.append({"role": "user", "content": interrupted_note})
@@ -767,7 +767,7 @@ class InboxMixin(RecoveryMixin):
                 await event.reply(texts.t("processing_notice", tools="、".join(labels) + suffix))
 
             async def on_intermediate(speech):
- 
+# 边做边说：reply_narrate 开启时独立生效，不再依赖 tool_notice_mode=all
                 if getattr(self.cfg, "tool_notice_mode", "brief") != "all" and not getattr(
                     self.cfg, "reply_narrate", False
                 ):
@@ -776,8 +776,8 @@ class InboxMixin(RecoveryMixin):
                 if text:
                     await event.reply(text)
 
- 
- 
+# 悬空回复标记：生成开始落盘（记录将送入模型的 labeled 文本），实例崩溃重启后
+# 据此重跑该轮；完成/异常/取消均在 finally 清除，保证正常路径无残留
             self.sdk.storage.set(
                 INFLIGHT_KEY_PREFIX + chat_key,
                 {"text": labeled, "origin": origin, "ts": time.time()},
@@ -816,10 +816,10 @@ class InboxMixin(RecoveryMixin):
                     live.status = "done"
                     live.publish("done", {"reply": live.reply, "session": chat_key})
                 reply, force_forward = strip_output_tag(result.text.strip())
- 
+# 标签合并：最终回复自身的标签 > 运行过程中任一段发言声明的标签 > None（自动规则）
                 if force_forward is None:
                     force_forward = getattr(result, "delivery_hint", None)
- 
+# H4 输出过滤器：复述→重 roll 一次；句数超限/结尾硬造反问→就地截断
                 if bool(getattr(self.cfg, "humanize_filter_enabled", False)):
                     try:
                         from ..conversation.rhythm import filter_reply
@@ -860,7 +860,7 @@ class InboxMixin(RecoveryMixin):
                 await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None))
                 self._drain_waiting(chat_key)
             finally:
- 
+# 删除失败必须当场暴露并重试：残留标记会在下次重启被恢复例程重放成"自动重发"
                 try:
                     self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
                 except Exception as e:
@@ -870,8 +870,8 @@ class InboxMixin(RecoveryMixin):
                     except Exception as e2:
                         self.logger.error(f"inflight marker delete retry failed ({chat_key}): {e2}")
         except Exception as e:
-             
-             
+            # 失败通知按来源区分：用户主动触发（chat/dashboard 等才收完整错误）；
+            # 被动触发（plugin 插话等）用户没有发起消息，默认静默只记日志，避免错误刷屏
             self.logger.warning(f"process failed (origin={origin}): {e}")
             if origin == "plugin" and not bool(getattr(self.cfg, "notify_on_passive_failure", False)):
                 return
@@ -922,7 +922,7 @@ class InboxMixin(RecoveryMixin):
             self.logger.debug(f"transcript rows fetch failed: {e}")
             rows = []
         if not rows:
- 
+# 降级：框架收件箱不可用时走 event.history（无 sender，统一标注为未记录）
             try:
                 history = await event.history(limit)
             except Exception:
@@ -978,7 +978,7 @@ class InboxMixin(RecoveryMixin):
             if not text:
                 continue
             if row.get("role") == "bot":
- 
+# 机器人历史直接作为 assistant 内容；不要内联标签，否则模型会把它当成自己的话复读
                 seeded.append({"role": "assistant", "content": text})
             elif row.get("role") == "user":
                 sid = str(row.get("sender") or "")

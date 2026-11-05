@@ -117,7 +117,7 @@ def test_build_forward_nodes():
     assert nodes[0]["type"] == "node"
     data = nodes[0]["data"]
     assert data["user_id"] == "42" and data["nickname"] == "Bot"
- 
+# NapCat 预览/详情读不同键对：四键同值冗余
     assert data["uin"] == "42" and data["nick"] == "Bot"
     assert data["content"][0]["data"]["text"] == "第一段"
     assert "续行" in nodes[1]["data"]["content"][0]["data"]["text"]

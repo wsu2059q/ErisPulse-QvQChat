@@ -247,7 +247,7 @@ def test_think_filter_keeps_reasoning_and_flushes_unclosed():
     leftover = flt.flush()
     assert leftover == ""
     reasoning = flt.take_reasoning()
-    assert reasoning 
+    assert reasoning# 未闭合的思考不再被丢弃
     assert "的思考内容" in reasoning or "尚未闭合" in reasoning
 
 
@@ -296,6 +296,6 @@ async def test_stream_chat_flushes_unclosed_think_to_reasoning():
         on_delta=deltas.append,
         on_reasoning=reasonings.append,
     )
-    assert resp.content is None 
+    assert resp.content is None# 正文为空但思考完整可见
     assert deltas == []
     assert "".join(reasonings) == "思考中，继续思考"

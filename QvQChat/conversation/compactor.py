@@ -41,7 +41,7 @@ def extract_facts(text: str) -> tuple[str, list[str]]:
             content = content.strip()
             if kind in FACT_KINDS and content:
                 facts.append(f"{kind}|{content}")
- 
+# <summary> 标签宽松剥离（模型可能加也可能不加）
     summary = _re.sub(r"</?summary>", "", summary, flags=_re.IGNORECASE).strip()
     return summary, facts
 
@@ -89,7 +89,7 @@ class Compactor:
         self.main = main
         self.sdk = main.sdk
         self.config = main.cfg
- 
+# 模块级注入 token 估算配置（Main 不改，构造时注入）
         tokens.configure(self.config)
 
 
@@ -150,7 +150,7 @@ class Compactor:
         return merge_turns(removed_turns), turns[-keep_n:]
 
     async def _summarize_turns(self, removed: list) -> str:
- 
+# 摘要条目截断/总量上限参数化（原硬编码 240/8000）
         entry_chars = int(getattr(self.config, "compact_transcript_chars", 400) or 0)
         input_chars = int(getattr(self.config, "compact_input_chars", 12000) or 0)
         lines: list[str] = []
@@ -238,7 +238,7 @@ class Compactor:
         if configured > 0:
             return configured
         if configured < 0:
-            return 0 
+            return 0# 负数 = 关闭阈值压缩（轮次压缩仍生效）
         length = 0
         try:
             model = self.main.conversations._resolve_chat_model()
@@ -283,7 +283,7 @@ class Compactor:
                     actions.append(f"summarize:-{len(removed)}" + ("(ok)" if raw else "(dry)"))
                 kept = merge_turns(kept_turns)
                 if summary:
- 
+# 分离 <facts> 段（宽松解析，失败不入库）
                     clean, facts = extract_facts(summary)
                     if clean:
                         summary = clean

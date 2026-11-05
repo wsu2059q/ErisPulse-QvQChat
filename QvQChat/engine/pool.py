@@ -34,11 +34,11 @@ class ModelPool:
         self.config = config
         self.engine = OpenAIEngine()
         self._migrate_legacy()
- 
+# 模型熔断状态：model_id -> {"fails": 连续失败次数, "until": 冷却截止时间戳}
         self._breaker: dict[str, dict] = {}
- 
+# 难度感知路由（默认关闭）：chat_key -> (prefer, reason, ts)
         self.routing_cache: dict[str, tuple] = {}
- 
+# 路由统计与最近决策回看（{prefer: 计数} / deque[{chat_key, prefer, reason, ts}]）
         self.routing_stats: dict[str, int] = {}
         self.routing_log: deque = deque(maxlen=self.ROUTING_LOG_MAX)
 
@@ -157,7 +157,7 @@ class ModelPool:
         self.sdk.storage.set(POOL_KEY, remaining)
         return True
 
- 
+# 故障转移链是跨 provider 的全局顺序，存在独立键里；provider.models 只能表达组内顺序
     @staticmethod
     def _chain_key(item: Any) -> tuple[str, str] | None:
         if isinstance(item, dict):
@@ -387,7 +387,7 @@ class ModelPool:
                 continue
             row = dict(model)
             if row.get("manual") is True:
- 
+# 智能配置关闭：尊重手工填写的空缺，不再用目录补
                 enriched.append(row)
                 continue
             meta = self._models_dev_lookup(
@@ -443,8 +443,8 @@ class ModelPool:
     CAPABILITY_KEYS = ("vision", "files", "video", "tool_call", "reasoning")
 
     def model_costs(self) -> dict:
- 
- 
+# 每百万 token 单价（models.dev 目录），用于 Dashboard 成本换算
+# 含已停用模型：历史用量里可能仍有它们的记录
         costs: dict[str, dict] = {}
         for provider in self.list_providers():
             pid = str(provider.get("id") or "")
@@ -522,7 +522,7 @@ class ModelPool:
                     "temperature": model.get("temperature"),
                     "max_tokens": model.get("max_tokens"),
                     "capabilities": self.model_capabilities(model),
- 
+# 透出 models.db 目录数据，否则 context_length/cost 是死数据
                     "context_length": model.get("context_length"),
                     "max_output_tokens": model.get("max_output_tokens"),
                     "cost": model.get("cost") if isinstance(model.get("cost"), dict) else None,
@@ -532,7 +532,7 @@ class ModelPool:
 
     def resolve_model(self, model_id: str | None = None, needs: list | None = None) -> dict:
         models = self.list_models()
- 
+# 显式指定的模型优先于 needs 过滤——用户点名不被静默换掉
         if model_id:
             for model in models:
                 if model["id"] == model_id:
@@ -555,7 +555,7 @@ class ModelPool:
             return models[0]
         raise EngineError(texts.t("provider_no_models"))
 
- 
+# ===== 无副作用能力查询 =====
 
     def has_model(self, needs: list | None = None) -> bool:
         """无副作用查询：池中是否存在满足全部 needs 的启用模型（能力未知 None 视为不满足）。"""
@@ -576,7 +576,7 @@ class ModelPool:
                 saw_false = True
         return "no" if saw_false else "unknown"
 
- 
+# ===== TaskSpec 任务分派 =====
 
     def resolve_task_model(self, spec: TaskSpec) -> dict:
         """解析任务模型：显式 model > cfg.task_models[kind] > needs 过滤 >
@@ -604,7 +604,7 @@ class ModelPool:
             if capable:
                 candidates = capable
             elif "vision" in needs:
- 
+# 视觉任务：能力标记缺失/未知时按模型名启发式兜底（池里常有 gpt-4o/glm-4v 等）
                 hinted = [m for m in candidates if self._vision_name_hint(m)]
                 if hinted:
                     self.sdk.logger.info(
@@ -627,7 +627,7 @@ class ModelPool:
             candidates = priced + rest
         return candidates[0]
 
- 
+# 保守的视觉模型名启发式：宁可漏判也不错配（错配会让描述变成空串/幻觉）
     _VISION_HINTS = (
         "gpt-4o", "gpt-4.1", "gpt-5", "o4-", "gemini", "claude-3", "claude-4",
         "glm-4v", "glm-4.1v", "glm-4.5v", "qwen-vl", "qwen2-vl", "qwen2.5-vl", "qwen3-vl",
@@ -639,7 +639,7 @@ class ModelPool:
         name = f"{model.get('id', '')} {model.get('model', '')}".lower()
         return any(hint in name for hint in cls._VISION_HINTS)
 
- 
+# ===== 难度感知路由（V1 启发式，cfg.routing_enabled 默认关闭） =====
 
     @staticmethod
     def _first_user_text(request: ChatRequest) -> str:
@@ -690,7 +690,7 @@ class ModelPool:
         if not prefer:
             prefer, reason = classify(text)
             if chat_key and ttl > 0:
- 
+# 简单防膨胀：超 256 条时先剔除过期项再写入
                 if len(self.routing_cache) > 256:
                     self.routing_cache = {
                         k: v for k, v in self.routing_cache.items() if now - float(v[2]) < ttl
@@ -712,7 +712,7 @@ class ModelPool:
         on_reasoning=None,
     ) -> ChatResponse:
         """按 TaskSpec 分派任务模型后走统一 chat 链（failover/熔断照常生效）。"""
-        self._route_chat_spec(spec, request) 
+        self._route_chat_spec(spec, request)# 难度感知路由（默认关闭，不改显式约束）
         model = self.resolve_task_model(spec)
         scoped = ChatRequest(
             messages=request.messages,
@@ -735,10 +735,10 @@ class ModelPool:
                 if self._meets_needs(model, request.needs):
                     chain.append(model)
                 elif self._unknown_needs(model, request.needs):
- 
+# 能力未知的模型不参与首选，但保留为后备：首选全挂时仍可继续尝试
                     backups.append(model)
             chain.extend(backups)
- 
+# 熔断：冷却中的模型沉底而不是丢弃（全冷却时仍按链尝试）
         chain.sort(key=lambda m: 1 if self._is_open(m["id"]) else 0)
         errors: list[str] = []
         for index, model in enumerate(chain):

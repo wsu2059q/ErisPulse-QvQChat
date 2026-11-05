@@ -11,7 +11,7 @@ def test_registry_start_busy_and_replace():
     assert reg.busy("s1")
     live.status = "done"
     assert not reg.busy("s1")
- 
+# 重新发起覆盖旧记录
     live2 = reg.start("s1")
     assert live2 is not live
     assert reg.get("s1") is live2

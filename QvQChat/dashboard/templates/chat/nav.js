@@ -1,4 +1,4 @@
- 
+/* 导航与侧栏：标签切换、会话列表、发送队列 */
   function switchTab(name) {
     el("qvq-nav").querySelectorAll(".qvq-nav-btn").forEach(function (btn) {
       btn.classList.toggle("active", btn.getAttribute("data-tab") === name);
@@ -62,7 +62,7 @@
         { cap: t("stat_mcp"), num: mcpCount, cls: "", tab: "mcp" },
         { cap: t("stat_security"), num: (data.trust_agent ? t("trust_on") : esc(data.security_level || "-")), cls: data.trust_agent ? "hl-red" : "", tab: "settings" }
       ];
- 
+// 统计卡点击：跳转对应页
       el("qvq-stats").innerHTML = cards.map(function (c) {
         return '<div class="qvq-stat ' + c.cls + '" data-goto="' + esc(c.tab || "") + '" role="button" tabindex="0"><div class="num">' + esc(c.num) + '</div><div class="cap">' + esc(c.cap) + "</div></div>";
       }).join("");
@@ -237,7 +237,7 @@
         var patch = { chat_key: key };
         patch[act === "pin" ? "pinned" : "archived"] = !on;
         if (act === "delete") {
- 
+// 删除会话并显示撤销提示
           api("/api/qvq/sessions/delete", "POST", { chat_key: key }).then(function (r) {
             if (key === chatSession) {
               var nextKey = chatMeta.sessions.filter(function (s3) { return !s3.archived && s3.chat_key !== key; })[0];
@@ -480,8 +480,7 @@
         var item = queue.splice(i, 1)[0];
         if (!item) { renderQueue(); return; }
         if (chatBusy) {
-           
-           
+          // 立即发送（回复中）
           queue.unshift(item);
           renderQueue();
           cancelChat();
@@ -496,7 +495,7 @@
         var i = parseInt(btn.getAttribute("data-q-edit"), 10);
         var item = queue.splice(i, 1)[0];
         if (!item) { renderQueue(); return; }
-         
+        // 编辑回输入框：文本与附件回填 composer，条目移出队列
         var input = el("qvq-chat-input");
         if (input) {
           input.value = input.value.trim() ? input.value.replace(/\s+$/, "") + "\n" + item.text : item.text;

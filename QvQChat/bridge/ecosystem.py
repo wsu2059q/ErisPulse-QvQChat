@@ -114,7 +114,7 @@ class EcosystemBridge:
             self._remove_personas(ids)
         self._prev_ext_personas = {}
         self.info = {"modules": module_count, "tools": tool_count, "updated": utils.now_ts()}
- 
+# 防抖热刷新（module.load/unload）后自动重发现参与决策提供者
         participation = getattr(self.main, "participation", None)
         if participation is not None:
             try:
@@ -248,8 +248,8 @@ class EcosystemBridge:
         return result
 
     async def _collect_settings(self, module: str) -> None:
- 
- 
+# qvq_settings 只作归属标记（返回 {"title": ...}）：登记"谁出现在设置页插件分区"，
+# 字段 schema 与值一律走框架 ConfigClass / sdk.config（异常静默跳过，白名单陷阱同 qvq_schemas）
         raw = await self._call_optional(module, SETTINGS_SERVICE)
         if raw is None:
             return
@@ -276,7 +276,7 @@ class EcosystemBridge:
                 continue
             base_id = str(item.get("id") or f"p{index}")
             pid = f"ext.{module}.{base_id}"
- 
+# 外部人格全量字段白名单透传（未提供项由 persona.save merge 语义兜底）
             payload = {
                 "id": pid,
                 "name": str(item.get("name") or base_id),

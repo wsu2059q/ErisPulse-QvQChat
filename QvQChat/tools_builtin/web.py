@@ -115,7 +115,7 @@ async def web_fetch(ctx: ToolContext, url: str) -> str:
         return texts.t("web_url_required")
     timeout = float(_setting(ctx, "web_timeout", 20) or 20)
     limit = max(500, int(_setting(ctx, "web_fetch_chars", 6000) or 6000))
- 
+# 第一优先：r.jina.ai 渲染（对 JS 站点/正文提取更好）；失败回退原始 HTML 去标签
     try:
         status, text = await _get(JINA_READER.format(url=url), timeout)
         if status == 200 and text.strip():

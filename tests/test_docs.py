@@ -49,7 +49,7 @@ async def test_local_source_indexing_and_search(tmp_path):
 async def test_search_empty_without_docs(tmp_path, monkeypatch):
     import QvQChat.bridge.docs as docs_module
 
- 
+# 隔离 MCP 缓存兜底（真实机器上可能有 epsdk-mcp 的缓存）
     monkeypatch.setattr(docs_module, "MCP_CACHE", tmp_path / "no-mcp-cache")
     main = FakeMain(docs_source=str(tmp_path / "missing"))
     docs = ErisPulseDocs(main)

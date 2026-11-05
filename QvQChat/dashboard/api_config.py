@@ -19,7 +19,7 @@ class ConfigApiMixin:
         return {f.name: getattr(self.main.cfg, f.name, None) for f in dc_fields(QvQConfig)}
 
     async def models_get(self, request):
- 
+# 首次打开面板时用 models.dev 回填缺失的能力/上下文/价格；失败或超时不影响页面
         try:
             await asyncio.wait_for(self.main.pool.enrich_all_providers(), timeout=8)
         except Exception:
@@ -136,7 +136,7 @@ class ConfigApiMixin:
             return {"ok": False, "error": str(e), "ms": int((utils.now_ts() - started) * 1000)}
 
     async def personas_get(self, request):
- 
+# KV 绑定为权威源（会话 state.persona 镜像已废弃）
         return {"personas": self.main.personas.list(), "bindings": self.main.personas.bindings()}
 
     async def personas_save(self, request):
@@ -162,7 +162,7 @@ class ConfigApiMixin:
         body = await request.json()
         chat_key = str((body or {}).get("chat_key") or "")
         persona = (body or {}).get("persona") or None
- 
+# 仅写 KV 权威绑定（state.persona 镜像已废弃，不再回写）
         self.main.personas.bind(chat_key, persona)
         return {"ok": True}
 
@@ -378,7 +378,7 @@ class ConfigApiMixin:
                         errors.setdefault("skills", []).append(f"{s.get('name')}: {e}")
             applied.append("skills")
         if isinstance(data.get("config"), dict):
- 
+# 配置回灌走统一校验 seam（与 dashboard/AI 工具同一 coerce），坏值拒收不落盘
             applied_cfg, rejected = [], {}
             for key, value in data["config"].items():
                 ok, coerced, err = QvQConfig.coerce(str(key), value)
@@ -417,7 +417,7 @@ class ConfigApiMixin:
             value = getattr(self.main.cfg, f.name, None)
             secret = bool(ui.get("secret"))
             if secret and value not in (None, ""):
- 
+# secret 值掩码回显：真实值不进浏览器
                 value = "******"
             fields.append(
                 {
@@ -457,7 +457,7 @@ class ConfigApiMixin:
             return ({"ok": False, "applied": applied, "errors": errors}, 400)
         return {"ok": True, "applied": applied}
 
-     
+    # ===== 插件设置（框架声明式配置流：qvq_settings 仅作归属标记） =====
 
     def _plugin_catalog(self) -> dict:
         catalog = getattr(self.main, "plugin_settings_catalog", None)
@@ -477,7 +477,7 @@ class ConfigApiMixin:
         for name, title in sorted(self._plugin_catalog().items()):
             config_class = self._plugin_config_class(name)
             if config_class is None:
-                continue   
+                continue  # 无 ConfigClass 无法走框架 schema 流，不出现在设置页
             try:
                 schema = resolve_config_schema(config_class)
             except Exception as e:
@@ -491,7 +491,7 @@ class ConfigApiMixin:
                 {
                     "module": name,
                     "title": title or name,
-                    "config_key": name,   
+                    "config_key": name,  # 配置键 = 模块注册名（与框架 BaseModule 一致）
                     "schema": schema,
                     "values": dict(values) if isinstance(values, dict) else {},
                 }
@@ -524,8 +524,8 @@ class ConfigApiMixin:
             return ({"ok": False, "applied": [], "errors": {"": str(e)}}, 400)
         errors_list = validate_config(config_instance)
         if errors_list:
- 
- 
+# 校验错误按提交键归位（前端字段级红字；嵌套字段消息带 "outer.inner:" 前缀同样按子键命中），
+# 归不进任何提交键的单条挂到 ""（全局）
             errors: dict[str, str] = {}
             for msg in errors_list:
                 target = ""
@@ -535,7 +535,7 @@ class ConfigApiMixin:
                         break
                 errors[target] = f"{errors[target]}; {msg}" if target in errors else msg
             return ({"ok": False, "applied": [], "errors": errors}, 400)
- 
+# 逐键 setConfig（写 coerce 规范化后的全量生效值）：触发框架 config.set 热更新（模块 on_config_update 由框架自动跟进）
         from dataclasses import asdict
 
         applied_values = asdict(config_instance)

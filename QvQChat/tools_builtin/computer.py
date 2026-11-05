@@ -149,7 +149,7 @@ async def view_image(ctx: ToolContext, path: str) -> str:
     try:
         resolved = _resolve_allowed(ctx, path)
     except PermissionError:
- 
+# 本模块自己发出的媒体（uploads 目录）无条件可看：聊天里发过的图应能描述回来
         uploads = Path("data/QvQChat/uploads").resolve()
         norm = os.path.normcase(str(target_path))
         if not norm.startswith(os.path.normcase(str(uploads)) + os.sep):
