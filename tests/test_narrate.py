@@ -89,7 +89,7 @@ async def test_passive_failure_silent_by_default():
     main = aggregate_make_main(aggregate_window=0.05)
     main.runner = FailingRunner()
     ev = FakeChatEvent(text="查一下", group=True, group_id="1", user_id="u2", user_name="活塞头", at=True)
-     
+    # 模拟插件插话来源
     main._pending.clear()
     main._batch_message(ev, "onebot11:group:1", "查一下", [], origin="plugin")
     await asyncio.sleep(0.15)

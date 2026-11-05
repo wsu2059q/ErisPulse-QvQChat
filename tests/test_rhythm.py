@@ -87,7 +87,7 @@ def make_delivery(**config):
     return main.delivery, main
 
 
- 
+# ---------- D1 plan_segments ----------
 
 def test_plan_segments_paragraphs_with_typing_delay():
     text = "A" * 30 + "\n\n" + "B" * 40
@@ -133,7 +133,7 @@ def test_plan_segments_max_parts_truncates_with_merged_tail():
 def test_split_sentences_packing():
     assert split_sentences("一二三四。五六七八。九十。", 10) == ["一二三四。五六七八。", "九十。"]
     assert split_sentences("短句。", 10) == ["短句。"]
- 
+# 无标点超长句保持原样（不切断代码/链接）
     assert split_sentences("无标点的长句子" * 5, 10) == ["无标点的长句子" * 5]
 
 
@@ -156,11 +156,11 @@ def test_plan_segments_sentence_split_inside_long_paragraph():
 def test_plan_segments_returns_empty_when_not_splittable():
     assert plan_segments("", dict(BASE_PROFILE)) == []
     assert plan_segments("短文本", dict(BASE_PROFILE)) == []
- 
+# 单段长文本未开句切 → 不切分
     assert plan_segments("单段" * 60, dict(BASE_PROFILE)) == []
 
 
- 
+# ---------- D3 forward_score / structure_signals ----------
 
 def test_forward_score_code_report():
     reply = "代码如下：\n```py\nprint(1)\nprint(2)\n```\n以上就是实现。"
@@ -199,7 +199,7 @@ def test_forward_score_tool_and_long_text_signals():
     assert long_chatter["score"] == pytest.approx(0.1)
 
 
- 
+# ---------- D2 delivery_profile ----------
 
 def test_delivery_profile_defaults_without_config_keys():
     p = delivery_profile(SimpleNamespace(), "onebot11")
@@ -240,7 +240,7 @@ def test_match_platform_semantics():
     assert not match_platform("one*", "qq")
 
 
- 
+# ---------- D4 retry / pending queue ----------
 
 def test_is_retryable_classification():
     assert is_retryable(asyncio.TimeoutError("t")) is True
@@ -267,7 +267,7 @@ async def test_dispatch_text_success_and_failed_status():
         None, SimpleNamespace(send_retry=2, retry_delay=0), failing_status, ["Text"], "x"
     )
     assert used2 == "" and err2 is not None
- 
+# failed 状态包装为 RuntimeError，非网络类 → 不重试
     assert calls == ["Text"]
 
 
@@ -353,7 +353,7 @@ async def test_deliver_reply_replays_queue_head_on_first_delivery():
     await delivery.deliver_reply(event, "普通回复", [], force=False)
     assert main.sdk.storage.get(pending_key("onebot11:private:u9"), []) == []
     assert "普通回复" in event.sent
- 
+# 每进程每个会话只顺带重放一次
     enqueue_pending(main.sdk, main.cfg, "onebot11:private:u9", {
         "platform": "onebot11", "detail_type": "user", "target_id": "u9",
         "text": "第二条", "ts": 2.0,
@@ -364,7 +364,7 @@ async def test_deliver_reply_replays_queue_head_on_first_delivery():
     assert data and data[0]["text"] == "第二条"
 
 
- 
+# ---------- P0 qvq.deliver hook ----------
 
 async def test_deliver_hook_payload_and_rewrite():
     delivery, main = make_delivery(split_min_length=5, split_delay=0, min_delay=0, max_delay=0)
@@ -388,7 +388,7 @@ async def test_deliver_hook_payload_and_rewrite():
     assert len(payload["segments"]) == 2
     assert payload["delays"] == [d for _, d in payload["segments"]]
     assert payload["segments"][0] == ("甲段内容。", 0.0)
- 
+# 订阅方改写生效
     assert event.sent == ["改写后的段落"]
 
 

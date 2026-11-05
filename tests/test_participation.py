@@ -27,7 +27,7 @@ from test_aggregate import make_main
 GROUP_KEY = "onebot11:group:1"
 
 
- 
+# ==================== 装配辅助 ====================
 
 def _bind(main):
     """make_main 的绑定清单外追加 新方法（_interject）。"""
@@ -37,7 +37,7 @@ def _bind(main):
 
 
 def make_part_main(catalog=None, **overrides):
-    overrides.setdefault("aggregate_window", 5.0) 
+    overrides.setdefault("aggregate_window", 5.0)# 测试期不真正冲刷聚合
     main = _bind(make_main(**overrides))
     main.participation = ParticipationManager(main)
     return main
@@ -102,7 +102,7 @@ def participation_payloads(main):
     return [data for event, data in main.sdk.lifecycle.emitted if event == "qvq.participation"]
 
 
- 
+# ==================== 提供者发现 ====================
 
 async def test_discover_finds_declared_provider():
     main = make_part_main()
@@ -110,7 +110,7 @@ async def test_discover_finds_declared_provider():
     found = await main.participation.discover()
     assert "Stalker" in found
     assert found["Stalker"]["module"] == "Stalker"
- 
+# 探测调用传 {"probe": True}
     probes = [c for c in main.sdk.module.calls if c[:2] == ("Stalker", "qvq_decision")]
     assert probes and probes[0][3].get("ctx") == {"probe": True}
 
@@ -121,7 +121,7 @@ async def test_discover_whitelist_rejection_is_silent():
     add_provider(main, "Stalker", decision="silent")
     found = await main.participation.discover()
     assert "Broken" not in found and "Stalker" in found
- 
+# 未声明服务的模块不探测
     main.sdk.module._catalog["Plain"] = [{"name": "other", "signature": "()"}]
     found = await main.participation.discover()
     assert "Plain" not in found
@@ -138,7 +138,7 @@ async def test_discover_removes_vanished_provider():
     assert "Stalker" not in main.participation.providers
 
 
- 
+# ==================== 决策问询与聚合 ====================
 
 async def test_decide_returns_none_without_providers():
     main = make_part_main()
@@ -150,7 +150,7 @@ async def test_decide_ctx_payload_contract():
     captured: dict = {}
     add_provider(main, "Stalker", decision="silent", score=0.1, capture=captured)
     await main.participation.discover()
- 
+# 先旁听一条入窗（recent_messages 来源）
     await main.participation._on_observe({
         "chat_key": GROUP_KEY, "sender_id": "u0", "sender_name": "甲", "text": "早上好", "ts": 1.0,
     })
@@ -163,8 +163,8 @@ async def test_decide_ctx_payload_contract():
     assert ctx["text"] == "有人知道吗"
     assert ctx["sender_id"] == "u1"
     assert ctx["sender_name"] == "群主"
-    assert ctx["at_bot"] is False 
-    assert ctx["heat_hint"] is None 
+    assert ctx["at_bot"] is False# 未命中确定性触发才到达这里
+    assert ctx["heat_hint"] is None# 插件自维护
     assert isinstance(ctx["recent_messages"], list)
     assert ctx["recent_messages"][-1]["text"] == "早上好"
     assert ctx["replied_recently"] is False
@@ -191,7 +191,7 @@ async def test_decide_max_score_threshold():
     add_provider(main, "Beta", decision="silent", score=0.99, reason="高分沉默")
     await main.participation.discover()
     decision = await main.participation.decide(GROUP_KEY, FakeChatEvent(text="?"), "?")
- 
+# speak 候选最高分 0.5 < 阈值 0.6 → 沉默（silent 侧高分不参与）
     assert decision["speak"] is False
     assert decision["provider"] == "Alpha"
     assert "0.5" in decision["reason"] and "0.6" in decision["reason"]
@@ -224,7 +224,7 @@ async def test_decide_provider_timeout_treated_as_silent():
     add_provider(main, "Fast", decision="silent", score=0.2, reason="快速沉默")
     await main.participation.discover()
     decision = await main.participation.decide(GROUP_KEY, FakeChatEvent(text="?"), "?")
-    assert decision["speak"] is False 
+    assert decision["speak"] is False# 超时提供者视为 silent
     assert decision["reason"] == "快速沉默"
     slow_result = next(r for r in decision["results"] if r["provider"] == "Slow")
     assert slow_result["decision"] == "silent" and "Slow" in slow_result["reason"]
@@ -238,12 +238,12 @@ async def test_decide_provider_exception_treated_as_silent():
     main.sdk.module.handlers[("Boom", "qvq_decision")] = RuntimeError("plugin crashed")
     main.sdk.module._catalog["Fine"] = [{"name": "qvq_decision", "signature": "(ctx)"}]
     main.sdk.module.handlers[("Fine", "qvq_decision")] = lambda ctx=None, **_: "not-a-dict"
- 
+# 探测失败（异常/非 dict 返回）→ 两者都不成为提供者
     await main.participation.discover()
     assert "Boom" not in main.participation.providers
     assert "Fine" not in main.participation.providers
 
- 
+# 探测通过但问询时崩溃 → 该提供者视为 silent，不影响其余提供者
     def flaky(ctx=None, **_):
         if isinstance(ctx, dict) and ctx.get("probe"):
             return {"decision": "silent", "reason": "probe ok", "score": 0.0, "urgency": "low"}
@@ -260,7 +260,7 @@ async def test_decide_provider_exception_treated_as_silent():
     assert flaky_result["decision"] == "silent" and "Flaky" in flaky_result["reason"]
 
 
- 
+# ==================== SpeechBudget ====================
 
 def test_budget_hourly_limit_and_window_reset():
     budget = SpeechBudget(FakeMain().sdk, make_config(participation_hourly_limit=2, participation_cooldown_seconds=0))
@@ -271,7 +271,7 @@ def test_budget_hourly_limit_and_window_reset():
     budget.record("g", KIND_INTERJECT, now=t0 + 1)
     ok, why = budget.allow("g", KIND_INTERJECT, now=t0 + 2)
     assert not ok and why
- 
+# 不同群互不影响 / 新小时窗口重置
     assert budget.allow("g2", KIND_INTERJECT, now=t0 + 2)[0]
     assert budget.allow("g", KIND_INTERJECT, now=t0 + 3601)[0]
 
@@ -295,7 +295,7 @@ def test_budget_global_daily_limit_only_counts_proactive():
     budget.record("g", KIND_PROACTIVE, now=t0)
     ok, why = budget.allow("g", KIND_PROACTIVE, now=t0 + 10)
     assert not ok and why
- 
+# 插话不计入全局日限（冷却 0）
     assert budget.allow("g", KIND_INTERJECT, now=t0 + 10)[0]
     status = budget.status(now=t0 + 10)
     assert status["proactive_today"] == 1
@@ -307,7 +307,7 @@ def test_budget_persisted_in_storage():
     budget = SpeechBudget(main.sdk, make_config(participation_hourly_limit=1, participation_cooldown_seconds=0))
     budget.record("g", KIND_INTERJECT, now=4000.0)
     assert main.sdk.storage.get("QvQChat:participation:g") == [4000.0]
- 
+# 新实例读同一 storage：预算状态延续
     reborn = SpeechBudget(main.sdk, make_config(participation_hourly_limit=1, participation_cooldown_seconds=0))
     ok, _ = reborn.allow("g", KIND_INTERJECT, now=4000.5)
     assert not ok
@@ -318,14 +318,14 @@ def test_budget_daily_resets_next_day():
     day1 = 5000.0
     budget.record("g", KIND_PROACTIVE, now=day1)
     assert not budget.allow("g", KIND_PROACTIVE, now=day1 + 60)[0]
- 
+# 次日重置（+24h）
     assert budget.allow("g", KIND_PROACTIVE, now=day1 + 86400)[0]
 
 
- 
+# ==================== _on_message：qvq.observe 旁听通道 ====================
 
 async def test_observe_payload_fields_and_channel_exists():
-    main = make_part_main() 
+    main = make_part_main()# participation 默认关闭，旁听通道仍存在
     ev = FakeChatEvent(text="随便聊聊", at=False)
     await Main._on_message(main, ev)
     payloads = observe_payloads(main)
@@ -342,21 +342,21 @@ async def test_observe_payload_fields_and_channel_exists():
     assert payload["at_bot"] is False
     assert payload["is_command_prefix"] is False
     assert payload["ts"] > 0
- 
+# 未触发消息：旁听但不回复
     assert not main._pending and not ev.claimed
 
- 
+# 命令前缀消息不进入旁听通道
     main.sdk.lifecycle.emitted.clear()
     await Main._on_message(main, FakeChatEvent(text="#help"))
     assert observe_payloads(main) == []
 
- 
+# 触发消息（@bot）同样被旁听，at_bot 如实标记
     await Main._on_message(main, FakeChatEvent(text="@bot 在吗", at=True))
     assert observe_payloads(main)[-1]["at_bot"] is True
     cancel_pending(main)
 
 
- 
+# ==================== _on_message：参与决策插话分支 ====================
 
 async def test_interject_speak_enters_pending_with_plugin_origin():
     main = make_part_main(participation_enabled=True)
@@ -369,9 +369,9 @@ async def test_interject_speak_enters_pending_with_plugin_origin():
     assert entry["items"] and entry["items"][0]["text"] == "这个问题怎么解？"
     assert entry["origin"] == "plugin"
     assert ev.claimed
- 
+# 插话不消耗发送者限频窗口
     assert f"rate:{GROUP_KEY}:u1" not in main._rate_window
- 
+# 决策观测：环形日志 + qvq.participation 事件
     logged = main.participation.decisions[-1]
     assert logged["decision"] == "speak" and logged["budget_ok"] is True
     assert logged["provider"] == "Stalker" and logged["providers_queried"] == ["Stalker"]
@@ -387,9 +387,9 @@ async def test_interject_silent_or_disabled_keeps_original_behavior():
     await main.participation.discover()
     await Main._on_message(main, FakeChatEvent(text="插我", at=False))
     assert not main._pending
-    assert not main.participation.decisions 
+    assert not main.participation.decisions# decide 根本未被调用
 
- 
+# 开启但提供者沉默 → 照旧 return（仅记观测）
     main.cfg.participation_enabled = True
     main.sdk.module.handlers[("Stalker", "qvq_decision")] = (
         lambda ctx=None, **_: {"decision": "silent", "reason": "保守模式", "score": 0.0, "urgency": "low"}
@@ -407,11 +407,11 @@ async def test_interject_group_whitelist_config():
     await Main._on_message(main, FakeChatEvent(text="非白名单群", at=False))
     assert not main._pending and not main.participation.decisions
 
-    main.cfg.participation_groups = ["1"] 
+    main.cfg.participation_groups = ["1"]# 群号命中
     await Main._on_message(main, FakeChatEvent(text="白名单群", at=False))
     assert GROUP_KEY in main._pending
 
-    main.cfg.participation_groups_exclude = ["onebot11:group:*"] 
+    main.cfg.participation_groups_exclude = ["onebot11:group:*"]# 黑名单优先
     await Main._on_message(main, FakeChatEvent(text="被排除", at=False))
     assert len(main._pending[GROUP_KEY]["items"]) == 1
     cancel_pending(main)
@@ -428,7 +428,7 @@ async def test_interject_member_whitelist_blocks_sender():
     assert logged["decision"] == "speak" and logged["budget_ok"] is False
     assert logged["reason"] == texts.t("participate_member_denied")
 
- 
+# 名单内成员可作为插话由头
     await Main._on_message(main, FakeChatEvent(text="名单内人", user_id="u9", at=False))
     assert GROUP_KEY in main._pending
     cancel_pending(main)
@@ -438,7 +438,7 @@ async def test_interject_budget_rejection_observed():
     main = make_part_main(participation_enabled=True)
     add_provider(main, "Stalker", decision="speak")
     await main.participation.discover()
-    main.participation.budget.record(GROUP_KEY, KIND_INTERJECT) 
+    main.participation.budget.record(GROUP_KEY, KIND_INTERJECT)# 触发默认 300s 冷却
     ev = FakeChatEvent(text="冷却中插话", at=False)
     await Main._on_message(main, ev)
     assert not main._pending and not ev.claimed
@@ -462,7 +462,7 @@ async def test_observe_feeds_manager_window_via_lifecycle():
     assert captured["ctx"]["recent_messages"][0]["sender_name"] == "乙"
 
 
- 
+# ==================== speak 服务（扩展点 C） ====================
 
 async def test_speak_passes_budget_and_runs_prompt():
     main = make_part_main()
@@ -503,7 +503,7 @@ async def test_speak_without_manager_denies():
     assert await main.speak(GROUP_KEY) == texts.t("participate_disabled")
 
 
- 
+# ==================== participation_status 与 Dashboard ====================
 
 async def test_participation_status_shape():
     main = make_part_main(participation_enabled=True)
@@ -548,7 +548,7 @@ async def test_dashboard_participation_route_and_endpoint():
     assert ("QvQChat", ("GET",), "/api/qvq/participation") in main.sdk.router.routes
 
 
- 
+# ==================== 生态桥热刷新挂钩 ====================
 
 async def test_ecosystem_refresh_triggers_discover():
     main = make_part_main()
@@ -556,7 +556,7 @@ async def test_ecosystem_refresh_triggers_discover():
     bridge = EcosystemBridge(main)
     await bridge.refresh()
     assert "Stalker" in main.participation.providers
- 
+# 模块卸载（目录清空）→ 防抖刷新后提供者移除
     main.sdk.module._catalog["Stalker"] = []
     await bridge.refresh()
     assert "Stalker" not in main.participation.providers
@@ -570,7 +570,7 @@ async def test_ecosystem_refresh_without_participation_tolerated():
     assert info["modules"] == 0
 
 
- 
+# ==================== 配置组 ====================
 
 def test_participation_config_group_and_defaults():
     assert GROUP_META["participation"]["order"] < GROUP_META["access"]["order"]
@@ -590,10 +590,10 @@ def test_participation_config_group_and_defaults():
         assert ui.get("group") == group and ui.get("order") == order, key
         actual = f.default_factory() if f.default_factory is not MISSING else f.default
         assert actual == default, key
-     
+    # 行为细节（聚合策略等）不再进入主模块设置面，仅作为接口内部语义
     for absent in ("participation_strategy", "participation_score_threshold", "participation_provider_timeout"):
         assert absent not in fm
- 
+# bool 拒收字符串 / 默认关闭
     assert QvQConfig.coerce("participation_enabled", True) == (True, True, None)
     assert QvQConfig.coerce("participation_enabled", "true")[0] is False
     ok, v, _ = QvQConfig.coerce("participation_hourly_limit", "5")

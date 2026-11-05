@@ -30,7 +30,7 @@ def user_contents(request) -> list:
     ]
 
 
- 
+# ===== deep 三段式 =====
 
 
 class DeepPool:
@@ -68,22 +68,22 @@ async def test_deep_plan_injected_and_call_order():
         system="SYS", messages=[{"role": "user", "content": "deploy the site"}],
         ctx=make_ctx(main), task_kind="deep",
     )
- 
+# 三次调用顺序：PLAN(compact/cheap) → EXECUTE(chat) → CRITIQUE(compact/cheap)
     kinds = [spec.kind for spec, _ in pool.calls]
     assert kinds == ["compact", "chat", "compact"]
     assert pool.calls[0][0].prefer == "cheap" and pool.calls[2][0].prefer == "cheap"
- 
+# PLAN 调用：REFLEXION_PLAN_PROMPT 为 system，任务文本进入 user
     plan_request = pool.calls[0][1]
     assert plan_request.messages[0]["content"] == REFLEXION_PLAN_PROMPT
     assert plan_request.tools is None
     assert "deploy the site" in plan_request.messages[-1]["content"]
- 
+# 计划注入执行阶段 system 尾部 <task-plan> 块（system 现含 <session> 会话上下文，判首尾即可）
     exec_request = pool.calls[1][1]
     assert exec_request.messages[0]["content"].startswith("SYS")
     assert exec_request.messages[0]["content"].endswith("\n\n<task-plan>\n" + pool.plan + "\n</task-plan>")
     assert result.plan == pool.plan
     assert result.text == "done answer"
- 
+# CRITIQUE 调用：CRITIQUE_PROMPT + 计划/回复/trace 摘要
     critique_request = pool.calls[2][1]
     assert critique_request.messages[0]["content"] == CRITIQUE_PROMPT
     payload = critique_request.messages[-1]["content"]
@@ -111,7 +111,7 @@ async def test_deep_critique_fix_triggers_single_no_tool_round():
     runner, main = deep_runner(pool)
     result = await runner.run(system="SYS", messages=[{"role": "user", "content": "do it"}],
                               ctx=make_ctx(main), task_kind="deep")
- 
+# 调用序列：plan → execute → critique → 修正轮（有界 1 次，不再复查）
     kinds = [spec.kind for spec, _ in pool.calls]
     assert kinds == ["compact", "chat", "compact", "chat"]
     fix_request = pool.calls[3][1]
@@ -122,7 +122,7 @@ async def test_deep_critique_fix_triggers_single_no_tool_round():
     assert result.text == "answer v2"
     assert result.critique == fix
     assert result.rounds[-1]["text"] == "answer v2"
- 
+# usage 聚合了全部四次调用
     assert result.usage["total_tokens"] == 1 + 2 + 1 + 2
 
 
@@ -187,7 +187,7 @@ async def test_deep_degrades_gracefully_when_phases_fail():
     assert result.plan == "" and result.critique == "" and result.text == "direct answer"
 
 
- 
+# ===== 工具自愈 =====
 
 
 def boom_tool():
@@ -245,26 +245,26 @@ async def test_self_heal_hint_after_two_consecutive_failures():
     runner = AgentRunner(pool, registry, main.cfg)
     result = await runner.run(system="s", messages=[{"role": "user", "content": "go"}], ctx=make_ctx(main))
     assert result.text == "all done"
- 
+# 第二次连续失败发生在第 2 轮——提示注入到第 3 轮请求的上下文
     err = texts.t("tool_error", name="boom", error="ValueError: kaputt")
     expected = heal_hint("boom", [err, err])
     third = user_contents(pool.requests[2])
     assert expected in third, f"自愈提示未注入：{third}"
- 
+# 第 2 轮请求（仅一次失败后）不应有提示
     assert expected not in user_contents(pool.requests[1])
 
 
 async def test_self_heal_counter_resets_on_success():
     main = FakeMain()
     registry = ToolRegistry()
-    registry.register(flaky_tool()) 
+    registry.register(flaky_tool())# 第 1/3/4 次失败，第 2 次成功
     pool = tool_call_pool([("call", "flaky"), ("call", "flaky"), ("call", "flaky"), ("call", "flaky"), "final"])
     runner = AgentRunner(pool, registry, main.cfg)
     result = await runner.run(system="s", messages=[{"role": "user", "content": "go"}], ctx=make_ctx(main))
     assert result.text == "final"
     err = texts.t("tool_error", name="flaky", error="ValueError: nope")
     expected = heal_hint("flaky", [err, err])
- 
+# 第 2 次失败前有一次成功 → 计数清零，只在第 4 次失败（连续第 2 次）后注入一次
     all_hints = [c for req in pool.requests for c in user_contents(req) if c == expected]
     assert all_hints == [expected], "自愈提示应恰好出现一次（成功清零后重新计满两次）"
     assert expected in user_contents(pool.requests[4])
@@ -285,7 +285,7 @@ async def test_self_heal_disabled_by_switch():
 
 
 async def test_invoke_meta_error_signal():
- 
+# invoke 错误语义不变（返回文案），meta["error"]=True 供 runner 判定；权限拒绝不计失败
     registry = ToolRegistry()
     registry.register(boom_tool())
     ctx = make_ctx()
@@ -295,11 +295,11 @@ async def test_invoke_meta_error_signal():
     meta2 = {}
     await registry.invoke("nope", {}, ctx, meta=meta2)
     assert meta2.get("error") is True
- 
+# 不传 meta 时行为与旧签名完全一致
     assert "kaputt" in await registry.invoke("boom", {}, ctx)
 
 
- 
+# ===== 技能自动习得 =====
 
 
 async def test_save_skill_tool_metadata_and_persistence():
@@ -352,17 +352,17 @@ def test_propose_from_run_draft_shape():
     assert draft["steps"][0].startswith("1. 调用 run_command")
     assert "git pull" in draft["steps"][0]
     assert draft["steps"][2].startswith("3. 调用 send_message")
- 
+# 不落盘
     assert main.sdk.storage.get("QvQChat:skills", {}) == {}
 
 
 def test_propose_from_run_none_cases():
     main = FakeMain()
- 
+# 无工具调用 → None
     assert main.skills.propose_from_run("plain task", AgentResult(text="ok")) is None
- 
+# 无用户文本 → None
     assert main.skills.propose_from_run("", AgentResult(text="ok", tool_trace=[{"tool": "t", "arguments": "", "output": ""}])) is None
- 
+# 同名技能已存在 → None（不重复提议）
     result = AgentResult(
         text="done",
         tool_trace=[{"tool": "run_command", "arguments": "", "output": "ok"}],
@@ -384,7 +384,7 @@ def test_propose_from_run_name_fallback_without_ascii_words():
     assert draft["description"] == "完成"
 
 
- 
+# ===== 配置与提示词常量 =====
 
 
 def test_config_new_tool_switches():
@@ -408,7 +408,7 @@ def test_texts_new_keys_have_five_languages():
 
 
 def test_skill_offer_note_is_standalone_constant():
- 
+# SKILL_OFFER_NOTE 为独立常量（注入接线由 service 侧按 skill_induct 决定）
     from QvQChat.prompts import CAPABILITY_PROMPT, SKILL_OFFER_NOTE
 
     assert "save_skill" in SKILL_OFFER_NOTE and "记住这个做法" in SKILL_OFFER_NOTE

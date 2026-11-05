@@ -198,7 +198,7 @@ class QvQI18n(BaseI18n):
     skills_dir = _key("技能目录（每个 .md 文件一个技能，frontmatter 含 name/description）", "技能目錄（每個 .md 檔案一個技能，frontmatter 含 name/description）", "Skills directory (one .md per skill, frontmatter with name/description)", "スキルディレクトリ（.md ごとに1スキル）", "Каталог навыков (один .md на навык)")
     skills_disabled = _key("禁用的技能名列表", "停用的技能名列表", "Disabled skill names", "無効なスキル名一覧", "Список отключённых навыков")
 
- 
+# ── 以下为声明式配置描述补齐（与 Config.py 字段一一对应；default 中文兜底见 Config._desc）──
     token_estimator = _key(
         "token 估算器：留空用启发式（中文≈1字1token、其余≈4字符1token）；tiktoken 按精确编码计数（需自行安装 tiktoken 依赖，未安装自动回退启发式）",
         "token 估算器：留空用启发式（中文≈1字1token、其余≈4字符1token）；tiktoken 按精确编码计数（需自行安装 tiktoken 依赖，未安装自動回退启发式）",

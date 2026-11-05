@@ -77,7 +77,7 @@ def test_platform_master_matching_tolerates_platform_alias(monkeypatch):
     monkeypatch.setattr(main_module, "framework_masters", lambda: (set(), {"onebot": {"42"}}))
     cfg = make_policy_config()
     assert is_admin_user(cfg, "42", "chat", "onebot11", lambda p, u: False) is True
- 
+# 不相关平台不认
     assert is_admin_user(cfg, "42", "chat", "telegram", lambda p, u: False) is False
 
 

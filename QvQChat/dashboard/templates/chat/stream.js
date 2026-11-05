@@ -53,7 +53,7 @@
   }
 
   function segSignature(seg) {
-     
+    // segment 内容指纹：只有内容变化的段才重建 DOM
     if (seg.type === "text") {
       return "t" + String(seg.text || "").length + ":" + String(seg.text || "").slice(-48);
     }
@@ -63,7 +63,7 @@
     return "g" + (seg.start && seg.start.step_id ? seg.start.step_id : "") + endMark;
   }
 
-   
+  // 增量渲染文字/工具交错流：只重建内容变化的段
   function renderSegments(container, segments, expMap) {
     var host = container.querySelector(".qvq-rounds");
     if (!host) {
@@ -94,13 +94,12 @@
 
   function renderLiveNode(box, els, live) {
     var stick = nearBottom(box);
-     
     var expSteps = collectExpSteps(els.stepsEl);
     var expSegSteps = collectExpSteps(els.textEl);
     var thinkEl = els.stepsEl.querySelector(".qvq-think");
     var thinkOpen = thinkEl ? thinkEl.hasAttribute("open") : null;
 
-     
+    // 首次渲染跟随 running 状态；之后尊重用户手动收起（thinkOpen === false）
     var thinkAutoOpen = live.status !== "running" ? "" : " open";
     var thinkAttr = thinkOpen === false ? "" : thinkAutoOpen;
     var thinkBlock = live.reasoning
@@ -135,7 +134,7 @@
     var epochAtAttach = chatEpoch;
     var box = el("qvq-chat-box");
     var live = { status: snapshot.status || "running", text: snapshot.text || "", reasoning: snapshot.reasoning || "", steps: snapshot.steps || [], error: snapshot.error || null };
- 
+/* 流式：SSE、实时输出节点、恢复挂载、消息派发 */
     setSessionBusy(snapshot.session, true);
     var els = makeLiveNode();
     box.appendChild(els.root);
@@ -255,7 +254,7 @@
       attachments: atts.map(function (a) { return { name: a.name, mime: a.mime, data: a.data }; }),
     };
     var finished = false;
-    var gotEvent = false;  
+    var gotEvent = false; // 收到过任一 SSE 事件（meta 除外）即认为流已建立
     setSendStopping(true);
     function settle(reply, stepsOut, isErr) {
       if (finished) return;
@@ -280,7 +279,6 @@
       api("/api/qvq/chat/live?session=" + encodeURIComponent(sessionAtStart)).then(function (snap) {
         if (epochAtStart !== chatEpoch || finished) return;
         if (snap && snap.status === "running") {
-           
           if (activeLive && activeLive.session === sessionAtStart) activeLive = null;
           els.root.remove();
           setSessionBusy(sessionAtStart, false);
@@ -370,7 +368,7 @@
       }
     }).catch(function () {
       if (finished) return;
-       
+      // 收到过事件说明服务端任务已在跑：断流只做快照重挂
       if (gotEvent) { reattach(); return; }
       api("/api/qvq/chat", "POST", payload).then(function (data) {
         if (data && data.__http === 409) { toast(t("chat_busy"), true); reattach(); return; }

@@ -81,5 +81,5 @@ def test_knowledge_external_entries_searchable_and_readonly():
     assert any(h["title"] == "语音合成" for h in hits)
     triggered = kb.triggered(["我们聊聊语音合成吧"])
     assert triggered and triggered[0]["title"] == "语音合成"
- 
+# 外部条目只读：不落库
     assert kb.list() == []

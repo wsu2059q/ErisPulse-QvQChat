@@ -4,7 +4,7 @@ import secrets
 from pathlib import Path
 from urllib.parse import quote
 
-from .. import texts, utils 
+from .. import texts, utils# noqa: F401 — utils 供后续扩展；texts 为 chat 附件注入使用
 from .api_config import ConfigApiMixin
 from .api_ops import OpsApiMixin
 from .api_sessions import SessionsApiMixin
@@ -38,7 +38,7 @@ FAVICON_HREF = "data:image/svg+xml," + quote(FAVICON_SVG)
 TOKEN_KEY = "QvQChat:auth_token"
 
 
- 
+# ===== 删除回收站（撤销删除）：删除前暂存载荷，10 分钟内可还原 =====
 
 TRASH_PREFIX = "QvQChat:trash:"
 TRASH_TTL = 600.0
@@ -356,7 +356,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, TrashMixin
     async def auth(self, request):
         return {"ok": True}
 
- 
+# ===== OpenAI 兼容端点：Bearer=view_token，映射 run_dashboard_chat =====
 
     def _v1_authorized(self, request) -> bool:
         raw = getattr(request, "raw", request)

@@ -124,7 +124,7 @@ async def test_config_get_schema_types_groups_and_secret_masking():
 
     data = await manager.config_get(FakeQp())
     fields = {f["key"]: f for f in data["fields"]}
- 
+# 每字段带 schema 元数据：类型/区间/枚举来源/secret/dangerous
     assert fields["context_limit"]["type"] == "int"
     assert fields["split_delay"]["type"] == "float"
     assert fields["wake_prefixes"]["type"] == "list"
@@ -135,11 +135,11 @@ async def test_config_get_schema_types_groups_and_secret_masking():
     assert fields["disabled_tools"]["items"] == "tools"
     assert fields["skills_disabled"]["items"] == "skills"
     assert fields["trust_agent"]["dangerous"] is True
- 
+# secret 值掩码回显，真实令牌不进响应
     assert fields["view_token"]["secret"] is True
     assert fields["view_token"]["value"] == "******"
     assert "secret-token-1" not in str(data)
- 
+# 顶层 groups 表来自 GROUP_META
     groups = {g["id"]: g["order"] for g in data["groups"]}
     assert groups["model"] < groups["security"] < groups["access"]
 
@@ -161,13 +161,13 @@ async def test_config_set_validates_and_returns_field_errors():
     assert set(res[0]["errors"]) == {"bogus"}
     assert main.sdk.config_sets[-1] == ("QvQChat.context_limit", 12)
 
- 
+# 空串数字 / 非 bool / 越界 / select 非成员 → 拒收且不落盘
     res = await manager.config_set(FakeJsonRequest({"context_limit": "", "keep_ratio": 0.9, "reply_private": "true"}))
     assert res[1] == 400
     assert set(res[0]["errors"]) == {"context_limit", "keep_ratio", "reply_private"}
     assert len(main.sdk.config_sets) == 1
 
- 
+# 全部合法 → 200 + applied
     res = await manager.config_set(FakeJsonRequest({"wake_prefixes": ["a", "b"], "security_level": "strict"}))
     assert res == {"ok": True, "applied": ["wake_prefixes", "security_level"]}
     assert ("QvQChat.wake_prefixes", ["a", "b"]) in main.sdk.config_sets

@@ -13,9 +13,9 @@ CONCISE_ID = "concise"
 DETAILED_ID = "detailed"
 BUILTIN_IDS = (ASSISTANT_ID, CONCISE_ID, DETAILED_ID)
 
- 
+# P2style 白名单键（其余键忽略）
 STYLE_KEYS = ("emoji_density", "verbosity", "formality")
- 
+# P2examples 序列化总长上限（字符）
 EXAMPLES_MAX_CHARS = 2000
 
 
@@ -116,7 +116,7 @@ class PersonaManager:
 
     def list(self) -> list[dict]:
         stored = self.sdk.storage.get(PERSONAS_KEY, {})
- 
+# 内置默认也过 _normalize：保证 P2 扩展字段在所有人格上类型正确
         personas = {pid: _normalize(entry) for pid, entry in _default_personas().items()}
         if isinstance(stored, dict):
             for persona_id, data in stored.items():
@@ -150,7 +150,7 @@ class PersonaManager:
         stored = self.sdk.storage.get(PERSONAS_KEY, {})
         if not isinstance(stored, dict):
             stored = {}
- 
+# 合并语义：未显式提供的新字段沿用存量（防部分保存误清空）；name/system 仍按原 falsy 回退链
         existing = stored.get(persona_id) if isinstance(stored.get(persona_id), dict) else {}
 
         def _merged_list(key: str, cleaner) -> list:

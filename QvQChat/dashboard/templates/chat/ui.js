@@ -1,4 +1,4 @@
- 
+/* 基础组件：i18n 应用、模态框、下拉/确认组件 */
   var chatHistory = [];
   var chatSession = (function () {
     try { return localStorage.getItem("qvq_chat_session") || "dashboard:private:web"; } catch (e) { return "dashboard:private:web"; }
@@ -59,7 +59,7 @@
     el("qvq-modal-title").textContent = title;
     el("qvq-modal-body").innerHTML = bodyHtml;
     el("qvq-modal").style.display = "flex";
-     
+    // F3 焦点管理：记住触发元素并把焦点移入模态（Tab 圈禁在 init.js 全局处理）
     modalReturnFocus = document.activeElement;
     var first = el("qvq-modal-body").querySelector("input, textarea, select, button");
     if (first) tryFocus(first);
@@ -67,7 +67,7 @@
   function closeModal() {
     el("qvq-modal").style.display = "none";
     el("qvq-modal-body").innerHTML = "";
-     
+    // 焦点返还触发元素
     if (modalReturnFocus && modalReturnFocus.focus) tryFocus(modalReturnFocus);
     modalReturnFocus = null;
   }
@@ -80,18 +80,17 @@
     document.querySelectorAll(".qvq-dd-btn.open").forEach(function (b) { b.classList.remove("open"); });
   }
 
-   
+  // 浮层挂 body：滚动/缩放时关闭
   window.addEventListener("scroll", closeAllMenus, true);
   window.addEventListener("resize", closeAllMenus);
 
   function enhanceSelects(root) {
-     
-     
+    // F3 无障碍：原生 <select>
     void root;
   }
 
 
-   
+  // F5 列表三态：骨架屏 / 错误横幅（带重试）/ 正常渲染交回调用方
   function listSkeleton(box, rows) {
     var n = rows || 4;
     var out = "";
@@ -105,7 +104,7 @@
     box.querySelector("[data-retry]").onclick = retry;
   }
 
-   
+  // 移动端卡片化：把表头文字写进每个 td 的 data-col，窄屏 CSS 据此渲染标签
   function cardifyTables(root) {
     (root || document).querySelectorAll("table.qvq-table").forEach(function (table) {
       var ths = table.querySelectorAll("thead th");
@@ -148,7 +147,7 @@
       var body = el("qvq-modal-body");
       body.querySelector("[data-cf-ok]").onclick = function () { closeModal(); resolve(true); };
       body.querySelector("[data-cf-no]").onclick = function () { closeModal(); resolve(false); };
-       
+      // F3 破坏性确认默认落在"取消"
       tryFocus(body.querySelector("[data-cf-no]"));
     });
   }

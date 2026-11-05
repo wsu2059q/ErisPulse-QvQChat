@@ -30,10 +30,10 @@ OBSERVE_EVENT = "qvq.observe"
 REPLIED_EVENT = "qvq.replied"
 PARTICIPATION_EVENT = "qvq.participation"
 
-WINDOW_SIZE = 10 
-REPLIED_WINDOW = 600.0 
-PROBE_TIMEOUT = 3.0 
-DECISION_LOG_SIZE = 100 
+WINDOW_SIZE = 10# ctx.recent_messages 旁听条数
+REPLIED_WINDOW = 600.0# replied_recently 判定窗口（秒）
+PROBE_TIMEOUT = 3.0# 提供者探测超时
+DECISION_LOG_SIZE = 100# 最近决策环形日志容量
 
 
 class ParticipationManager:
@@ -50,7 +50,7 @@ class ParticipationManager:
         self._last_reply: dict[str, float] = {}
         self._subscribed = False
 
- 
+# ==================== 生命周期 ====================
 
     def start(self) -> None:
         """订阅旁听/回复事件（Main.on_load 调用；重复调用幂等）。"""
@@ -72,7 +72,7 @@ class ParticipationManager:
         except Exception:
             pass
 
- 
+# ==================== 提供者发现 ====================
 
     async def discover(self) -> dict:
         """扫描服务目录并探测提供者；返回 ``{module: info}``。失败静默（视为无提供者）。"""
@@ -130,7 +130,7 @@ class ParticipationManager:
     def providers_status(self) -> list[dict]:
         return [dict(info) for _, info in sorted(self.providers.items())]
 
- 
+# ==================== 决策 ====================
 
     async def decide(self, chat_key: str, event, text: str) -> dict | None:
         """并发问询全部提供者并聚合；无提供者返回 None。
@@ -227,7 +227,7 @@ class ParticipationManager:
             return {**base, "reason": first_silent.get("reason", ""), "provider": first_silent.get("provider", ""),
                     "score": first_silent.get("score", 0.0)}
 
- 
+# first_speak（默认）：按稳定顺序首个 speak 胜出
         for r in results:
             if r.get("decision") == "speak":
                 return {**base, "speak": True, "reason": r.get("reason", ""), "provider": r.get("provider", ""),
@@ -260,7 +260,7 @@ class ParticipationManager:
             "text": str(text or ""),
             "sender_id": sender_id,
             "sender_name": self._sender_name(event),
- 
+# 确定性触发（@/前缀）永远短路插件决策，到达这里的 at_bot 恒 False
             "at_bot": False,
             "recent_messages": recent,
             "heat_hint": None,
@@ -284,7 +284,7 @@ class ParticipationManager:
             pass
         return ""
 
- 
+# ==================== 群白名单 ====================
 
     def chat_allowed(self, chat_key: str) -> bool:
         """participation_groups / participation_groups_exclude 群过滤（空名单=全部群）。"""
@@ -303,7 +303,7 @@ class ParticipationManager:
             return True
         return any(_hit(p) for p in include)
 
- 
+# ==================== 观测 ====================
 
     def log_decision(self, entry: dict) -> None:
         """最近决策环形日志（内存 deque，容量 100，Dashboard 展示）。"""

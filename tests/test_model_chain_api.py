@@ -35,7 +35,7 @@ async def test_chain_save_roundtrips_through_models_get():
     data = await manager.models_get(_Request(None))
     assert [(c["provider"], c["model"]["id"]) for c in data["chain"]] == [("p2", "c"), ("p1", "a")]
     assert [m["id"] for m in data["models"]] == ["p2:c", "p1:a"]
- 
+# api_key 仍然不外泄（chain 只带 provider 元信息与模型配置）
     assert all("api_key" not in c["model"] for c in data["chain"])
 
 

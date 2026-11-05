@@ -1,4 +1,4 @@
- 
+/* 管理视图：模型池/人格/技能/MCP/配置/用量等页面 */
   
   function fv(root, id) {
     var node = root.querySelector("#" + id);
@@ -15,7 +15,7 @@
     body.querySelector("[data-form-save]").onclick = function () { onSave(body); };
   }
 
-   
+  /* ===== 编排页：模型链拖拽 / 健康面板 / 运行状态 / 任务时间线 / 能力开关 ===== */
 
   var orchChain = [];
 
@@ -42,7 +42,7 @@
     });
   }
 
-   
+  // 链序是跨 provider 的全局顺序：优先后端 chain；旧数据回退到按 provider 展平
   function flattenChain(data) {
     if (data && Array.isArray(data.chain) && data.chain.length) {
       return data.chain.map(function (item) {
@@ -102,7 +102,7 @@
     });
   }
 
-   
+  // 整体链序一次提交；连续拖动时合并保存
   var chainSaveBusy = false;
   var chainSaveQueued = false;
 
@@ -132,7 +132,7 @@
     });
   }
 
-   
+  // 健康状态徽章：正常为右上角小绿标；有熔断时红标并附明细列表
   function renderModelHealth(boxId, breakers) {
     var box = el(boxId);
     if (!box) return;
@@ -162,8 +162,8 @@
     }).join("");
   }
 
-   
-   
+  // 上半部分为定时任务（下次执行 + 最近状态），下半部分为最近执行记录
+  // attentionOnly=true（编排页）：只显示需要关注的——上次失败/运行中的任务与出错的执行
   function renderTaskTimeline(tasks, runs, boxId, attentionOnly) {
     var box = el(boxId);
     if (!box) return;
@@ -264,7 +264,7 @@
     });
   }
 
-   
+  // 乐观开关：请求期间禁用；失败回滚勾选并提示
   function optimisticToggle(cb, path, body, okWhen) {
     var wanted = cb.checked;
     cb.disabled = true;
@@ -801,7 +801,7 @@
                 loadPersonas();
               });
             };
- 
+// 内置人格删除=重置，保留确认；自定义人格直接删，靠撤销兜底
             if (isBuiltin) confirmDialog(t("personas_reset")).then(function (ok) { if (ok) doDelete(); });
             else doDelete();
           } else {
@@ -963,7 +963,7 @@
         renderToolList(tools, filter.value.trim().toLowerCase(), riskLabel);
       };
     });
-     
+    // 扩展模块小节并入工具页底部
     loadExtensions();
   }
 
@@ -1170,7 +1170,7 @@
     });
   }
 
-   
+  /* ===== 知识库：列表 / 检索 / 添加 / 删除 ===== */
 
   function loadKnowledge() {
     var query = (el("qvq-kb-search") || {}).value || "";
@@ -1247,7 +1247,7 @@
         toast(t("kb_need_title_content"), true);
         return;
       }
-       
+      // 世界书：triggers 逗号/顿号/空白分隔，priority 数字（大优先），cooldown 空则用配置默认
       var triggers = fv(body, "qvq-kbf-triggers").split(/[,，、\s]+/).filter(Boolean);
       var priority = parseInt(fv(body, "qvq-kbf-priority"), 10) || 0;
       var cdRaw = parseInt(fv(body, "qvq-kbf-cooldown"), 10);
@@ -1264,7 +1264,7 @@
     });
   }
 
-   
+  // 知识库编辑：全部字段回填；scope 空=全局
   function openKbEditModal(entry) {
     var fields =
       "<label class='qvq-label'>" + esc(t("kb_title_label")) + "</label>" +
@@ -1324,7 +1324,7 @@
     });
   }
 
-   
+  // 用户画像卡（只读展示 + 清空按钮；数据随 /api/qvq/memory 响应返回）
   function loadMemoryProfile(data) {
     var section = document.querySelector(".qvq-tab[data-section='memory']");
     if (!section) return;
@@ -1443,7 +1443,7 @@
     });
   }
 
-   
+  // 会话准入：成员白名单（* 全员）+ 接受哪些其它会话的输入（跨会话共享）
   function openSessionAccessModal(chatKey) {
     var session = chatMeta.sessions.filter(function (s) { return s.chat_key === chatKey; })[0] || {};
     var fields =
@@ -1760,16 +1760,16 @@
 
   var settingsFields = [];
   var settingsGroupsTable = [];
-  var settingsOriginal = {};    
-  var settingsDraft = {};       
+  var settingsOriginal = {};   // key → 加载时的规范化值（dirty 基准）
+  var settingsDraft = {};      // key → 当前编辑值（跨分类切换/搜索重绘保留）
   var settingsEnums = { tools: [], skills: [] };
   var settingsEventsBound = false;
-   
+  // 插件设置（qvq_settings 注册项）：独立拉取后并入统一 schema
   var settingsConfigFields = [];
   var settingsPluginFields = [];
   var PLUGIN_KEY_PREFIX = "plugin:";
 
-   
+  // chat 组语义分块（字段 order 上界 → 小节标题键）
   var CHAT_SECTIONS = [
     { max: 9, key: "settings_sec_context" },
     { max: 13, key: "settings_sec_forward" },
@@ -1812,11 +1812,11 @@
     });
   }
 
-   
+  // 合并 QvQChat 配置字段与插件设置字段为统一 schema（draft/dirty/保存机制共用）
   var SETTINGS_DRAFT_KEY = "qvq_settings_draft";
 
   function settingsLoadPersistedDraft() {
- 
+// F5 本地草稿：刷新后未保存的编辑原样恢复（仅收编当前 schema 里存在的键）
     try {
       var saved = JSON.parse(localStorage.getItem(SETTINGS_DRAFT_KEY) || "null");
       if (saved && typeof saved === "object") return saved;
@@ -1852,9 +1852,9 @@
     renderSettingsForm();
   }
 
-   
-   
-   
+  // 插件设置字段映射为 settingField 现有形状：{key,type,widget,options,secret,placeholder,dangerous,description,value}
+  // 数据源为框架 resolve_config_schema 输出：schema.fields[name] = {type(integer/float/boolean/array/table/string),
+  // description, required, secret, default, widget?, group?, order?, options?, placeholder?}；values = sdk.config 现值
   function mapPluginSettings(modules) {
     var TYPE_MAP = { integer: "int", float: "float", boolean: "bool", array: "list", table: "dict", string: "str" };
     var fields = [];
@@ -1896,7 +1896,7 @@
     return fields;
   }
 
-   
+  // disabled_tools / skills_disabled 的 checkbox 多选数据源
   function loadSettingsEnums() {
     var need = { tools: false, skills: false };
     settingsFields.forEach(function (f) {
@@ -1934,7 +1934,7 @@
       return value === null || value === "" || value === undefined || isNaN(n) ? String(value == null ? "" : value) : n;
     }
     if (type === "list") {
- 
+// 存量可能是单字符串/多行字符串：统一收成数组，序列化端永远是数组
       var arr = Array.isArray(value) ? value : String(value == null ? "" : value).split("\n");
       return arr.map(function (x) { return String(x).trim(); }).filter(Boolean);
     }
@@ -1943,7 +1943,7 @@
     return String(value == null ? "" : value);
   }
 
-   
+  // dirty 比较：数组忽略顺序（多选框按枚举顺序渲染，与存储顺序无关），标量走 JSON
   function settingsSameValue(a, b) {
     if (Array.isArray(a) && Array.isArray(b)) {
       if (a.length !== b.length) return false;
@@ -1958,7 +1958,7 @@
   }
 
   function settingsGroups() {
-     
+    // 优先用后端 GROUP_META 组表（组序与字段 order 解耦），无则回退字段推导
     var groups;
     if (settingsGroupsTable.length) {
       groups = settingsGroupsTable.map(function (g) { return g.id; });
@@ -1968,7 +1968,7 @@
         if (groups.indexOf(f.group) < 0) groups.push(f.group);
       });
     }
-     
+    // "插件"分区恒置末位（有插件注册项才出现）
     if (settingsPluginFields.length && groups.indexOf("plugin") < 0) groups.push("plugin");
     return groups;
   }
@@ -1990,7 +1990,7 @@
 
   function switchSettingsCategory(g) {
     if (g === currentCategory) return;
- 
+// 草稿跨分类保留（重绘前收编 DOM 值），切换不需要阻断确认
     currentCategory = g;
     renderSettingsCategories();
     renderSettingsForm();
@@ -2015,7 +2015,7 @@
   function settingsChecksHtml(f, value) {
     var current = Array.isArray(value) ? value.slice() : [];
     var known = (settingsEnums[f.items] && settingsEnums[f.items].length ? settingsEnums[f.items] : (f.options || [])).slice();
-     
+    // 枚举外的存量值（如 eco_* 通配）同样列出，取消勾选即可移除
     current.forEach(function (v) {
       if (known.indexOf(v) < 0) known.push(v);
     });
@@ -2036,7 +2036,7 @@
       "<button type='button' class='qvq-btn small ghost' data-list-add='1'>+ " + esc(t("settings_list_add")) + "</button></div>";
   }
 
-   
+  // T3 表单分发：按 schema 类型/_widget 渲染，值取 settingsDraft（保留编辑中状态）
   function settingField(f) {
     var key = esc(f.key);
     var value = (f.key in settingsDraft) ? settingsDraft[f.key] : f.value;
@@ -2080,7 +2080,7 @@
         if (f.step != null) nAttrs += " step='" + esc(f.step) + "'";
         input = "<input class='qvq-input' type='number' data-key='" + key + "' value='" + esc(nv) + "'" + nAttrs + " />";
       } else {
-         
+        // 存量已写坏的数字字段：容错显示原文 + 红字提示，保存由后端校验拒收
         input = "<input class='qvq-input qvq-input-bad' type='text' data-key='" + key + "' value='" + esc(value == null ? "" : value) + "' />" +
           "<div class='qvq-field-err show'>" + esc(t("settings_invalid_value")) + "</div>";
       }
@@ -2105,7 +2105,7 @@
   }
 
   function renderSettingsForm() {
-    settingsCaptureDraft();   
+    settingsCaptureDraft();  // 重绘前收编当前 DOM 值进 draft
     var box = el("qvq-settings-form");
     if (!box) return;
     var q = settingsSearchQuery();
@@ -2154,7 +2154,7 @@
     settingsUpdateSaveBtn();
   }
 
-   
+  // 按字段 schema 类型从 DOM 读值（保存与 dirty 检测共用）
   function settingsSerializeField(node, f) {
     if (f.type === "bool") {
       var cb = node.querySelector("input[type='checkbox']");
@@ -2185,7 +2185,7 @@
     }
     if (f.type === "int" || f.type === "float") {
       var n = parseFloat(raw);
-       
+      // 非数字原文上送：由后端 coerce 拒收并回字段级红字
       return raw.trim() === "" || isNaN(n) ? raw : n;
     }
     if (node.hasAttribute("data-json")) {
@@ -2281,7 +2281,7 @@
     }
   }
 
-   
+  // 表单容器事件委托一次绑定（innerHTML 重绘不丢）
   function bindSettingsFormEvents() {
     if (settingsEventsBound) return;
     var box = el("qvq-settings-form");
@@ -2341,7 +2341,7 @@
     });
   }
 
-   
+  // T1/T3 类型化保存：只送 dirty 字段，dangerous 变更先确认，错误回填字段级红字
   function saveSettings() {
     settingsCaptureDraft();
     settingsClearStickyErrors();
@@ -2375,7 +2375,7 @@
     }
   }
 
-   
+  // QvQChat 自身配置：只送 dirty 字段到 /api/qvq/config
   function saveConfigSettings(dirty) {
     var keys = dirty.filter(function (k) { return k.indexOf(PLUGIN_KEY_PREFIX) !== 0; });
     if (!keys.length) return;
@@ -2397,7 +2397,7 @@
     });
   }
 
-   
+  // 插件设置：按模块分组 POST /api/qvq/plugin_settings/save，错误回填沿用字段级红字
   function savePluginSettings(dirty) {
     var byModule = {};
     dirty.forEach(function (k) {
@@ -2429,8 +2429,8 @@
     });
   }
 
-   
-   
+  // T4：设置页有未保存修改时只拦"离开页面"；站内切换不打断——
+  // switchTab 仅切换显示，表单 DOM 与 settingsDraft 都保留
   (function initSettingsLeaveGuard() {
     window.addEventListener("beforeunload", function (e) {
       if (settingsFields.length && settingsDirtyKeys().length) {
@@ -2440,7 +2440,7 @@
     });
   })();
 
-   
+  /* ===== 成本可视化：每日成本柱 + 累计线 + 按模型分布 ===== */
 
   function renderCostChart(data, boxId) {
     var box = el(boxId || "qvq-home-cost");

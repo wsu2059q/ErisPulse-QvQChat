@@ -1,4 +1,4 @@
- 
+/* 侧边栏与管理页组件（模型池/人格/技能/MCP/设置/用量） */
 .qvq-side {
   flex: 0 0 208px;
   align-self: stretch;
@@ -136,7 +136,7 @@
   margin: 0 0 18px 1px;
 }
 
- 
+/* 全局垂直节奏：区块内相邻块统一上下间距 */
 .qvq-tab > * + * {
   margin-top: 14px;
 }
@@ -797,7 +797,7 @@ input[type="radio"] {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
- 
+/* ===== 设置表单系统（工单 T1-T4）：字段元信息/错误红字/滑杆/行编辑器/多选 ===== */
 .qvq-key-tag {
   font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
   font-size: 11px;
@@ -1250,8 +1250,8 @@ input[type="radio"] {
   padding: 0 18px 14px;
 }
 
- 
- 
+/* ===== 触屏适配（无 hover / 粗指针）：操作按钮常显 + 放大点击区域 ===== */
+/* 触屏没有 hover：会话条目的归档/置顶/删除按钮常显（半透明），不依赖悬停 */
 @media (hover: none), (pointer: coarse) {
   .qvq-chat-sacts {
     opacity: 1;
@@ -1288,7 +1288,7 @@ input[type="radio"] {
   .qvq-btn.small {
     padding: 11px 14px;
   }
-   
+  /* 自定义下拉选项：更高的行高便于点选，长文本省略 */
   .qvq-dd-opt {
     padding: 11px 10px;
   }
@@ -1298,7 +1298,7 @@ input[type="radio"] {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-   
+  /* 触屏上的粘滞 hover 高亮清理：点击后不留高亮 */
   .qvq-card:hover,
   .qvq-stat:hover {
     border-color: var(--qvq-bd);

@@ -21,7 +21,7 @@ def test_coerce_rejects_empty_string_number():
 def test_coerce_bool_only_accepts_bool():
     assert QvQConfig.coerce("reply_private", True) == (True, True, None)
     assert QvQConfig.coerce("reply_private", False)[0] is True
- 
+# 字符串 "true" / 数字 1 都不再被当作 bool（bool 是 int 子类，需显式拒绝）
     assert QvQConfig.coerce("reply_private", "true")[0] is False
     assert QvQConfig.coerce("reply_private", 1)[0] is False
 
@@ -33,7 +33,7 @@ def test_coerce_number_string_and_types():
     assert ok is True and coerced == 1.5 and isinstance(coerced, float)
     ok, coerced, _ = QvQConfig.coerce("aggregate_window", 0)
     assert ok is True and coerced == 0.0
- 
+# 非数字字符串 / None / 小数给 int 字段
     assert QvQConfig.coerce("context_limit", "abc")[0] is False
     assert QvQConfig.coerce("context_limit", None)[0] is False
     assert QvQConfig.coerce("context_limit", 1.5)[0] is False
@@ -60,12 +60,12 @@ def test_coerce_select_membership():
 def test_coerce_list_element_coercion():
     ok, coerced, _ = QvQConfig.coerce("wake_prefixes", ["a", 1, " b ", ""])
     assert ok is True and coerced == ["a", "1", "b"]
- 
+# 字符串输入按行拆分（不再整串存进去被逐字符迭代）
     ok, coerced, _ = QvQConfig.coerce("wake_prefixes", "x\ny\n\n z ")
     assert ok is True and coerced == ["x", "y", "z"]
     ok, coerced, _ = QvQConfig.coerce("wake_prefixes", None)
     assert ok is True and coerced == []
- 
+# 其它标量类型拒收
     assert QvQConfig.coerce("wake_prefixes", 5)[0] is False
 
 
@@ -114,6 +114,6 @@ def test_groups_table_covers_all_field_groups():
         for f in dc_fields(QvQConfig)
     }
     assert used <= set(ids)
- 
+# 组序来自 GROUP_META 注册表：模型/触发/对话在前，安全/权限收尾
     assert ids.index("model") < ids.index("chat") < ids.index("security") < ids.index("access")
     assert set(GROUP_META) <= set(ids)

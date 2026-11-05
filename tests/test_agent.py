@@ -217,7 +217,7 @@ def make_capability_registry():
 
 
 async def test_tools_fallback_strip_default():
- 
+# 全池明确无 tool_call：默认 strip——去工具 + system 追加降级提示，仍产出回复
     main = FakeMain()
     pool = CapabilityPool("no")
     runner = AgentRunner(pool, make_capability_registry(), main.cfg)
@@ -244,7 +244,7 @@ async def test_tools_fallback_strict_raises():
 
 
 async def test_tools_fallback_off_keeps_tools():
- 
+# off：旧行为——照常带工具
     main = FakeMain(tools_fallback="off")
     pool = CapabilityPool("no")
     runner = AgentRunner(pool, make_capability_registry(), main.cfg)
@@ -257,7 +257,7 @@ async def test_tools_fallback_off_keeps_tools():
 
 
 async def test_toolcall_needs_added_when_pool_capable():
- 
+# 池内有 tool_call 模型：请求 needs 含 tool_call，工具保留
     main = FakeMain()
     pool = CapabilityPool("yes")
     runner = AgentRunner(pool, make_capability_registry(), main.cfg)
@@ -268,7 +268,7 @@ async def test_toolcall_needs_added_when_pool_capable():
     assert request.tools, "有能力模型时应保留工具"
     assert request.needs == ["tool_call"]
 
- 
+# 显式指定模型时不加 needs（用户点名的模型不被筛选）
     pool2 = CapabilityPool("yes")
     runner2 = AgentRunner(pool2, make_capability_registry(), main.cfg)
     await runner2.run(
@@ -279,7 +279,7 @@ async def test_toolcall_needs_added_when_pool_capable():
 
 
 async def test_runner_dispatch_used_when_available():
- 
+# 池支持 dispatch 时主循环走 dispatch(kind="chat")
     from QvQChat.engine.base import TaskSpec
 
     class DispatchPool(CapabilityPool):
@@ -301,7 +301,7 @@ async def test_runner_dispatch_used_when_available():
 
 
 async def test_non_admin_tool_schemas_filtered():
- 
+# 非管理员不注入无权调用的工具（与 invoke 期 tool_allowed 同口径），admin 工具不出现在 schema
     main = FakeMain()
     registry = make_capability_registry()
     pool = CapabilityPool("yes")
@@ -320,7 +320,7 @@ async def test_admin_sees_tool_schemas():
 
 
 async def test_session_block_injected():
- 
+# system 尾部追加 <session> 会话上下文（平台/类型/目标/触发者）
     main = FakeMain()
     pool = CapabilityPool("yes")
     runner = AgentRunner(pool, make_capability_registry(), main.cfg)

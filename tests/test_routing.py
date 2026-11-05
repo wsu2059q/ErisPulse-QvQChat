@@ -15,20 +15,20 @@ from fakes import FakeSDK, make_config
 
 SMALLTALKS = ["嗯嗯", "哈哈哈哈", "好的", "ok", "😂😂👍", "谢谢啦～"]
 
- 
+# 长文 + 代码块 + 分析关键词（>300 字），quality 的复合强信号
 QUALITY_TEXT = (
     "请帮我分析下面这段代码为什么会报错，并总结可能的修复方案：\n```\n"
     + ("def run():\n    return value\n" * 15)
     + "```\n报错信息是 NameError: name 'value' is not defined，我想知道原因和规避写法。"
 )
 
- 
+# 中庸长度（60-300 字）、无代码/关键词/工具暗示 → balanced
 NEUTRAL_TEXT = (
     "今天下午的会议改到三点了，地点在五楼东侧会议室，参会的人比上次多一些，"
     "记得提前十分钟到场，会上主要围绕下个季度的排期和人员安排过一遍，材料我会前发到群里。"
 )
 
- 
+# 工具任务暗示 → 至少 balanced（不下探 cheap）
 TOOL_HINT_TEXT = "帮我查一下明天北京的天气怎么样，适合出门吗"
 
 
@@ -65,13 +65,13 @@ def fake_engine(pool) -> list:
 
 
 def req(text: str) -> ChatRequest:
- 
+# 带一条前置 system 消息：路由只看首条 user 消息
     return ChatRequest(
         messages=[{"role": "system", "content": "you are a bot"}, {"role": "user", "content": text}]
     )
 
 
- 
+# ===== classify：纯函数分级 =====
 
 
 def test_classify_smalltalk_is_cheap():
@@ -101,13 +101,13 @@ def test_classify_inline_code_is_quality():
 def test_classify_neutral_and_tool_hint_are_balanced():
     assert 60 < len(NEUTRAL_TEXT) < 300
     assert classify(NEUTRAL_TEXT).prefer == "balanced"
- 
+# 工具暗示保底 balanced（短消息也不下探 cheap）
     assert classify(TOOL_HINT_TEXT).prefer == "balanced"
- 
+# 短消息 + 单个分析关键词：升一档到 balanced 而非 quality
     assert classify("帮我总结一下今天的讨论").prefer == "balanced"
 
 
- 
+# ===== TaskSpec.chat_key 兼容 =====
 
 
 def test_taskspec_chat_key_default_and_positional_compat():
@@ -118,16 +118,16 @@ def test_taskspec_chat_key_default_and_positional_compat():
     assert spec.chat_key == "k1"
 
 
- 
+# ===== dispatch：开关与改写 =====
 
 
 async def test_dispatch_routing_disabled_by_default_no_change():
- 
+# make_config 未定义 routing_enabled：getattr 兜底 False，零行为变化
     pool = make_pool()
     requested = fake_engine(pool)
     spec = TaskSpec(kind="chat", chat_key="k1")
     resp = await pool.dispatch(spec, req("嗯嗯"))
-    assert requested == ["plain"] 
+    assert requested == ["plain"]# 池序第一个，prefer 未被改写
     assert resp.model == "p1:plain"
     assert spec.prefer == ""
     assert pool.routing_stats == {}
@@ -139,11 +139,11 @@ async def test_dispatch_routing_enabled_rewrites_to_cheap():
     requested = fake_engine(pool)
     spec = TaskSpec(kind="chat", chat_key="k1")
     resp = await pool.dispatch(spec, req("嗯嗯"))
- 
+# prefer 改写为 cheap → resolve_task_model 按 cost 升序命中 p1:cheap
     assert spec.prefer == "cheap"
     assert requested == ["cheap"]
     assert resp.model == "p1:cheap"
- 
+# 统计与决策日志
     assert pool.routing_stats == {"cheap": 1}
     entry = pool.routing_log[-1]
     assert entry["chat_key"] == "k1"
@@ -158,7 +158,7 @@ async def test_dispatch_routing_quality_labelled_in_log():
     requested = fake_engine(pool)
     spec = TaskSpec(kind="chat", chat_key="k1")
     await pool.dispatch(spec, req(QUALITY_TEXT))
- 
+# V1 中 quality/balanced 仅作标签（排序仍走池序），但分级结果必须留痕
     assert spec.prefer == "quality"
     assert requested == ["plain"]
     assert pool.routing_stats == {"quality": 1}
@@ -168,19 +168,19 @@ async def test_dispatch_routing_quality_labelled_in_log():
 async def test_dispatch_routing_skips_explicit_constraints():
     pool = make_pool(routing_enabled=True, routing_ttl=300)
     requested = fake_engine(pool)
- 
+# 显式 model：不改写
     spec = TaskSpec(kind="chat", model="p1:plain", chat_key="k1")
     await pool.dispatch(spec, req("嗯嗯"))
     assert spec.prefer == "" and requested[-1] == "plain"
- 
+# needs 约束池：不改写
     spec = TaskSpec(kind="chat", needs=["tool_call"], chat_key="k1")
     await pool.dispatch(spec, req("嗯嗯"))
     assert spec.prefer == "" and requested[-1] == "smart"
- 
+# 已有 prefer：不改写（也不重复统计）
     spec = TaskSpec(kind="chat", prefer="cheap", chat_key="k1")
     await pool.dispatch(spec, req(NEUTRAL_TEXT))
     assert spec.prefer == "cheap" and requested[-1] == "cheap"
- 
+# 非 chat 任务（compact 等）不参与路由
     spec = TaskSpec(kind="compact", chat_key="k1")
     await pool.dispatch(spec, req("嗯嗯"))
     assert spec.prefer == "" and requested[-1] == "plain"
@@ -201,7 +201,7 @@ async def test_dispatch_routing_multimodal_first_user_text():
     await pool.dispatch(spec, request)
     assert spec.prefer == "cheap"
     assert requested == ["cheap"]
- 
+# 无文本分片（纯图片）：跳过路由
     spec2 = TaskSpec(kind="chat", chat_key="k2")
     request2 = ChatRequest(
         messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "u"}}]}]
@@ -210,7 +210,7 @@ async def test_dispatch_routing_multimodal_first_user_text():
     assert spec2.prefer == ""
 
 
- 
+# ===== TTL 缓存 =====
 
 
 async def test_routing_ttl_cache_hit_reuses_classification():
@@ -219,11 +219,11 @@ async def test_routing_ttl_cache_hit_reuses_classification():
     key = TaskSpec(kind="chat", chat_key="k1")
     await pool.dispatch(key, req(QUALITY_TEXT))
     assert pool.routing_log[-1]["prefer"] == "quality"
- 
+# 同会话短时间内换寒暄消息：命中缓存，不重复分级
     await pool.dispatch(TaskSpec(kind="chat", chat_key="k1"), req("嗯嗯"))
     assert pool.routing_log[-1]["prefer"] == "quality"
     assert pool.routing_stats == {"quality": 2}
- 
+# 不同会话互不影响
     await pool.dispatch(TaskSpec(kind="chat", chat_key="k2"), req("嗯嗯"))
     assert pool.routing_log[-1]["prefer"] == "cheap"
     assert pool.routing_stats == {"quality": 2, "cheap": 1}
@@ -232,7 +232,7 @@ async def test_routing_ttl_cache_hit_reuses_classification():
 async def test_routing_ttl_expiry_reclassifies():
     pool = make_pool(routing_enabled=True, routing_ttl=300)
     fake_engine(pool)
- 
+# 伪造已过期的缓存条目
     pool.routing_cache["k1"] = ("quality", "stale", time.time() - 301)
     spec = TaskSpec(kind="chat", chat_key="k1")
     await pool.dispatch(spec, req("嗯嗯"))

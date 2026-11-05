@@ -42,7 +42,7 @@ class FakeModuleManager:
     def __init__(self, catalog=None, module_classes=None):
         self._catalog = catalog or {}
         self._instances = {}
-        self._module_classes = dict(module_classes or {}) 
+        self._module_classes = dict(module_classes or {})# 模块注册名 → 模块类（插件设置端点读 ConfigClass 用）
         self.calls = []
         self.handlers = {}
 
@@ -97,7 +97,7 @@ class FakeLifecycle:
 
     async def emit(self, event, data=None, **kwargs):
         self.emitted.append((event, data))
- 
+# 与框架一致：emit 等待全部已注册处理器执行完毕（异常吞掉，不改写载荷）
         for registered_event, handler in list(self.registered):
             if registered_event != event:
                 continue
@@ -317,7 +317,7 @@ class FakeSDK:
         self.client = FakeClient()
         self.adapter = FakeAdapterManager()
         self.interaction = SimpleNamespace(make_key=lambda event: "fake:interaction:key")
-        self.config_sets = [] 
+        self.config_sets = []# 兼容旧断言（与 config.sets 同一列表）
         self.config = FakeConfig()
         self.config.sets = self.config_sets
 
@@ -353,7 +353,7 @@ def make_config(**overrides):
         context_compress_tokens=128000,
         tool_notice_mode="brief",
         aggregate_window=5.0,
- 
+# H2 分级窗口缺省走回退（0=用 aggregate_window），让既有按 aggregate_window 调时的测试保持语义
         debounce_group_seconds=0.0,
         debounce_mention_seconds=0.0,
         humanize_echo_filter=True,

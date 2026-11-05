@@ -69,7 +69,7 @@ async def test_seed_marks_bot_rows():
     seeded = await main._seed_history(ev)
     entry = seeded[0]
     assert entry["role"] == "assistant"
-    assert entry["content"] == "📢 框架更新情况说明" 
+    assert entry["content"] == "📢 框架更新情况说明"# 标签不内联，避免被模型复读
     assert texts.t("seed_bot_note") not in entry["content"]
 
 
@@ -85,7 +85,7 @@ async def test_seed_unknown_sender_fallback():
 
 
 async def test_seed_falls_back_to_event_history():
-    main = make_main() 
+    main = make_main()# FakeSDK 无 transcript → 走降级路径
     ev = FakeChatEvent(text="捏", group=True, group_id="1", user_id="u9")
 
     async def history(n):
@@ -144,7 +144,7 @@ async def test_nickname_cache_roundtrip():
     ev = FakeChatEvent(text="捏", group=True, group_id="1", user_id="u9")
     await main._seed_history(ev)
     await main._seed_history(ev)
-    assert len(NickAdapter.calls) == 1 
+    assert len(NickAdapter.calls) == 1# 第二次走缓存
 
 
 async def test_persist_sender_group():
@@ -187,7 +187,7 @@ async def test_scene_attribution_note_injected():
     await asyncio.sleep(0.15)
     assert main.captured
     system = main.captured[0]["system"]
- 
+# 当前发言者明确注入，且提示不要把历史发言者当作当前发言者
     assert "活塞头" in system and "u2" in system
     assert texts.t("scene_isolation_note")[:8] in system
 

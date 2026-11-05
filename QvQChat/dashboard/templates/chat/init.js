@@ -211,7 +211,7 @@
       reader.onload = function () {
         var data;
         try { data = JSON.parse(reader.result); } catch (e) { toast("invalid json", true); return; }
-        // 导入是破坏性操作：先列出将影响的数据区段再继续
+        // 导入是破坏性操作
         var sections = ["providers", "chain", "personas", "tasks", "memory", "mcp", "skills", "config", "models"].filter(function (k) { return data && data[k]; });
         confirmDialog(t("backup_import_confirm").replace("{sections}", sections.join(", ") || "-")).then(function (yes) {
           if (!yes) return;
@@ -225,8 +225,7 @@
     };
   }
 
-  // 数据引导：鉴权就绪后才拉取/触发加载（initApp 只绑交互，二者分离让
-  // 鉴权链在途时界面已可操作，而不是整页假死）
+  // 数据引导：鉴权就绪后才拉取/触发加载
   function bootData() {
     if (window.__qvq_booted__) return;
     window.__qvq_booted__ = true;
@@ -237,8 +236,7 @@
     loadOverview();
   }
 
-  // iOS 软键盘不改变 100vh/100dvh：按 visualViewport 实际高度收缩应用容器，
-  // 保证 composer（输入框）在键盘弹起时仍可见
+  // iOS 软键盘不改变 100vh/100dvh：按 visualViewport 实际高度收缩应用容器
   (function fitAppToViewport() {
     var vv = window.visualViewport;
     var app = el("qvq-app");

@@ -17,12 +17,12 @@ from .compactor import Compactor, context_tokens, estimate_tokens, extract_facts
 
 CONV_PREFIX = "QvQChat:conv:"
 ROUTES_KEY = "QvQChat:routes"
- 
+# 会话索引（单键 list[chat_key]，list_sessions/create 免全库 keys() 扫描）
 CONV_INDEX_KEY = "QvQChat:conv_index"
- 
+# 用户→群会话倒排（recent_user_messages 免全库扫描）
 USER_SEEN_PREFIX = "QvQChat:user_seen:"
 USER_SEEN_MAX = 20
- 
+# H6 记忆回捞提示的最近使用时间（uid → ts）
 RECALL_LAST_PREFIX = "QvQChat:recall_last:"
 UPLOAD_DIR = Path("data/QvQChat/uploads")
 
@@ -34,7 +34,7 @@ def _translation_values(key: str) -> tuple[str, ...]:
     return tuple(str(value) for value in table.values() if value)
 
 
- 
+# 历史回填曾把标注写进 assistant 正文，模型会复读；读取时统一清理旧数据
 SEED_BOT_PREFIXES = tuple(f"[{value}] " for value in _translation_values("seed_bot_note"))
 SEED_HEADER_PREFIXES = tuple(f"{value}\n" for value in _translation_values("seed_history_header"))
 
@@ -67,14 +67,14 @@ class ConversationService:
         self.sdk = main.sdk
         self.config = main.cfg
         self.compactor = Compactor(main)
- 
+# 模块级注入 token 估算配置
         tokens.configure(self.config)
- 
+# 上下文预算装填器
         self.packer = ContextPacker()
- 
+# summary 异步合并的 per-chat 锁与待合并队列
         self._summary_locks: dict[str, asyncio.Lock] = {}
         self._summary_pending: dict[str, list[str]] = {}
- 
+# 启动后首次访问会话索引时做一次全量对账
         self._index_ready = False
 
     @property
@@ -117,7 +117,7 @@ class ConversationService:
                 continue
             cleaned.append(entry)
         state["contexts"] = cleaned
- 
+# facts 列表懒迁移
         if not isinstance(state.get("facts"), list):
             state["facts"] = []
         state.setdefault("persona", None)
@@ -137,7 +137,7 @@ class ConversationService:
         self.sdk.storage.set(CONV_PREFIX + chat_key, state)
         self._index_add(chat_key)
 
- 
+# ===== 会话索引（单键 list[chat_key]，免全库 keys() 扫描） =====
 
     def _index_load(self) -> list[str] | None:
         """读索引；损坏/缺失返回 None（调用方回退 keys() 扫描自愈）。"""
@@ -276,7 +276,7 @@ class ConversationService:
         self._save(chat_key, state)
         return True
 
- 
+# ===== 用户→群会话倒排（recent_user_messages 免全库扫描） =====
 
     def _user_seen(self, uid: str) -> list[dict] | None:
         """读倒排；损坏/缺失返回 None（调用方回退旧全扫）。"""
@@ -370,7 +370,7 @@ class ConversationService:
         """读会话布尔标记（缺省 False），与 set_flags 的 dict 形态配对。"""
         return bool(self._state(chat_key).get(name))
 
- 
+# ===== 会话成员白名单与跨会话路由 =====
 
     def routes(self) -> dict:
         data = self.sdk.storage.get(ROUTES_KEY, {})
@@ -519,7 +519,7 @@ class ConversationService:
         self._spawn_task(self._merge_summary(chat_key, cap))
 
     async def _merge_summary(self, chat_key: str, cap: int) -> None:
- 
+# per-chat 锁防并发合并互相覆盖
         async with self._summary_lock(chat_key):
             pending = self._summary_pending.pop(chat_key, [])
             if not pending:
@@ -534,10 +534,10 @@ class ConversationService:
             if merged:
                 self._write_summary(chat_key, merged[:cap])
             else:
- 
+# LLM 合并失败：维持/刷新兜底结果
                 self._write_summary(chat_key, self._fallback_merge(current, joined, cap))
 
- 
+# ===== 会话事实（facts） =====
 
     def facts_of(self, chat_key: str) -> list[str]:
         facts = self._state(chat_key).get("facts")
@@ -596,7 +596,7 @@ class ConversationService:
             self._state(chat_key)
             return chat_key
         prefix = make_chat_key(platform, detail_type, "")
- 
+# 改读会话索引，免全库 keys() 扫描（首访自动对账补齐旧会话）
         existing = set(self._session_keys())
         chat_key = prefix + "web"
         if chat_key in existing and (self._state(chat_key).get("contexts") or self._state(chat_key).get("summary")):
@@ -635,11 +635,11 @@ class ConversationService:
 
     def list_sessions(self) -> list[dict]:
         sessions: list[dict] = []
- 
+# 读会话索引遍历（每键仍整读 state 元数据，但省掉全库 keys() 枚举+过滤）
         for chat_key in dict.fromkeys(self._session_keys()):
             raw = self.sdk.storage.get(CONV_PREFIX + chat_key, None)
             if not isinstance(raw, dict):
- 
+# 索引陈旧条目（存储键被外部删除）：跳过，下次对账清出
                 continue
             state = self._normalize_state(raw)
             preview = ""
@@ -672,7 +672,7 @@ class ConversationService:
 
     def recent_user_messages(self, user_id: str, exclude_chat_key: str = "", limit: int = 6) -> list[dict]:
         needle = f"({user_id}):"
- 
+# 倒排优先取候选 chat_key（新在前）；缺失/损坏回退旧 keys() 全扫（旧数据兼容）
         seen = self._user_seen(user_id)
         if seen is not None:
             candidates = [item["chat_key"] for item in seen]
@@ -735,7 +735,7 @@ class ConversationService:
 
         await self.compact_if_needed(chat_key)
         contexts = self.get_contexts(chat_key)
- 
+# 发送级轮窗口：只携带最近 N 轮，历史本身不动
         max_turns = int(getattr(self.config, "max_context_turns", 0) or 0)
         if max_turns > 0:
             from .compactor import split_turns, merge_turns
@@ -743,7 +743,7 @@ class ConversationService:
             turns = split_turns(contexts)
             if len(turns) > max_turns:
                 contexts = merge_turns(turns[-max_turns:])
- 
+# 进入时 contexts 为空且本次将做 seed → 首次接触（不依赖 seed 结果非空）
         first_contact = not contexts and seed_provider is not None
         seeded_done = False
         if not contexts and seed_provider is not None:
@@ -768,7 +768,7 @@ class ConversationService:
         recalled: list = []
         if memory is not None:
             recalled = memory.recall(chat_key, query=self._text_of(text), limit=int(getattr(self.config, "memory_recall", 6))) or []
- 
+# Lorebook 触发扫描窗口：contexts 尾部 N 条文本 + 本次消息（供 kb 段触发式注入）
         window = max(0, int(getattr(self.config, "kb_trigger_window", 6) or 0))
         kb_texts = [self._text_of(c.get("content")) for c in contexts[-window:]] + [self._text_of(text)]
         parts = self.build_system_parts(
@@ -784,8 +784,8 @@ class ConversationService:
         if recalled:
             lines = "\n".join(f"- {entry.get('content', '')}" for entry in recalled)
             parts.append(SystemPart("memory", "Related memories:\n" + lines))
- 
- 
+# H6 记忆回捞钩子：相关记忆命中且距上次提及超过冷却时，允许自然带一句「记得你」；
+# 冷却内/非对方先开口的回合不提旧事（禁止沉默期主动翻旧账）
         if recalled and self._recall_hint_allowed(chat_key, text, sender_id or cross_user_id):
             parts.append(SystemPart("recall_hint", texts.t("recall_hint_note")))
             try:
@@ -801,7 +801,7 @@ class ConversationService:
             except Exception:
                 caps = {}
             if caps.get("vision") is False:
- 
+# 对话路径：识别失败也要给模型一个明确的"看不见"，而不是静默丢图
                 described = await pool.describe_images(images, on_error="text") if pool else []
                 lines = [f"[image {i + 1}] {d}" for i, d in enumerate(described) if d]
                 if lines:
@@ -812,7 +812,7 @@ class ConversationService:
                 parts_list: list = [{"type": "text", "text": text}] if text else []
                 parts_list += [{"type": "image_url", "image_url": {"url": url}} for url in images[:3]]
                 user_msg["content"] = parts_list
- 
+# 按选中模型 context_length 走 ContextPacker 装填（默认 off 保持现状）
         model_info = self._resolve_chat_model()
         model_length = 0
         if isinstance(model_info, dict):
@@ -850,7 +850,7 @@ class ConversationService:
         if persist:
             self.append_user(chat_key, user_msg["content"], sender_id=self._persist_sender(chat_key, cross_user_id, sender_id))
         if overflow:
- 
+# 装填溢出：异步压缩存储侧历史（reason="budget"），本次请求先用装填结果
             self._spawn_task(self.compact_budget(chat_key))
         return {
             "system": system,
@@ -878,7 +878,7 @@ class ConversationService:
         platform, detail_type, _ = parse_chat_key(chat_key)
         if platform == DASHBOARD_PLATFORM:
             return "dashboard"
- 
+# 群聊也持久化发言者 uid（此前恒为空串，导致历史消息无法归因）
         return sender_id or (cross_user_id if detail_type != "group" else "")
 
     def finalize(
@@ -907,7 +907,7 @@ class ConversationService:
         summary = await self.compactor.summarize_entries(removed)
         if not summary:
             return
- 
+# 分离 <facts> 段（宽松解析，失败不入库）
         clean, facts = extract_facts(summary)
         if facts and getattr(self.config, "facts_extract", True):
             self.append_facts(chat_key, facts)
@@ -963,7 +963,7 @@ class ConversationService:
         kb_texts: list[str] | None = None,
     ) -> list[SystemPart]:
         """系统提示词按语义拆分为部件（供 ContextPacker 按优先级装填）。"""
- 
+# 首行人格身份认知 + 主人称呼（并入 persona 部件，required 保位）
         persona_text = (
             texts.t("persona_identity", name=str(persona.get("name") or ""), id=str(persona.get("id") or ""))
             + "\n" + persona["system"] + "\n" + utils.time_line()
@@ -975,8 +975,8 @@ class ConversationService:
             SystemPart("persona", persona_text, required=True),
             SystemPart("capability", CAPABILITY_PROMPT + "\n" + texts.t("system_brevity"), required=True),
         ]
- 
- 
+# 扩展字段独立部件（PRIORITY 未收录 persona_extra → pack 兜底按 extra 优先级稳定排序，
+# 插在 extra 类部件之前；不预算时按列表顺序紧跟 persona 呈现）
         persona_extra = self._persona_extra_text(persona)
         if persona_extra:
             parts.insert(1, SystemPart("persona_extra", persona_extra))
@@ -997,7 +997,7 @@ class ConversationService:
             facts = self.facts_of(chat_key)
             if facts:
                 parts.append(SystemPart("facts", texts.t("facts_header") + "\n" + "\n".join(f"- {f}" for f in facts)))
- 
+# 跨会话用户画像注入（profile_user = platform:uid；PRIORITY 位于 facts 与 memory 之间）
         if profile_user and getattr(self.config, "profile_enabled", True):
             lines = self.profile.digest(profile_user)
             if lines:
@@ -1025,7 +1025,7 @@ class ConversationService:
             tools_hint = [str(t) for t in mcp_tools if str(t)]
             if tools_hint:
                 parts.append(SystemPart("extra", texts.t("dashboard_mcp_hint", tools=", ".join(tools_hint))))
- 
+# 生态能力清单：只列所有人可用的 eco 工具，避免模型"不知道装了表情包模块"
         eco = getattr(self.main, "eco", None)
         if eco is not None and hasattr(eco, "safe_tool_hint"):
             try:
@@ -1034,7 +1034,7 @@ class ConversationService:
                 hint = ""
             if hint:
                 parts.append(SystemPart("eco_hint", texts.t("eco_system_note") + "\n" + hint))
- 
+# 模块贡献的使用建议（qvq_extensions.prompts）：只给判断依据，是否调用由 AI 自行决定
         if eco is not None and hasattr(eco, "external_prompts"):
             try:
                 advice = eco.external_prompts()
@@ -1047,9 +1047,9 @@ class ConversationService:
                 ))
         if getattr(self.config, "kb_auto_inject", True) and kb_query:
             kb = getattr(self.main, "knowledge", None)
- 
+# 可见域：全局条目 + 本会话/本适配器私有条目（AI 默认写会话级，跨会话共享需显式声明）
             hits = kb.search(kb_query, top_k=int(getattr(self.config, "kb_top_k", 2) or 0), viewer=chat_key) if kb else []
- 
+# Lorebook：最近上下文命中触发条目优先排前合并注入（[triggered] 标记，同条目去重）
             lore = kb.triggered(kb_texts or [], viewer=chat_key) if (kb and kb_texts) else []
             hit_ids = {e.get("id") for e in lore}
             hits = [h for h in hits if h.get("id") not in hit_ids]
@@ -1075,7 +1075,7 @@ class ConversationService:
         mcp_tools: list[str] | None = None,
         kb_query: str = "",
     ) -> str:
- 
+# 兼容层：原字符串拼接入口改为部件 join
         parts = self.build_system_parts(
             persona,
             scene=scene,
@@ -1149,7 +1149,7 @@ class ConversationService:
             temperature=0.3,
         )
         try:
- 
+# 标题生成迁 dispatch(kind="title", prefer="cheap")
             dispatch = getattr(pool, "dispatch", None)
             if callable(dispatch):
                 resp = await dispatch(TaskSpec(kind="title", prefer="cheap"), request)

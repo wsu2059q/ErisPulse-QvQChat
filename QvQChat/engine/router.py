@@ -14,8 +14,8 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
-SHORT_MAX = 60 
-LONG_MIN = 300 
+SHORT_MAX = 60# < 60 字偏 cheap
+LONG_MIN = 300# > 300 字偏 quality
 
 
 class RouteDecision(NamedTuple):
@@ -23,7 +23,7 @@ class RouteDecision(NamedTuple):
     reason: str
 
 
- 
+# 寒暄/短确认词表：整条消息（去表情/标点/空白并折叠重复字符后）命中即 cheap
 _SMALLTALK = {
     "嗯", "哦", "噢", "啊", "哦豁", "em", "e", "嗯哼",
     "哈", "嘿", "嘻", "呵", "草", "泪", "乐", "绷不住",
@@ -37,7 +37,7 @@ _SMALLTALK = {
     "6", "9", "23", "666", "233", "hhh", "hh", "lol", "xswl",
 }
 
- 
+# 疑问/分析类关键词：命中升档（每词 +2，累计封顶 +4）
 _UPGRADE_KEYWORDS = (
     "为什么", "怎么回事", "怎么办", "如何",
     "分析", "总结", "归纳", "概括", "对比", "权衡", "评审", "优化", "重构", "排查",
@@ -47,11 +47,11 @@ _UPGRADE_KEYWORDS = (
     "review", "optimize", "fix", "error", "exception", "crash",
 )
 
- 
+# 工具任务暗示：命中则至少 balanced（保底不下探 cheap）
 _TOOL_HINTS = ("查", "搜", "打开", "找", "检索", "翻一下", "看下", "看一下",
                "search", "find", "look up", "lookup", "open", "check")
 
- 
+# 表情符号区间（emoji 杂项区 + 常用符号区 + 变体选择符/零宽连接符）
 _EMOJI_RE = re.compile(
     "[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200D\u303D\u3297\u3299]+"
 )

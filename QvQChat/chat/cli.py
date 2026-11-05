@@ -25,7 +25,7 @@ class CliMixin:
             elif sub in ("reset", "重置"):
                 self.sessions.reset(chat_key)
                 reply = texts.t("reset_done")
- 
+# opening_on_reset=True 时连开场白标记一起清，下次对话重新发开场白
                 if getattr(self.cfg, "opening_on_reset", False) and self.sessions.get_flag(chat_key, "opening_sent"):
                     self.sessions.set_flags(chat_key, {"opening_sent": False})
                     reply += "\n" + texts.t("opening_sent")
@@ -117,7 +117,7 @@ class CliMixin:
             pid = tokens[1]
             persona = self.personas.get(pid)
             if persona.get("id") == pid:
- 
+# KV 绑定为唯一事实源，不再镜像写会话 state.persona（已废弃）
                 self.personas.bind(chat_key, pid)
                 await event.reply(texts.t("persona_set", id=pid))
             else:
@@ -129,7 +129,7 @@ class CliMixin:
             lines.append(f"{persona.get('id')}  {persona.get('name', '')}{mark}")
         await event.reply("\n".join(lines))
 
- 
+# ===== 记忆透明可控：查看 + 分级清空（管理员 + confirm 词） =====
 
     @staticmethod
     def _profile_user_of(event, chat_key: str, user_id: str) -> str:
@@ -188,7 +188,7 @@ class CliMixin:
             await event.reply(texts.t("memories_cleared", target=kind, count=removed))
             return
         if kind == "facts":
- 
+# 直接清会话 state.facts（service 未暴露公开清空方法；_state/_save_no_touch 为包内既有内部 seam）
             state = self.sessions._state(chat_key)
             count = len(state.get("facts") or [])
             state["facts"] = []

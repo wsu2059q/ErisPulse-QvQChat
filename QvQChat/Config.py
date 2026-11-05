@@ -6,8 +6,8 @@ from ErisPulse.Core.Bases import BaseConfig
 
 from . import texts
 
- 
- 
+# 设置分组注册表：组 id → 展示顺序（替代"组内首字段 order 当组序"的错误语义）。
+# 前端组标签键约定：group_{id}（core.js i18n）。
 GROUP_META: dict[str, dict] = {
     "model": {"order": 1},
     "trigger": {"order": 2},
@@ -58,7 +58,7 @@ def _desc(
     if dangerous:
         ui["dangerous"] = True
     if items:
- 
+# list 字段的已知枚举来源（"tools" / "skills"）：前端渲染 checkbox 多选
         ui["items"] = items
     return {"description": {"i18n": f"QvQChat.{key}", "default": text}, "ui": ui}
 
@@ -114,7 +114,7 @@ class QvQConfig(BaseConfig):
     sensitive_paths: list[str] = field(default_factory=lambda: ["config", ".env", "*.key", "*.pem", "*.db", "*.sqlite*"], metadata=_desc("sensitive_paths", "敏感文件/目录匹配（非管理员不可读，支持通配）", "security", 11, "list", dangerous=True))
     self_config: bool = field(default=True, metadata=_desc("self_config", "允许智能体自我配置：注册 manage_models / manage_mcp / manage_config 工具（仅管理员可用），配套内置技能教它怎么用；关闭即全部下线", "security", 12, "switch", dangerous=True))
 
- 
+# chat 组 31 字段，order 1..31 无重复（语义分块见前端 settings 小节标题；24-31 为 A2 交接的上下文工程/事实键）
     context_limit: int = field(default=30, metadata=_desc("context_limit", "每会话携带对话上下文条数上限", "chat", 1, "number"))
     history_seed: int = field(default=20, metadata=_desc("history_seed", "冷启动时从会话收件箱回填的历史条数", "chat", 2, "number"))
     context_strategy: str = field(default="auto", metadata=_desc("context_strategy", "上下文压缩策略：auto 超限旧轮摘要为要点 / truncate 直接丢弃旧轮 / off 只做工具输出瘦身不压缩历史", "chat", 3, "select", ["auto", "truncate", "off"]))
@@ -147,7 +147,7 @@ class QvQConfig(BaseConfig):
     facts_extract: bool = field(default=True, metadata=_desc("facts_extract", "对话中自动抽取长期事实要点（用户偏好/约定等），注入后续会话", "chat", 30, "switch"))
     facts_max: int = field(default=100, metadata=_desc("facts_max", "每会话保留的事实要点条数上限（超限保最新）", "chat", 31, "number"))
 
- 
+# 投递拟人化（rhythm.py / delivery.py）
     sentence_split: bool = field(default=False, metadata=_desc("sentence_split", "段内超长时按句切分（拟人节奏，关闭则仅按段落切分）", "chat", 32, "switch"))
     sentence_max: int = field(default=80, metadata=_desc("sentence_max", "句级切分时每段打包的字数上限", "chat", 33, "number"))
     typing_speed: int = field(default=25, metadata=_desc("typing_speed", "拟人打字速度（字/秒），决定段间延迟时长", "chat", 34, "number"))
@@ -162,7 +162,7 @@ class QvQConfig(BaseConfig):
     retry_delay: float = field(default=1.5, metadata=_desc("retry_delay", "重试退避基数（秒），指数递增", "chat", 43, "number"))
     pending_send_max: int = field(default=10, metadata=_desc("pending_send_max", "发送失败待重发队列每会话上限（FIFO 淘汰）", "chat", 44, "number"))
 
- 
+# 人格开场白
     opening_enabled: bool = field(default=True, metadata=_desc("opening_enabled", "新会话首次接触时自动发送人格开场白（随机一条；Dashboard 平台不触发）", "chat", 45, "switch"))
     opening_on_seed: bool = field(default=False, metadata=_desc("opening_on_seed", "冷启动历史回填发生时也发送开场白（默认关闭：回填说明已有过对话，不再打招呼）", "chat", 46, "switch"))
     opening_on_reset: bool = field(default=False, metadata=_desc("opening_on_reset", "/qvq reset 重置会话时同时清除开场白已发标记，下次对话重新发送开场白", "chat", 47, "switch"))
@@ -178,12 +178,12 @@ class QvQConfig(BaseConfig):
     forward_output_chars: int = field(default=500, metadata=_desc("forward_output_chars", "转发卡「执行过程」节点输出摘要的截断字符数（默认 500，旧值 180 常显示不全；0 恢复默认）", "chat", 60, "number"))
     reply_quote: str = field(default="on", metadata=_desc("reply_quote", "引用回复：常规回复引用触发消息（分段发送仅首段引用；平台不支持引用时自动跳过）。工具发送的引用由模型经 send_message 的 reply_to 显式指定", "chat", 61, "select", ["on", "off"]))
 
- 
+# 实例重启恢复（chat/recovery.py）
     recovery_enabled: bool = field(default=True, metadata=_desc("recovery_enabled", "实例重启后自动恢复被中断的回复", "chat", 50, "switch"))
     recovery_min_age: int = field(default=90, metadata=_desc("recovery_min_age", "标记距今超过该秒数才恢复（防误判正常在跑）", "chat", 51, "number"))
     replay_on_boot: bool = field(default=True, metadata=_desc("replay_on_boot", "启动时重放发送失败队列", "chat", 52, "switch"))
 
- 
+# 拟人化（humanize 组：防抖分级/回声过滤，H2）
     debounce_mention_seconds: float = field(default=1.0, metadata=_desc("debounce_mention_seconds", "被 @/前缀命中触发时的防抖窗口（秒）：窗口内后续消息并入本次请求；0 使用群聊窗口", "humanize", 1, "number"))
     debounce_group_seconds: float = field(default=2.0, metadata=_desc("debounce_group_seconds", "普通群消息的聚合窗口（秒）；0 使用 aggregate_window", "humanize", 2, "number"))
     humanize_echo_filter: bool = field(default=True, metadata=_desc("humanize_echo_filter", "丢弃适配器回投的自身出站消息（防回声在防抖窗口内触发二次决策）", "humanize", 3, "switch"))
@@ -199,7 +199,7 @@ class QvQConfig(BaseConfig):
     memory_max: int = field(default=200, metadata=_desc("memory_max", "每会话长期记忆条数上限", "memory", 1, "number"))
     memory_recall: int = field(default=6, metadata=_desc("memory_recall", "每次对话注入的相关记忆条数上限", "memory", 2, "number"))
 
- 
+# 跨会话用户画像（conversation/profile.py：固化循环 + 注入）
     profile_enabled: bool = field(default=True, metadata=_desc("profile_enabled", "跨会话用户画像：定时聚合该用户各会话 facts/长期记忆，提炼为 traits/preferences 并注入系统提示", "memory", 3, "switch"))
     profile_consolidate_hours: int = field(default=6, metadata=_desc("profile_consolidate_hours", "画像固化定时任务间隔（小时），0 关闭定时固化", "memory", 4, "number"))
     profile_inject: int = field(default=8, metadata=_desc("profile_inject", "注入系统提示的画像条数上限", "memory", 5, "number"))
@@ -220,7 +220,7 @@ class QvQConfig(BaseConfig):
     tool_select_ttl: int = field(default=180, metadata=_desc("tool_select_ttl", "工具选择结果的会话级缓存秒数（同一话题连续回合跳过小模型调用，0 不缓存）", "tools", 12, "number"))
     tool_select_timeout: float = field(default=3.0, metadata=_desc("tool_select_timeout", "工具选择调用超时（秒），超时回退全量注入", "tools", 13, "number"))
 
- 
+# 内置联网（搜索 + 网页阅读；站点专有解析交给生态模块，见 docs/ecosystem-web.md）
     web_tools_enabled: bool = field(default=True, metadata=_desc("web_tools_enabled", "内置联网工具：注册 web_search（DuckDuckGo 搜索）与 web_fetch（网页转文本）", "tools", 14, "switch"))
     web_timeout: int = field(default=20, metadata=_desc("web_timeout", "联网请求超时（秒）", "tools", 15, "number"))
     web_search_results: int = field(default=5, metadata=_desc("web_search_results", "web_search 返回结果条数", "tools", 16, "number"))
@@ -239,7 +239,7 @@ class QvQConfig(BaseConfig):
 
     mcp_timeout: int = field(default=30, metadata=_desc("mcp_timeout", "MCP 请求超时（秒）", "mcp", 1, "number"))
 
- 
+# 内置 ErisPulse 文档（不经 MCP：按已安装框架版本自动同步框架仓库 docs/ 并本地检索）
     docs_builtin: bool = field(default=True, metadata=_desc("docs_builtin", "内置 ErisPulse 文档检索：注册 search_erispulse_docs 等工具，AI 写模块/查 API 时先查证文档", "mcp", 2, "switch"))
     docs_auto_sync: bool = field(default=True, metadata=_desc("docs_auto_sync", "文档自动同步：启动时与每日检查，本地文档版本与已安装框架版本不一致时自动下载对应 tag 的文档包（网络失败保留旧版，不阻塞）", "mcp", 3, "switch"))
     docs_lang: str = field(default="zh-CN", metadata=_desc("docs_lang", "文档语言目录（框架仓库 docs/ 下的语言目录，如 zh-CN / en / ja）", "mcp", 4, "select", ["zh-CN", "zh-TW", "en", "ja", "ru"]))
@@ -259,7 +259,7 @@ class QvQConfig(BaseConfig):
     kb_top_k: int = field(default=2, metadata=_desc("kb_top_k", "自动注入的知识库片段数上限", "kb", 2, "number"))
     kb_chunk_size: int = field(default=400, metadata=_desc("kb_chunk_size", "知识库条目检索分块的目标字符数", "kb", 3, "number"))
     kb_chunk_overlap: int = field(default=50, metadata=_desc("kb_chunk_overlap", "知识库相邻分块的重叠字符数", "kb", 4, "number"))
- 
+# Lorebook 世界书（触发式注入）+ 语义检索（KB 侧向量层）
     kb_triggers_enabled: bool = field(default=True, metadata=_desc("kb_triggers_enabled", "世界书触发注入：条目配置 triggers 关键词后，最近对话命中即注入该条目（SillyTavern World Info 模式，与检索注入并存）", "kb", 5, "switch"))
     kb_trigger_window: int = field(default=6, metadata=_desc("kb_trigger_window", "世界书触发扫描的最近消息条数（含本次消息）", "kb", 6, "number"))
     kb_cooldown_min: int = field(default=30, metadata=_desc("kb_cooldown_min", "世界书条目新添加时的默认触发冷却分钟数（冷却期内不再注入，条目级 cooldown_min 可覆盖；0 不冷却）", "kb", 7, "number"))
@@ -270,7 +270,7 @@ class QvQConfig(BaseConfig):
     skills_disabled: list[str] = field(default_factory=list, metadata=_desc("skills_disabled", "禁用的技能名列表", "skills", 2, "list", items="skills"))
     skill_dev: bool = field(default=True, metadata=_desc("skill_dev", "模块开发能力：启用内置 erispulse-dev 技能（开发流程/约定）与 reload_module 热加载工具（仅管理员）", "skills", 3, "switch"))
 
- 
+# 群聊参与决策（插件化扩展点；默认关闭：装插件≠放行）
     participation_enabled: bool = field(default=False, metadata=_desc("participation_enabled", "群聊参与决策：未被 @/前缀命中时问询生态插件的 qvq_decision 服务判断是否插话（默认关闭，需自行开启）", "participation", 1, "switch", dangerous=True))
     participation_groups: list[str] = field(default_factory=list, metadata=_desc("participation_groups", "参与决策生效的群白名单（群号或 platform:group:gid，支持通配），留空表示全部群", "participation", 2, "list"))
     participation_groups_exclude: list[str] = field(default_factory=list, metadata=_desc("participation_groups_exclude", "参与决策排除的群黑名单，优先级高于白名单", "participation", 3, "list"))
@@ -278,7 +278,7 @@ class QvQConfig(BaseConfig):
     participation_cooldown_seconds: int = field(default=300, metadata=_desc("participation_cooldown_seconds", "同群两次发言的最小间隔秒数（0 不限），冷却期内不再插话", "participation", 5, "number"))
     participation_proactive_daily_limit: int = field(default=3, metadata=_desc("participation_proactive_daily_limit", "全局每日主动发言（speak 服务）上限（0 不限），插话不计入", "participation", 6, "number"))
 
- 
+# ===== 类型校验 seam：三个写入方（dashboard config_set / AI 工具 manage_config / 导入回灌）共用 =====
 
     @classmethod
     def field_map(cls) -> dict:
@@ -328,7 +328,7 @@ class QvQConfig(BaseConfig):
             if isinstance(value, str):
                 text = value.strip()
                 if not text:
- 
+# 存量 bug 止血：清空数字字段不再落 ""（运行时 int("") 会崩）
                     return False, None, texts.t("config_err_number", name=key)
                 try:
                     value = float(text)
@@ -368,7 +368,7 @@ class QvQConfig(BaseConfig):
                 return True, value, None
             return False, None, texts.t("config_err_dict", name=key)
 
- 
+# str（含 select：校验成员）
         if value is None:
             value = ""
         if not isinstance(value, str):

@@ -29,10 +29,10 @@ def test_build_sections_keeps_tool_group_compact():
     process = sections[0]
     assert process.startswith(texts.t("forward_process_title"))
     assert "\\n" not in process
-    assert "\n\n" not in process   
+    assert "\n\n" not in process  # 工具条目之间不再留空行
     assert "ls -la pwd" in process
     assert "先查一下" in sections
-    assert "done" not in sections   
+    assert "done" not in sections  # 有 rounds 时不再把整段回复重复塞进合并卡
 
 
 def test_build_sections_excludes_trace_when_configured():
@@ -41,7 +41,7 @@ def test_build_sections_excludes_trace_when_configured():
         "tools": [{"tool": "run_command", "arguments": "{}", "output": "x", "ms": 5}],
     }]
     sections, text_count = build_sections(rounds, "结论在这里", [], include_trace=False)
-    assert sections == ["结论在这里"]   
+    assert sections == ["结论在这里"]  # 纯结论卡：无「执行过程」节点
     assert text_count == 1
 
 
@@ -54,7 +54,7 @@ def test_build_sections_exclude_final_reply_drops_conclusion():
     sections, text_count = build_sections(rounds, "最终结论", [], exclude_final_reply=True)
     assert "最终结论" not in sections
     assert "中间说明" in sections
- 
+# 阈值口径不变：text_count 仍按含结论的 AI 发言段数
     assert text_count == 2
 
 

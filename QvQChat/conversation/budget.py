@@ -68,8 +68,8 @@ class ContextPacker:
 
         if cap <= 0 or _total() <= cap:
             return kept
- 
- 
+# 反复从低优先级（尾部）向高优先级处理：先截半，仍超预算再整段丢；
+# required（persona/capability）只截半绝不整段丢。
         for _round in range(8):
             before = _total()
             index = len(kept) - 1
@@ -89,7 +89,7 @@ class ContextPacker:
                         dropped[part.kind] = dropped.get(part.kind, 0) + 1
                         kept.pop(index)
                 elif not part.required:
- 
+# 已很短截半无收益 → 整段丢
                     dropped[part.kind] = dropped.get(part.kind, 0) + 1
                     kept.pop(index)
                 index -= 1
@@ -130,7 +130,7 @@ class ContextPacker:
             "overflow_turns": 0,
         }
         if budget <= 0:
- 
+# 预算不可计算：退化为不装填（保持输入原样），避免产出空上下文
             stats["degenerate"] = True
             system = "\n\n".join(p.text for p in parts if p.text)
             return PackedContext(system=system, messages=list(history or []) + [user_msg], stats=stats)
@@ -141,7 +141,7 @@ class ContextPacker:
         used_system = tokens.count_tokens(system)
         stats["used_system"] = used_system
 
- 
+# 历史按轮从新到旧装填；user_msg 永远保位
         user_cost = tokens.count_tokens(user_msg.get("content") if isinstance(user_msg, dict) else user_msg)
         remaining = max(0, budget - used_system - user_cost)
         turns = split_turns(list(history or []))

@@ -108,7 +108,7 @@ def parse_skill_md(text: str) -> tuple[dict, str]:
 
 
 class SkillManager:
- 
+# 技能草稿命名时跳过的英文虚词（提议名只取实义词）
     _NAME_STOPWORDS = {
         "the", "and", "for", "with", "this", "that", "then", "from",
         "please", "help", "me", "you", "your", "use", "using", "used",
@@ -119,7 +119,7 @@ class SkillManager:
         self.sdk = sdk
         self.config = config
         self._store_key = "QvQChat:skills"
- 
+# 生态模块经 qvq_extensions 贡献的只读技能（由 Main 注入 provider）
         self._external_provider = None
 
     def set_external_provider(self, provider) -> None:
@@ -218,7 +218,7 @@ class SkillManager:
 
     def list_skills(self) -> list[dict]:
         merged = {s["name"]: s for s in self._builtin_skills()}
- 
+# 生态模块贡献的技能：内置同名优先（setdefault），文件/面板可覆盖
         for s in self._external_skills():
             merged.setdefault(s["name"], s)
         for s in self._file_skills():
@@ -264,7 +264,7 @@ class SkillManager:
             disabled.append(name)
         self.sdk.config.setConfig("QvQChat.skills_disabled", disabled)
 
- 
+# ===== 技能自动习得：运行结果 → 技能草稿（不落盘）=====
 
     def propose_from_run(self, user_text: str, result: Any) -> dict | None:
         """从一次完成的运行中提炼技能草稿，返回 {name, description, steps} 或 None。

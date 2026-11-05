@@ -43,7 +43,7 @@ def _catalog():
     }
 
 
- 
+# ===== models.dev 字段映射：limit.context/output，而不是不存在的 context_length =====
 
 
 def test_models_dev_lookup_maps_limits_and_prefers_matching_provider():
@@ -68,7 +68,7 @@ def test_models_dev_lookup_matches_path_prefixed_model_id():
     assert meta["cost"] == {"input": 0.3, "output": 0.6}
 
 
- 
+# ===== 保存 provider 时按模型 id 合并，不能把已探测的能力/价格冲掉 =====
 
 
 def test_save_provider_preserves_existing_model_metadata():
@@ -80,7 +80,7 @@ def test_save_provider_preserves_existing_model_metadata():
             "context_length": 1000, "cost": {"input": 1.0, "output": 2.0},
         }],
     })
- 
+# 模拟模型池 UI 只回传 id/enabled 的旧保存路径
     pool.save_provider({
         "id": "p", "name": "P", "base_url": "https://x/v1", "api_key": "",
         "models": [{"id": "m", "enabled": True}],
@@ -91,7 +91,7 @@ def test_save_provider_preserves_existing_model_metadata():
     assert model["cost"] == {"input": 1.0, "output": 2.0}
 
 
- 
+# ===== 自动补全：只填空缺，手动配置优先 =====
 
 
 @pytest.mark.asyncio
@@ -107,11 +107,11 @@ async def test_enrich_models_fills_missing_without_overwriting_manual_values():
     assert model["tool_call"] is True
     assert model["context_length"] == 2000
     assert model["max_output_tokens"] == 200
-    assert model["vision"] is False 
+    assert model["vision"] is False# 用户显式配置不被目录覆盖
     assert model["cost"] == {"input": 0.5, "output": 1}
 
 
- 
+# ===== 成本换算要覆盖已停用模型的历史用量 =====
 
 
 def test_model_costs_includes_disabled_models():

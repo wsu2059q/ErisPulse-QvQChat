@@ -100,7 +100,7 @@ def test_recent_user_messages_cross_session():
     labeled2 = manager.label_incoming("适配器信息私聊说", sender_id="u1", sender_name="群主")
     manager.append_user(group_key, labeled2, sender_id="u1")
 
- 
+# append_user 已维护 user_seen 倒排 → 本查询走倒排路径
     seen = main.sdk.storage.get("QvQChat:user_seen:u1")
     assert isinstance(seen, list) and seen[0]["chat_key"] == group_key
 
@@ -123,7 +123,7 @@ def test_recent_user_messages_fallback_scan():
     manager.set_group_name(group_key, "测试群")
     manager.append_user(group_key, "群主(u1): 安装云湖适配器", sender_id="u1")
     manager.append_user(group_key, "群主(u1): 适配器信息私聊说", sender_id="u1")
-    main.sdk.storage.delete("QvQChat:user_seen:u1") 
+    main.sdk.storage.delete("QvQChat:user_seen:u1")# 模拟倒排缺失
 
     found = manager.recent_user_messages("u1", exclude_chat_key="onebot11:private:u1")
     assert len(found) == 2
@@ -145,23 +145,23 @@ def test_seed_contexts_persists_once():
     assert again[0]["content"] == "历史"
 
 
- 
+# ===== 摘要合并压缩与 facts =====
 
 
 async def test_append_summary_over_cap_fallback_keeps_head_and_tail():
     main = FakeMain(summary_cap=100)
     manager = ConversationService(main)
     key = "s"
-    old = "头部身份信息：用户是张三，在杭州工作。" * 10 
+    old = "头部身份信息：用户是张三，在杭州工作。" * 10# 远超 cap
     manager.append_summary(key, old)
     new = "新增内容，尾部待办：周五前交付报告。" * 5
     manager.append_summary(key, new)
     summary = manager.summary_of(key)
- 
+# 兜底合并不丢头尾：头 60% + 省略标记 + 尾 40%
     assert "头部身份信息" in summary, "头部（含身份/长期事实）不能丢"
     assert "周五前交付报告" in summary, "尾部新增内容不能丢"
     assert "…[中段省略]…" in summary
-    assert len(summary) <= 100 + 60 
+    assert len(summary) <= 100 + 60# 头尾 + 标记的少量开销
 
 
 async def test_append_summary_over_cap_llm_merge_replaces_fallback():
@@ -198,7 +198,7 @@ def test_extract_facts_loose_parsing():
     assert facts == ["ENTITY|张三", "PREFERENCE|喜欢蓝色", "TODO|周五交报告"]
     assert "决定用方案A" in summary and "<facts>" not in summary
 
- 
+# 宽松解析失败：无标签 → 原样返回、不入库
     summary2, facts2 = extract_facts("普通摘要文本，没有任何结构")
     assert summary2 == "普通摘要文本，没有任何结构"
     assert facts2 == []
@@ -215,7 +215,7 @@ def test_append_facts_dedupe_truncate_and_cap():
     assert len(facts) == 3, "facts_max 上限生效（保最新）"
     assert all(len(f) <= 200 for f in facts), "单条截 200 字符"
     assert facts[-1] == "TODO|交报告"
- 
+# reset 同步清空
     manager.reset(key)
     assert manager.facts_of(key) == []
 
@@ -275,5 +275,5 @@ def test_skills_merge_external_and_builtin_wins():
     skills = {s["name"]: s for s in manager.list_skills()}
     assert skills["ext-skill"]["source"] == "module:TTS"
     assert skills["ext-skill"]["enabled"] is True
- 
+# 内置同名优先
     assert skills["self-config"]["source"] == "builtin"
