@@ -60,10 +60,12 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
 
 
 def register(registry: ToolRegistry, main) -> None:
+    if not bool(getattr(main.cfg, "multi_agent", True)):
+        return
     registry.register(Tool(
         name="spawn_agent",
         access="admin",
-        description="Spawn a sub-agent with an isolated session/context to explore a task independently and report back its conclusion. The sub-agent's full process history is kept as its own session (prefix 'sub:') for review.",
+        description="Spawn a sub-agent with an isolated session/context to explore a task independently and report back its conclusion. Best for long fetch/scrape/research subtasks. Before spawning, send the user a short progress line (what you delegated, what happens next). The sub-agent's full process history is kept as its own session (prefix 'sub:') for review.",
         parameters=_schema(
             {
                 "task": _s(type="string", description="Self-contained task description for the sub-agent"),

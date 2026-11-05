@@ -132,7 +132,7 @@ class QvQConfig(BaseConfig):
     split_min_length: int = field(default=120, metadata=_desc("split_min_length", "分段回复的最小触发长度（字符），低于此值单条发送", "chat", 15, "number"))
     split_delay: float = field(default=1.2, metadata=_desc("split_delay", "分段回复每段之间的间隔秒数", "chat", 16, "number"))
     tool_notice_mode: str = field(default="brief", metadata=_desc("tool_notice_mode", "平台侧长任务播报：off 静默 / brief 发送 AI 的开场与阶段性发言（默认，不发工具明细）/ all 另加每轮工具明细", "chat", 17, "select", ["off", "brief", "all"]))
-    interrupt_mode: str = field(default="queue", metadata=_desc("interrupt_mode", "任务运行中来新消息的处理：queue 新消息排队、当前任务后台继续（推荐）/ interrupt 取消当前任务、新消息带中断上下文重新开始", "chat", 18, "select", ["queue", "interrupt"]))
+    interrupt_mode: str = field(default="auto", metadata=_desc("interrupt_mode", "任务运行中来新消息的处理：auto 由 AI 判断中止还是排队（结合当前任务与新消息，失败回退排队）/ queue 一律排队、当前任务后台继续 / interrupt 一律取消当前任务、新消息带中断上下文重新开始", "chat", 18, "select", ["auto", "queue", "interrupt"]))
     aggregate_window: float = field(default=5.0, metadata=_desc("aggregate_window", "消息聚合窗口（秒）：窗口内的多条消息合并为一次请求，0 关闭", "chat", 19, "number"))
     extra_prompts: list[str] = field(default_factory=list, metadata=_desc("extra_prompts", "自定义注入提示词（每行一条，追加到系统提示词末尾）", "chat", 20, "lines"))
     owner_only: bool = field(default=False, metadata=_desc("owner_only", "仅框架主人可用：开启后非管理员用户的消息不触发智能体（Dashboard 不受限制）", "chat", 21, "switch"))
@@ -254,6 +254,7 @@ class QvQConfig(BaseConfig):
 
     daily_token_limit: int = field(default=0, metadata=_desc("daily_token_limit", "单日模型 token 总量限额（0 不限），超出后非管理员对话被暂停，次日重置", "usage", 1, "number"))
     usage_retention_days: int = field(default=14, metadata=_desc("usage_retention_days", "用量统计数据保留天数", "usage", 2, "number"))
+    audit_limit: int = field(default=5000, metadata=_desc("audit_limit", "工具审计记录保留条数（面板按需分页加载，0 不限制）", "usage", 3, "number"))
 
     kb_auto_inject: bool = field(default=True, metadata=_desc("kb_auto_inject", "对话时自动检索知识库相关片段注入系统提示", "kb", 1, "switch"))
     kb_top_k: int = field(default=2, metadata=_desc("kb_top_k", "自动注入的知识库片段数上限", "kb", 2, "number"))
@@ -269,6 +270,7 @@ class QvQConfig(BaseConfig):
     skills_dir: str = field(default="data/QvQChat/skills", metadata=_desc("skills_dir", "技能目录（每个 .md 文件一个技能，frontmatter 含 name/description）", "skills", 1))
     skills_disabled: list[str] = field(default_factory=list, metadata=_desc("skills_disabled", "禁用的技能名列表", "skills", 2, "list", items="skills"))
     skill_dev: bool = field(default=True, metadata=_desc("skill_dev", "模块开发能力：启用内置 erispulse-dev 技能（开发流程/约定）与 reload_module 热加载工具（仅管理员）", "skills", 3, "switch"))
+    multi_agent: bool = field(default=True, metadata=_desc("multi_agent", "多智能体：注册 spawn_agent 工具并在提示词中教模型把耗时的抓取/检索/长内容任务派给子智能体，自己先回复用户进度", "tools", 18, "switch"))
 
 # 群聊参与决策（插件化扩展点；默认关闭：装插件≠放行）
     participation_enabled: bool = field(default=False, metadata=_desc("participation_enabled", "群聊参与决策：未被 @/前缀命中时问询生态插件的 qvq_decision 服务判断是否插话（默认关闭，需自行开启）", "participation", 1, "switch", dangerous=True))

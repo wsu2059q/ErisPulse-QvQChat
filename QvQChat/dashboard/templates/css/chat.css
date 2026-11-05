@@ -1081,3 +1081,67 @@
     flex-wrap: wrap;
   }
 }
+
+/* ===== 任务时间线（stepper 风格）：竖向连接线 + 状态点 + 运行中脉冲 ===== */
+.qvq-steps {
+  position: relative;
+  padding-left: 6px;
+}
+.qvq-steps::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--qvq-bd, rgba(128, 128, 128, 0.22));
+}
+.qvq-step {
+  position: relative;
+}
+.qvq-step::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  margin-top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--qvq-bd, rgba(128, 128, 128, 0.35));
+  z-index: 1;
+}
+.qvq-step-row {
+  position: relative;
+  z-index: 1;
+  padding-left: 30px;
+}
+.qvq-step-ico {
+  display: none;
+}
+.qvq-step.running::before {
+  background: var(--qvq-accent);
+  box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.5);
+  animation: qvq-pulse 1.6s ease-out infinite;
+}
+.qvq-step.running::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  margin-top: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--qvq-accent-soft, rgba(229, 72, 77, 0.14));
+  z-index: 0;
+}
+@keyframes qvq-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(229, 72, 77, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(229, 72, 77, 0); }
+}
+.qvq-step-detail {
+  margin: 4px 0 8px 30px;
+}

@@ -35,7 +35,6 @@ from .tools_builtin import agent, code, computer, erispulse, knowledge, memory, 
 from .version import __version__
 
 AUDIT_KEY = "QvQChat:audit"
-AUDIT_LIMIT = 500
 
 LOCAL_ORIGINS = ("dashboard", "rpc")
 
@@ -454,7 +453,9 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                     "user_id": str(getattr(ctx, "user_id", "") or ""),
                 }
             )
-            self.sdk.storage.set(AUDIT_KEY, entries[-AUDIT_LIMIT:])
+            limit = int(getattr(self.cfg, "audit_limit", 5000) or 0)
+            if limit > 0:
+                entries = entries[-limit:]
         except Exception as e:
 # 审计落盘失败不能完全静默
             self.logger.debug(f"audit persist failed: {e}")
@@ -499,7 +500,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                 model=(resolved_model or prepared.get("model") or "") or None,
                 task_kind=task_kind,
             )
-            reply = result.text.strip() or texts.t("no_reply_content")
+            reply = utils.strip_stray_tags(result.text.strip()) or texts.t("no_reply_content")
             if send and platform:
                 delivered = any(
                     sent_platform == platform and sent_type == detail_type and sent_id == target_id
@@ -565,7 +566,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                 on_tool_event=on_tool_event,
                 on_reasoning=on_reasoning,
             )
-            reply = result.text.strip() or texts.t("no_reply_content")
+            reply = utils.strip_stray_tags(result.text.strip()) or texts.t("no_reply_content")
             self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), title_from=text)
         return reply
 

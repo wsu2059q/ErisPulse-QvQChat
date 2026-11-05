@@ -17,6 +17,7 @@ from .. import texts, utils
 from ..agent.tools import ToolContext
 from ..conversation.service import DASHBOARD_PLATFORM, make_chat_key, parse_chat_key, strip_isolation
 from ..dashboard.live import bind as live_bind
+from ..utils import strip_stray_tags
 from ..conversation.delivery import strip_output_tag
 from ..engine.base import ChatRequest, TaskSpec
 from .recovery import INFLIGHT_KEY_PREFIX, RecoveryMixin
@@ -483,6 +484,57 @@ class InboxMixin(RecoveryMixin):
             self.sessions.set_group_name(chat_key, name)
         return name
 
+    async def _auto_interrupt_decide(self, chat_key: str, old_live, new_text: str) -> tuple[str, str]:
+        """auto 模式的中止/排队判定：cheap 模型结合当前任务与新消息给出决定。
+
+        返回 ("interrupt"|"queue", 理由)；任何失败回退 ("queue", "fallback")——
+        宁可排队也不要误杀正在跑的任务。
+        """
+        try:
+            current = utils.truncate(str(old_live.text or "").strip(), 300) or "（工具执行中，暂无输出）"
+            incoming = utils.truncate(str(new_text or "").strip(), 300)
+            from ..engine.base import ChatRequest, TaskSpec
+
+            request = ChatRequest(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "A bot is mid-task when a NEW user message arrives. Decide: interrupt the "
+                            "running task and handle the new message now, or queue it? "
+                            "Interrupt when the new message is clearly urgent, a correction/cancellation "
+                            "of the current task, or a direct question to the bot. Queue when it is casual "
+                            "chat or related to the running task. "
+                            'Reply ONLY with JSON: {"decision":"interrupt"|"queue","reason":"one short line"}'
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            "<current-task>\n" + current + "\n</current-task>\n\n"
+                            "<new-message>\n" + incoming + "\n</new-message>"
+                        ),
+                    },
+                ],
+                tools=None,
+                temperature=0.0,
+                max_tokens=120,
+            )
+            response = await self.pool.dispatch(TaskSpec(kind="compact", prefer="cheap"), request)
+            import json as _json
+            import re as _re
+
+            m = _re.search(r"\{[\s\S]*\}", response.content or "")
+            if m:
+                data = _json.loads(m.group(0))
+                decision = str(data.get("decision") or "").lower()
+                if decision in ("interrupt", "queue"):
+                    self.logger.info(f"auto interrupt decision ({chat_key}): {decision} — {data.get('reason', '')}")
+                    return decision, str(data.get("reason") or "")
+        except Exception as e:
+            self.logger.debug(f"auto interrupt decide failed, fallback queue: {e}")
+        return "queue", "fallback"
+
     def _enqueue_waiting(self, chat_key: str, event, items: list) -> None:
         queue = self._waiting.setdefault(chat_key, [])
         queue.append((event, items))
@@ -724,15 +776,37 @@ class InboxMixin(RecoveryMixin):
             if registry is not None:
                 old_live = registry.get(chat_key)
                 if old_live and old_live.status == "running" and old_live.text.strip():
-# queue：当前任务后台继续，新消息排到任务完成后处理；interrupt：取消旧任务
-                    if str(getattr(self.cfg, "interrupt_mode", "queue")) == "queue":
+                    mode = str(getattr(self.cfg, "interrupt_mode", "auto") or "auto")
+                    if mode == "queue":
                         self._enqueue_waiting(chat_key, event, items)
                         return
-                    old_live.cancel()
-                    interrupted_note = texts.t(
-                        "interrupted_note",
-                        content=utils.truncate(old_live.text.strip(), 500),
-                    )
+                    if mode == "auto":
+# AI 判定：结合当前任务与新消息，cheap 模型决定中止还是排队（失败回退排队）
+                        decision, why = await self._auto_interrupt_decide(
+                            chat_key, old_live, labeled
+                        )
+                        if decision != "interrupt":
+                            self._enqueue_waiting(chat_key, event, items)
+                            try:
+                                await event.reply(texts.t("interrupt_auto_queue"))
+                            except Exception:
+                                pass
+                            return
+                        try:
+                            await event.reply(texts.t("interrupt_auto_stop"))
+                        except Exception:
+                            pass
+                        old_live.cancel()
+                        interrupted_note = texts.t(
+                            "interrupted_note",
+                            content=utils.truncate(old_live.text.strip(), 500),
+                        )
+                    else:
+                        old_live.cancel()
+                        interrupted_note = texts.t(
+                            "interrupted_note",
+                            content=utils.truncate(old_live.text.strip(), 500),
+                        )
                 live = registry.start(chat_key)
                 live.task = asyncio.current_task()
                 on_delta, on_reset, on_tool_event, on_reasoning = live_bind(live)
@@ -816,6 +890,7 @@ class InboxMixin(RecoveryMixin):
                     live.status = "done"
                     live.publish("done", {"reply": live.reply, "session": chat_key})
                 reply, force_forward = strip_output_tag(result.text.strip())
+                reply = strip_stray_tags(reply)
 # 标签合并：最终回复自身的标签 > 运行过程中任一段发言声明的标签 > None（自动规则）
                 if force_forward is None:
                     force_forward = getattr(result, "delivery_hint", None)

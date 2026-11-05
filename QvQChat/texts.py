@@ -40,6 +40,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "処理中：{tools} …",
         "ru": "Обрабатываю: {tools} …",
     },
+    "interrupt_auto_queue": {
+        "zh-CN": "（AI 判定：当前任务继续后台执行，你的新消息已排队）",
+        "zh-TW": "（AI 判定：目前任務繼續背景執行，你的新訊息已排隊）",
+        "en": "(AI decision: current task continues in background; your message is queued)",
+        "ja": "（AI 判定：現在のタスクはバックグラウンドで継続、新しいメッセージは待機中）",
+        "ru": "(Решение AI: задача продолжается в фоне, новое сообщение в очереди)",
+    },
+    "interrupt_auto_stop": {
+        "zh-CN": "（AI 判定：新消息更紧急，已中止当前任务转而处理你的新消息）",
+        "zh-TW": "（AI 判定：新訊息更緊急，已中止目前任務轉而處理你的新訊息）",
+        "en": "(AI decision: your new message is more urgent — current task was stopped to handle it)",
+        "ja": "（AI 判定：新しいメッセージが緊急のため現在のタスクを中止しました）",
+        "ru": "(Решение AI: новое сообщение срочнее — текущая задача остановлена)",
+    },
     "interrupted_note": {
         "zh-CN": "\n[系统] 上一个任务已被新消息中断，以下是从中断处继续。中断前的部分输出：\n{content}\n",
         "zh-TW": "\n[系統] 上一個任務已被新訊息中斷，以下是從中斷處繼續。中斷前的部分輸出：\n{content}\n",

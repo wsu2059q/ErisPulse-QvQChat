@@ -367,26 +367,34 @@
       if (cta) cta.onclick = function () { openModelModal(null); };
       return;
     }
-    var rows = providers.map(function (p) {
+// 提供商卡片：头部（名称/URL/操作）+ 可折叠模型网格，多模型不糊
+    var cards = providers.map(function (p) {
       var models = p.models || [];
       var enabled = models.filter(function (m) { return m.enabled !== false; });
-      var lines = models.map(function (m) {
-        var off = m.enabled === false;
-        return "<div class='qvq-model-line" + (off ? " off" : "") + "'>" + esc(m.id) +
-          (off ? " <span class='qvq-chip'>" + esc(t("off")) + "</span>" : "") +
-          "<div>" + modelsModelChips(m) + "</div></div>";
-      }).join("") || "<span class='qvq-tool-desc'>" + esc(t("model_none")) + "</span>";
       var firstModel = enabled.length ? String(enabled[0].id) : "";
-      return "<tr><td><b>" + esc(p.name) + "</b><div class='qvq-tool-desc'>" + esc(p.base_url || "") + "</div></td>" +
-        "<td>" + lines + "</td>" +
-        "<td>" + esc(p.api_key_masked || "-") + "</td>" +
-        "<td><button class='qvq-btn small ghost' data-act='models' data-id='" + esc(p.id) + "'>" + esc(t("model_manage")) + "</button> " +
+      var collapsible = models.length > 8;
+      var chips = models.map(function (m) {
+        var off = m.enabled === false;
+        return "<div class='qvq-model-chip" + (off ? " off" : "") + "' title='" + esc(m.id) + "'>" +
+          "<span class='qvq-model-chip-id'>" + esc(m.id) + (off ? " · " + esc(t("off")) : "") + "</span>" +
+          "<span class='qvq-model-chip-meta'>" + modelsModelChips(m) + "</span></div>";
+      }).join("") || "<span class='qvq-tool-desc'>" + esc(t("model_none")) + "</span>";
+      var modelsHtml = collapsible
+        ? "<details class='qvq-provider-fold'><summary>" + esc(t("models_id")) + " · " + models.length + "</summary><div class='qvq-model-grid'>" + chips + "</div></details>"
+        : "<div class='qvq-model-grid'>" + chips + "</div>";
+      return "<div class='qvq-provider-card' data-id='" + esc(p.id) + "'>" +
+        "<div class='qvq-provider-head'><div class='qvq-provider-title'><b>" + esc(p.name) + "</b>" +
+        "<span class='qvq-chip'>" + enabled.length + "/" + models.length + "</span>" +
+        "<span class='qvq-tool-desc'>" + esc(p.base_url || "") + "</span>" +
+        "<span class='qvq-tool-desc mono'>" + esc(p.api_key_masked || "-") + "</span></div>" +
+        "<div class='qvq-actions'>" +
+        "<button class='qvq-btn small ghost' data-act='models' data-id='" + esc(p.id) + "'>" + esc(t("model_manage")) + "</button> " +
         "<button class='qvq-btn small ghost' data-act='edit' data-id='" + esc(p.id) + "'>" + esc(t("edit")) + "</button> " +
         (firstModel ? "<button class='qvq-btn small ghost' data-act='test' data-model='" + esc(firstModel) + "'>" + esc(t("test")) + "</button> " : "") +
-        "<button class='qvq-btn small danger' data-act='pdel' data-id='" + esc(p.id) + "'>" + esc(t("del")) + "</button></td></tr>";
+        "<button class='qvq-btn small danger' data-act='pdel' data-id='" + esc(p.id) + "'>" + esc(t("del")) + "</button>" +
+        "</div></div>" + modelsHtml + "</div>";
     }).join("");
-    box.innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("models_name")) + "</th><th>" +
-      esc(t("models_id")) + "</th><th>" + esc(t("models_key_col")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    box.innerHTML = "<div class='qvq-provider-list'>" + cards + "</div>";
     box.querySelectorAll("button[data-act]").forEach(function (btn) {
       btn.onclick = function () {
         var pid = btn.getAttribute("data-id");
@@ -881,16 +889,22 @@
         return;
       }
       var rows = skills.map(function (sk) {
-        var src = sk.source === "file" ? ".md" : "dashboard";
+        var src = sk.source === "file" ? ".md" : (sk.source || "dashboard");
         var chk = sk.enabled !== false ? " checked" : "";
-        return "<tr><td><b>" + esc(sk.name) + "</b><div class='qvq-tool-desc'>" + esc((sk.description || "").slice(0, 100)) + "</div></td>" +
+        return "<tr><td class='qvq-col-check'><input type='checkbox' class='qvq-skill-check' data-check-name='" + esc(sk.name) + "'/></td>" +
+          "<td><b>" + esc(sk.name) + "</b><div class='qvq-tool-desc'>" + esc((sk.description || "").slice(0, 100)) + "</div></td>" +
           "<td><span class='qvq-chip'>" + esc(src) + "</span></td>" +
           "<td><input type='checkbox' data-toggle='" + esc(sk.name) + "'" + chk + "/></td>" +
           "<td><button class='qvq-btn small ghost' data-act='edit' data-name='" + esc(sk.name) + "'>" + esc(t("edit")) + "</button> " +
           "<button class='qvq-btn small danger' data-act='del' data-name='" + esc(sk.name) + "'>" + esc(t("del")) + "</button></td></tr>";
       }).join("");
-      el("qvq-skills-list").innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("skills_name")) + "</th><th>" + esc(t("skills_source")) +
+      var skillBatch = '<div class="qvq-actions qvq-batch-bar">' +
+        '<label class="qvq-check-inline"><input type="checkbox" id="qvq-skills-all"/> ' + esc(t("batch_select_all")) + "</label>" +
+        '<button type="button" class="qvq-btn small danger" id="qvq-skills-batch">' + esc(t("batch_delete")) + "</button>" +
+        '<button type="button" class="qvq-btn small ghost" id="qvq-skills-organize">' + esc(t("organize_run")) + "</button></div>";
+      el("qvq-skills-list").innerHTML = skillBatch + "<table class='qvq-table'><thead><tr><th></th><th>" + esc(t("skills_name")) + "</th><th>" + esc(t("skills_source")) +
         "</th><th>" + esc(t("on")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
+      bindSkillBatch(skills);
       el("qvq-skills-list").querySelectorAll("input[data-toggle]").forEach(function (cb) {
         cb.onchange = function () {
           optimisticToggle(cb, "/api/qvq/skills/enabled", { name: cb.getAttribute("data-toggle"), enabled: cb.checked });
@@ -917,6 +931,47 @@
         };
       });
     });
+  }
+
+  function bindSkillBatch(skills) {
+    var list = el("qvq-skills-list");
+    if (!list) return;
+    var all = list.querySelector("#qvq-skills-all");
+    var batch = list.querySelector("#qvq-skills-batch");
+    var organize = list.querySelector("#qvq-skills-organize");
+    if (all) all.onchange = function () {
+      list.querySelectorAll(".qvq-skill-check").forEach(function (cb) { cb.checked = all.checked; });
+    };
+    if (batch) batch.onclick = function () {
+      var picked = [];
+      list.querySelectorAll(".qvq-skill-check:checked").forEach(function (cb) { picked.push(cb.getAttribute("data-check-name")); });
+      if (!picked.length) { toast(t("batch_none_selected"), true); return; }
+      confirmDialog(t("batch_confirm").replace("{n}", picked.length)).then(function (ok) {
+        if (!ok) return;
+        api("/api/qvq/skills/batch-delete", "POST", { names: picked }).then(function (r) {
+          toast(t("batch_deleted").replace("{n}", (r && r.removed) || 0));
+          loadSkills();
+        });
+      });
+    };
+    if (organize) organize.onclick = function () {
+      organize.disabled = true;
+      organize.textContent = t("organize_running");
+      api("/api/qvq/skills/organize", "POST", {}).then(function (r) {
+        organize.disabled = false;
+        organize.textContent = t("organize_run");
+        if (r && r.ok) {
+          toast(r.report === "noop" ? t("organize_noop") : t("organize_done").replace("{report}", r.report || ""));
+          loadSkills();
+        } else {
+          toast(t("organize_fail").replace("{error}", (r && r.error) || "error"), true);
+        }
+      }, function () {
+        organize.disabled = false;
+        organize.textContent = t("organize_run");
+        toast(t("organize_fail").replace("{error}", "network"), true);
+      });
+    };
   }
 
   function openSkillModal(skill) {
@@ -1185,8 +1240,13 @@
         box.innerHTML = '<div class="qvq-empty">' + esc(t("kb_list_empty")) + "</div>";
         return;
       }
-      box.innerHTML = entries.map(function (entry) {
-        return '<div class="qvq-tool-row" data-kb="' + esc(entry.id) + '"><span class="qvq-tool-name">' + esc(entry.title) +
+      var kbBatch = '<div class="qvq-actions qvq-batch-bar">' +
+        '<label class="qvq-check-inline"><input type="checkbox" id="qvq-kb-all"/> ' + esc(t("batch_select_all")) + "</label>" +
+        '<button type="button" class="qvq-btn small danger" id="qvq-kb-batch">' + esc(t("batch_delete")) + "</button>" +
+        '<button type="button" class="qvq-btn small ghost" id="qvq-kb-organize">' + esc(t("organize_run")) + "</button></div>";
+      box.innerHTML = kbBatch + entries.map(function (entry) {
+        return '<div class="qvq-tool-row" data-kb="' + esc(entry.id) + '"><input type="checkbox" class="qvq-kb-check" data-check-id="' + esc(entry.id) + '"/>' +
+          '<span class="qvq-tool-name">' + esc(entry.title) +
           (entry.source ? " <span class='qvq-chip'>" + esc(entry.source) + "</span>" : "") +
           (entry.triggers && entry.triggers.length ? " <span class='qvq-chip'>@" + esc(entry.triggers.join(", ")) + "</span>" : "") +
           (entry.owner ? " <span class='qvq-chip'>" + esc(t("kb_scope_chip_private")) + ": " + esc(entry.owner) + "</span>" : "") + "</span>" +
@@ -1194,6 +1254,7 @@
           "<button class='qvq-btn small' data-kb-edit='" + esc(entry.id) + "'>" + esc(t("kb_edit")) + "</button> " +
           "<button class='qvq-btn small danger' data-kb-del='" + esc(entry.id) + "'>" + esc(t("del")) + "</button></div>";
       }).join("");
+      bindKbBatch();
       box.querySelectorAll("button[data-kb-del]").forEach(function (btn) {
         btn.onclick = function () {
           confirmDialog(t("confirm_del")).then(function (ok) {
@@ -1224,6 +1285,47 @@
         timer = setTimeout(loadKnowledge, 300);
       };
     }
+  }
+
+  function bindKbBatch() {
+    var box = el("qvq-kb-list");
+    if (!box) return;
+    var all = box.querySelector("#qvq-kb-all");
+    var batch = box.querySelector("#qvq-kb-batch");
+    var organize = box.querySelector("#qvq-kb-organize");
+    if (all) all.onchange = function () {
+      box.querySelectorAll(".qvq-kb-check").forEach(function (cb) { cb.checked = all.checked; });
+    };
+    if (batch) batch.onclick = function () {
+      var picked = [];
+      box.querySelectorAll(".qvq-kb-check:checked").forEach(function (cb) { picked.push(cb.getAttribute("data-check-id")); });
+      if (!picked.length) { toast(t("batch_none_selected"), true); return; }
+      confirmDialog(t("batch_confirm").replace("{n}", picked.length)).then(function (ok) {
+        if (!ok) return;
+        api("/api/qvq/kb/batch-delete", "POST", { ids: picked }).then(function (r) {
+          toast(t("batch_deleted").replace("{n}", (r && r.removed) || 0));
+          loadKnowledge();
+        });
+      });
+    };
+    if (organize) organize.onclick = function () {
+      organize.disabled = true;
+      organize.textContent = t("organize_running");
+      api("/api/qvq/kb/organize", "POST", {}).then(function (r) {
+        organize.disabled = false;
+        organize.textContent = t("organize_run");
+        if (r && r.ok) {
+          toast(r.report === "noop" || r.report === "empty" ? t("organize_noop") : t("organize_done").replace("{report}", r.report || ""));
+          loadKnowledge();
+        } else {
+          toast(t("organize_fail").replace("{error}", (r && r.error) || "error"), true);
+        }
+      }, function () {
+        organize.disabled = false;
+        organize.textContent = t("organize_run");
+        toast(t("organize_fail").replace("{error}", "network"), true);
+      });
+    };
   }
 
   function openKnowledgeModal() {
@@ -1416,7 +1518,8 @@
         return;
       }
       var rows = sessions.map(function (session) {
-        return "<tr><td><b>" + esc(sessionDisplayName(session)) + "</b><div class='qvq-tool-desc'>" + esc(session.chat_key) + "</div></td>" +
+        return "<tr><td class='qvq-col-check'><input type='checkbox' class='qvq-session-check' data-check-key='" + esc(session.chat_key) + "'/></td>" +
+          "<td><b>" + esc(sessionDisplayName(session)) + "</b><div class='qvq-tool-desc'>" + esc(session.chat_key) + "</div></td>" +
           "<td>" + esc(session.persona || "-") + "</td>" +
           "<td>" + esc(session.turns) + "</td><td class='qvq-tool-desc'>" + esc(session.preview || "-") + "</td>" +
           "<td class='qvq-col-time'>" + esc(fmtTime(session.updated)) + "</td>" +
@@ -1424,8 +1527,12 @@
           "<button class='qvq-btn small ghost' data-access='" + esc(session.chat_key) + "'>" + esc(t("sess_members")) + "</button> " +
           "<button class='qvq-btn small danger' data-key='" + esc(session.chat_key) + "'>" + esc(t("reset_btn")) + "</button></td></tr>";
       }).join("");
-      el("qvq-sessions-list").innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("col_chatkey")) + "</th><th>" + esc(t("col_persona")) +
+      var sessionBatch = '<div class="qvq-actions qvq-batch-bar">' +
+        '<label class="qvq-check-inline"><input type="checkbox" id="qvq-sessions-all"/> ' + esc(t("batch_select_all")) + "</label>" +
+        '<button type="button" class="qvq-btn small danger" id="qvq-sessions-batch">' + esc(t("batch_delete")) + "</button></div>";
+      el("qvq-sessions-list").innerHTML = sessionBatch + "<table class='qvq-table'><thead><tr><th></th><th>" + esc(t("col_chatkey")) + "</th><th>" + esc(t("col_persona")) +
         "</th><th>" + esc(t("col_turns")) + "</th><th>" + esc(t("col_preview")) + "</th><th>" + esc(t("col_updated")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
+      bindSessionBatch();
       el("qvq-sessions-list").querySelectorAll("button[data-key]").forEach(function (btn) {
         btn.onclick = function () {
           confirmDialog(t("confirm_del")).then(function (ok) {
@@ -1441,6 +1548,29 @@
         btn.onclick = function () { openSessionAccessModal(btn.getAttribute("data-access")); };
       });
     });
+  }
+
+  function bindSessionBatch() {
+    var box = el("qvq-sessions-list");
+    if (!box) return;
+    var all = box.querySelector("#qvq-sessions-all");
+    var batch = box.querySelector("#qvq-sessions-batch");
+    if (all) all.onchange = function () {
+      box.querySelectorAll(".qvq-session-check").forEach(function (cb) { cb.checked = all.checked; });
+    };
+    if (batch) batch.onclick = function () {
+      var picked = [];
+      box.querySelectorAll(".qvq-session-check:checked").forEach(function (cb) { picked.push(cb.getAttribute("data-check-key")); });
+      if (!picked.length) { toast(t("batch_none_selected"), true); return; }
+      confirmDialog(t("batch_confirm").replace("{n}", picked.length)).then(function (ok) {
+        if (!ok) return;
+        api("/api/qvq/sessions/batch-delete", "POST", { chat_keys: picked }).then(function (r) {
+          toast(t("batch_deleted").replace("{n}", (r && r.removed) || 0));
+          loadSessions();
+          loadChatMeta();
+        });
+      });
+    };
   }
 
   // 会话准入：成员白名单（* 全员）+ 接受哪些其它会话的输入（跨会话共享）
@@ -1708,6 +1838,7 @@
       return '<div class="qvq-stat"><div class="num">' + esc(c.num) + '</div><div class="cap">' + esc(c.cap) + "</div></div>";
     }).join("");
     var render = function (keyword) {
+      entries.forEach(function (e, gi) { e.global_index = gi; });
       var shown = entries.filter(function (e) {
         if (!keyword) return true;
         return (e.tool || "").toLowerCase().indexOf(keyword) >= 0 ||
@@ -1721,6 +1852,7 @@
       }
       var rows = shown.map(function (entry, idx) {
         return "<tr class='qvq-audit-row' data-idx='" + idx + "'>" +
+          "<td class='qvq-col-check'><input type='checkbox' class='qvq-audit-check' data-check-idx='" + idx + "'/></td>" +
           "<td class='qvq-col-time'>" + esc(fmtTime(entry.ts)) + "</td>" +
           "<td><b>" + esc(entry.tool) + "</b></td>" +
           "<td>" + esc(entry.user_id || "-") + "</td>" +
@@ -1732,10 +1864,16 @@
         more = '<div class="qvq-actions" style="justify-content:center"><button type="button" class="qvq-btn small ghost" id="qvq-audit-more">' +
           esc(t("load_more")) + " (" + entries.length + "/" + auditLoaded.total + ")</button></div>";
       }
-      el("qvq-audit-list").innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("col_time")) + "</th><th>" + esc(t("col_tool")) +
+      var batchBar = '<div class="qvq-actions qvq-batch-bar">' +
+        '<label class="qvq-check-inline"><input type="checkbox" id="qvq-audit-all"/> ' + esc(t("batch_select_all")) + "</label>" +
+        '<button type="button" class="qvq-btn small danger" id="qvq-audit-batch">' + esc(t("batch_delete")) + "</button>" +
+        '<button type="button" class="qvq-btn small ghost" id="qvq-audit-clear">' + esc(t("audit_clear")) + "</button></div>";
+      el("qvq-audit-list").innerHTML = batchBar + "<table class='qvq-table'><thead><tr><th></th><th>" + esc(t("col_time")) + "</th><th>" + esc(t("col_tool")) +
         "</th><th>" + esc(t("col_user")) + "</th><th>" + esc(t("col_origin")) + "</th><th>" + esc(t("col_detail")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>" + more;
+      bindAuditBatch(shown);
       el("qvq-audit-list").querySelectorAll("tr.qvq-audit-row").forEach(function (tr) {
-        tr.onclick = function () {
+        tr.onclick = function (ev) {
+          if (ev.target && ev.target.classList && ev.target.classList.contains("qvq-audit-check")) return;
           var entry = shown[parseInt(tr.getAttribute("data-idx"), 10)];
           if (entry) showAuditModal(entry);
         };
@@ -1758,6 +1896,42 @@
     render(filter.value.trim().toLowerCase());
   }
 
+  function bindAuditBatch(shown) {
+    var list = el("qvq-audit-list");
+    if (!list) return;
+    var all = list.querySelector("#qvq-audit-all");
+    var batch = list.querySelector("#qvq-audit-batch");
+    var clear = list.querySelector("#qvq-audit-clear");
+    if (all) all.onchange = function () {
+      list.querySelectorAll(".qvq-audit-check").forEach(function (cb) { cb.checked = all.checked; });
+    };
+    if (batch) batch.onclick = function () {
+      var picked = [];
+      list.querySelectorAll(".qvq-audit-check:checked").forEach(function (cb) {
+        var idx = parseInt(cb.getAttribute("data-check-idx"), 10);
+        var entry = shown[idx];
+        if (entry && entry.global_index != null) picked.push(entry.global_index);
+      });
+      if (!picked.length) { toast(t("batch_none_selected"), true); return; }
+      confirmDialog(t("batch_confirm").replace("{n}", picked.length)).then(function (ok) {
+        if (!ok) return;
+        api("/api/qvq/audit/delete", "POST", { indexes: picked }).then(function (r) {
+          toast(t("batch_deleted").replace("{n}", (r && r.removed) || 0));
+          loadAudit();
+        });
+      });
+    };
+    if (clear) clear.onclick = function () {
+      confirmDialog(t("audit_clear_confirm")).then(function (ok) {
+        if (!ok) return;
+        api("/api/qvq/audit/delete", "POST", { clear: true }).then(function () {
+          toast(t("audit_cleared"));
+          loadAudit();
+        });
+      });
+    };
+  }
+
   var settingsFields = [];
   var settingsGroupsTable = [];
   var settingsOriginal = {};   // key → 加载时的规范化值（dirty 基准）
@@ -1777,6 +1951,29 @@
     { max: 19, key: "settings_sec_flow" },
     { max: 999, key: "settings_sec_misc" }
   ];
+
+// 全分组语义小节：组 id → [(order 上界, 标题键)]；命中即插入小节标题
+  var GROUP_SECTIONS = {
+    model: [[3, "settings_sec_model_basic"], [6, "settings_sec_model_reliable"], [999, "settings_sec_model_routing"]],
+    trigger: [[2, "settings_sec_trigger_reply"], [999, "settings_sec_trigger_prefix"]],
+    tools: [[3, "settings_sec_tools_limits"], [7, "settings_sec_tools_behavior"], [13, "settings_sec_tools_select"], [999, "settings_sec_tools_web"]],
+    mcp: [[1, "settings_sec_mcp_conn"], [999, "settings_sec_mcp_docs"]],
+    eco: [[2, "settings_sec_eco_scope"], [999, "settings_sec_eco_access"]],
+    memory: [[2, "settings_sec_memory_basic"], [999, "settings_sec_memory_profile"]],
+    kb: [[4, "settings_sec_kb_inject"], [7, "settings_sec_kb_lore"], [999, "settings_sec_kb_embed"]],
+    skills: [[2, "settings_sec_skills_manage"], [999, "settings_sec_skills_dev"]],
+    humanize: [[3, "settings_sec_hu_debounce"], [7, "settings_sec_hu_filter"], [999, "settings_sec_hu_more"]],
+    security: [[4, "settings_sec_sec_admin"], [999, "settings_sec_sec_danger"]]
+  };
+
+  function groupSectionHeader(group, order) {
+    var table = group === "chat" ? null : GROUP_SECTIONS[group];
+    if (!table) return "";
+    for (var i = 0; i < table.length; i++) {
+      if ((order || 99) <= table[i][0]) return table[i][1];
+    }
+    return "";
+  }
 
   function settingsSchemaOf(key) {
     for (var i = 0; i < settingsFields.length; i++) {
@@ -2100,7 +2297,7 @@
       var ph = f.placeholder ? " placeholder='" + esc(f.placeholder) + "'" : "";
       input = "<input class='qvq-input' data-key='" + key + "' value='" + esc(value == null ? "" : value) + "'" + ph + " />";
     }
-    return "<div class='qvq-field' data-field='" + key + "'>" + head + input +
+    return "<div class='qvq-field" + (f.dangerous ? " dangerous" : "") + "' data-field='" + key + "'>" + head + input +
       "<div class='qvq-field-err' data-err='" + key + "'></div></div>";
   }
 
@@ -2127,6 +2324,7 @@
     }
     var html = "";
     var lastSec = -1;
+    var lastGroupSec = "";
     var lastPlugin = "";
     fields.forEach(function (f) {
       if (q) {
@@ -2142,6 +2340,13 @@
             }
             break;
           }
+        }
+      } else {
+// 其它分组同样按语义小节分块
+        var secKey = groupSectionHeader(f.group, f.order);
+        if (secKey && secKey !== lastGroupSec) {
+          html += "<div class='qvq-settings-sec'>" + esc(t(secKey)) + "</div>";
+          lastGroupSec = secKey;
         }
       }
       if (f.group === "plugin" && f.plugin_module !== lastPlugin) {
