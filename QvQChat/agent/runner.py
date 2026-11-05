@@ -506,6 +506,7 @@ class AgentRunner:
             trace_before = len(trace)
 # 中间发言也可携带 [[转发]]/[[直发]] 标签（首个命中记录为整轮投递意图，并从展示文本剥离）
             speech, tag_hint = utils.strip_output_tag((response.content or "").strip())
+            speech = utils.strip_stray_tags(speech)
             if delivery_hint is None and tag_hint is not None:
                 delivery_hint = tag_hint
             rounds.append({"text": speech, "tools": []})

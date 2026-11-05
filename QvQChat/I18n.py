@@ -61,6 +61,14 @@ class QvQI18n(BaseI18n):
         "モジュール開発：erispulse-dev スキルと reload_module ツールを有効化（管理者のみ）",
         "Разработка модулей: включает навык erispulse-dev и инструмент reload_module (только админы)",
     )
+
+    multi_agent = _key(
+        "多智能体：注册 spawn_agent 工具并在提示词中教模型把耗时的抓取/检索/长内容任务派给子智能体，自己先回复用户进度",
+        "多智慧代理：註冊 spawn_agent 工具並教模型把耗時任務派給子代理，先回覆使用者進度",
+        "Multi-agent: registers spawn_agent and teaches the model to delegate slow fetch/research subtasks to a sub-agent while reporting progress to the user first",
+        "マルチエージェント：spawn_agent を登録し、時間のかかるタスクをサブエージェントに委譲するよう指示",
+        "Мультиагентность: регистрирует spawn_agent и учит модель делегировать долгие подзадачи, сообщая пользователю прогресс",
+    )
     web_tools_enabled = _key(
         "内置联网工具：注册 web_search（DuckDuckGo 搜索）与 web_fetch（网页转文本）",
         "內建聯網工具：註冊 web_search 與 web_fetch",
@@ -194,6 +202,13 @@ class QvQI18n(BaseI18n):
 
     daily_token_limit = _key("单日模型 token 总量限额（0 不限），超出后非管理员对话被暂停，次日重置", "單日模型 token 總量限額（0 不限），超出後非管理員對話被暫停，次日重置", "Daily model token limit (0 unlimited); non-admin chat pauses when exceeded, resets next day", "1日のトークン上限（0 無制限）。超過で非管理者の会話を一時停止", "Дневной лимит токенов (0 — без лимита); при превышении чат не-админов пауза до следующего дня")
     usage_retention_days = _key("用量统计数据保留天数", "用量統計資料保留天數", "Usage stats retention in days", "使用量統計の保持日数", "Хранение статистики использования (дней)")
+    audit_limit = _key(
+        "工具审计记录保留条数（面板按需分页加载，0 不限制）",
+        "工具審計記錄保留條數（面板按需分頁載入，0 不限制）",
+        "Tool audit entries to keep (dashboard loads pages on demand; 0 = unlimited)",
+        "ツール監査の保持件数（ダッシュボードはページ単位で読み込み。0 で無制限）",
+        "Сколько записей аудита хранить (панель грузит страницами; 0 — без лимита)",
+    )
 
     skills_dir = _key("技能目录（每个 .md 文件一个技能，frontmatter 含 name/description）", "技能目錄（每個 .md 檔案一個技能，frontmatter 含 name/description）", "Skills directory (one .md per skill, frontmatter with name/description)", "スキルディレクトリ（.md ごとに1スキル）", "Каталог навыков (один .md на навык)")
     skills_disabled = _key("禁用的技能名列表", "停用的技能名列表", "Disabled skill names", "無効なスキル名一覧", "Список отключённых навыков")
@@ -388,6 +403,14 @@ class QvQI18n(BaseI18n):
         "Behavior when a new message arrives mid-reply: queue / cancel",
         "Behavior when a new message arrives mid-返信: キュー / cancel（詳細はドキュメント参照）",
         "Behavior when a new message arrives mid-ответ: очередь / cancel (см. документацию)",
+    )
+
+    interrupt_auto_decided = _key(
+        "AI 判定：{decision}（{reason}）",
+        "AI 判定：{decision}（{reason}）",
+        "AI decided: {decision} ({reason})",
+        "AI 判定：{decision}（{reason}）",
+        "Решение AI: {decision} ({reason})",
     )
 
     user_rate_limit = _key(

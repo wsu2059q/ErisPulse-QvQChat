@@ -21,6 +21,10 @@ _WEEKDAY_EN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 # 输出投递控制标签：[[转发]] 强制合并转发 / [[直发]] 强制普通消息直发。
 # 可出现在任意一段 AI 发言开头（首个命中对整轮生效，见 AgentRunner.delivery_hint）
 OUTPUT_TAG_RE = re.compile(r"^\[\[(转发|直发)\]\]\s*")
+# 模型经常把标签写进正文中间、漏写成单括号，甚至塞进 send_message 内容里——
+# 统一清扫：双括号任意位置 + 单括号独占一行/首尾的变体
+STRAY_TAG_RE = re.compile(r"^\s*\[\[?(转发|直发)\]\]?\s*$", re.MULTILINE)
+STRAY_TAG_INLINE_RE = re.compile(r"\[\[(转发|直发)\]\]")
 
 
 def strip_output_tag(reply: str) -> tuple[str, bool | None]:
@@ -32,6 +36,16 @@ def strip_output_tag(reply: str) -> tuple[str, bool | None]:
     if not tag:
         return reply, None
     return reply[tag.end():].strip(), tag.group(1) == "转发"
+
+
+def strip_stray_tags(text: str) -> str:
+    """清扫正文中残留的投递标签（双括号任意位置、单括号独占一行）。
+
+    只处理标记语义明确的形态，不碰普通方括号文本。
+    """
+    text = STRAY_TAG_INLINE_RE.sub("", str(text or ""))
+    text = STRAY_TAG_RE.sub("", text)
+    return text.strip()
 
 
 def now_ts() -> float:

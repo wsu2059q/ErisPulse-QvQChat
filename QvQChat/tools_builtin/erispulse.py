@@ -106,6 +106,8 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
                        as_forward: bool = False) -> str:
     if not text and not image_url and not audio_path:
         return texts.t("send_need_content")
+    if text:
+        text = utils.strip_stray_tags(str(text))
     # 目标缺省=当前会话：模型不确定发给谁时无需瞎猜平台/ID（系统提示 <session> 块同步此约定）
     if not platform or not target_type or not target_id:
         cur_platform = str(getattr(ctx, "platform", "") or "")
