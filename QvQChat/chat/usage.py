@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta
 
- 
+# 上次清理日标记（跨天首条记账才执行一次全扫）
 USAGE_LAST_PRUNE_KEY = "QvQChat:usage:last_prune"
 
 
@@ -44,14 +44,14 @@ class UsageMixin:
             self.sdk.storage.set(key, data)
             self._prune_usage(today)
         except Exception as e:
- 
+# 记账路径不允许完全静默
             self.logger.debug(f"record_usage failed: {e}")
 
     def _prune_usage(self, today: str) -> None:
         days = int(getattr(self.cfg, "usage_retention_days", 14) or 0)
         if days <= 0:
             return
- 
+# 同一天只扫一次（此前每条消息记账后都全库 keys() 扫描）
         if self.sdk.storage.get(USAGE_LAST_PRUNE_KEY, "") == today:
             return
         try:

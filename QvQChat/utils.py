@@ -18,8 +18,8 @@ _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _DELAY_RE = re.compile(r"^(\d+)\s*([smhd])$", re.IGNORECASE)
 _WEEKDAY_EN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
- 
- 
+# 输出投递控制标签：[[转发]] 强制合并转发 / [[直发]] 强制普通消息直发。
+# 可出现在任意一段 AI 发言开头（首个命中对整轮生效，见 AgentRunner.delivery_hint）
 OUTPUT_TAG_RE = re.compile(r"^\[\[(转发|直发)\]\]\s*")
 
 
@@ -397,8 +397,8 @@ def build_forward_nodes(sections: list[str], nickname: str = "", user_id: str = 
                 "data": {
                     "user_id": str(user_id),
                     "nickname": str(nickname),
- 
- 
+# NapCat/LLOneBot 的转发预览与详情读取的键对不同（uin/nick vs user_id/nickname）：
+# 四键同值冗余，读哪对都能拿到昵称（多余键各实现忽略，无副作用）
                     "uin": str(user_id),
                     "nick": str(nickname),
                     "content": [{"type": "text", "data": {"text": section}}],

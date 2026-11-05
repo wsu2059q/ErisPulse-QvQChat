@@ -45,7 +45,7 @@ class SessionsApiMixin:
             return ({"error": "chat_key required"}, 400)
         contexts = self.main.sessions.get_contexts(chat_key)
         total = len(contexts)
- 
+# 窗口参数：start/limit 按需加载；start 缺省且给 limit 时取尾部一页
         start_raw = self._query(request, "start")
         limit_raw = self._query(request, "limit")
         start_i, limit_n = 0, 0
@@ -99,7 +99,7 @@ class SessionsApiMixin:
         chat_key = str((body or {}).get("chat_key") or "")
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
-         
+        # 撤销删除：删除前把完整会话状态放进回收站
         from ..conversation.service import CONV_PREFIX
 
         state = self.sdk.storage.get(CONV_PREFIX + chat_key, None)
@@ -242,7 +242,7 @@ class SessionsApiMixin:
     async def memory_get(self, request):
         chat_key = self._query(request, "chat_key")
         if not chat_key:
- 
+# 无会话上下文：附最近活跃会话的画像（记忆页"用户画像"卡数据源）
             profile_user, profile = "", {"traits": [], "preferences": [], "facts": [], "updated": 0.0}
             sessions = self.main.sessions.list_sessions()
             if sessions:
@@ -274,7 +274,7 @@ class SessionsApiMixin:
             removed = self.main.memory.clear(chat_key)
         return {"ok": True, "removed": removed}
 
- 
+# ===== 会话分享 =====
 
     def _shares(self) -> dict:
         shares = self.sdk.storage.get(SHARES_KEY, {})
@@ -323,7 +323,7 @@ class SessionsApiMixin:
             max_tokens = min(200_000, max(200, int((body or {}).get("max_tokens", 4000))))
         except (TypeError, ValueError):
             max_tokens = 4000
- 
+# 续聊配额：rounds=0 只读分享（默认）；>0 允许访问者继续对话的轮数
         try:
             rounds = min(200, max(0, int((body or {}).get("rounds", 0))))
         except (TypeError, ValueError):
@@ -396,7 +396,7 @@ class SessionsApiMixin:
         spent = int(share.get("tokens_used") or 0)
         if budget > 0 and spent >= budget:
             return ({"error": "token budget exhausted"}, 429)
- 
+# 上下文 = 分享可见消息 + 既有续聊记录 + 本轮提问；纯 pool.chat，不带任何工具
         messages: list = [{"role": "system", "content": texts.t("share_chat_system")}]
         for message in self._share_contexts(share):
             role = str(message.get("role") or "user")

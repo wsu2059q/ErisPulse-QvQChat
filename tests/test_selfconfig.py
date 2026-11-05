@@ -51,7 +51,7 @@ async def test_manage_models_roundtrip():
     assert ctx.sdk.config_sets[-1] == ("QvQChat.default_model", "p1:m1")
     assert "unknown model" in await selfconfig.manage_models(ctx, action="set_default", model_id="nope")
 
- 
+# api_key 留空保留原值
     await selfconfig.manage_models(ctx, action="save", provider={"id": "p1", "base_url": "https://api.p1/v1"})
     stored = ctx.main.pool.get_provider("p1")
     assert stored["api_key"] == "sk-secret"

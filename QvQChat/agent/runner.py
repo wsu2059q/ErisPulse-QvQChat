@@ -20,11 +20,11 @@ class AgentResult:
     usage: dict = field(default_factory=dict)
     rounds: list = field(default_factory=list)
     model: str = ""
- 
+# 计划-执行-反思（deep 任务）：阶段产物，普通 chat 任务保持空串
     plan: str = ""
     critique: str = ""
- 
- 
+# 投递意图标签：任意一段 AI 发言开头的 [[转发]]/[[直发]] 首个命中（True=转发/False=直发）。
+# 最终回复自身的标签优先（inbox 合并），None=模型未表态（走自动规则）
     delivery_hint: bool | None = None
 
 
@@ -33,7 +33,7 @@ class AgentRunner:
         self.pool = pool
         self.registry = registry
         self.config = config
- 
+# 动态工具注入（auto：可见工具数超阈值才启用；fail-open）
         from .toolselect import ToolSelector
 
         self.selector = ToolSelector(self)
@@ -194,7 +194,7 @@ class AgentRunner:
                 images.append(value)
         return images
 
- 
+# ===== 能力查询与任务分派 =====
 
     def _pool_capability(self, need: str) -> str:
         """yes/no/unknown；池对象不支持查询（老式 fake/自定义池）时返回 unknown。"""
@@ -228,17 +228,17 @@ class AgentRunner:
         if status == "yes":
             return schemas, system, ["tool_call"]
         if status != "no":
- 
+# 能力未知：保持旧行为（照常带工具）
             return schemas, system, None
         fallback = str(getattr(self.config, "tools_fallback", "strip") or "strip").lower()
         if fallback == "off":
             return schemas, system, None
         if fallback == "strict":
             raise EngineError(texts.t("no_toolcall_model"))
- 
+# strip（默认）：去工具 + system 追加降级提示，保证必答
         return [], system + "\n\n" + texts.t("tools_degraded_note"), None
 
- 
+# ===== 计划-执行-反思（deep 任务三段式）=====
 
     @staticmethod
     def _content_text(content) -> str:
@@ -379,17 +379,17 @@ class AgentRunner:
         session_block = self._session_block(ctx)
         if session_block:
             system = system + "\n\n" + session_block
- 
+# 全程用量聚合：PLAN/EXECUTE/CRITIQUE/修正轮共用一个累计器（供计费与限额）
         usage_total: dict = {}
         plan = ""
         if str(task_kind) == "deep":
- 
+# 阶段一 PLAN：规划文本注入 system 尾部 <task-plan> 块
             plan = await self._plan_phase(system, contexts, usage_total)
             if plan:
                 system = system + "\n\n<task-plan>\n" + plan + "\n</task-plan>"
- 
+# 原始用户任务文本：在工具循环改写 contexts（预算提示/图片注记）之前留存，供审查阶段使用
         task_text = self._last_user_text(contexts)
- 
+# 阶段二 EXECUTE：工具循环（含工具自愈）
         result = await self._run_loop(
             system=system,
             contexts=contexts,
@@ -407,7 +407,7 @@ class AgentRunner:
         )
         if str(task_kind) != "deep":
             return result
- 
+# 阶段三 CRITIQUE：审查后 FIX 时有界 1 次无工具修正
         result.plan = plan
         critique = await self._critique_phase(plan, task_text, result)
         result.critique = critique
@@ -441,17 +441,17 @@ class AgentRunner:
             usage_total = {}
         used_model = ""
         step_counter = {"n": 0}
- 
+# 工具自愈：per-tool 连续失败计数（name → 最近错误输出列表），成功即清零
         fail_streak: dict[str, list[str]] = {}
         heal_enabled = bool(getattr(self.config, "tool_self_heal", True))
         schemas = self.registry.llm_schemas(
             whitelist=persona_tools,
             disabled=list(getattr(self.config, "disabled_tools", []) or []),
         )
- 
+# 权限对齐：非管理员看不到调不动的工具（避免模型反复调用然后被拒浪费轮次）
         if schemas and not self._ctx_is_admin(ctx):
             schemas = [s for s in schemas if self._tool_visible_nonadmin(str(s.get("function", {}).get("name") or ""))]
- 
+# 动态工具注入（权限过滤之后：只从"本来就能用"的工具里挑）
         hidden_by_select: list[str] = []
         if schemas and getattr(self, "selector", None) is not None:
             visible_names = {str(s.get("function", {}).get("name") or "") for s in schemas}
@@ -465,7 +465,7 @@ class AgentRunner:
         max_calls = int(getattr(self.config, "max_tool_calls", 150) or 150)
         total_calls = 0
         rounds: list = []
- 
+# tool_call 能力闭环（schemas 非空且未显式指定模型时）
         schemas, system, chat_needs = self._apply_tools_fallback(schemas, system, model)
         delivery_hint: bool | None = None
         for loop_index in range(max_rounds):
@@ -479,7 +479,7 @@ class AgentRunner:
             response = await self._dispatch("chat", request, needs=chat_needs, model=model,
                                             on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
              chat_key=ctx.chat_key)
- 
+# 引擎剥图重试过 → 模型本轮没看见图：补一份视觉描述，避免它装作看过
             if getattr(response, "images_stripped", False):
                 urls = list(getattr(response, "stripped_image_urls", []) or [])
                 if urls:
@@ -497,14 +497,14 @@ class AgentRunner:
             used_model = response.model or used_model
             if not response.tool_calls:
                 final_text, tag_hint = utils.strip_output_tag((response.content or "").strip())
- 
+# 最终回复自身的标签优先级最高（覆盖过程中声明的意图）
                 if tag_hint is not None:
                     delivery_hint = tag_hint
                 rounds.append({"text": final_text, "tools": []})
                 return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds,
                                    model=used_model, delivery_hint=delivery_hint)
             trace_before = len(trace)
- 
+# 中间发言也可携带 [[转发]]/[[直发]] 标签（首个命中记录为整轮投递意图，并从展示文本剥离）
             speech, tag_hint = utils.strip_output_tag((response.content or "").strip())
             if delivery_hint is None and tag_hint is not None:
                 delivery_hint = tag_hint
@@ -535,7 +535,7 @@ class AgentRunner:
                     for i, tc in enumerate(response.tool_calls)
                 ]
             )
- 
+# 自愈：模型点名了被工具选择器隐藏（但本来有权限）的工具 → 下一轮补回 schema
             if hidden_by_select:
                 missing = [str(tc.name) for tc in response.tool_calls if str(tc.name) in hidden_by_select]
                 for name in missing:
@@ -567,7 +567,7 @@ class AgentRunner:
                 if errored:
                     streak = fail_streak.setdefault(str(tc.name), [])
                     streak.append(truncate(str(output), 200))
- 
+# 连续第 2/4/… 次失败：注入一次修正提示，让下一轮模型自行调整参数
                     if heal_enabled and len(streak) >= 2 and len(streak) % 2 == 0:
                         errors = "\n".join(f"- {line}" for line in streak[-2:])
                         heal_hints.append(texts.t("tool_selfheal_hint", name=str(tc.name), errors=errors))
@@ -609,7 +609,7 @@ class AgentRunner:
             usage_total[key] = usage_total.get(key, 0) + final.usage.get(key, 0)
         raw_text = (final.content or "").strip()
         final_text, tag_hint = utils.strip_output_tag(raw_text)
- 
+# 最终回复自身的标签优先级最高
         if tag_hint is not None:
             delivery_hint = tag_hint
         rounds.append({"text": final_text, "tools": []})
@@ -617,7 +617,7 @@ class AgentRunner:
                            model=used_model or final.model, delivery_hint=delivery_hint)
 
     def _pool_has_vision(self) -> bool:
- 
+# 修近似探测——优先 pool.has_model(["vision"])（老式池对象退回旧近似逻辑）
         checker = getattr(self.pool, "has_model", None)
         if callable(checker):
             try:

@@ -11,7 +11,7 @@ from ..utils import OUTPUT_TAG_RE, strip_output_tag
 from .rhythm import STRUCTURE_FORWARD_RATIO, as_float, as_int, plan_segments, structure_signals
 from .visual import build_sections
 
- 
+# 标签工具已上移 utils（agent/runner 也要用）；此处保留原名再导出供既有引用
 __all__ = [
     "OUTPUT_TAG_RE", "strip_output_tag", "Delivery",
     "split_paragraphs", "match_platform", "delivery_profile",
@@ -21,11 +21,11 @@ RECAP_RE = re.compile(r"^(已[经把完成向]|好[的了]|已发送|已发出|d
 
 PENDING_KEY_PREFIX = "QvQChat:pending_send:"
 
- 
+# D4：仅对超时/网络类异常做指数退避重试，其余（参数错误/平台不支持等）快速失败
 RETRYABLE_EXC = (asyncio.TimeoutError, TimeoutError, ConnectionError, OSError)
 RETRYABLE_NAME_HINTS = ("timeout", "timed out", "connection", "network", "temporarily", "unavailable", "reset")
- 
- 
+# 不可送达类错误（目标不存在/无好友/被拒）：换方法重试毫无意义，更不能入队反复重放。
+# 命中即熔断本条，直接把错误回给调用方（模型可据此改用正确平台/目标）
 UNDELIVERABLE_HINTS = (
     "不是机器人好友", "recvId值错误", "not friend", "no such user", "user not found",
     "no relation", "blocked", "blacklist", "拉黑", "rejected", "无权限发送", "forbidden",
@@ -169,8 +169,8 @@ async def dispatch_text(sdk, config, sender, methods, text: str,
                         logger.warning(f"send via {name} failed: {e}")
                     except Exception:
                         pass
-                 
-                 
+                # 不可送达（无好友/目标不存在/被拒）：换方法与重试都不会成功——熔断，
+                # 不入待发队列（否则下次启动还会原样撞墙），把错误直接还给调用方
                 if is_undeliverable(e):
                     if logger is not None:
                         try:
@@ -201,11 +201,11 @@ class Delivery:
         self._identity: dict = {}
         self._rng = rng or random
         self._replay_tried: set[str] = set()
- 
+# H3 响应预算：chat_key → 生成开始时间戳（None=无预算约束）
         self._budget_start: dict[str, float] = {}
- 
+# H3 硬打断：chat_key 集合，分段发送循环在段间检查并丢弃未发段
         self._interrupted: set[str] = set()
- 
+# H5 撤回：chat_key → 最近一次成功发送的 message_id 信息
         self._last_sent: dict[str, dict] = {}
 
     def begin_budget(self, chat_key: str, seconds: float) -> None:
@@ -405,8 +405,8 @@ class Delivery:
         sections, text_segments = build_sections(
             rounds, reply, tool_trace,
             include_trace=not bool(getattr(self.config, "forward_exclude_trace", False)),
- 
- 
+# 卡外直发结论开启时，最终结论不进卡（剔除后卡内只剩过程与中间发言；
+# 剔空则下方 not sections 兜底放弃转发，整体回退直发）
             exclude_final_reply=bool(getattr(self.config, "forward_external_reply", True))
             and bool(str(reply or "").strip()),
             args_chars=as_int(profile.get("forward_args_chars"), 140) or None,
@@ -415,7 +415,7 @@ class Delivery:
         if force is not True:
             min_messages = as_int(profile.get("forward_min_messages"), 2)
             if structure_aware:
- 
+# D3 结构感知：结构化占比达标、或多段且含代码块/表格才转发；纯寒暄多段直发
                 sig = structure_signals(rounds, reply)
                 structured = (
                     sig["score"] >= STRUCTURE_FORWARD_RATIO
@@ -436,7 +436,7 @@ class Delivery:
             return False
         try:
             user_id, bot_nickname = await self.bot_identity(platform)
- 
+# 会话人格配置了转发显示名（nickname）则覆盖机器人自身昵称
             nickname = bot_nickname
             personas = getattr(self.main, "personas", None)
             if personas is not None:
@@ -466,7 +466,7 @@ class Delivery:
             queue=self._event_queue(event), logger=self.main.logger,
         )
         if used:
- 
+# H5：记录最近成功发送的 message_id，供撤回使用（各适配器结果结构不一，尽力提取）
             message_id = self._extract_message_id(result)
             if message_id is not None:
                 queue = self._event_queue(event) or {}
@@ -498,7 +498,7 @@ class Delivery:
         segments = await self._emit_deliver_hook(event, segments)
         queue = self._event_queue(event)
         chat_key = str((queue or {}).get("chat_key") or self._event_chat_key(event))
- 
+# H3 响应预算：生成耗时吃掉预算时降级——延迟减半 → 归零 → 全部合并为一条发出
         left = self.budget_left(chat_key)
         if left is not None:
             needed = sum(max(0.0, d) for _, d in segments)
@@ -509,13 +509,13 @@ class Delivery:
         for index, (text, delay) in enumerate(segments):
             if delay > 0:
                 await self._sleep_interruptible(chat_key, delay)
- 
+# H3 硬打断：未发送的段作废（已发出的照发），本轮到此为止
             if self.take_interrupt(chat_key):
                 self.main.logger.info(f"reply interrupted, dropped {len(segments) - index} segment(s)")
                 break
             if await self._send_plain(event, text, quote=quote and index == 0):
                 continue
- 
+# D4：分段中途失败——失败段已入队，剩余段一并入队，不中断已发段
             if queue is not None:
                 for rest, _ in segments[index + 1:]:
                     entry = dict(queue)
@@ -532,8 +532,8 @@ class Delivery:
             await self._replay_pending(self._event_chat_key(event))
             quote = self.quote_enabled()
             if await self._try_forward(event, reply, tool_trace, force=force, rounds=rounds):
- 
- 
+# 卡外直发结论：转发卡只装过程与中间发言，最终结论以普通消息直发到卡外
+# （结论仍在卡内重复时可关闭 forward_external_reply）
                 if bool(getattr(self.config, "forward_external_reply", True)) and str(reply or "").strip():
                     profile = self.profile_for(str(event.get_platform() or ""))
                     if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
@@ -581,7 +581,7 @@ class Delivery:
             methods, text, queue=None, logger=self.main.logger,
         )
         if not used:
-             
+            # 不可送达死信（无好友/目标不存在）：留在队列里每次启动都会原样撞墙——直接丢弃
             if is_undeliverable(last_error):
                 try:
                     self.sdk.storage.set(pending_key(chat_key), data[1:])

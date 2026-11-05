@@ -75,7 +75,7 @@ def _platform_not_found_msg(ctx: ToolContext, platform: str) -> str:
     except Exception:
         available = []
     suggest = ""
-     
+    # 简易相似度：双向前缀/包含匹配，零依赖
     if available:
         want = str(platform).lower().replace("-", "").replace("_", "")
         scored = []
@@ -106,7 +106,7 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
                        as_forward: bool = False) -> str:
     if not text and not image_url and not audio_path:
         return texts.t("send_need_content")
-     
+    # 目标缺省=当前会话：模型不确定发给谁时无需瞎猜平台/ID（系统提示 <session> 块同步此约定）
     if not platform or not target_type or not target_id:
         cur_platform = str(getattr(ctx, "platform", "") or "")
         cur_target = str(getattr(ctx, "target_id", "") or "")
@@ -116,7 +116,7 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
         platform = platform or cur_platform
         target_type = target_type or cur_type
         target_id = target_id or cur_target
-     
+    # 平台名透传：AI 自己会 list_platforms；未命中时给可用清单+模糊建议供其自查
     adapter = ctx.sdk.adapter.get(platform)
     if adapter is None:
         return _platform_not_found_msg(ctx, platform)
@@ -131,14 +131,14 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
 
     from ..conversation.delivery import delivery_profile, dispatch_text
 
-     
+    # D2：转发阈值纳入平台 profile（delivery_profiles 通配命中可覆盖）
     profile = delivery_profile(ctx.config, platform)
     threshold = int(profile.get("forward_threshold", 600) or 0)
     forward_attempted = False
     if text and (as_forward or (not method and threshold and len(text) >= threshold)):
         forward_attempted = True
-         
-         
+        # D5：先按 Markdown 标题/长块切节，仅 Text-only 平台才剥离 Markdown
+        # （先剥后切会让标题切块失效：markdown_to_text 已删掉 "## " 前缀）
         sections = utils.split_reply_sections(text)
         if sends and "Markdown" not in sends and "Html" not in sends:
             sections = [utils.markdown_to_text(s) for s in sections]
@@ -171,7 +171,7 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
         if "Text" not in attempts:
             attempts.append("Text")
 
- 
+# D4：与回复路径收敛同一发送实现（方法降级 + 指数退避重试 + 失败入待发队列）
     used = ""
     result = None
     last_error: Exception | None = None
@@ -196,7 +196,7 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
     if text and not used:
         detail = str(last_error) if last_error is not None else "send failed"
         if undeliverable is not None:
-             
+            # 不可送达（对方非好友/目标不存在/被拒）：明确告诉模型原因与下一步，而不是谎称"已入队"
             return texts.t("send_undeliverable", platform=platform, target_type=target_type,
                            target_id=target_id, error=detail[:200])
         return texts.t("tool_error", name="send_message", error=f"{detail}；已转入待发队列")

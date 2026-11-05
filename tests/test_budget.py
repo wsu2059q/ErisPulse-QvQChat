@@ -22,8 +22,8 @@ def test_pack_drops_low_priority_first():
         SystemPart("persona", "你是助手", required=True),
         SystemPart("capability", "能力说明", required=True),
         SystemPart("scene", "场景"),
-        big("extra", 2000), 
-        big("kb", 2000), 
+        big("extra", 2000),# 优先级最低 → 先丢
+        big("kb", 2000),# 其次
     ]
     packed = packer.pack(
         context_length=2000,
@@ -35,9 +35,9 @@ def test_pack_drops_low_priority_first():
     stats = packed.stats
     assert stats["dropped"].get("extra") == 1
     assert "你是助手" in packed.system
- 
+# 预算 = 2000*0.85 - 256 - 256 = 1188；system 封顶 594
     assert stats["budget"] == 1188
-    assert stats["used_system"] <= 594 + 40 
+    assert stats["used_system"] <= 594 + 40# 截断标记允许少量开销
 
 
 def test_pack_required_only_truncated_never_dropped():
@@ -53,7 +53,7 @@ def test_pack_required_only_truncated_never_dropped():
         user_msg={"role": "user", "content": "hi"},
         max_output=0,
     )
- 
+# required 只截不丢：两段都仍在，且带截断标记
     assert "…[truncated]" in packed.system
     assert packed.stats["dropped"] == {}
     assert "字" in packed.system
@@ -79,7 +79,7 @@ def test_pack_user_msg_always_kept_and_history_fills_new_to_old():
     kept_texts = [m.get("content") for m in messages[:-1]]
     assert "第7轮提问" in str(kept_texts[-2]), "从新到旧装填：最新一轮必须在"
     assert "第0轮提问" not in str(kept_texts), "最旧一轮应被挤掉"
- 
+# 装填不溢出时 overflow 为 0
     packed_ok = packer.pack(
         context_length=100000,
         parts=[SystemPart("persona", "你是助手", required=True)],
@@ -120,11 +120,11 @@ async def test_prepare_packing_integration():
     texts = [str(m.get("content")) for m in prepared["contexts"]]
     assert any("历史问题9" in t for t in texts), "最近一轮历史保留"
     assert not any("历史问题0" in t for t in texts), "最旧历史被预算挤出"
- 
+# 溢出触发 budget 压缩（spawn 异步执行）
     assert spawned, "装填溢出应 spawn reason=budget 压缩"
     report = await spawned[0]
     assert report.get("reason") == "budget"
- 
+# prepare 返回选中的模型（与 runner 选型一致）
     assert "model" in prepared
 
 
@@ -135,12 +135,12 @@ async def test_prepare_budget_off_keeps_legacy_behavior():
     for i in range(6):
         manager.append(key, "user", f"消息{i}")
     prepared = await manager.prepare(key, "你好")
- 
+# off 模式：全部历史照带（发送级轮窗口为 0 不裁剪）
     assert len(prepared["contexts"]) == 6
     assert prepared["user_msg"]["content"] == "你好"
 
 
- 
+# ===== 压缩阈值自适应（0=auto）=====
 
 
 def test_compactor_threshold_auto_from_model_context():
@@ -149,7 +149,7 @@ def test_compactor_threshold_auto_from_model_context():
     main = FakeMain(context_compress_tokens=0, context_reserve=0.85)
     main.conversations._resolve_chat_model = lambda: {"id": "m", "context_length": 32000}
     compactor = Compactor(main)
- 
+# 32000 × 0.85 × 0.5 = 13600
     assert compactor._threshold() == 13600
 
 
@@ -158,10 +158,10 @@ def test_compactor_threshold_fallback_and_overrides():
 
     main = FakeMain(context_compress_tokens=0)
     main.conversations._resolve_chat_model = lambda: None
-    assert Compactor(main)._threshold() == 13600   
+    assert Compactor(main)._threshold() == 13600  # 32000 兜底 × 0.85 × 0.5
 
     main2 = FakeMain(context_compress_tokens=50000)
-    assert Compactor(main2)._threshold() == 50000   
+    assert Compactor(main2)._threshold() == 50000  # 显式阈值优先
 
     main3 = FakeMain(context_compress_tokens=-1)
-    assert Compactor(main3)._threshold() == 0   
+    assert Compactor(main3)._threshold() == 0  # 负数 = 关闭阈值压缩

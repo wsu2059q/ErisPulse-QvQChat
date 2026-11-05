@@ -1,15 +1,15 @@
- 
+/* 消息流：历史按需加载（尾部窗口 + 上滚补更早）、渲染、原地编辑与附件 */
   var historySeq = 0;
   var chatLoading = false;
   var HISTORY_PAGE = 30;
-   
+  // 已加载窗口在服务端历史中的绝对起点与总数（>0 表示上方还有更早消息）
   var chatWindowStart = 0;
   var chatTotal = 0;
 
   var chatHistoryVersion = 0;
 
   function mapServerMessage(m, start, i) {
-     
+    // 服务端消息 → 本地条目的唯一映射：idx 必须是绝对索引，rounds 必须透传
     var atts = (m.atts || []).map(function (a) {
       return { isImage: !!a.isImage, name: a.name || "image", data: a.data || "", mime: a.mime || "image/png" };
     });
@@ -42,8 +42,8 @@
     chatLoading = true;
     renderChat();
     return api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtRequest) + "&limit=" + HISTORY_PAGE).then(function (data) {
-      if (seq !== historySeq) return;  
-      chatLoading = false;             
+      if (seq !== historySeq) return; // 新请求已接管本会话的加载
+      chatLoading = false;
       if (data && data.__http >= 400) {
         toast(data.error || ("HTTP " + data.__http), true);
         renderChat();
@@ -115,7 +115,7 @@
   function stickChatBottom(box) {
     if (stick) stickChatBottom(box);
     else if (prevTop) box.scrollTop = prevTop;
-     
+    // base64 图片异步解码会继续撑高容器：解码完成后补偿一次
     box.querySelectorAll("img").forEach(function (img) {
       if (img.complete) return;
       var done = false;
@@ -207,7 +207,7 @@
 
         return '<div class="qvq-msg-wrap"' + timeAttr + '><div class="qvq-msg me' + freshCls + '">' + inner + body + '</div>' + acts + "</div>";
       }
- 
+// AI 消息操作条：复制所有；重新生成仅最后一条
       var lastBot = -1;
       for (var bi = 0; bi < chatHistory.length; bi++) {
         if (chatHistory[bi].role === "assistant") lastBot = bi;
@@ -274,7 +274,7 @@
   }
 
 
-   
+  // 图片查看器：滚轮缩放/双击复位/旋转
   function openImageViewer(name, src) {
     openModal(name, "<div class='qvq-img-viewer'>" +
       "<div class='qvq-img-stage'><img src='" + src + "' alt=''/></div>" +

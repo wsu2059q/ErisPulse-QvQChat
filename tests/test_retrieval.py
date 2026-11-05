@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from QvQChat.conversation.knowledge import KnowledgeBase 
-from QvQChat.engine import vectors 
-from QvQChat.engine.vectors import VectorEngine 
-from fakes import FakeSDK 
+from QvQChat.conversation.knowledge import KnowledgeBase# noqa: E402
+from QvQChat.engine import vectors# noqa: E402
+from QvQChat.engine.vectors import VectorEngine# noqa: E402
+from fakes import FakeSDK# noqa: E402
 
 PROVIDER = {"base_url": "http://x/v1", "api_key": "sk-test", "model": "emb-test"}
 
@@ -52,7 +52,7 @@ def semantic_kb(fail=False) -> KnowledgeBase:
     return kb
 
 
- 
+# ===== vectors：available / embed / cosine =====
 
 def test_vectors_available_false_without_config():
     assert vectors.available(None) is False
@@ -60,10 +60,10 @@ def test_vectors_available_false_without_config():
     assert vectors.available(SimpleNamespace(embedding_provider={})) is False
     assert vectors.available(SimpleNamespace(embedding_provider={"base_url": "http://x/v1"})) is False
     assert vectors.available(SimpleNamespace(embedding_provider={"base_url": "http://x/v1", "api_key": "k"})) is False
- 
+# 配置齐全（openai 已是依赖 → 网络层可用）
     full = SimpleNamespace(embedding_provider=dict(PROVIDER))
     assert vectors.available(full) is True
- 
+# 模型名可来自 embedding_model 而非 provider 内 model
     assert vectors.available(SimpleNamespace(embedding_provider={"base_url": "u", "api_key": "k"}, embedding_model="m")) is True
 
 
@@ -74,10 +74,10 @@ def test_vectors_embed_batches_of_16_and_fails_to_none():
     assert out is not None and len(out) == 40
     assert [len(batch) for batch in client.calls] == [16, 16, 8]
     assert engine.embed([], SimpleNamespace(embedding_provider=dict(PROVIDER))) is None
- 
+# 任何异常 → None（调用方回退词面）
     failing = VectorEngine(client=FakeEmbedClient(fail=True))
     assert failing.embed(["恐龙"], SimpleNamespace(embedding_provider=dict(PROVIDER))) is None
- 
+# 配置缺失 → None
     assert VectorEngine(client=client).embed(["恐龙"], SimpleNamespace()) is None
 
 
@@ -85,12 +85,12 @@ def test_vectors_cosine_pure_function():
     assert vectors.cosine([1.0, 0.0], [0.0, 1.0]) == 0.0
     assert vectors.cosine([1.0, 0.0], [1.0, 0.0]) == 1.0
     assert abs(vectors.cosine([1.0, 0.0], [1.0, 1.0]) - 0.7071067811865475) < 1e-9
-    assert vectors.cosine([1.0, 0.0], [1.0, 0.0, 0.0]) == 0.0 
+    assert vectors.cosine([1.0, 0.0], [1.0, 0.0, 0.0]) == 0.0# 长度不等
     assert vectors.cosine([], []) == 0.0
     assert vectors.cosine(None, [1.0]) == 0.0
 
 
- 
+# ===== 语义检索：向量路径 + 回退路径 =====
 
 def test_semantic_search_ranks_by_cosine():
     kb = semantic_kb()
@@ -99,7 +99,7 @@ def test_semantic_search_ranks_by_cosine():
     hits = kb.search("恐龙时代", top_k=2)
     assert hits and hits[0]["title"] == "恐龙"
     assert hits[0]["score"] == 1.0
-    assert len(hits) == 1 
+    assert len(hits) == 1# 潜艇余弦 0.0 低于注入门槛，被过滤
     hits = kb.search("潜艇怎么下潜", top_k=2)
     assert hits and hits[0]["title"] == "潜艇"
 
@@ -110,10 +110,10 @@ def test_semantic_vector_cache_written_and_cleared():
     kb.search("恐龙", top_k=1)
     cache = kb.sdk.storage.get("QvQChat:kbvec:" + entry["id"])
     assert isinstance(cache, dict) and cache.get("model") == "emb-test" and cache.get("vecs")
- 
+# 二次检索命中缓存（不再新增 embed 调用）
     before = len(kb.vectors._client.calls)
     kb.search("恐龙", top_k=1)
-    assert len(kb.vectors._client.calls) == before + 1 
+    assert len(kb.vectors._client.calls) == before + 1# 仅查询向量 1 次
     kb.delete(entry["id"])
     assert kb.sdk.storage.get("QvQChat:kbvec:" + entry["id"]) is None
 
@@ -123,11 +123,11 @@ def test_semantic_fallback_on_embed_failure():
     kb.add("恐龙", "霸王龙是白垩纪晚期的顶级掠食者，主要化石发现于北美洲。")
     hits = kb.search("霸王龙 白垩纪", top_k=2)
     assert hits and hits[0]["title"] == "恐龙"
-    assert isinstance(hits[0]["score"], int) 
+    assert isinstance(hits[0]["score"], int)# 词面路径的分数字段是词频计数
 
 
 def test_semantic_disabled_by_flag_falls_back_to_lexical():
-    kb = make_kb() 
+    kb = make_kb()# embedding_enabled 缺省 False → 与现状完全一致
     kb.add("恐龙", "霸王龙是白垩纪晚期的顶级掠食者。")
     assert kb._semantic_search("恐龙", 2) is None
     hits = kb.search("霸王龙 白垩纪", top_k=1)
@@ -135,14 +135,14 @@ def test_semantic_disabled_by_flag_falls_back_to_lexical():
     assert kb.search("完全不相关的量子词根") == []
 
 
- 
+# ===== Lorebook 世界书：triggered =====
 
 def test_triggered_hit_refreshes_last_trigger_ts():
     kb = make_kb()
     entry = kb.add("魔王设定", "魔王被封印在北塔第七层，惧怕圣光。", triggers=["魔王", "北塔"], priority=5)
     hits = kb.triggered(["群里聊到 魔王 会不会复活"], now=1000.0)
     assert [h["id"] for h in hits] == [entry["id"]]
-    assert kb.get(entry["id"])["last_trigger_ts"] == 1000.0 
+    assert kb.get(entry["id"])["last_trigger_ts"] == 1000.0# 命中即刷新写回 KV
 
 
 def test_triggered_any_keyword_case_insensitive():
@@ -163,17 +163,17 @@ def test_triggered_priority_desc_order():
 def test_triggered_cooldown_blocks_until_expiry():
     kb = make_kb()
     entry = kb.add("e", "冷却条目", triggers=["key"], cooldown_min=30)
-    t0 = 1000.0 
+    t0 = 1000.0# 时间注入：last=0 视为从未触发，首触必放行
     assert kb.triggered(["key"], now=t0)
-    assert kb.triggered(["key"], now=t0 + 20 * 60) == [] 
-    assert kb.triggered(["key"], now=t0 + 29 * 60 + 59) == [] 
-    assert len(kb.triggered(["key"], now=t0 + 30 * 60)) == 1 
+    assert kb.triggered(["key"], now=t0 + 20 * 60) == []# 冷却中
+    assert kb.triggered(["key"], now=t0 + 29 * 60 + 59) == []# 差一秒也不行
+    assert len(kb.triggered(["key"], now=t0 + 30 * 60)) == 1# 冷却结束再命中并再次刷新
     assert kb.get(entry["id"])["last_trigger_ts"] == t0 + 30 * 60
 
 
 def test_triggered_ignores_entries_without_triggers():
     kb = make_kb()
-    kb.add("plain", "无触发词的普通条目") 
+    kb.add("plain", "无触发词的普通条目")# 无 triggers → 保持检索行为，不参与触发
     kb.add("trig", "内容", triggers=["魔王"], cooldown_min=0)
     assert kb.triggered(["无触发词的普通条目"], now=0.0) == []
     hits = kb.triggered(["魔王出现了"], now=0.0)
@@ -186,28 +186,28 @@ def test_triggered_disabled_by_config():
     assert kb.triggered(["魔王魔王魔王"], now=0.0) == []
 
 
- 
+# ===== 条目新字段 CRUD 透传 =====
 
 def test_add_new_fields_crud_passthrough():
     kb = make_kb()
     entry = kb.add("t", "c", source="note", triggers=["a", "b"], priority=7, cooldown_min=10)
     stored = kb.get(entry["id"])
     assert stored["triggers"] == ["a", "b"] and stored["priority"] == 7 and stored["cooldown_min"] == 10
- 
+# 无 triggers 的条目保持旧结构（新字段不落盘）
     plain = kb.add("p", "c")
     assert all(k not in plain for k in ("triggers", "priority", "cooldown_min"))
- 
+# cooldown 缺省取配置 kb_cooldown_min
     assert kb.add("d", "c", triggers=["x"])["cooldown_min"] == 30
- 
+# 导入透传
     assert kb.import_entries([{"title": "i", "content": "ic", "triggers": ["k"], "priority": 3, "cooldown_min": 5}]) == 1
     imported = next(e for e in kb.list() if e["title"] == "i")
     assert imported["triggers"] == ["k"] and imported["priority"] == 3 and imported["cooldown_min"] == 5
- 
+# 导出携带新字段 / 删除
     assert any(e.get("triggers") for e in kb.export())
     assert kb.delete(entry["id"]) is True and kb.get(entry["id"]) is None
 
 
- 
+# ===== service kb 注入点：触发条目与检索块合并 =====
 
 def test_build_system_merges_triggered_before_search_hits():
     from fakes import FakeMain
@@ -224,10 +224,10 @@ def test_build_system_merges_triggered_before_search_hits():
     )
     kb_parts = [p for p in parts if p.kind == "kb"]
     assert kb_parts and "[triggered]" in kb_parts[0].text and "北塔" in kb_parts[0].text
- 
+# 触发条目与检索命中同 id 去重：不再出现普通 kb-doc 重复注入魔王条目
     assert kb_parts[0].text.count("魔王被封印在北塔") == 1
-    assert "白垩纪" not in kb_parts[0].text 
- 
+    assert "白垩纪" not in kb_parts[0].text# 无关条目不注入
+# 无触发命中时保持纯检索注入
     parts2 = main.sessions.build_system_parts(persona, chat_key="onebot11:group:1", kb_query="霸王龙时期", kb_texts=["聊点别的"])
     kb2 = [p for p in parts2 if p.kind == "kb"]
     assert kb2 and "[triggered]" not in kb2[0].text and "白垩纪" in kb2[0].text

@@ -60,7 +60,7 @@ def _seed_user_sessions(main) -> str:
     return "onebot11:u1"
 
 
- 
+# ===== consolidate：聚合 / 去重 / LLM 提炼 =====
 
 
 async def test_consolidate_aggregates_and_dedupes():
@@ -81,11 +81,11 @@ async def test_consolidate_aggregates_and_dedupes():
     facts = [f["text"] for f in profile["facts"]]
     assert "张三是资深 Python 工程师" in traits
     assert "喜欢蓝色（深色）" in prefs
- 
+# 跨会话 facts 聚合：包含式归并后偏好类只留更完整一条
     pref_facts = [f for f in facts if f.startswith("PREFERENCE|")]
     assert len(pref_facts) == 1 and "深色" in pref_facts[0]
     assert "ENTITY|张三" in facts and "TODO|周五交报告" in facts
- 
+# 私聊会话（onebot11:private:u1）也是聚合候选，但无 facts 不报错
     assert isinstance(profile["updated"], float)
 
 
@@ -98,20 +98,20 @@ async def test_consolidate_llm_failure_keeps_raw_items():
     profile = main.conversations.profile.get(user_key)
     traits = [t["text"] for t in profile["traits"]]
     prefs = [p["text"] for p in profile["preferences"]]
- 
+# 兜底分类：PREFERENCE| → preferences；ENTITY/TODO/memory → traits
     assert any("深色" in p for p in prefs)
     assert "ENTITY|张三" in traits
-    assert "用户是资深 Python 工程师" in traits 
-    assert "回复要简洁" in traits 
-    assert all("低重要度" not in t for t in traits) 
+    assert "用户是资深 Python 工程师" in traits# 逐会话 importance>=4 的 memory 参与
+    assert "回复要简洁" in traits# global scope memory 参与
+    assert all("低重要度" not in t for t in traits)# importance<4 的逐会话记忆不参与
 
 
- 
+# ===== 衰减 =====
 
 
 async def test_consolidate_decays_stale_traits():
     main = FakeMain(profile_decay_days=30)
-    main.pool = BoomingPool() 
+    main.pool = BoomingPool()# 无源可提炼 → 走兜底（空），旧条目按 ts 衰减
     stale_ts = time.time() - 40 * 86400
     main.sdk.storage.set(
         PROFILE_PREFIX + "onebot11:u1",
@@ -138,7 +138,7 @@ async def test_consolidate_reinforcement_survives_decay():
     svc = main.conversations
     svc.append_user(g1, "(u1): 我喜欢蓝色", sender_id="u1")
     svc.append_facts(g1, ["PREFERENCE|喜欢蓝色"])
-    main.pool = BoomingPool() 
+    main.pool = BoomingPool()# 兜底：PREFERENCE| 归 preferences
 
     stale_ts = time.time() - 40 * 86400
     main.sdk.storage.set(
@@ -170,7 +170,7 @@ async def test_decay_disabled_keeps_stale():
     assert [t["text"] for t in main.conversations.profile.get("onebot11:u1")["traits"]] == ["老条目"]
 
 
- 
+# ===== digest 与条目上限 =====
 
 
 def test_digest_limit_and_truncation():
@@ -211,7 +211,7 @@ def test_clear_returns_removed_count():
     assert store.clear("onebot11:u1") == 0
 
 
- 
+# ===== active_user_keys（近期活跃） =====
 
 
 def test_active_user_keys_from_user_seen():
@@ -219,7 +219,7 @@ def test_active_user_keys_from_user_seen():
     svc = main.conversations
     svc.append_user("onebot11:group:1", "(u1): hi", sender_id="u1")
     svc.append_user("onebot11:group:2", "(u2): hi", sender_id="u2")
- 
+# u3 很久没说话
     main.sdk.storage.set(
         "QvQChat:user_seen:u3",
         [{"chat_key": "onebot11:group:3", "ts": time.time() - 48 * 3600, "head": ""}],
@@ -229,7 +229,7 @@ def test_active_user_keys_from_user_seen():
     assert all(not k.endswith(":u3") for k in keys)
 
 
- 
+# ===== budget PRIORITY =====
 
 
 def test_priority_profile_between_facts_and_memory():
@@ -237,7 +237,7 @@ def test_priority_profile_between_facts_and_memory():
     assert PRIORITY["profile"] == 4.5
 
 
- 
+# ===== service 注入 =====
 
 
 def test_build_system_parts_injects_profile():
@@ -255,7 +255,7 @@ def test_build_system_parts_injects_profile():
     part = next(p for p in parts if p.kind == "profile")
     assert "[trait] 熟悉 Python" in part.text and "[pref] 喜欢简洁" in part.text
 
- 
+# 无 profile_user / 功能关闭时不注入
     assert "profile" not in [p.kind for p in svc.build_system_parts(persona, chat_key=key)]
     main.cfg.profile_enabled = False
     assert "profile" not in [
@@ -272,7 +272,7 @@ async def test_prepare_passes_profile_user_into_system():
     assert "[trait] 夜猫子" in prepared["system"]
 
 
- 
+# ===== /qvq memories 命令 =====
 
 
 class CliEvent(FakeChatEvent):
@@ -321,18 +321,18 @@ async def test_qvq_memories_clear_requires_admin_and_confirm():
     host.conversations.append_facts("onebot11:group:1", ["ENTITY|张三"])
     host.memory.remember("onebot11:group:1", "m")
 
- 
+# 非管理员
     event = CliEvent(args="memories clear profile confirm", user_id="stranger", group=True, group_id="1")
     await host._cmd_agent(event)
     assert texts.t("needs_admin") in event.replies[0][1]
 
- 
+# 管理员但缺 confirm
     event = CliEvent(args="memories clear profile", user_id="u1", group=True, group_id="1")
     await host._cmd_agent(event)
     assert texts.t("memories_clear_need_confirm") in event.replies[0][1]
     assert host.conversations.profile.get("onebot11:u1")["traits"], "未确认不得清空"
 
- 
+# 未知目标
     event = CliEvent(args="memories clear nonsense confirm", user_id="u1", group=True, group_id="1")
     await host._cmd_agent(event)
     assert texts.t("memories_clear_usage") in event.replies[0][1]
@@ -364,7 +364,7 @@ async def test_qvq_memories_clear_graded():
     assert host.conversations.profile.get("onebot11:u1")["traits"] == []
 
 
- 
+# ===== scheduler：固化定时任务 =====
 
 
 def test_ensure_profile_task_registers_interval_task():
@@ -393,7 +393,7 @@ async def test_tick_fires_profile_task_and_consolidates():
     tasks = scheduler.list()
     tasks[0]["next_run"] = time.time() - 10
     main.sdk.storage.set("QvQChat:tasks", tasks)
-    main.pool = BoomingPool() 
+    main.pool = BoomingPool()# LLM 失败 → 兜底路径也能固化
 
     await scheduler._tick()
     assert main.tasks_fired == [], "画像任务不得走 run_prompt"
@@ -425,7 +425,7 @@ async def test_profile_fire_skips_failed_users():
     assert done == 1
 
 
- 
+# ===== dashboard：memory 端点扩展 + profile 清空 =====
 
 
 class SessionsHost(SessionsApiMixin):

@@ -497,8 +497,7 @@
     } catch (e) {}
   })();
 
-  // 鉴权链在途标记：initApp 现在立即绑定交互，早期触发的 api 调用先排队，
-  // 待 resolveToken 出结果再发（避免启动期无令牌请求 401 闪登录框）
+  // 鉴权链在途标记：resolveToken 完成前的 api 调用先排队
   var bootWaiters = [];
   var bootSettled = false;
 
@@ -526,7 +525,7 @@
       }).then(function (resp) {
         return resp.json().catch(function () { return {}; }).then(function (data) {
           data = data && typeof data === "object" ? data : {};
-          // 显式携带 HTTP 状态：错误不再被吞成"空数据/空会话"
+          // 显式携带 HTTP 状态
           data.__http = resp.status;
           if (resp.status === 401) {
             activeToken = "";
@@ -549,7 +548,7 @@
     }).catch(function () { return false; });
   }
 
-  // 鉴权成功后把 ?token= 从地址栏剥掉，避免令牌留在浏览器历史（F1）
+  // 鉴权成功后把 ?token= 从地址栏剥掉
   function stripUrlToken() {
     if (!window.history || !window.history.replaceState) return;
     try {
@@ -581,7 +580,7 @@
     });
     return chain.then(function (ok) {
       if (ok && chosen) {
-        // 回写命中的令牌，令牌轮换后下次启动不再依赖已失效的候选
+        // 回写命中的令牌
         try { localStorage.setItem("qvq_token", chosen); } catch (e) {}
         stripUrlToken();
       }
@@ -589,7 +588,7 @@
     });
   }
 
-  // 导航点击委托：不依赖 initApp 绑定时序，auth 链完成前的点击也不丢
+  // 导航点击委托
   (function bindNavEarly() {
     var nav = document.getElementById("qvq-nav");
     if (!nav) return;

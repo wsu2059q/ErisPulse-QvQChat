@@ -58,7 +58,7 @@ async def test_tool_run_with_multiple_replies_merges():
     event = FakeForwardEvent()
     assert await Delivery(harness)._try_forward(event, "综上是结论", tool_trace(), rounds=rounds_multi_replies()) is True
     calls = forward_calls(harness)
- 
+# 默认 forward_external_reply：结论不进卡，卡内只装过程与中间发言
     assert calls and len(calls[0][0]) >= 3
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
     assert any("call_module" in t for t in texts)
@@ -88,7 +88,7 @@ async def test_consecutive_tools_merge_into_one_node():
     ]
     assert await Delivery(harness)._try_forward(event, "完成", tools, rounds=rounds) is True
     calls = forward_calls(harness)
- 
+# 结论卡外直发 → 卡内只剩执行过程节点
     assert calls and len(calls[0][0]) == 1
     tool_node = calls[0][0][0]["data"]["content"][0]["data"]["text"]
     assert tool_node.count("call_module") == 2
@@ -108,7 +108,7 @@ async def test_tool_and_message_alternate_stay_separate():
     assert await Delivery(harness)._try_forward(event, "最终结论", trace, rounds=rounds) is True
     calls = forward_calls(harness)
     texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
- 
+# 结论卡外直发 → 卡内 3 个节点（过程/中间说明/过程）
     assert len(texts) == 3
     assert "中间说明" in texts[1]
     assert "read_file" in texts[0] and "list_dir" in texts[2]
@@ -232,7 +232,7 @@ async def test_deliver_reply_merged_run_sends_conclusion_outside():
     harness = make_harness()
     delivery = Delivery(harness)
     await delivery.deliver_reply(_split_event(sent), "综上", tool_trace(), rounds=rounds_multi_replies())
- 
+# 转发卡发出后，结论以普通消息直发到卡外
     assert sent == ["综上"]
 
 
@@ -249,7 +249,7 @@ async def test_structure_aware_forwards_structured_report():
     event = FakeForwardEvent()
     reply = "## 适配清单\n\n```py\nprint(1)\n```\n\n综上如下。"
     rounds = [{"text": reply, "tools": []}]
- 
+# 无工具轮次，但结构化占比高 → 仍走合并转发
     assert await Delivery(harness)._try_forward(event, reply, [], rounds=rounds) is True
     assert forward_calls(harness)
 
@@ -262,7 +262,7 @@ async def test_structure_aware_sends_pure_chatter_direct():
         {"text": "那就这样", "tools": []},
         {"text": "晚点聊", "tools": []},
     ]
- 
+# 段数达到 min 但纯寒暄无结构 → 直发（旧行为会合并转发）
     assert await Delivery(harness)._try_forward(event, "晚点聊", tool_trace(), rounds=rounds) is False
     assert forward_calls(harness) == []
 
@@ -284,7 +284,7 @@ async def test_structure_aware_multi_part_with_code_still_forwards():
         {"text": "\n".join(chatter[1:]), "tools": []},
     ]
     sig = structure_signals(rounds, reply)
- 
+# 结构占比低于阈值，但段数达标且含代码块 → 仍转发
     assert sig["score"] < 0.4 and sig["has_code"] is True
     assert await Delivery(harness)._try_forward(event, reply, [], rounds=rounds) is True
     assert forward_calls(harness)
@@ -310,7 +310,7 @@ async def test_forward_nodes_use_persona_nickname():
     nicknames = {n["data"]["nickname"] for n in calls[0][0]}
     assert nicknames == {"阿波"}
 
- 
+# 未配置 nickname → 回落机器人自身昵称（原行为）
     harness2 = make_harness()
     event2 = FakeForwardEvent()
     assert await Delivery(harness2)._try_forward(event2, "综上", tool_trace(), rounds=rounds_multi_replies()) is True

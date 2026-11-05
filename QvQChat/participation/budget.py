@@ -29,7 +29,7 @@ CHAT_KEY_PREFIX = "QvQChat:participation:"
 GLOBAL_KEY = "QvQChat:participation:global"
 
 HOUR_SECONDS = 3600.0
- 
+# 环形列表长度上限（防极端配置下无限增长；正常远小于该值）
 RING_CAP = 512
 
 
@@ -54,7 +54,7 @@ class SpeechBudget:
         self._memory: dict[str, object] = {}
         self._touched: set[str] = set()
 
- 
+# ==================== 配置读取 ====================
 
     def _cfg(self):
         if callable(self._config):
@@ -82,7 +82,7 @@ class SpeechBudget:
         except (TypeError, ValueError):
             return 0
 
- 
+# ==================== 判定与记账 ====================
 
     def allow(self, chat_key: str, kind: str, now: float | None = None) -> tuple[bool, str]:
         """预算是否放行一次发言；拒绝时第二个返回值为人类可读原因（texts）。"""
@@ -128,7 +128,7 @@ class SpeechBudget:
                 used, date = self._daily_state(now)
                 self._save(GLOBAL_KEY, {"date": date, "count": used + 1})
 
- 
+# ==================== 现状观测 ====================
 
     def status(self, now: float | None = None) -> dict:
         """预算现状（Dashboard participation_status 消费）。"""
@@ -156,7 +156,7 @@ class SpeechBudget:
             "proactive_date": date,
         }
 
- 
+# ==================== 持久化（锁内调用） ====================
 
     def _chat_stamps(self, chat_key: str, now: float, cooldown: float) -> list[float]:
         key = CHAT_KEY_PREFIX + chat_key

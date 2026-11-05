@@ -135,7 +135,7 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
     personas = ctx.main.personas
     action = str(action or "list").lower()
     if action == "list":
- 
+# KV 绑定为权威源
         return utils.to_text({
             "personas": [
                 {k: p.get(k) for k in ("id", "name", "builtin")}
@@ -149,7 +149,7 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
         if not name and not system and not opening and not owner_title and not style and not examples and not nickname:
             return "save needs at least one of name / system / opening / owner_title / style / examples / nickname"
         payload: dict = {"id": str(persona_id or "") or None, "name": name, "system": system}
- 
+# 仅透传显式提供的扩展字段（未提供沿用存量，merge 语义防误清空）
         if opening is not None:
             payload["opening"] = opening
         if tools is not None:
@@ -170,7 +170,7 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
         target = str(chat_key or "").strip() or ctx.chat_key
         if persona is None and not persona_id:
             return "bind needs persona (existing persona id); use unbind to clear"
- 
+# 仅写 KV 权威绑定（state.persona 镜像已废弃）
         personas.bind(target, str(persona or persona_id))
         return utils.to_text({"ok": True, "chat_key": target, "persona": str(persona or persona_id)})
     if action == "unbind":
@@ -208,7 +208,7 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
             if key not in valid:
                 return f"unknown config key: {key}"
             return utils.to_text({key: _read_setting(ctx, key)})
- 
+# 全量读取会超过工具输出默认 4000 字符上限：放宽到 20000，否则 JSON 被截断成不可解析
         return utils.to_text(
             {name: _read_setting(ctx, name) for name in sorted(valid)},
             limit=20000,
@@ -216,8 +216,8 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
     if action == "set":
         if not isinstance(updates, dict) or not updates:
             return "set needs an updates object of {config_key: value}"
- 
- 
+# 与 Dashboard config_set 走同一 QvQConfig.coerce 校验：类型抝合失败/未知键
+# 拒收并带原因，杜绝把 "" 写进数字字段、字符串写进 list 字段
         applied, rejected = [], {}
         for config_key, value in updates.items():
             ok, coerced, err = QvQConfig.coerce(str(config_key), value)

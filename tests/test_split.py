@@ -10,7 +10,7 @@ from QvQChat.dashboard.manager import DashboardManager
 
 from fakes import FakeChatEvent, FakeMain, make_config
 
- 
+# tests/test_aggregate.py 通过 getattr_static(Main, name) 绑定的方法清单
 MAIN_STATIC_NAMES = (
     "_process_locked", "_chat_ctx", "_sender_name", "_resolve_group_name",
     "_seed_history", "_transcript_rows", "_label_seed_rows", "_group_nicknames",
@@ -34,7 +34,7 @@ def test_split_all_main_names_still_resolvable():
 def test_split_capability_prompt_single_source():
     """常量本体在 prompts.py，Main 为兼容再导出，两者一致。"""
     assert prompts.CAPABILITY_PROMPT is CAPABILITY_PROMPT
- 
+# 身份/触发感知前置，投递规则与标签协议仍在同一常量内（单一事实源）
     assert CAPABILITY_PROMPT.startswith("You are an agent running on the ErisPulse bot framework")
     assert "Sending messages:" in CAPABILITY_PROMPT
     assert "[[直发]]" in CAPABILITY_PROMPT and "[[转发]]" in CAPABILITY_PROMPT
@@ -45,8 +45,8 @@ def test_match_pattern_semantics():
     assert utils.match_pattern("eco_send", ["eco_*"])
     assert utils.match_pattern("code_exec", ["code_exec"])
     assert not utils.match_pattern("code_exec", ["eco_*", "other"])
-    assert utils.match_pattern("anything", ["*"]) 
-    assert not utils.match_pattern("anything", []) 
+    assert utils.match_pattern("anything", ["*"])# 裸 * 匹配一切
+    assert not utils.match_pattern("anything", [])# 空规则不匹配
     assert not utils.match_pattern("anything", None)
     assert utils.match_pattern("mcp_foo", ["mcp_*", "memory_*"])
     assert not utils.match_pattern("anything", ["*"], star_all=False)
@@ -104,9 +104,9 @@ def test_config_coerce_new_keys():
     ok, v, err = QvQConfig.coerce("tools_fallback", "bogus")
     assert not ok and err
     ok, v, err = QvQConfig.coerce("context_reserve", "0.99")
-    assert not ok 
+    assert not ok# 超出 max 0.95
     ok, v, err = QvQConfig.coerce("task_models", '{"compact": "a:b"}')
-    assert not ok 
+    assert not ok# dict 不收 JSON 字符串
     ok, v, err = QvQConfig.coerce("task_models", {"compact": "a:b"})
     assert ok and v == {"compact": "a:b"}
     ok, v, err = QvQConfig.coerce("facts_extract", True)
@@ -160,7 +160,7 @@ def _make_lock_main():
 async def test_lock_serializes_chat_paths():
     """同 chat_key 的 _flush_pending 与 run_prompt 互斥（无并发交错）。"""
     main = _make_lock_main()
-    chat_key = "onebot11:private:u1" 
+    chat_key = "onebot11:private:u1"# 与 FakeChatEvent 生成的 chat_key 一致
 
     async def fake_run_prompt(key, prompt, **kwargs):
         async with Main._lock_for(main, key):
@@ -187,13 +187,13 @@ async def test_rate_window_and_locks_recycled():
     main._rate_window = {"rate:g:u1": [1000.0], "rate:g:u2": []}
     main._rate_notice_shown = {"rate:g:u1": True, "rate:g:u2": True}
     main._chat_locks = {"a": asyncio.Lock(), "b": asyncio.Lock()}
-    await main._chat_locks["b"].acquire() 
+    await main._chat_locks["b"].acquire()# 持有中的锁不回收
     main._cleanup_takeovers()
-    assert "rate:g:u1" not in main._rate_window 
+    assert "rate:g:u1" not in main._rate_window# 窗口早已过期
     assert "rate:g:u1" not in main._rate_notice_shown
-    assert "rate:g:u2" not in main._rate_window 
-    assert "a" not in main._chat_locks 
-    assert "b" in main._chat_locks 
+    assert "rate:g:u2" not in main._rate_window# 空窗口
+    assert "a" not in main._chat_locks# 空闲锁被回收
+    assert "b" in main._chat_locks# 持有中的锁保留
     main._chat_locks["b"].release()
 
 

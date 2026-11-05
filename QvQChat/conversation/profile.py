@@ -42,7 +42,7 @@ class ProfileStore:
         self.sdk = main.sdk
         self.config = getattr(main, "cfg", None)
 
- 
+# ===== 基础存取 =====
 
     def _key(self, user_key: str) -> str:
         return PROFILE_PREFIX + str(user_key or "")
@@ -116,7 +116,7 @@ class ProfileStore:
                 kept.append(text)
         return kept
 
- 
+# ===== 注入 =====
 
     def digest(self, user_key: str, limit: int = 0) -> list[str]:
         """注入用紧凑行列表（limit<=0 时用 profile_inject 配置）。"""
@@ -147,7 +147,7 @@ class ProfileStore:
             return texts.t("profile_empty")
         return "\n".join(blocks)
 
- 
+# ===== 聚合源 =====
 
     def session_candidates(self, user_key: str) -> list[str]:
         """该用户的会话候选：user_seen 倒排（群）+ 平台私聊会话 key（去重）。"""
@@ -176,7 +176,7 @@ class ProfileStore:
                 for entry in memory.entries(chat_key):
                     if not (isinstance(entry, dict) and str(entry.get("content") or "").strip()):
                         continue
- 
+# 逐会话记忆仅取 importance>=4（global 作用域不受此限）
                     try:
                         importance = int(entry.get("importance", 3) or 3)
                     except (TypeError, ValueError):
@@ -189,7 +189,7 @@ class ProfileStore:
                     items.append(str(entry["content"]).strip())
         return items
 
- 
+# ===== LLM 提炼 =====
 
     def _pool(self):
         return getattr(self.main, "pool", None)
@@ -250,7 +250,7 @@ class ProfileStore:
                 traits.append(item)
         return (traits, preferences)
 
- 
+# ===== 固化 =====
 
     async def consolidate(self, user_key: str) -> dict:
         """聚合源 → 去重 → LLM 提炼（失败保留原始条目）→ 衰减 → 落盘。"""
@@ -269,7 +269,7 @@ class ProfileStore:
         traits = self._merge_texts([self._clean_item(t) for t in traits])[: max(0, int(getattr(self.config, "profile_max", 20) or 20))]
         preferences = self._merge_texts([self._clean_item(p) for p in preferences])[: max(0, int(getattr(self.config, "profile_max", 20) or 20))]
 
- 
+# 新条目视为本次已强化（ts=now）；未被新结果/新源覆盖的旧条目保留原 ts（交由衰减裁决）
         merged_traits = [{"text": t, "ts": now} for t in traits]
         merged_prefs = [{"text": p, "ts": now} for p in preferences]
         for old in existing["traits"]:
@@ -279,7 +279,7 @@ class ProfileStore:
             if not any(self._similar(old["text"], p) for p in preferences) and not any(self._similar(old["text"], s) for s in raw_items):
                 merged_prefs.append(old)
 
- 
+# 衰减：超过 profile_decay_days 天未被强化的 traits 淘汰（0 关闭；仅 traits）
         decay_days = int(getattr(self.config, "profile_decay_days", 30) or 0)
         decayed = 0
         if decay_days > 0:
@@ -315,7 +315,7 @@ class ProfileStore:
                 out.append(entry)
         return out
 
- 
+# ===== 近期活跃用户 =====
 
     def active_user_keys(self, within_hours: float = 24.0) -> list[str]:
         """user_seen 倒排里 updated 近 within_hours 的用户 → platform:uid 键列表（去重）。"""

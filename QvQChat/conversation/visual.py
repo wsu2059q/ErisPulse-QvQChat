@@ -6,8 +6,8 @@ from .. import texts
 
 
 def _short(text, limit: int = 80) -> str:
- 
- 
+# 参数/输出里常见字面量 \n、\t（JSON 转义的代码片段）：先还原成空格再压缩，
+# 避免合并转发卡里出现满屏空行和 \n 字面量
     text = str(text or "").replace("\\r", " ").replace("\\n", " ").replace("\\t", " ")
     text = " ".join(text.split())
     return text if len(text) <= limit else text[:limit] + "…"
@@ -111,10 +111,10 @@ def build_sections(rounds: list | None, reply: str, tool_trace: list | None,
         sections = [reply]
         text_indices = [0]
         text_count = 1
- 
+# 剔结论仅在卡内还有其它内容时进行：只剩结论一条时保留在卡里（否则强制转发会变空卡）
     if exclude_final_reply and text_indices and len(sections) > 1:
         del sections[text_indices[-1]]
- 
+# text_count 不减：阈值判定仍按含结论的发言段数
     if len(sections) > 40:
         sections = sections[:39] + ["…"]
     return sections, text_count

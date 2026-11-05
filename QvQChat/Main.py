@@ -17,8 +17,8 @@ from .chat.usage import UsageMixin
 from .conversation.delivery import Delivery
 from .conversation.memory import MemoryStore
 from .conversation.service import ConversationService, make_chat_key, parse_chat_key, strip_isolation
-from .dashboard.live import bind as live_bind 
-from .prompts import CAPABILITY_PROMPT 
+from .dashboard.live import bind as live_bind# noqa: F401 — 兼容引用（本体在 chat/inbox 使用）
+from .prompts import CAPABILITY_PROMPT# 本体已迁 prompts.py；导入即保持 QvQChat.Main.CAPABILITY_PROMPT 兼容引用
 from .Config import QvQConfig
 from .I18n import QvQI18n
 from .agent.persona import PersonaManager
@@ -26,7 +26,7 @@ from .agent.runner import AgentRunner
 from .agent.tools import ToolContext, ToolRegistry
 from .bridge.ecosystem import EcosystemBridge
 from .bridge.mcp import MCPManager
-from .engine.base import ChatRequest 
+from .engine.base import ChatRequest# noqa: F401 — 兼容引用（本体在 chat/inbox 使用）
 from .engine.base import TaskSpec
 from .engine.pool import ModelPool
 from .scheduler import Scheduler
@@ -132,7 +132,7 @@ def is_admin_user(config, user_id: str, origin: str = "chat", platform: str = ""
             if master_checker(platform, uid):
                 return True
         except Exception as e:
- 
+# 不再静默吞：框架主人判定故障必须可见（限频，避免刷屏）
             _warn_once(logger, f"master_checker failed ({platform}/{uid}): {e}")
     if is_framework_master(uid, platform):
         return True
@@ -156,7 +156,7 @@ def _warn_once(logger, message: str) -> None:
 
 
 def _match_tool_rules(name: str, rules) -> bool:
- 
+# 收编到 utils.match_pattern（保留本名供既有引用/测试使用）
     return utils.match_pattern(name, rules)
 
 
@@ -205,7 +205,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         self.dashboard = None
         self.participation = None
         self.takeover: dict = {}
-        self.plugin_settings_catalog: dict = {} 
+        self.plugin_settings_catalog: dict = {}# qvq_settings 归属标记：{module: title}
         self._chat_locks: dict = {}
         self._pending: dict = {}
         self._waiting: dict = {}
@@ -240,14 +240,14 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
 
     async def on_load(self, event) -> bool:
         texts.register_texts()
- 
+# A2: token 估算配置提前注入（幂等；Compactor/Service/Pool 构造时也会注入）
         from .engine import tokens
         tokens.configure(self.cfg)
         self.pool = ModelPool(self.sdk, self.cfg)
         self.registry = ToolRegistry()
         self.personas = PersonaManager(self.sdk)
         try:
- 
+# KV 绑定为权威源；conv state.persona 镜像过期则回填一次
             moved = self.personas.migrate_state_mirror()
             if moved:
                 self.logger.info(f"persona binding migration: {moved} session mirrors synced from KV")
@@ -262,16 +262,16 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         self.runner = AgentRunner(self.pool, self.registry, self.cfg)
         self.eco = EcosystemBridge(self)
         self.mcp = MCPManager(self)
- 
+# 统一扩展入口：生态模块经 qvq_extensions 贡献的技能/知识只读并入本模块
         if self.skills is not None:
             self.skills.set_external_provider(self.eco.external_skills)
         if self.knowledge is not None:
             self.knowledge.set_external_provider(self.eco.external_knowledge)
- 
+# 内置 ErisPulse 文档检索（版本跟随已安装框架，零 MCP 依赖）
         from .bridge.docs import ErisPulseDocs
 
         self.docs = ErisPulseDocs(self)
- 
+# 参与决策（qvq.observe 旁听窗口 + qvq_decision 提供者发现，默认关闭）
         from .participation import ParticipationManager
 
         self.participation = ParticipationManager(self)
@@ -420,7 +420,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
             "master_error": master_error,
             "master_users_shape": "list(global)" if isinstance(users, list) else ("dict(per-platform)" if isinstance(users, dict) else "missing"),
             "master_users": users if isinstance(users, (list, dict)) else None,
-             
+            # 直读主人表的判定（不依赖 is_master）：whoami 里能直接看出是哪条路径放行
             "framework_global_masters": sorted(global_ids),
             "framework_platform_masters": {k: sorted(v) for k, v in platform_ids.items()},
             "framework_master_matched": is_framework_master(uid, platform),
@@ -456,7 +456,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
             )
             self.sdk.storage.set(AUDIT_KEY, entries[-AUDIT_LIMIT:])
         except Exception as e:
- 
+# 审计落盘失败不能完全静默
             self.logger.debug(f"audit persist failed: {e}")
 
     async def run_prompt(self, chat_key: str, prompt: str, persona_id: str = "",
@@ -474,8 +474,8 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
             user_id=user_id,
             origin=origin,
         )
- 
- 
+# A2: task_kind 尾参——runner 暂未暴露 kind，非默认类别先经 TaskSpec 解析
+# （cfg.task_models[kind]）得到任务模型，作为显式 model 传给 runner.run
         resolved_model = str(model or "")
         if not resolved_model and task_kind and task_kind != "chat":
             resolver = getattr(self.pool, "resolve_task_model", None)
@@ -484,7 +484,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                     resolved_model = str((resolver(TaskSpec(kind=task_kind)) or {}).get("id") or "")
                 except Exception as e:
                     self.logger.debug(f"task model resolve failed: {e}")
- 
+# 与聊天/面板同一把 per-chat 锁（本方法不与 _process_locked 互相嵌套，无死锁）
         async with self._lock_for(chat_key):
             prepared = await self.sessions.prepare(chat_key, prompt, persona_id=persona_id, persist=False, scene=scene)
             messages: list = []
@@ -543,7 +543,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
             user_id="dashboard",
             origin="dashboard",
         )
- 
+# prepare→finalize 段持 per-chat 锁，与聊天触发/定时任务互斥写上下文
         async with self._lock_for(chat_key):
             prepared = await self.sessions.prepare(
                 chat_key,
@@ -576,7 +576,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         origin = str(task.get("origin") or "dashboard")
         if origin in ("task", ""):
             origin = "dashboard"
- 
+# A2: 任务分派字段透传（task_models[kind] / 显式模型）
         await self.run_prompt(
             chat_key,
             str(task.get("prompt") or ""),
@@ -634,7 +634,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
             self.logger.info(f"proactive speak denied ({chat_key}): {why}")
             return why
         budget.record(chat_key, "proactive")
- 
+# 主动唤醒场景：明确"没人对你说话"，否则模型会把引导语当成有人在提问
         scene = texts.t("scene_proactive", reason=str(reason or "").strip() or texts.t("scene_proactive_noreason"))
         reply = await self.run_prompt(
             chat_key,

@@ -17,10 +17,10 @@ OLIST_RE = re.compile(r"^\s*\d+\.\s*")
 HEAD_RE = re.compile(r"^#{1,6}\s")
 REPORT_TONE_RE = re.compile(r"(综上|总结|汇总|如下|以上|报告完毕|一览|概览|清单)")
 
- 
+# D3 结构感知转发：综合信号分达到该阈值时判定为结构化内容，走合并转发
 STRUCTURE_FORWARD_RATIO = 0.4
 
- 
+# 单段结构化信号加成上限
 _TOOL_SIGNAL_CAP = 0.15
 _TOOL_SIGNAL_STEP = 0.03
 _LONG_TEXT_SIGNAL = 0.10
@@ -208,9 +208,9 @@ def forward_score(rounds: list | None, reply: str) -> float:
     return structure_signals(rounds, reply)["score"]
 
 
- 
+# ===== H4 输出过滤器（总纲条 8）：复述检测 / 疑问句占比 / 句数截断 =====
 
- 
+# 复述判定：与上一条用户消息的 bigram 重合度阈值（短回复才容易整句复述）
 PARROT_THRESHOLD = 0.62
 PARROT_MIN_CHARS = 6
 QUESTION_TAIL_RE = re.compile(r"[？?]\s*$")
@@ -256,7 +256,7 @@ def filter_reply(reply: str, last_user: str, max_sentences: int = 3) -> tuple[st
         if len(sentences) > max_sentences:
             text = "".join(sentences[:max_sentences]).strip()
             action = "trimmed"
-     
+    # 结尾硬造反问：以问句收尾且疑问句占比过半时去掉最后一个问句（仅一次）
     if QUESTION_TAIL_RE.search(text):
         sentences = [s for s in SENTENCE_SPLIT_RE.split(text) if s.strip()]
         if len(sentences) > 1:

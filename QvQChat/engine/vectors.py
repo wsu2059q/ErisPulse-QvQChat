@@ -45,7 +45,7 @@ class VectorEngine:
         if self._client is not None:
             return True
         try:
-            import openai 
+            import openai# noqa: F401  网络层可用性探针（openai 已是依赖，通常成功）
 
             return True
         except Exception:

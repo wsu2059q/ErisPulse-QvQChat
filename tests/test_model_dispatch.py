@@ -27,7 +27,7 @@ def make_pool(**cfg):
     return pool
 
 
- 
+# ===== list_models 透出 context_length / cost，model_costs 不再恒空 =====
 
 
 def test_list_models_exposes_context_length_and_cost():
@@ -43,21 +43,21 @@ def test_list_models_exposes_context_length_and_cost():
     assert set(costs) == {"p1:plain", "p1:smart", "p1:cheap"}
 
 
- 
+# ===== resolve_model 显式 model 优先于 needs 过滤 =====
 
 
 def test_resolve_model_explicit_beats_needs():
     pool = make_pool()
- 
+# 显式指定 plain（无 tool_call）但 needs 含 tool_call：显式优先，不被静默换掉
     model = pool.resolve_model("p1:plain", needs=["tool_call"])
     assert model["id"] == "p1:plain"
- 
+# 不显式时按 needs 过滤
     assert pool.resolve_model(None, needs=["tool_call"])["id"] == "p1:smart"
- 
+# 裸 model 名也可匹配
     assert pool.resolve_model("plain")["id"] == "p1:plain"
 
 
- 
+# ===== has_model 无副作用查询 =====
 
 
 def test_has_model_query():
@@ -66,7 +66,7 @@ def test_has_model_query():
     assert pool.has_model(["vision"]) is True
     assert pool.has_model(["tool_call", "vision"]) is True
     assert pool.has_model(["video"]) is False
-    assert pool.has_model() is True 
+    assert pool.has_model() is True# 无 needs → 池非空
     empty = ModelPool(FakeSDK(), make_config())
     assert empty.has_model(["tool_call"]) is False
     assert empty.has_model() is False
@@ -75,14 +75,14 @@ def test_has_model_query():
 def test_capability_status_unknown_vs_no():
     pool = make_pool()
     assert pool.capability_status("tool_call") == "yes"
- 
+# 全池明确不具备 → no
     pool_no = ModelPool(FakeSDK(), make_config())
     pool_no.save_provider(
         {"id": "n", "name": "N", "base_url": "https://n/v1", "api_key": "k",
          "models": [{"id": "a", "enabled": True, "video": False}, {"id": "b", "enabled": True, "video": False}]}
     )
     assert pool_no.capability_status("video") == "no"
- 
+# 能力未知的池（无元数据）→ unknown，不误伤
     pool2 = ModelPool(FakeSDK(), make_config())
     pool2.save_provider(
         {"id": "q", "name": "Q", "base_url": "https://y/v1", "api_key": "k",
@@ -91,25 +91,25 @@ def test_capability_status_unknown_vs_no():
     assert pool2.capability_status("tool_call") == "unknown"
 
 
- 
+# ===== resolve_task_model 与 dispatch =====
 
 
 def test_resolve_task_model_priority_chain():
     pool = make_pool()
- 
+# 1) 池序（默认第一个）
     assert pool.resolve_task_model(TaskSpec(kind="chat"))["id"] == "p1:plain"
- 
+# 2) needs 过滤
     assert pool.resolve_task_model(TaskSpec(kind="chat", needs=["tool_call"]))["id"] == "p1:smart"
- 
+# 3) prefer=cheap 按 cost(input+output) 升序：cheap(1.0) < smart(10) < plain(30)
     assert pool.resolve_task_model(TaskSpec(kind="compact", prefer="cheap"))["id"] == "p1:cheap"
- 
+# 4) cfg.task_models[kind] 覆盖池序/needs/prefer
     pool2 = make_pool(task_models={"compact": "p1:plain"})
     assert pool2.resolve_task_model(TaskSpec(kind="compact", prefer="cheap"))["id"] == "p1:plain"
- 
+# 5) 显式 model 最高优先（盖过 task_models 与 needs）
     assert pool2.resolve_task_model(
         TaskSpec(kind="compact", model="p1:smart", needs=["vision"])
     )["id"] == "p1:smart"
- 
+# 6) 无 cost 数据的模型排在有价模型之后（池序兜底）
     pool3 = make_pool()
     pool3.save_provider(
         {"id": "p2", "name": "P2", "base_url": "https://z/v1", "api_key": "k",
@@ -144,7 +144,7 @@ async def test_dispatch_routes_to_resolved_model():
 
 def test_dispatch_needs_empty_pool_fallback():
     pool = make_pool()
- 
+# needs 全池无人满足：警告后回退全池（池序第一个），不抛错
     assert pool.resolve_task_model(TaskSpec(kind="chat", needs=["video"]))["id"] == "p1:plain"
     empty = ModelPool(FakeSDK(), make_config())
     try:
@@ -154,7 +154,7 @@ def test_dispatch_needs_empty_pool_fallback():
         pass
 
 
- 
+# ===== 编排页全局链序：跨 provider 拖动顺序要能持久化并驱动故障转移 =====
 
 
 def _two_provider_pool():
@@ -183,12 +183,12 @@ def test_model_chain_persists_cross_provider_order():
         {"provider": "p2", "model": "c"},
         {"provider": "p1", "model": "a"},
     ])
- 
+# “刷新页面”= 用同一份 storage 重建 pool，顺序保持不变
     reloaded = ModelPool(sdk, make_config())
     assert [(e["provider"], e["model"]) for e in reloaded.model_chain()] == [
         ("p2", "d"), ("p1", "off"), ("p2", "c"), ("p1", "a"),
     ]
- 
+# 停用模型保留在链里便于编排，但不参与实际故障转移
     assert [m["id"] for m in reloaded.list_models()] == ["p2:d", "p2:c", "p1:a"]
 
 
@@ -248,12 +248,12 @@ async def test_failover_keeps_unknown_capability_models_as_backups():
 
     pool.engine = SimpleNamespace(chat=fake_chat)
     resp = await pool.chat(ChatRequest(messages=[{"role": "user", "content": "hi"}], needs=["tool_call"]))
- 
+# 能力未知的模型排在明确支持的模型之后作为后备；明确不支持的完全不参与
     assert tried == ["cap", "unknown"]
     assert resp.model == "p2:unknown"
 
 
- 
+# ===== 视觉任务回退链 =====
 
 
 def test_vision_task_name_fallback_when_capability_unknown():

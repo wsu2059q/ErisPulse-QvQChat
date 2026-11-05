@@ -11,11 +11,11 @@ from .. import utils
 from ..engine import vectors
 
 KB_KEY = "QvQChat:kb"
-VEC_PREFIX = "QvQChat:kbvec:" 
+VEC_PREFIX = "QvQChat:kbvec:"# 条目向量缓存（懒计算，按 doc_id 分键）
 CHUNK_SIZE = 400
 CHUNK_OVERLAP = 50
 DEFAULT_COOLDOWN_MIN = 30
-SEMANTIC_MIN_SCORE = 0.2 
+SEMANTIC_MIN_SCORE = 0.2# 语义路径的余弦相似度注入门槛（低于视为无关）
 _TOKEN_RE = re.compile(r"[a-z0-9]+|[\u4e00-\u9fff]")
 
 
@@ -49,10 +49,10 @@ def chunk_text(content: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLA
 class KnowledgeBase:
     def __init__(self, sdk, cfg=None):
         self.sdk = sdk
-         
+        # 生态模块经 qvq_extensions 贡献的只读知识条目（由 Main 注入 provider）
         self._external_provider = None
         self.cfg = cfg
- 
+# 向量引擎引用：默认模块单例，测试可注入带假 client 的 VectorEngine
         self.vectors = vectors
 
     def _chunk_params(self) -> tuple[int, int]:
@@ -180,7 +180,7 @@ class KnowledgeBase:
             return False
         entries.pop(kb_id)
         self._save(entries)
-        self.sdk.storage.delete(VEC_PREFIX + kb_id) 
+        self.sdk.storage.delete(VEC_PREFIX + kb_id)# 同步清理向量缓存
         return True
 
     def list(self) -> list[dict]:
@@ -199,7 +199,7 @@ class KnowledgeBase:
                 out.append({"entry": entry, "text": piece})
         return out
 
- 
+# ===== Lorebook 世界书（触发式注入） =====
 
     def triggered(self, context_texts: list[str], now: float | None = None,
                   viewer: str | None = None) -> list[dict]:
@@ -214,7 +214,7 @@ class KnowledgeBase:
             return []
         ts = float(now if now is not None else time.time())
         entries = self._load()
-         
+        # 外部条目只读：命中不回写冷却时间，也不落库
         external = self._external_entries()
         hits: list[dict] = []
         changed = False
@@ -227,7 +227,7 @@ class KnowledgeBase:
             cooldown = float(int(entry.get("cooldown_min", DEFAULT_COOLDOWN_MIN) or 0))
             last = float(entry.get("last_trigger_ts") or 0)
             if last > 0 and cooldown > 0 and ts - last < cooldown * 60:
-                continue 
+                continue# 冷却期内（last=0 视为从未触发，首触必放行）
             if any(t in texts for t in trig):
                 hits.append(entry)
                 entry["last_trigger_ts"] = ts
@@ -237,7 +237,7 @@ class KnowledgeBase:
         hits.sort(key=lambda e: (-int(e.get("priority", 0) or 0), float(e.get("created", 0) or 0)))
         return hits
 
- 
+# ===== 语义检索（向量层） =====
 
     def _entry_vectors(self, entry: dict, texts: list[str]) -> list[list[float]] | None:
         """条目向量懒计算 + KV 缓存（QvQChat:kbvec:{doc_id}）；模型/分块参数变化自动重算。"""
@@ -276,7 +276,7 @@ class KnowledgeBase:
                 continue
             vecs = self._entry_vectors(entry, texts)
             if vecs is None:
-                return None 
+                return None# 向量环节部分失败 → 整体回退词面
             best_vec, best_text = max(
                 ((v, t) for v, t in zip(vecs, texts)),
                 key=lambda pair: self.vectors.cosine(qvec, pair[0]),
@@ -315,7 +315,7 @@ class KnowledgeBase:
             for token in chunk_tokens:
                 bag[token] = bag.get(token, 0) + 1
             score = sum(bag.get(token, 0) for token in tokens)
- 
+# 单字虚词命中只有 1 分，要求至少 2 分过滤噪声
             if score >= 2:
                 scored.append((score, chunk))
         scored.sort(key=lambda pair: -pair[0])

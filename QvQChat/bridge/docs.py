@@ -90,7 +90,7 @@ class ErisPulseDocs:
         self._index_version = ""
         self._lock = asyncio.Lock()
 
-     
+    # ==================== 路径与元数据 ====================
 
     def docs_dir(self) -> Path:
         raw = str(getattr(self.config, "docs_dir", "") or DEFAULT_DOCS_DIR)
@@ -114,7 +114,7 @@ class ErisPulseDocs:
     def cached_version(self) -> str:
         return str(self._meta().get("version") or "")
 
-     
+    # ==================== 本地源解析 ====================
 
     def _local_source_root(self) -> Path | None:
         raw = str(getattr(self.config, "docs_source", "") or "").strip()
@@ -157,7 +157,7 @@ class ErisPulseDocs:
             return cached
         return self._mcp_cache_root()
 
-     
+    # ==================== 同步 ====================
 
     async def ensure_synced(self, force: bool = False) -> dict:
         """保证文档与已安装框架版本一致；网络失败保留旧版（不阻塞启动）。"""
@@ -178,7 +178,7 @@ class ErisPulseDocs:
                 root = self.active_root()
                 return {"enabled": True, "source": "stale", "version": self.cached_version(),
                         "root": str(root) if root else ""}
- 
+# 非强制时每日最多尝试一次下载，离线环境不会反复撞网
             if last_check and time.time() - last_check < 86400:
                 root = self.active_root()
                 return {"enabled": True, "source": "stale", "version": self.cached_version(),
@@ -234,7 +234,7 @@ class ErisPulseDocs:
             content = getattr(resp, "content", None)
             if content is not None:
                 return await content.read() if hasattr(content, "read") else bytes(content)
-         
+        # 退化路径（测试/无 sdk.client）：urllib 在线程里跑
         import urllib.request
 
         def _blocking() -> bytes:
@@ -264,7 +264,7 @@ class ErisPulseDocs:
                 if len(rest) >= 2 and rest[0] == lang:
                     relative = Path(*rest[1:])
                 elif len(rest) >= 1 and rest[0] != lang:
- 
+# 只收目标语言目录（docs/README.md 除外），避免把多语言全塞进同一索引
                     if len(rest) > 1:
                         continue
                 dest = target / relative
@@ -283,7 +283,7 @@ class ErisPulseDocs:
         except Exception as e:
             self.main.logger.debug(f"docs daily sync failed: {e}")
 
-     
+    # ==================== 索引与检索 ====================
 
     def _invalidate(self) -> None:
         self._index = None
@@ -342,7 +342,7 @@ class ErisPulseDocs:
             root_resolved = root.resolve()
         except Exception as e:
             return texts.t("docs_read_failed", error=e)
- 
+# 路径穿越防护：只允许读取文档根目录内的文件
         if not str(resolved).startswith(str(root_resolved)):
             return texts.t("docs_path_denied")
         if not resolved.is_file():

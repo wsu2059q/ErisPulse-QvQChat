@@ -7,11 +7,11 @@ from .utils import schedule_next
 
 TASKS_KEY = "QvQChat:tasks"
 TASK_RUNS_KEY = "QvQChat:task_runs"
- 
+# 单次任务执行状态键前缀（running→done/failed；重启后 running 残留由恢复例程改 interrupted）
 TASK_RUN_STATE_PREFIX = "QvQChat:task_runs:"
 TASK_RUNS_KEEP = 50
 
- 
+# 用户画像固化内置任务（非对话任务：_fire 走 _fire_profile_consolidate 而非 run_prompt）
 PROFILE_TASK_KIND = "profile_consolidate"
 PROFILE_TASK_NAME = "qvq:profile_consolidate"
 
@@ -88,7 +88,7 @@ class Scheduler:
             "prompt": str(spec.get("prompt") or ""),
             "persona": str(spec.get("persona") or ""),
             "chat_key": str(spec.get("chat_key") or ""),
- 
+# 任务分派字段透传（task_models[kind] / 显式模型）
             "task_kind": str(spec.get("task_kind") or "chat"),
             "model": str(spec.get("model") or ""),
             "created_by": str(spec.get("created_by") or ""),
@@ -202,12 +202,12 @@ class Scheduler:
         self.register_cron_handler()
         self.ensure_profile_task()
         self.main.spawn(self._loop())
- 
+# 启动恢复钩子：悬空回复重跑 / 待发队列重放 / 任务中断对账（例程自带延迟避开加载期）
         recover = getattr(self.main, "recover_inflight_routine", None)
         if callable(recover):
             self.main.spawn(recover())
 
- 
+# ===== 用户画像固化定时任务 =====
 
     def ensure_profile_task(self) -> dict | None:
         """注册画像固化内置任务（幂等）：每 profile_consolidate_hours 小时对近期活跃用户跑 consolidate。
@@ -260,7 +260,7 @@ class Scheduler:
 
     async def _tick(self) -> None:
         now = utils.now_ts()
- 
+# 文档版本检查（内部按 checked_at 节流到每日一次，离线不重复撞网）
         docs = getattr(self.main, "docs", None)
         if docs is not None:
             try:

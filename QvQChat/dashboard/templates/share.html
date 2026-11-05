@@ -318,7 +318,7 @@ document.title = "QvQChat · " + L.title;
       renderContinuation(box, data, token);
     })
     .catch(function () {
-      // 403 已在 then 内分流；走到这里的是网络/代理失败——不再误报"链接无效"
+      // 403 已在 then 内分流；走到这里的是网络/代理失败
       document.getElementById("content").innerHTML =
         '<div class="expired"><b>' + (L.load_failed || L.invalid) + '</b>' + (L.load_failed ? "" : L.invalid_hint) + '</div>';
     });

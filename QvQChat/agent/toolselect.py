@@ -18,7 +18,7 @@ import time
 
 from ..engine.base import ChatRequest, TaskSpec
 
- 
+# 始终保留的核心工具：聊天回合的最终交付手段，被剪掉会导致"有答案发不出"
 CORE_TOOLS = ("send_message", "send_dsl", "send_erispulse_message")
 
 PROMPT = (
@@ -32,7 +32,7 @@ PROMPT = (
 
 def _parse_names(text: str, allowed: set[str]) -> list[str]:
     raw = str(text or "").strip()
- 
+# 容忍 ```json 包裹或前后解释文字
     match = re.search(r"\[[^\]]*\]", raw, re.DOTALL)
     if not match:
         return []
@@ -127,7 +127,7 @@ class ToolSelector:
                 self.runner._dispatch(
                     "toolselect",
                     request,
- 
+# 未显式指定模型时按成本优先（便宜模型足够做工具挑选）
                     prefer="" if explicit_model else "cheap",
                     model=explicit_model,
                     chat_key=chat_key,
