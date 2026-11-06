@@ -38,6 +38,12 @@ DEFAULT_PROFILE: dict = {
     "max_delay": 6.0,
     "min_length": 120,
     "max_parts": 6,
+    # 人化节奏：偶尔停下来想（延迟放大）/ 短句连发（延迟骤减）/ 轻量回复整体轻快
+    "humanize": True,
+    "pause_chance": 0.12,
+    "burst_chance": 0.15,
+    "short_reply_chars": 60,
+    "short_reply_scale": 0.6,
 }
 
 
@@ -127,6 +133,11 @@ def plan_segments(text: str, profile: dict | None = None, rng=random) -> list[tu
     max_delay = as_float(cfg.get("max_delay"), 6.0)
     jitter = min(1.0, max(0.0, as_float(cfg.get("split_jitter"), 0.35)))
     cap = as_float(cfg.get("total_delay_cap"), 20.0)
+    humanize = bool(cfg.get("humanize", True))
+    pause_chance = min(1.0, max(0.0, as_float(cfg.get("pause_chance"), 0.12)))
+    burst_chance = min(1.0, max(0.0, as_float(cfg.get("burst_chance"), 0.15)))
+    short_chars = as_int(cfg.get("short_reply_chars"), 60)
+    short_scale = max(0.1, as_float(cfg.get("short_reply_scale"), 0.6))
     if min_delay > max_delay:
         min_delay, max_delay = max_delay, min_delay
 
@@ -134,9 +145,20 @@ def plan_segments(text: str, profile: dict | None = None, rng=random) -> list[tu
         typing = len(seg) / typing_speed if typing_speed > 0 else 0.0
         return min(max(base + typing, min_delay), max_delay)
 
+    # 轻量回复（总长很短）：整体提速——顺手回一句不该端着架子慢慢打
+    short_reply = humanize and short_chars > 0 and sum(len(c) for c in chunks) < short_chars
+
     segments: list[tuple[str, float]] = [(chunks[0], 0.0)]
     for seg in chunks[1:]:
         delay = raw_delay(seg) * rng.uniform(1.0 - jitter, 1.0 + jitter)
+        if short_reply:
+            delay *= short_scale
+        elif humanize:
+            roll = rng.uniform(0.0, 1.0)
+            if len(seg) < 30 and roll < burst_chance:
+                delay *= 0.25  # 短句连发：激动时两条几乎贴着发
+            elif roll < pause_chance:
+                delay *= rng.uniform(2.2, 3.5)  # 打字中途停下来想了想
         segments.append((seg, max(0.0, delay)))
     if cap > 0:
         total = sum(d for _, d in segments)
