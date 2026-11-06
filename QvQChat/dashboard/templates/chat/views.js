@@ -824,26 +824,45 @@
       var table = rows
         ? "<table class='qvq-table'><thead><tr><th>" + esc(t("col_id")) + "</th><th>" + esc(t("personas_pname")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>"
         : '<div class="qvq-empty">' + esc(t("personas_empty")) + "</div>";
+      var nameOf = {};
+      personas.forEach(function (p) { nameOf[p.id] = p.name || p.id; });
       var options = personas.map(function (p) {
-        return "<option value='" + esc(p.id) + "'>" + esc(p.id) + "</option>";
+        return "<option value='" + esc(p.id) + "'>" + esc(p.name || p.id) + " (" + esc(p.id) + ")</option>";
       }).join("");
-      // 绑定回落链提示 + 现有绑定全列出（可解绑）：会话 → 群 → @账户 → platform:* → 全局默认
-      var bindRows = Object.keys(bindings || {}).sort().map(function (key) {
+      // 现有绑定：层级徽标 + 可读名称（人设名），可一键解绑
+      var bindRows = Object.keys(bindings || {}).sort(function (a, b) {
+        return bindTierRank(bindings[a] && a) - bindTierRank(b);
+      }).map(function (key) {
         var pid = bindings[key];
-        var tier = key.indexOf(":*") >= 0 ? "platform" : key.charAt(0) === "@" ? "account" : "session";
-        return "<tr><td><span class='qvq-chip'>" + esc(t("bind_tier_" + tier)) + "</span> " + esc(key) + "</td>" +
-          "<td><b>" + esc(pid) + "</b></td>" +
+        var tier = bindTierOf(key);
+        return "<tr><td><span class='qvq-chip'>" + esc(t("bind_tier_" + tier)) + "</span> <code class='qvq-bind-key'>" + esc(key) + "</code></td>" +
+          "<td><b>" + esc(nameOf[pid] || pid) + "</b><div class='qvq-tool-desc'>" + esc(pid) + "</div></td>" +
           "<td class='qvq-col-acts'><button class='qvq-btn small danger' data-unbind='" + esc(key) + "'>" + esc(t("unbind")) + "</button></td></tr>";
       }).join("");
       var bindTable = bindRows
         ? "<table class='qvq-table'><thead><tr><th>" + esc(t("bind_key_col")) + "</th><th>" + esc(t("col_persona")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + bindRows + "</tbody></table>"
         : '<div class="qvq-empty">' + esc(t("bind_none")) + "</div>";
+      // 绑定表单：作用范围用快捷选项填充，下方实时预览最终 key
+      var cur = chatSession || "";
+      var curAcct = accountOf(cur);
+      var curPlat = cur.split(":")[0] || "";
+      var curGroup = cur.replace(/@[^:@]*$/, "").replace(/:u[^:@]+$/, "");
       el("qvq-personas-list").innerHTML = table +
         "<h3 class='qvq-card-title' style='margin-top:14px'>" + esc(t("bindings")) + "</h3>" +
         "<div class='qvq-tool-desc'>" + esc(t("bind_tiers_hint")) + "</div>" + bindTable +
-        "<div class='qvq-field-row' style='margin-top:10px'><input class='qvq-input' id='qvq-bind-key' placeholder='" + esc(t("bind_hint")) + "' />" +
+        "<div class='qvq-bind-form'>" +
+        '<div class="qvq-bind-scopes">' +
+        '<button type="button" class="qvq-chip-btn" data-bind-fill="' + esc(cur) + '">' + esc(t("bind_scope_chat")) + "</button>" +
+        (curGroup && curGroup !== cur ? '<button type="button" class="qvq-chip-btn" data-bind-fill="' + esc(curGroup) + '">' + esc(t("bind_scope_group")) + "</button>" : "") +
+        (curAcct ? '<button type="button" class="qvq-chip-btn" data-bind-fill="@' + esc(curAcct) + '">' + esc(t("bind_scope_account")) + " @" + esc(curAcct) + "</button>" : "") +
+        (curPlat ? '<button type="button" class="qvq-chip-btn" data-bind-fill="' + esc(curPlat) + ':*">' + esc(t("bind_scope_platform")) + "</button>" : "") +
+        '<button type="button" class="qvq-chip-btn" data-bind-fill="">' + esc(t("bind_scope_custom")) + "</button>" +
+        "</div>" +
+        "<div class='qvq-field-row'><input class='qvq-input' id='qvq-bind-key' placeholder='" + esc(t("bind_hint")) + "' />" +
         "<select class='qvq-select' id='qvq-bind-persona'>" + options + "</select>" +
-        "<button class='qvq-btn small' id='qvq-bind-btn'>" + esc(t("bind_btn")) + "</button></div>";
+        "<button class='qvq-btn small' id='qvq-bind-btn'>" + esc(t("bind_btn")) + "</button></div>" +
+        "<div class='qvq-bind-preview' id='qvq-bind-preview'>" + esc(t("bind_preview_hint")) + "</div>" +
+        "</div>";
       el("qvq-personas-list").querySelectorAll("button[data-act]").forEach(function (btn) {
         btn.onclick = function () {
           var id = btn.getAttribute("data-id");
@@ -870,11 +889,36 @@
           }
         };
       });
+      var bindKeyInput = el("qvq-bind-key");
+      var bindPreview = el("qvq-bind-preview");
+      function refreshBindPreview() {
+        if (!bindPreview) return;
+        var key = bindKeyInput ? bindKeyInput.value.trim() : "";
+        var pid = el("qvq-bind-persona") ? el("qvq-bind-persona").value : "";
+        if (!key) { bindPreview.textContent = t("bind_preview_hint"); return; }
+        var tier = bindTierOf(key);
+        bindPreview.innerHTML = esc(t("bind_preview"))
+          .replace("{tier}", esc(t("bind_tier_" + tier)))
+          .replace("{key}", esc(key))
+          .replace("{persona}", esc(nameOf[pid] || pid || "-"));
+      }
+      el("qvq-personas-list").querySelectorAll("button[data-bind-fill]").forEach(function (chip) {
+        chip.onclick = function () {
+          if (bindKeyInput) bindKeyInput.value = chip.getAttribute("data-bind-fill") || "";
+          el("qvq-personas-list").querySelectorAll("button[data-bind-fill]").forEach(function (c) { c.classList.remove("on"); });
+          chip.classList.add("on");
+          refreshBindPreview();
+        };
+      });
+      if (bindKeyInput) bindKeyInput.oninput = refreshBindPreview;
+      var bindPersonaSel = el("qvq-bind-persona");
+      if (bindPersonaSel) bindPersonaSel.onchange = refreshBindPreview;
+      refreshBindPreview();
       var bindBtn = el("qvq-bind-btn");
       if (bindBtn) {
         bindBtn.onclick = function () {
-          var key = el("qvq-bind-key").value.trim();
-          if (!key) return;
+          var key = bindKeyInput ? bindKeyInput.value.trim() : "";
+          if (!key) { toast(t("bind_need_target"), true); return; }
           api("/api/qvq/personas/bind", "POST", { chat_key: key, persona: el("qvq-bind-persona").value }).then(function () {
             toast(t("saved"));
             loadPersonas();

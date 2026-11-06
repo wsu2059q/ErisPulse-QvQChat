@@ -135,6 +135,10 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
     personas = ctx.main.personas
     action = str(action or "list").lower()
     if action == "list":
+        from ..conversation.service import strip_isolation
+
+        current = str(ctx.chat_key or "")
+        account = current.rsplit("@", 1)[1] if "@" in current else ""
 # KV 绑定为权威源
         return utils.to_text({
             "personas": [
@@ -143,7 +147,11 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
             ],
             "global_default": personas.global_default(),
             "bindings": personas.bindings(),
-            "current_chat": ctx.chat_key,
+            "current_chat": current,
+# 当前接收账户（多账户隔离后缀）；绑定该账户全部会话用 chat_key="@<account>"
+            "current_account": account,
+            "account_binding_key": f"@{account}" if account else "",
+            "current_group_key": strip_isolation(current) if current else "",
         })
     if action == "save":
         if not name and not system and not opening and not owner_title and not style and not examples and not nickname:
@@ -272,7 +280,14 @@ def register(registry: ToolRegistry, main) -> None:
     ))
     registry.register(Tool(
         name="manage_personas",
-        description="Self-manage personas: list, create or update, delete, bind a persona to the current or any chat, unbind, and set/clear the global default persona. Admin only.",
+        description=(
+            "Self-manage personas: list, create or update, delete, bind a persona to the current or any chat, "
+            "unbind, and set/clear the global default persona. Admin only. "
+            "Binding tiers (most specific first, first match wins): exact chat_key → group (platform:group:ID) → "
+            "@account (e.g. \"@643319481\", all chats served by that bot account) → platform (e.g. \"onebot11:*\") "
+            "→ global default. So to give ONE bot account a persona, bind with chat_key=\"@<account id>\"; "
+            "to apply platform-wide use \"<platform>:*\". Use list first to see existing ids and bindings."
+        ),
         parameters=_schema(
             {
                 "action": _s(type="string", description="list / save / delete / bind / unbind / set_global / clear_global"),
@@ -286,7 +301,11 @@ def register(registry: ToolRegistry, main) -> None:
                 "examples": _s(type="array", description="save: few-shot examples [{user, assistant}]"),
                 "nickname": _s(type="string", description="save: display name on merged-forward cards"),
                 "persona": _s(type="string", description="bind: existing persona id to bind"),
-                "chat_key": _s(type="string", description="bind/unbind target chat; omit for the current chat"),
+                "chat_key": _s(type="string", description=(
+                    "bind/unbind target; omit for the current chat. Tiered forms: "
+                    "exact chat_key (one chat), platform:group:ID (one group across accounts), "
+                    "@account_id (all chats of one bot account), platform:* (whole platform)"
+                )),
             },
             [],
         ),
