@@ -24,6 +24,10 @@ class ToolContext:
     origin: str = "chat"
     confirmer: Any = None
     sent_log: list = field(default_factory=list)
+# 场景注记（群名/发言人/触发方式）：子智能体 spawn 时注入其 system，让它知道"在为谁、在哪个群做事"
+    scene_note: str = ""
+# 父会话键：子智能体（sub: 前缀）回溯来源用
+    parent_chat_key: str = ""
 
     async def confirm(self, text: str, timeout: int = 60) -> bool:
         if self.confirmer is None:
