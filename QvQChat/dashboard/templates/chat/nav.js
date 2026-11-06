@@ -197,7 +197,8 @@
         "</span>";
       var liveCls = s.live ? " liverun" : "";
       var acct = accountOf(s.chat_key);
-      return '<div class="qvq-chat-srow' + (active ? " active" : "") + (pinned ? " pinned" : "") + liveCls + '" data-key="' + esc(s.chat_key) + '">' +
+      var fullTitle = (chatSessionTitle(s.chat_key) || s.chat_key) + (acct ? "  @" + acct : "") + "\n" + s.chat_key;
+      return '<div class="qvq-chat-srow' + (active ? " active" : "") + (pinned ? " pinned" : "") + liveCls + '" data-key="' + esc(s.chat_key) + '" title="' + esc(fullTitle) + '">' +
         '<span class="qvq-chat-sname">' + esc(chatSessionTitle(s.chat_key)) + "</span>" +
         (acct ? '<span class="qvq-acct-badge" title="@' + esc(acct) + '">' + esc(acct) + "</span>" : "") +
         '<span class="qvq-chat-stime">' + esc(fmtSmart(s.updated)) + "</span>" + acts + "</div>";
