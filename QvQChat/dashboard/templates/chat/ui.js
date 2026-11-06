@@ -179,6 +179,7 @@
     knowledge: loadKnowledge,
     sessions: loadSessions,
     audit: loadAudit,
+    storage: loadStorage,
     settings: loadSettings
   };
 

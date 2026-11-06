@@ -40,6 +40,45 @@
     ]).then(function (results) {
       renderOrchCaps(results[0] || {}, results[1] || {}, results[2] || {});
     });
+    api("/api/qvq/sessions").then(function (data) {
+      renderOrchAccounts((data && data.accounts) || {});
+    });
+  }
+
+  // 适配器账户卡：各平台在线 bot + 已隔离账户的会话数（多账户隔离一览）
+  function renderOrchAccounts(accounts) {
+    var box = el("qvq-orch-accounts");
+    if (!box) return;
+    var adapters = accounts.adapters || [];
+    var accts = accounts.accounts || [];
+    if (!adapters.length) {
+      box.innerHTML = '<div class="qvq-empty">' + esc(t("orch_accounts_empty")) + "</div>";
+      return;
+    }
+    var html = adapters.map(function (ad) {
+      var bots = ad.bots || [];
+      var botChips = bots.length
+        ? bots.map(function (b) {
+            var cnt = accts.filter(function (a) { return a.account === b; })[0];
+            return '<span class="qvq-acct-badge' + (cnt ? " iso" : "") + '" title="' + esc(ad.platform) + (cnt ? " · " + cnt.sessions + " " + esc(t("acct_sessions_unit")) : "") + '">' + esc(b) +
+              (cnt ? " · " + cnt.sessions : "") + "</span>";
+          }).join("")
+        : '<span class="qvq-tool-desc">-</span>';
+      return '<div class="qvq-acct-row"><span class="qvq-acct-platform">' + esc(ad.platform) + "</span>" +
+        '<span class="qvq-acct-bots">' + botChips + "</span>" +
+        (bots.length > 1 ? '<span class="qvq-chip">' + esc(t("acct_multi")) + "</span>" : "") + "</div>";
+    }).join("");
+    // 会话里存在、但已不在线的账户（适配器改名/下线后的历史隔离数据）
+    var known = {};
+    adapters.forEach(function (ad) { (ad.bots || []).forEach(function (b) { known[b] = 1; }); });
+    var stale = accts.filter(function (a) { return !known[a.account]; });
+    if (stale.length) {
+      html += '<div class="qvq-acct-row stale"><span class="qvq-acct-platform">' + esc(t("acct_offline")) + '</span><span class="qvq-acct-bots">' +
+        stale.map(function (a) {
+          return '<span class="qvq-acct-badge iso" title="' + esc(a.platforms.join(", ")) + '">@' + esc(a.account) + " · " + a.sessions + "</span>";
+        }).join("") + "</span></div>";
+    }
+    box.innerHTML = html;
   }
 
   // 链序是跨 provider 的全局顺序：优先后端 chain；旧数据回退到按 provider 展平
@@ -765,6 +804,7 @@
     loadInto("qvq-personas-list", function () { return api("/api/qvq/personas"); }, function (box, data) {
       var q = listSearchText("qvq-personas-search");
       var all = (data && data.personas) || [];
+      var bindings = (data && data.bindings) || {};
       var personas = q ? all.filter(function (p) {
         return (p.id || "").toLowerCase().indexOf(q) >= 0 ||
           (p.name || "").toLowerCase().indexOf(q) >= 0 ||
@@ -787,9 +827,21 @@
       var options = personas.map(function (p) {
         return "<option value='" + esc(p.id) + "'>" + esc(p.id) + "</option>";
       }).join("");
+      // 绑定回落链提示 + 现有绑定全列出（可解绑）：会话 → 群 → @账户 → platform:* → 全局默认
+      var bindRows = Object.keys(bindings || {}).sort().map(function (key) {
+        var pid = bindings[key];
+        var tier = key.indexOf(":*") >= 0 ? "platform" : key.charAt(0) === "@" ? "account" : "session";
+        return "<tr><td><span class='qvq-chip'>" + esc(t("bind_tier_" + tier)) + "</span> " + esc(key) + "</td>" +
+          "<td><b>" + esc(pid) + "</b></td>" +
+          "<td class='qvq-col-acts'><button class='qvq-btn small danger' data-unbind='" + esc(key) + "'>" + esc(t("unbind")) + "</button></td></tr>";
+      }).join("");
+      var bindTable = bindRows
+        ? "<table class='qvq-table'><thead><tr><th>" + esc(t("bind_key_col")) + "</th><th>" + esc(t("col_persona")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + bindRows + "</tbody></table>"
+        : '<div class="qvq-empty">' + esc(t("bind_none")) + "</div>";
       el("qvq-personas-list").innerHTML = table +
         "<h3 class='qvq-card-title' style='margin-top:14px'>" + esc(t("bindings")) + "</h3>" +
-        "<div class='qvq-field-row'><input class='qvq-input' id='qvq-bind-key' placeholder='" + esc(t("bind_hint")) + "' />" +
+        "<div class='qvq-tool-desc'>" + esc(t("bind_tiers_hint")) + "</div>" + bindTable +
+        "<div class='qvq-field-row' style='margin-top:10px'><input class='qvq-input' id='qvq-bind-key' placeholder='" + esc(t("bind_hint")) + "' />" +
         "<select class='qvq-select' id='qvq-bind-persona'>" + options + "</select>" +
         "<button class='qvq-btn small' id='qvq-bind-btn'>" + esc(t("bind_btn")) + "</button></div>";
       el("qvq-personas-list").querySelectorAll("button[data-act]").forEach(function (btn) {
@@ -825,10 +877,23 @@
           if (!key) return;
           api("/api/qvq/personas/bind", "POST", { chat_key: key, persona: el("qvq-bind-persona").value }).then(function () {
             toast(t("saved"));
-            el("qvq-bind-key").value = "";
+            loadPersonas();
           });
         };
       }
+      // 解绑：persona 传 null 删除绑定
+      el("qvq-personas-list").querySelectorAll("button[data-unbind]").forEach(function (btn) {
+        btn.onclick = function () {
+          var key = btn.getAttribute("data-unbind");
+          confirmDialog(key).then(function (ok) {
+            if (!ok) return;
+            api("/api/qvq/personas/bind", "POST", { chat_key: key, persona: null }).then(function () {
+              toast(t("deleted"));
+              loadPersonas();
+            });
+          });
+        };
+      });
     });
   }
 
@@ -1249,6 +1314,7 @@
           '<span class="qvq-tool-name">' + esc(entry.title) +
           (entry.source ? " <span class='qvq-chip'>" + esc(entry.source) + "</span>" : "") +
           (entry.triggers && entry.triggers.length ? " <span class='qvq-chip'>@" + esc(entry.triggers.join(", ")) + "</span>" : "") +
+          (entry.priority ? " <span class='qvq-chip'>P" + esc(entry.priority) + "</span>" : "") +
           (entry.owner ? " <span class='qvq-chip'>" + esc(t("kb_scope_chip_private")) + ": " + esc(entry.owner) + "</span>" : "") + "</span>" +
           "<span class='qvq-tool-desc'>" + esc((entry.content || "").slice(0, 160)) + "</span>" +
           "<button class='qvq-btn small' data-kb-edit='" + esc(entry.id) + "'>" + esc(t("kb_edit")) + "</button> " +
@@ -1426,7 +1492,7 @@
     });
   }
 
-  // 用户画像卡（只读展示 + 清空按钮；数据随 /api/qvq/memory 响应返回）
+  // 用户画像卡：卡片头（标题左 + 清空右）+ 三类分节展示（含时间戳与更新时间）
   function loadMemoryProfile(data) {
     var section = document.querySelector(".qvq-tab[data-section='memory']");
     if (!section) return;
@@ -1445,17 +1511,23 @@
     }
     var user = (data && data.profile_user) || "";
     var profile = (data && data.profile) || {};
-    var rows = [];
-    [["traits", "T"], ["preferences", "P"], ["facts", "F"]].forEach(function (pair) {
-      (profile[pair[0]] || []).forEach(function (item) {
-        rows.push("<tr><td><span class='qvq-chip'>" + pair[1] + "</span> " + esc(item.text || "") + "</td></tr>");
-      });
-    });
-    card.innerHTML = "<h2 class='qvq-h2'>" + esc(t("profile_card_title")) +
-      (user ? " <span class='qvq-tool-desc'>" + esc(t("profile_card_user")) + ": " + esc(user) + "</span>" : "") + "</h2>" +
-      "<div class='qvq-actions'><button class='qvq-btn small danger' id='qvq-profile-clear'>" + esc(t("profile_card_clear")) + "</button></div>" +
-      (rows.length
-        ? "<table class='qvq-table'><tbody>" + rows.join("") + "</tbody></table>"
+    var sections = ["traits", "preferences", "facts"].map(function (cat) {
+      var items = profile[cat] || [];
+      if (!items.length) return "";
+      var rows = items.map(function (item) {
+        return "<tr><td>" + esc(item.text || "") + "</td><td class='qvq-col-time'>" +
+          (item.ts ? esc(fmtSmart(item.ts)) : "") + "</td></tr>";
+      }).join("");
+      return "<h3 class='qvq-profile-sec'>" + esc(t("profile_sec_" + cat)) + " <span class='qvq-chip'>" + items.length + "</span></h3>" +
+        "<table class='qvq-table'><tbody>" + rows + "</tbody></table>";
+    }).join("");
+    card.innerHTML =
+      "<div class='qvq-card-head'><h2 class='qvq-h2'>" + esc(t("profile_card_title")) +
+      (user ? " <span class='qvq-tool-desc'>" + esc(user) + "</span>" : "") + "</h2>" +
+      (profile.updated ? "<span class='qvq-tool-desc'>" + esc(t("profile_updated")) + ": " + esc(fmtSmart(profile.updated)) + "</span>" : "") +
+      "<button class='qvq-btn small danger' id='qvq-profile-clear'>" + esc(t("profile_card_clear")) + "</button></div>" +
+      (sections
+        ? sections
         : '<div class="qvq-empty">' + esc(t("profile_card_empty")) + "</div>");
     var clearBtn = el("qvq-profile-clear");
     if (clearBtn) {
@@ -1474,7 +1546,7 @@
 
   function openMemoryModal(chatKey) {
     openModal(chatKey,
-      '<div class="qvq-actions"><button class="qvq-btn small danger" id="qvq-memory-clear">' + esc(t("memory_clear")) + "</button></div>" +
+      '<div class="qvq-actions head"><button class="qvq-btn small danger" id="qvq-memory-clear">' + esc(t("memory_clear")) + "</button></div>" +
       '<div id="qvq-memory-modal-list"><div class="qvq-empty">…</div></div>');
     el("qvq-memory-clear").onclick = function () {
       confirmDialog(t("confirm_del")).then(function (ok) {
@@ -1492,8 +1564,10 @@
       if (!list) return;
       list.innerHTML = entries.length
         ? "<table class='qvq-table'><tbody>" + entries.map(function (entry) {
-            return "<tr><td>[" + esc(entry.category) + "/" + esc(entry.importance) + "] " + esc(entry.content) +
-              " <button class='qvq-btn small danger' data-content='" + esc(entry.content) + "'><svg viewBox='0 0 24 24' class='qvq-btn-ico'><path d='M6 6l12 12M18 6L6 18'/></svg></button></td></tr>";
+            return "<tr><td><span class='qvq-chip'>" + esc(entry.category || "-") + "</span> " +
+              "<span class='qvq-chip' title='" + esc(t("memory_importance")) + "'>I" + esc(entry.importance) + "</span> " +
+              esc(entry.content) + "</td>" +
+              "<td class='qvq-col-acts'><button class='qvq-btn small danger' data-content='" + esc(entry.content) + "'><svg viewBox='0 0 24 24' class='qvq-btn-ico'><path d='M6 6l12 12M18 6L6 18'/></svg></button></td></tr>";
           }).join("") + "</tbody></table>"
         : '<div class="qvq-empty">' + esc(t("memory_empty")) + "</div>";
       list.querySelectorAll("button[data-content]").forEach(function (btn) {
@@ -1508,18 +1582,46 @@
     });
   }
 
+  // 会话页账户筛选（多账户隔离：@account 后缀）；空串 = 全部
+  var sessionsAcctFilter = "";
+
   function loadSessions() {
     api("/api/qvq/sessions").then(function (data) {
-      var sessions = ((data && data.sessions) || []).filter(function (s) {
+      var all = ((data && data.sessions) || []).filter(function (s) {
         return (s.turns || 0) > 0 || s.preview;
       });
-      if (!sessions.length) {
+      var accounts = (data && data.accounts && data.accounts.accounts) || [];
+      if (sessionsAcctFilter && !accounts.some(function (a) { return a.account === sessionsAcctFilter; })) {
+        sessionsAcctFilter = "";
+      }
+      var sessions = sessionsAcctFilter
+        ? all.filter(function (s) { return accountOf(s.chat_key) === sessionsAcctFilter; })
+        : all;
+      if (!all.length) {
         el("qvq-sessions-list").innerHTML = '<div class="qvq-empty">' + esc(t("sessions_empty")) + "</div>";
         return;
       }
+      var filterBar = accounts.length
+        ? '<div class="qvq-acct-filter">' +
+          '<button type="button" class="qvq-chip-btn' + (sessionsAcctFilter ? "" : " on") + '" data-acct="">' + esc(t("acct_filter_all")) + " (" + all.length + ")</button>" +
+          accounts.map(function (a) {
+            return '<button type="button" class="qvq-chip-btn' + (sessionsAcctFilter === a.account ? " on" : "") + '" data-acct="' + esc(a.account) + '">@' + esc(a.account) + " (" + a.sessions + ")</button>";
+          }).join("") + "</div>"
+        : "";
+      if (!sessions.length) {
+        el("qvq-sessions-list").innerHTML = filterBar + '<div class="qvq-empty">' + esc(t("sessions_empty")) + "</div>";
+      } else {
       var rows = sessions.map(function (session) {
+        var acct = accountOf(session.chat_key);
+        var flags = "";
+        if (session.pinned) flags += ' <span class="qvq-chip">' + esc(t("chat_pin_s")) + "</span>";
+        if (session.archived) flags += ' <span class="qvq-chip">' + esc(t("chat_archived")) + "</span>";
+        if (session.live) flags += ' <span class="qvq-chip live">' + esc(t("orch_running")) + "</span>";
         return "<tr><td class='qvq-col-check'><input type='checkbox' class='qvq-session-check' data-check-key='" + esc(session.chat_key) + "'/></td>" +
-          "<td><b>" + esc(sessionDisplayName(session)) + "</b><div class='qvq-tool-desc'>" + esc(session.chat_key) + "</div></td>" +
+          "<td><b>" + esc(sessionDisplayName(session)) + "</b>" +
+          (acct ? ' <span class="qvq-acct-badge" title="@' + esc(acct) + '">@' + esc(acct) + "</span>" : "") +
+          flags +
+          '<div class="qvq-tool-desc">' + esc(session.chat_key) + "</div></td>" +
           "<td>" + esc(session.persona || "-") + "</td>" +
           "<td>" + esc(session.turns) + "</td><td class='qvq-tool-desc'>" + esc(session.preview || "-") + "</td>" +
           "<td class='qvq-col-time'>" + esc(fmtTime(session.updated)) + "</td>" +
@@ -1530,8 +1632,15 @@
       var sessionBatch = '<div class="qvq-actions qvq-batch-bar">' +
         '<label class="qvq-check-inline"><input type="checkbox" id="qvq-sessions-all"/> ' + esc(t("batch_select_all")) + "</label>" +
         '<button type="button" class="qvq-btn small danger" id="qvq-sessions-batch">' + esc(t("batch_delete")) + "</button></div>";
-      el("qvq-sessions-list").innerHTML = sessionBatch + "<table class='qvq-table'><thead><tr><th></th><th>" + esc(t("col_chatkey")) + "</th><th>" + esc(t("col_persona")) +
+      el("qvq-sessions-list").innerHTML = filterBar + sessionBatch + "<table class='qvq-table'><thead><tr><th></th><th>" + esc(t("col_chatkey")) + "</th><th>" + esc(t("col_persona")) +
         "</th><th>" + esc(t("col_turns")) + "</th><th>" + esc(t("col_preview")) + "</th><th>" + esc(t("col_updated")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
+      }
+      el("qvq-sessions-list").querySelectorAll(".qvq-acct-filter .qvq-chip-btn").forEach(function (chip) {
+        chip.onclick = function () {
+          sessionsAcctFilter = chip.getAttribute("data-acct") || "";
+          loadSessions();
+        };
+      });
       bindSessionBatch();
       el("qvq-sessions-list").querySelectorAll("button[data-key]").forEach(function (btn) {
         btn.onclick = function () {
@@ -1568,6 +1677,158 @@
           toast(t("batch_deleted").replace("{n}", (r && r.removed) || 0));
           loadSessions();
           loadChatMeta();
+        });
+      });
+    };
+  }
+
+  // ===== 存储管理：全库浏览 / 分域清理 / 一键重置 =====
+
+  function fmtBytes(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + " MB";
+    return (n / 1024 / 1024 / 1024).toFixed(2) + " GB";
+  }
+
+  function storageDomainLabel(id) {
+    return t("storage_d_" + id);
+  }
+
+  var storageDomainOpen = "";
+
+  function loadStorage() {
+    api("/api/qvq/storage").then(function (data) {
+      var total = el("qvq-storage-total");
+      if (total) total.innerHTML = esc(t("storage_total")) + " <b>" + esc(fmtBytes((data && data.total_bytes) || 0)) + "</b>";
+      var box = el("qvq-storage-domains");
+      if (!box) return;
+      var domains = (data && data.domains) || [];
+      var files = (data && data.files) || [];
+      if (!domains.length && !files.length) {
+        box.innerHTML = '<div class="qvq-empty">' + esc(t("storage_empty")) + "</div>";
+        return;
+      }
+      var rows = domains.map(function (d) {
+        return "<tr><td><b>" + esc(storageDomainLabel(d.id)) + "</b><div class='qvq-tool-desc'>" + esc(d.id) + "</div></td>" +
+          "<td>" + esc(d.keys) + "</td><td><b>" + esc(fmtBytes(d.bytes)) + "</b></td>" +
+          "<td><button class='qvq-btn small ghost' data-keys='" + esc(d.id) + "'>" + esc(t("storage_browse")) + "</button> " +
+          "<button class='qvq-btn small danger' data-clear='" + esc(d.id) + "'>" + esc(t("storage_clear")) + "</button></td></tr>";
+      });
+      rows = rows.concat(files.map(function (f) {
+        return "<tr><td><b>" + esc(storageDomainLabel(f.id)) + "</b><div class='qvq-tool-desc'>" + esc(f.path) + "</div></td>" +
+          "<td>" + esc(f.files) + " 文件</td><td><b>" + esc(fmtBytes(f.bytes)) + "</b></td>" +
+          "<td><button class='qvq-btn small danger' data-clear='" + esc(f.id) + "'>" + esc(t("storage_clear")) + "</button></td></tr>";
+      }));
+      box.innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("storage_domain")) + "</th><th>" + esc(t("storage_count")) +
+        "</th><th>" + esc(t("storage_size")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows.join("") + "</tbody></table>";
+      box.querySelectorAll("button[data-clear]").forEach(function (btn) {
+        btn.onclick = function () {
+          var id = btn.getAttribute("data-clear");
+          confirmDialog(t("storage_confirm_clear").replace("{d}", storageDomainLabel(id))).then(function (ok) {
+            if (!ok) return;
+            api("/api/qvq/storage/cleanup", "POST", { domains: [id] }).then(function (r) {
+              toast(t("storage_cleared").replace("{n}", (r && r.removed) || 0) + " · " + fmtBytes((r && r.freed) || 0));
+              loadStorage();
+            });
+          });
+        };
+      });
+      box.querySelectorAll("button[data-keys]").forEach(function (btn) {
+        btn.onclick = function () { loadStorageKeys(btn.getAttribute("data-keys")); };
+      });
+    });
+    var refresh = el("qvq-storage-refresh");
+    if (refresh) refresh.onclick = loadStorage;
+    var slim = el("qvq-storage-slim");
+    if (slim) slim.onclick = function () {
+      api("/api/qvq/storage/slim", "POST", {}).then(function (r) {
+        toast(t("storage_slim_done").replace("{n}", (r && r.sessions) || 0) + " · " + fmtBytes((r && r.freed) || 0));
+        loadStorage();
+      });
+    };
+    var reset = el("qvq-storage-reset");
+    if (reset) reset.onclick = openStorageReset;
+    if (storageDomainOpen) loadStorageKeys(storageDomainOpen);
+  }
+
+  function loadStorageKeys(domain) {
+    storageDomainOpen = domain;
+    var box = el("qvq-storage-keys");
+    if (!box) return;
+    box.innerHTML = '<div class="qvq-chat-loading">' + HERO_SVG + '<span class="qvq-chat-loading-tx">' + esc(storageDomainLabel(domain)) + "</span></div>";
+    api("/api/qvq/storage/keys?domain=" + encodeURIComponent(domain)).then(function (data) {
+      if (storageDomainOpen !== domain) return;
+      var keys = (data && data.keys) || [];
+      if (!keys.length) {
+        box.innerHTML = '<div class="qvq-empty">' + esc(t("storage_no_keys")) + "</div>";
+        return;
+      }
+      box.innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("storage_key_col")) + "</th><th>" + esc(t("storage_size")) +
+        "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" +
+        keys.map(function (k) {
+          return "<tr><td class='qvq-storage-key'>" + esc(k.key) + "</td><td>" + esc(fmtBytes(k.bytes)) + "</td>" +
+            "<td><button class='qvq-btn small ghost' data-entry='" + esc(k.key) + "'>" + esc(t("view")) + "</button> " +
+            "<button class='qvq-btn small danger' data-del='" + esc(k.key) + "'>" + esc(t("del")) + "</button></td></tr>";
+        }).join("") + "</tbody></table>";
+      box.querySelectorAll("button[data-entry]").forEach(function (btn) {
+        btn.onclick = function () { viewStorageEntry(btn.getAttribute("data-entry")); };
+      });
+      box.querySelectorAll("button[data-del]").forEach(function (btn) {
+        btn.onclick = function () {
+          var key = btn.getAttribute("data-del");
+          confirmDialog(key).then(function (ok) {
+            if (!ok) return;
+            api("/api/qvq/storage/delete", "POST", { keys: [key] }).then(function () {
+              toast(t("deleted"));
+              loadStorageKeys(domain);
+              loadStorage();
+            });
+          });
+        };
+      });
+    });
+  }
+
+  function viewStorageEntry(key) {
+    openModal(key, '<div class="qvq-chat-loading">' + HERO_SVG + '<span class="qvq-chat-loading-tx">QvQ Chat</span></div>');
+    api("/api/qvq/storage/entry?key=" + encodeURIComponent(key)).then(function (data) {
+      var body = el("qvq-modal-body");
+      if (!body) return;
+      if (!data || data.__http >= 400) { body.innerHTML = '<div class="qvq-empty">' + esc((data && data.error) || "error") + "</div>"; return; }
+      body.innerHTML = (data.truncated ? '<div class="qvq-tool-desc">' + esc(t("storage_truncated")) + "</div>" : "") +
+        '<pre class="qvq-step-detail qvq-storage-entry">' + esc(data.value || "") + "</pre>";
+    }, function () {
+      var body = el("qvq-modal-body");
+      if (body) body.innerHTML = '<div class="qvq-empty">error</div>';
+    });
+  }
+
+  function openStorageReset() {
+    var ids = ["sessions", "memories", "profiles", "personas", "knowledge", "audit", "usage", "tasks",
+      "participation", "shares", "trash", "recall", "pending", "models", "mcp", "docs", "docs_cache", "uploads", "settings"];
+    var html = '<div class="qvq-tool-desc">' + esc(t("storage_reset_hint")) + "</div>" +
+      ids.map(function (id) {
+        return '<label class="qvq-check-inline"><input type="checkbox" class="qvq-reset-keep" value="' + esc(id) + '"/> ' + esc(storageDomainLabel(id)) + "</label>";
+      }).join(" ") +
+      '<div class="qvq-settings-danger" style="margin-top:10px">' + esc(t("storage_reset_warn")) + "</div>";
+    openModal(t("storage_reset"), html);
+    var body = el("qvq-modal-body");
+    var actions = document.createElement("div");
+    actions.className = "qvq-actions";
+    actions.innerHTML = '<button class="qvq-btn danger" id="qvq-reset-go">' + esc(t("storage_reset")) + "</button>";
+    body.appendChild(actions);
+    actions.querySelector("#qvq-reset-go").onclick = function () {
+      var keep = [];
+      body.querySelectorAll(".qvq-reset-keep:checked").forEach(function (cb) { keep.push(cb.value); });
+      confirmDialog(t("storage_reset_confirm")).then(function (ok) {
+        if (!ok) return;
+        api("/api/qvq/storage/cleanup", "POST", { reset: true, keep: keep }).then(function (r) {
+          toast(t("storage_cleared").replace("{n}", (r && r.removed) || 0) + " · " + fmtBytes((r && r.freed) || 0));
+          closeModal();
+          storageDomainOpen = "";
+          loadStorage();
         });
       });
     };
@@ -1844,6 +2105,7 @@
         return (e.tool || "").toLowerCase().indexOf(keyword) >= 0 ||
           (e.user_id || "").indexOf(keyword) >= 0 ||
           (e.origin || "").toLowerCase().indexOf(keyword) >= 0 ||
+          (e.chat_key || "").toLowerCase().indexOf(keyword) >= 0 ||
           JSON.stringify(e.detail || {}).toLowerCase().indexOf(keyword) >= 0;
       });
       if (!shown.length) {

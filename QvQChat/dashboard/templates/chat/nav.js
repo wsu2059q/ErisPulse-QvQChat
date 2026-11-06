@@ -162,6 +162,13 @@
     return s.name || s.target_id || s.chat_key;
   }
 
+  // 多账户隔离：chat_key 尾部的 @account 后缀 → 账户名（无后缀返回空）
+  function accountOf(key) {
+    var s = String(key || "");
+    var i = s.lastIndexOf("@");
+    return i >= 0 ? s.slice(i + 1) : "";
+  }
+
   var chatShowArchived = false;
 
   var PIN_SVG = "<svg viewBox='0 0 24 24'><path d='M12 17v5M9 3h6l-1 7 3 2v2H7v-2l3-2z'/></svg>";
@@ -189,8 +196,10 @@
         '<button type="button" data-act="delete" data-key="' + esc(s.chat_key) + '" title="' + esc(t("chat_delete")) + '">' + DEL_SVG + "</button>" +
         "</span>";
       var liveCls = s.live ? " liverun" : "";
+      var acct = accountOf(s.chat_key);
       return '<div class="qvq-chat-srow' + (active ? " active" : "") + (pinned ? " pinned" : "") + liveCls + '" data-key="' + esc(s.chat_key) + '">' +
         '<span class="qvq-chat-sname">' + esc(chatSessionTitle(s.chat_key)) + "</span>" +
+        (acct ? '<span class="qvq-acct-badge" title="@' + esc(acct) + '">' + esc(acct) + "</span>" : "") +
         '<span class="qvq-chat-stime">' + esc(fmtSmart(s.updated)) + "</span>" + acts + "</div>";
     }).join("");
   }

@@ -238,7 +238,8 @@ class ConversationService:
     def append(self, chat_key: str, role: str, content, trace: list | None = None, rounds: list | None = None) -> None:
         state = self._state(chat_key)
         entry: dict = {"role": role, "content": content, "ts": utils.now_ts()}
-        if trace:
+# rounds 已含同轮的工具明细与正文，trace 再存一份是纯冗余（前端有 rounds 时不读 trace）——不双写
+        if trace and not rounds:
             entry["trace"] = list(trace)
         if rounds:
             entry["rounds"] = list(rounds)

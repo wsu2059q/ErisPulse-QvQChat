@@ -66,6 +66,8 @@ class LiveStream:
             return rounds[-1]
 
         for seg in self.segments:
+            if seg.get("type") == "think":
+                continue  # 思考内容不是正文，不能拼进可见回复
             if seg.get("type") == "tool":
                 start = seg.get("start") or {}
                 end = seg.get("end") or {}
@@ -150,8 +152,20 @@ class LiveRegistry:
 
 def bind(live: LiveStream):
 
+    def flush_think() -> None:
+        """把当前轮的思考落成独立段（每轮一块，不再跨轮合并）。
+
+        触发时机：轮内出现首个文本增量 / 工具开始——即思考阶段结束。
+        """
+        if live.reasoning:
+            segs = live.segments
+            if not segs or segs[-1].get("type") != "think" or segs[-1].get("text"):
+                segs.append({"type": "think", "text": ""})
+            segs[-1]["text"] += live.reasoning
+            live.reasoning = ""
 
     async def on_delta(piece: str) -> None:
+        flush_think()
         live.text += piece
         segs = live.segments
         if not segs or segs[-1].get("type") != "text":
@@ -173,6 +187,7 @@ def bind(live: LiveStream):
         live.publish("reasoning", {"t": piece})
 
     async def on_tool_event(evt: dict) -> None:
+        flush_think()
         if evt.get("phase") == "start":
             live.segments.append({"type": "tool", "start": evt})
             live.steps.append({"start": evt})
