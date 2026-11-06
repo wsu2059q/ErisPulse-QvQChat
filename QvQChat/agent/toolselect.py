@@ -19,7 +19,12 @@ import time
 from ..engine.base import ChatRequest, TaskSpec
 
 # 始终保留的核心工具：聊天回合的最终交付手段，被剪掉会导致"有答案发不出"
-CORE_TOOLS = ("send_message", "send_dsl", "send_erispulse_message")
+CORE_TOOLS = (
+# 交付三件套 + "保持聪明"三件套：联网与框架文档检索是自足能力的入口，
+# 被动态注入剪掉的表现就是"突然不会自己查文档了"
+    "send_message", "send_dsl", "send_erispulse_message",
+    "search_erispulse_docs", "web_search", "web_fetch",
+)
 
 PROMPT = (
     "You select which tools an AI agent needs for the CURRENT user message. "
@@ -93,6 +98,14 @@ class ToolSelector:
         """返回筛选后的 schema 列表；任何异常都回退全量（fail-open）。"""
         if not schemas or not self.enabled(len(schemas)):
             return schemas
+# 高负载降载：满载时不发筛选调用（全量注入零成本，只是 prompt 长一点）
+        pool = getattr(self.runner, "pool", None)
+        if pool is not None and callable(getattr(pool, "background_blocked", None)) and pool.background_blocked():
+            sdk = getattr(self.pool, "sdk", None)
+            logger = getattr(sdk, "logger", None) if sdk is not None else None
+            if logger is not None:
+                logger.debug("background skip: tool-select (saturated) -> full injection")
+            return schemas
         cached = self._cached(chat_key)
         if cached is not None:
             allowed = {s["function"]["name"] for s in schemas}
@@ -150,6 +163,9 @@ class ToolSelector:
 
     @staticmethod
     def _apply(schemas: list, picked: list[str]) -> list:
-        wanted = set(picked) | set(CORE_TOOLS)
+        # eco_* 一律豁免裁剪：表情包/TTS 等生态工具是"可选的正确答案"，
+        # 被小模型裁掉后模型根本看不见，表现就是"明明装了却从不调用"
+        eco_names = {s["function"]["name"] for s in schemas if s["function"]["name"].startswith("eco_")}
+        wanted = set(picked) | set(CORE_TOOLS) | eco_names
         selected = [s for s in schemas if s["function"]["name"] in wanted]
         return selected or schemas

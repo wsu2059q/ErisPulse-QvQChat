@@ -174,6 +174,16 @@ class KnowledgeBase:
                 pass
         return entry
 
+    def restore_entry(self, entry: dict) -> bool:
+        """按原 id 写回条目（回收站恢复；不重生成 id）。"""
+        data = self._load()
+        eid = str(entry.get("id") or "")
+        if not eid:
+            return False
+        data[eid] = dict(entry)
+        self._save(data)
+        return True
+
     def delete(self, kb_id: str) -> bool:
         entries = self._load()
         if kb_id not in entries:

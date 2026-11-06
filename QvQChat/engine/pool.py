@@ -23,6 +23,17 @@ MODELS_ENRICH_KEY = "QvQChat:models_enriched_at"
 MODELS_ENRICH_TTL = 6 * 3600
 
 
+def _provider_match(provider_id: str, pattern: str) -> bool:
+    """提供商匹配：精确或 * 通配（api* 命中 apiprovider）。"""
+    name = str(provider_id or "")
+    pat = str(pattern or "").strip()
+    if not pat:
+        return False
+    if pat.endswith("*"):
+        return name.startswith(pat[:-1])
+    return name == pat
+
+
 class ModelPool:
     BREAKER_THRESHOLD = 3
     BREAKER_BASE_COOLDOWN = 60.0
@@ -39,6 +50,8 @@ class ModelPool:
         self._migrate_legacy()
 # 模型熔断状态：model_id -> {"fails": 连续失败次数, "until": 冷却截止时间戳}
         self._breaker: dict[str, dict] = {}
+# Provider 负载分流：provider_id -> 在飞请求数（并发时把新请求导向更闲的一家）
+        self._provider_active: dict[str, int] = {}
 # 难度感知路由（默认关闭）：chat_key -> (prefer, reason, ts)
         self.routing_cache: dict[str, tuple] = {}
 # 路由统计与最近决策回看（{prefer: 计数} / deque[{chat_key, prefer, reason, ts}]）
@@ -56,6 +69,16 @@ class ModelPool:
                 continue
             state.append({"model": model_id, "fails": info.get("fails", 0), "cooldown_left": int(until - now)})
         return state
+
+    def breaker_reset(self, model_id: str = "") -> int:
+        """手动清除熔断状态（编排页健康卡重置按钮）：清全部或指定模型。"""
+        breaker = self.__dict__.setdefault("_breaker", {})
+        if model_id:
+            removed = 1 if breaker.pop(str(model_id), None) is not None else 0
+            return removed
+        removed = len(breaker)
+        breaker.clear()
+        return removed
 
     def _record_fail(self, model_id: str) -> None:
         import time as _time
@@ -721,6 +744,10 @@ class ModelPool:
         """
         self._route_chat_spec(spec, request)# 难度感知路由（默认关闭，不改显式约束）
         model = self.resolve_task_model(spec)
+# 简单场景自动降思考：难度路由判为 cheap 且配置了档位时注入 reasoning_effort
+        effort = ""
+        if str(spec.kind) == "chat" and str(spec.prefer or "") == "cheap":
+            effort = str(getattr(self.config, "effort_smalltalk", "") or "")
         scoped = ChatRequest(
             messages=request.messages,
             tools=request.tools,
@@ -728,6 +755,7 @@ class ModelPool:
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             needs=request.needs,
+            reasoning_effort=effort or str(getattr(request, "reasoning_effort", "") or ""),
         )
         priority = int(spec.priority or 0) if str(spec.kind) == "chat" else 8
         return await self.chat(scoped, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning, priority=priority)
@@ -737,7 +765,19 @@ class ModelPool:
         """并发闸门满载：上游可据此跳过插话问询等可选工作。"""
         return self.gate.saturated
 
+    def background_blocked(self) -> bool:
+        """后台任务（压缩/标题/画像提炼/工具筛选/中止判定）此时是否应让路。
+
+        满载时这些调用全部可跳过且无副作用：压缩下轮再触发、标题下次生成、
+        工具筛选回退全量、中止判定回退排队。把并发槽位全部让给用户直答。"""
+        try:
+            return self.gate.saturated
+        except Exception:
+            return False
+
     async def chat(self, request: ChatRequest, on_delta=None, on_reset=None, on_reasoning=None, priority: int = 0) -> ChatResponse:
+        if getattr(self, "_provider_active", None) is None:
+            self._provider_active = {}  # 兼容绕过 __init__ 构造的池
         primary = self.resolve_model(request.model, request.needs)
         chain = [primary]
         if getattr(self.config, "model_failover", True):
@@ -753,11 +793,40 @@ class ModelPool:
             chain.extend(backups)
 # 熔断：冷却中的模型沉底而不是丢弃（全冷却时仍按链尝试）
         chain.sort(key=lambda m: 1 if self._is_open(m["id"]) else 0)
+# 质量绑定（steer_keep 同时约束分流转出与熔断回退）：首选 provider 在名单内时，
+# 跨提供商的后备全部剔除——模型挂了宁可报错（触发失败告警）也不静默换弱模型答
+        keep = [str(x) for x in (getattr(self.config, "provider_steer_keep", []) or [])]
+        primary_keep = any(_provider_match(primary["provider"], k) for k in keep)
+        if primary_keep:
+            same = [m for m in chain if m["provider"] == primary["provider"]]
+            if len(same) < len(chain):
+                self.sdk.logger.debug(
+                    f"breaker fallback guard: {primary['provider']} is steer-keep, "
+                    f"dropped {len(chain) - len(same)} cross-provider models"
+                )
+                chain = same
+# 负载分流（并发时转移）：首选 provider 在飞数达到阈值时，把更闲的 provider 稳定提前——
+# 不等报错就分流；各 provider 的 base_url 不同也照常工作
+        if bool(getattr(self.config, "provider_load_steering", True)) and chain:
+            threshold = max(1, int(getattr(self.config, "provider_steer_active", 2) or 2))
+            primary_active = self._provider_active.get(chain[0]["provider"], 0)
+            if primary_active >= threshold and not primary_keep:
+                before = chain[0]["id"]
+                chain.sort(key=lambda m: (
+                    1 if self._is_open(m["id"]) else 0,
+                    self._provider_active.get(m["provider"], 0),
+                ))
+                if chain[0]["id"] != before:
+                    self.sdk.logger.debug(f"load steering: {before} active={primary_active} -> {chain[0]['id']}")
+            elif primary_keep and primary_active >= threshold:
+                self.sdk.logger.debug(f"load steering skipped: {chain[0]['provider']} is steer-keep (active={primary_active})")
         errors: list[str] = []
 # 绕过 __init__ 构造的池（测试/老式用法）可能没有 gate：懒补一个不限流闸门
         gate = getattr(self, "gate", None)
         if gate is None:
             self.gate = gate = PriorityGate(0)
+        if getattr(self, "_provider_active", None) is None:
+            self._provider_active = {}
         gate.set_limit(int(getattr(self.config, "max_concurrent_requests", 0) or 0))
         await gate.acquire(priority)
         try:
@@ -774,7 +843,9 @@ class ModelPool:
                     model=model["model"],
                     temperature=temperature,
                     max_tokens=max_tokens,
+                    reasoning_effort=str(getattr(request, "reasoning_effort", "") or ""),
                 )
+                self._provider_active[model["provider"]] = self._provider_active.get(model["provider"], 0) + 1
                 try:
                     extra = {"on_reasoning": on_reasoning} if on_reasoning is not None else {}
                     response = await self.engine.chat(
@@ -786,6 +857,7 @@ class ModelPool:
                         **extra,
                     )
                 except EngineError as e:
+                    self._provider_active[model["provider"]] = max(0, self._provider_active.get(model["provider"], 0) - 1)
                     self._record_fail(model["id"])
                     errors.append(f"{model['id']}: {e}")
                     if index + 1 < len(chain) and on_reset is not None:
@@ -796,6 +868,7 @@ class ModelPool:
                         except Exception:
                             pass
                     continue
+                self._provider_active[model["provider"]] = max(0, self._provider_active.get(model["provider"], 0) - 1)
                 response.model = model["id"]
                 self._record_success(model["id"])
                 return response

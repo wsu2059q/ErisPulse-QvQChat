@@ -194,3 +194,57 @@ async def test_session_rewind_rejects_bad_index_and_busy():
     assert await manager.session_rewind(_Req({"index": 0})) == ({"error": "chat_key required"}, 400)
     manager._live.start(key)
     assert await manager.session_rewind(_Req({"chat_key": key, "index": 0})) == ({"error": "session busy"}, 409)
+
+
+async def test_trash_kb_delete_and_restore():
+    """删除知识库条目进回收站，可按 token 恢复原 id。"""
+    main, manager = make_manager()
+    added = main.knowledge.add("条目A", "内容A", source="t")
+    kid = added["id"]
+    resp = await manager.kb_delete(_Req({"id": kid}))
+    assert resp["ok"] and resp["undo"]
+    assert main.knowledge.get(kid) is None
+    rst = await manager.trash_restore(_Req({"token": resp["undo"]}))
+    assert rst["ok"] is True
+    assert main.knowledge.get(kid) is not None
+
+
+async def test_trash_kb_batch_delete_and_restore():
+    main, manager = make_manager()
+    ids = [main.knowledge.add(f"t{i}", f"c{i}", source="t")["id"] for i in range(3)]
+    resp = await manager.kb_batch_delete(_Req({"ids": ids}))
+    assert resp["removed"] == 3 and resp["undo"]
+    rst = await manager.trash_restore(_Req({"token": resp["undo"]}))
+    assert rst["ok"] is True
+    assert all(main.knowledge.get(i) is not None for i in ids)
+
+
+async def test_trash_binding_unbind_restore():
+    main, manager = make_manager()
+    key = "onebot11:group:1"
+    main.personas.bind(key, "cat")
+    resp = await manager.personas_bind(_Req({"chat_key": key, "persona": None}))
+    assert resp["ok"] and resp["undo"]
+    assert main.personas.bindings().get(key) is None
+    rst = await manager.trash_restore(_Req({"token": resp["undo"]}))
+    assert rst["ok"] is True
+    assert main.personas.bindings().get(key) == "cat"
+
+
+async def test_breakers_reset():
+    main, manager = make_manager()
+    pool = main.pool
+    pool._breaker["p1:model"] = {"fails": 5, "until": 9999999999}
+    resp = await manager.breakers_reset(_Req({"model": "p1:model"}))
+    assert resp == {"ok": True, "cleared": 1}
+    assert pool.breaker_state() == []
+    pool._breaker["p2:m"] = {"fails": 3, "until": 9999999999}
+    resp = await manager.breakers_reset(_Req({}))
+    assert resp["cleared"] >= 1
+    assert pool.breaker_state() == []
+
+
+async def test_trash_list_shows_items():
+    main, manager = make_manager()
+    resp = await manager.trash_list(_Req())
+    assert "items" in resp and resp["retention_days"] == 14

@@ -18,6 +18,8 @@ class ChatRequest:
     temperature: float | None = None
     max_tokens: int | None = None
     needs: list | None = None
+# 思考模式控制："" 不干预；low/medium/high 传 reasoning_effort；off 尝试关闭思考
+    reasoning_effort: str = ""
 
 
 @dataclass

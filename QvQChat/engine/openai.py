@@ -350,6 +350,13 @@ class OpenAIEngine:
         if request.tools:
             kwargs["tools"] = request.tools
             kwargs["tool_choice"] = "auto"
+# 思考模式控制（简单场景自动降思考）：low/medium/high 走 reasoning_effort；
+# off 走 Qwen/GLM 约定 extra_body.enable_thinking=False——两家约定不同，均仅在显式设置时注入
+        effort = str(getattr(request, "reasoning_effort", "") or "")
+        if effort == "off":
+            kwargs["extra_body"] = {**(kwargs.get("extra_body") or {}), "enable_thinking": False}
+        elif effort in ("low", "medium", "high"):
+            kwargs["reasoning_effort"] = effort
         streaming = on_delta is not None
         if streaming:
             kwargs["stream"] = True

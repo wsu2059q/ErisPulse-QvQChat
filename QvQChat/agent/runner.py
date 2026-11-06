@@ -470,6 +470,7 @@ class AgentRunner:
         max_calls = int(getattr(self.config, "max_tool_calls", 150) or 150)
         total_calls = 0
         rounds: list = []
+        nudged = False  # 空最终回复重问已用过（限一次）
 # tool_call 能力闭环（schemas 非空且未显式指定模型时）
         schemas, system, chat_needs = self._apply_tools_fallback(schemas, system, model)
         delivery_hint: bool | None = None
@@ -502,6 +503,12 @@ class AgentRunner:
             used_model = response.model or used_model
             if not response.tool_calls:
                 final_text, tag_hint = utils.strip_output_tag((response.content or "").strip())
+                # 跑完工具后返回空文本（部分模型 tool_calls 结束后的常态）：
+                # 不把"没有可回复的内容"甩给用户——补一轮无工具重问，要最终结论（限一次）
+                if not final_text.strip() and not nudged:
+                    nudged = True
+                    contexts.append({"role": "user", "content": texts.t("empty_final_nudge")})
+                    continue
 # 最终回复自身的标签优先级最高（覆盖过程中声明的意图）
                 if tag_hint is not None:
                     delivery_hint = tag_hint
@@ -522,8 +529,14 @@ class AgentRunner:
                         callback_result = on_intermediate(speech)
                         if asyncio.iscoroutine(callback_result):
                             await callback_result
-                    except Exception:
-                        pass
+                    except Exception as e:
+# 回调失败不能无声（投递层会记日志，这里兜底记非投递类异常）
+                        logger = getattr(getattr(ctx, "main", None), "logger", None)
+                        if logger is not None:
+                            try:
+                                logger.warning(f"on_intermediate callback failed: {e}")
+                            except Exception:
+                                pass
             if on_tool_round is not None:
                 try:
                     details = [

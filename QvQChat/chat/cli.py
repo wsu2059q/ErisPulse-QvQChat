@@ -2,9 +2,20 @@
 from __future__ import annotations
 
 import random
+import time
 
 from .. import texts, utils
 from ..tools_builtin import erispulse
+
+
+def command_args_text(args) -> str:
+    """命令参数归一化：适配器可能返回 str 或 list（拆好的参数表）。
+
+    list 直接 strip 会炸掉整条命令（whoami 等全部不可用）——统一转成单行文本。
+    """
+    if isinstance(args, (list, tuple)):
+        return " ".join(str(a).strip() for a in args).strip()
+    return str(args or "").strip()
 
 
 class CliMixin:
@@ -15,7 +26,9 @@ class CliMixin:
     async def _cmd_agent(self, event) -> None:
         try:
             event.done()
-            raw = (event.get_command_args() or "").strip()
+# 适配器差异：get_command_args 可能返回 str 或 list（拆好的参数表）——
+# list 直接 strip 会炸掉整条命令（whoami 等全部不可用）
+            raw = command_args_text(event.get_command_args())
             tokens = raw.split() if raw else []
             sub = tokens[0].lower() if tokens else ""
             chat_key = self._chat_key_of(event)
@@ -51,30 +64,45 @@ class CliMixin:
                 await event.reply(texts.t("compact_done", actions=", ".join(report.get("actions") or ["noop"])))
             elif sub in ("whoami", "身份", "我是谁", "我是誰"):
                 info = self.diagnose_admin(user_id, "chat", event.get_platform() or "")
+# 完整诊断（主人表形态/直读命中/异常等）只进 debug 日志，聊天回复只留身份视角
+                self.logger.debug(f"whoami diagnose: {info}")
+                admin = bool(info["is_admin"])
+                if info["master_is_master"] or info["framework_master_matched"]:
+                    source = texts.t("whoami_source_master")
+                elif info["admins_matched"]:
+                    source = texts.t("whoami_source_admins")
+                else:
+                    source = texts.t("whoami_source_none")
                 await event.reply(texts.t(
                     "cmd_whoami",
-                    admin=str(info["is_admin"]),
-                    uid=info["user_id"],
+                    identity=texts.t("whoami_admin" if admin else "whoami_member"),
+                    source=source,
+                    uid=info["user_id"] or "-",
                     platform=info["platform"] or "-",
-                    version=info["framework_version"],
-                    master=str(info["master_is_master"]),
-                    shape=info["master_users_shape"],
-                    fallback=str(info["framework_master_matched"]),
-                    admins=", ".join(info["admins"]) or "-",
-                    error=info["master_error"] or "-",
+                    scope=texts.t("whoami_scope_admin" if admin else "whoami_scope_member"),
                 ))
             elif sub in ("status", "状态", "狀態"):
                 counts = self.registry.count_by_origin()
-                await event.reply(
-                    texts.t(
-                        "status_line",
-                        models=len(self.pool.list_models()),
-                        tools=sum(counts.values()),
-                        eco=counts.get("eco", 0),
-                        sessions=len(self.sessions.list_sessions()),
-                        tasks=len(self.scheduler.list()),
-                    )
-                )
+                info = self.diagnose_admin(user_id, "chat", event.get_platform() or "")
+                uptime = max(1, int(time.time() - float(getattr(self, "started_at", time.time()))))
+                uptime_text = (f"{uptime // 3600}h{(uptime % 3600) // 60:02d}m" if uptime >= 3600 else f"{uptime // 60}m{uptime % 60:02d}s")
+                usage = self._usage_today()
+                identity = texts.t("status_admin") if info["is_admin"] else texts.t("status_member")
+                await event.reply(texts.t(
+                    "status_card",
+                    version=utils.module_version(),
+                    framework=info["framework_version"],
+                    platform=str(event.get_platform() or "-"),
+                    uptime=uptime_text,
+                    tokens=usage.get("tokens", 0),
+                    calls=usage.get("calls", 0),
+                    models=len(self.pool.list_models()),
+                    tools=sum(counts.values()),
+                    eco=counts.get("eco", 0),
+                    sessions=len(self.sessions.list_sessions()),
+                    tasks=len(self.scheduler.list()),
+                    identity=identity,
+                ))
             elif sub in ("takeover", "接管"):
                 if not self.is_admin(user_id, platform=event.get_platform() or ""):
                     await event.reply(texts.t("needs_admin"))
