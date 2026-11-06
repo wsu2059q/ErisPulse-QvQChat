@@ -2,6 +2,7 @@ import inspect
 from types import SimpleNamespace
 
 from QvQChat.Main import Main
+from QvQChat.conversation.service import ConversationService
 from QvQChat import texts
 
 from fakes import FakeChatEvent, FakeMain
@@ -223,3 +224,16 @@ def test_normalize_state_strips_legacy_seed_labels():
     assert state["contexts"][0]["content"] == "hello"
     assert state["contexts"][1]["content"] == "路人(u1): hi"
     assert state["contexts"][2]["content"] == "keep"
+
+
+def test_normalize_state_keeps_tool_only_assistant():
+    """只调了工具、没有正文的 assistant 条目必须保留，否则刷新后最后一条变回用户发言。"""
+    state = ConversationService._normalize_state({
+        "contexts": [
+            {"role": "user", "content": "查一下"},
+            {"role": "assistant", "content": "", "rounds": [{"text": "", "tools": [{"tool": "t"}]}]},
+            {"role": "user", "content": "   "},  # 纯空白用户消息仍然清掉
+        ]
+    })
+    roles = [c.get("role") for c in state["contexts"]]
+    assert roles == ["user", "assistant"]

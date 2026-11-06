@@ -28,6 +28,8 @@ class ToolContext:
     scene_note: str = ""
 # 父会话键：子智能体（sub: 前缀）回溯来源用
     parent_chat_key: str = ""
+# 本轮工具事件回调（dashboard 直播）：spawn_agent 借它把子智能体内部步骤透传出来
+    on_tool_event: Any = None
 
     async def confirm(self, text: str, timeout: int = 60) -> bool:
         if self.confirmer is None:

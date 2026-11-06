@@ -129,7 +129,15 @@ class ConversationService:
                             content = content[len(prefix):]
                             break
                 entry["content"] = content
-            if entry.get("role") in ("user", "assistant") and isinstance(entry.get("content"), str) and not entry["content"].strip():
+            # 空文本条目清洗：assistant 若带 rounds/trace（只调了工具、没说话）必须保留，
+            # 否则读取时会被丢掉，导致"刷新后最后一条变回用户发言"、轮次也不对齐
+            if (
+                entry.get("role") in ("user", "assistant")
+                and isinstance(entry.get("content"), str)
+                and not entry["content"].strip()
+                and not entry.get("rounds")
+                and not entry.get("trace")
+            ):
                 continue
             cleaned.append(entry)
         state["contexts"] = cleaned
@@ -343,6 +351,19 @@ class ConversationService:
         contexts.pop(index)
         self.replace_contexts(chat_key, contexts)
         return True
+
+    def rewind_to(self, chat_key: str, index: int) -> tuple[bool, str]:
+        """回滚到第 index 条之前（删除该条及其之后所有消息）。
+
+        用于"编辑并重新发送"：把被编辑的那条及其回答一起丢弃，返回原文供前端预填重发，
+        避免旧回答残留在上下文里造成重复/矛盾。
+        """
+        contexts = self.get_contexts(chat_key)
+        if not (0 <= index < len(contexts)):
+            return (False, "")
+        text = self._text_of(contexts[index].get("content"))
+        self.replace_contexts(chat_key, contexts[:index])
+        return (True, text)
 
     def trim_overflow(self, chat_key: str, keep: int) -> list:
         state = self._state(chat_key)

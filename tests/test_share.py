@@ -125,3 +125,15 @@ async def test_share_chat_disabled_without_rounds():
     resp = await mgr.session_share(_Req({"chat_key": "dashboard:private:web"}))
     out = await mgr.share_chat(_Req({"token": resp["token"], "text": "继续"}))
     assert out[1] == 429
+
+
+def test_share_page_defines_token_variable():
+    """回归：分享页脚本体引用的 token 必须已定义，否则渲染第一步就 ReferenceError（整页"加载失败"）。"""
+    from pathlib import Path
+
+    html = (Path("QvQChat/dashboard/templates") / "share.html").read_text(encoding="utf-8")
+    assert "var TOKEN = " in html
+    assert 'renderContinuation(box, data, TOKEN)' in html
+    assert "encodeURIComponent(TOKEN)" in html
+    # 调用点必须全部传 TOKEN（函数定义本身的形参名不算）
+    assert html.count("renderContinuation(box, data, TOKEN)") == 2

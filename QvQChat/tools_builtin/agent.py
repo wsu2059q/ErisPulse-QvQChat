@@ -58,9 +58,27 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
     runner = AgentRunner(main.pool, main.registry, sub_cfg)
     main.sessions.append(sub_key, "user", task)
     main.sessions.set_group_name(sub_key, utils.truncate(task, 40))
+    # 子智能体步骤透传：加 agent=sub 标记 + step_id 前缀，父/子事件不会互相配对错
+    outer_hook = getattr(ctx, "on_tool_event", None)
+
+    def sub_hook(evt):
+        if outer_hook is None or not isinstance(evt, dict):
+            return None
+        payload = dict(evt)
+        payload["agent"] = "sub"
+        payload["step_id"] = "sub:" + str(evt.get("step_id") or "")
+        return outer_hook(payload)
+
     started = time.monotonic()
     try:
-        result = await runner.run(system=system, messages=[], ctx=sub_ctx, persona_tools=[str(t) for t in (tools or [])] or None)
+        result = await runner.run(
+            system=system,
+            messages=[],
+            ctx=sub_ctx,
+            persona_tools=[str(t) for t in (tools or [])] or None,
+            on_tool_event=sub_hook if outer_hook is not None else None,
+            priority=6,  # 子智能体是后台杂务：并发紧张时让位给用户直接提问
+        )
     except Exception as e:
         return texts.t("tool_error", name="spawn_agent", error=f"{type(e).__name__}: {e}")
     answer = (result.text or "").strip() or "-"

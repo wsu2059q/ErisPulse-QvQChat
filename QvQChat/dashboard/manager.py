@@ -168,6 +168,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("GET", "/api/qvq/session/messages", self.session_messages),
             ("POST", "/api/qvq/session/messages/delete", self.session_message_delete),
             ("POST", "/api/qvq/session/context/edit", self.session_context_edit),
+            ("POST", "/api/qvq/session/rewind", self.session_rewind),
             ("POST", "/api/qvq/session/flags", self.session_flags),
             ("POST", "/api/qvq/session/settings", self.session_settings),
             ("POST", "/api/qvq/sessions/delete", self.sessions_delete),
@@ -599,7 +600,9 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
                 run_live.publish("done", {"reply": reply, "session": session})
             except _asyncio.CancelledError:
                 partial, trace, rounds = run_live.partial_record()
-                if partial:
+                # 只调了工具、还没说话就被中止：也要落一条 assistant（带 rounds），
+                # 否则上下文里最后一条是用户消息，刷新后看起来像"回答丢了"
+                if partial or rounds or trace:
                     try:
                         self.main.sessions.append(session, "assistant", partial, trace=trace, rounds=rounds)
                     except Exception:
@@ -637,7 +640,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         return StreamingResponse(
             gen(),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            # Content-Encoding: identity 让 gzip 中间件跳过 SSE（否则事件被攒成一坨才下发，前端看起来是"一大段一起蹦出来"）
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Content-Encoding": "identity"},
         )
 
     async def chat_cancel(self, request):
@@ -688,6 +692,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         return StreamingResponse(
             gen(),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            # Content-Encoding: identity 让 gzip 中间件跳过 SSE（否则事件被攒成一坨才下发，前端看起来是"一大段一起蹦出来"）
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Content-Encoding": "identity"},
         )
 

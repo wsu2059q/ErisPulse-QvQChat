@@ -210,11 +210,13 @@ class AgentRunner:
 
     async def _dispatch(self, kind: str, request: ChatRequest, *, needs: list | None = None,
                         model: str | None = None, prefer: str = "", on_delta=None, on_reset=None,
-                        on_reasoning=None, chat_key: str = ""):
-        """pool 支持 TaskSpec 分派时走 dispatch(kind)，否则退回 pool.chat（兼容老式池对象）。"""
+                        on_reasoning=None, chat_key: str = "", priority: int = 0):
+        """pool 支持 TaskSpec 分派时走 dispatch(kind)，否则退回 pool.chat（兼容老式池对象）。
+
+        priority：并发闸门优先级（用户直答 0 / 插话 6 / 后台任务 8）。"""
         dispatch = getattr(self.pool, "dispatch", None)
         if callable(dispatch):
-            spec = TaskSpec(kind=kind, needs=needs, prefer=prefer, model=model, chat_key=chat_key)
+            spec = TaskSpec(kind=kind, needs=needs, prefer=prefer, model=model, chat_key=chat_key, priority=priority)
             return await dispatch(spec, request, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning)
         return await self.pool.chat(request, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning)
 
@@ -374,6 +376,7 @@ class AgentRunner:
         model: str | None = None,
         temperature: float | None = None,
         task_kind: str = "chat",
+        priority: int = 0,
     ) -> AgentResult:
         contexts = self._sanitize_contexts(list(messages))
         session_block = self._session_block(ctx)
@@ -404,6 +407,7 @@ class AgentRunner:
             model=model,
             temperature=temperature,
             usage_total=usage_total,
+            priority=priority,
         )
         if str(task_kind) != "deep":
             return result
@@ -434,6 +438,7 @@ class AgentRunner:
         model: str | None = None,
         temperature: float | None = None,
         usage_total: dict | None = None,
+        priority: int = 0,
     ) -> AgentResult:
         trace: list = []
         pending_images: list = []
@@ -478,7 +483,7 @@ class AgentRunner:
             )
             response = await self._dispatch("chat", request, needs=chat_needs, model=model,
                                             on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
-             chat_key=ctx.chat_key)
+             chat_key=ctx.chat_key, priority=priority)
 # 引擎剥图重试过 → 模型本轮没看见图：补一份视觉描述，避免它装作看过
             if getattr(response, "images_stripped", False):
                 urls = list(getattr(response, "stripped_image_urls", []) or [])
@@ -530,6 +535,8 @@ class AgentRunner:
                         await callback_result
                 except Exception:
                     pass
+            # 透传回调给工具：spawn_agent 用它把子智能体内部步骤也播到同一条直播流
+            ctx.on_tool_event = on_tool_event
             outputs = await asyncio.gather(
                 *[
                     self._run_tool(tc, ctx, trace, on_tool_event=on_tool_event, step_id=f"s{step_counter['n'] + i}")
@@ -605,7 +612,7 @@ class AgentRunner:
         )
         final = await self._dispatch("chat", final_request, needs=chat_needs, model=model,
                                      on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
-             chat_key=ctx.chat_key)
+             chat_key=ctx.chat_key, priority=priority)
         for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
             usage_total[key] = usage_total.get(key, 0) + final.usage.get(key, 0)
         raw_text = (final.content or "").strip()

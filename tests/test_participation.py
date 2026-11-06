@@ -30,9 +30,10 @@ GROUP_KEY = "onebot11:group:1"
 # ==================== 装配辅助 ====================
 
 def _bind(main):
-    """make_main 的绑定清单外追加 新方法（_interject）。"""
-    static_attr = inspect.getattr_static(Main, "_interject")
-    setattr(main, "_interject", static_attr.__get__(main))
+    """make_main 的绑定清单外追加 新方法（_interject/_interject_overloaded）。"""
+    for name in ("_interject", "_interject_overloaded"):
+        static_attr = inspect.getattr_static(Main, name)
+        setattr(main, name, static_attr.__get__(main))
     return main
 
 

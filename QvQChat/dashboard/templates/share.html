@@ -91,6 +91,14 @@
 </div>
 <script>
 (function () {
+  // 页面 token：续聊/加载都从这里取（URL 的 token 参数，缺省回退 "__TOKEN__"）
+  var TOKEN = (function () {
+    try {
+      return new URLSearchParams(location.search).get("token") || "__TOKEN__";
+    } catch (e) {
+      return "__TOKEN__";
+    }
+  })();
   var LANGS = {
     "zh": { title: "会话分享", loading: "加载中…", empty: "没有可显示的消息", empty_hint: "分享内容为空或超出预算。",
         summary: "上下文摘要", user: "用户", invalid: "链接无效或已过期", invalid_hint: "请向分享者索取新的链接。",
@@ -239,7 +247,7 @@ document.title = "QvQChat · " + L.title;
           ]);
           data.rounds_left = out.rounds_left;
           data.tokens_left = out.tokens_left;
-          renderContinuation(box, data, token);
+          renderContinuation(box, data, TOKEN);
           var fresh = box.querySelector(".cont");
           if (fresh) fresh.scrollIntoView({ behavior: "smooth", block: "end" });
         } else {
@@ -259,16 +267,45 @@ document.title = "QvQChat · " + L.title;
   }
 
   document.querySelector("#loading b").textContent = L.loading;
-  fetch("/QvQChat/api/qvq/share/messages?token=" + encodeURIComponent("__TOKEN__"), { cache: "no-store" })
-    .then(function (r) {
+
+  function showFailure(detail) {
+    document.getElementById("content").innerHTML =
+      '<div class="expired"><b>' + esc(L.load_failed || L.invalid) + "</b>" +
+      (L.load_failed ? "" : esc(L.invalid_hint)) +
+      (detail ? '<div class="err-detail">' + esc(detail) + "</div>" : "") + "</div>";
+  }
+
+  function loadShare(attempt) {
+    return fetch("/QvQChat/api/qvq/share/messages?token=" + encodeURIComponent(TOKEN), {
+      cache: "no-store",
+      credentials: "same-origin"
+    }).then(function (r) {
       if (r.status === 403) {
         document.getElementById("content").innerHTML =
-          '<div class="expired"><b>' + L.invalid + '</b>' + L.invalid_hint + '</div>';
+          '<div class="expired"><b>' + esc(L.invalid) + "</b>" + esc(L.invalid_hint) + "</div>";
         return null;
       }
-      if (!r.ok) throw new Error("bad");
-      return r.json();
-    })
+      return r.text().then(function (text) {
+        var data = null;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error("HTTP " + r.status + " · 响应不是 JSON：" + text.slice(0, 160));
+        }
+        if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
+        return data;
+      });
+    }).catch(function (err) {
+      // 失败后延时 600ms 重试一次，仍失败则显示具体错误信息
+      if (attempt < 1) {
+        return new Promise(function (res) { setTimeout(res, 600); }).then(function () { return loadShare(attempt + 1); });
+      }
+      showFailure(String((err && err.message) || err || ""));
+      return null;
+    });
+  }
+
+  loadShare(0)
     .then(function (data) {
       if (!data) return;
       var msgs = data.messages || [];
@@ -315,12 +352,12 @@ document.title = "QvQChat · " + L.title;
           }
         };
       });
-      renderContinuation(box, data, token);
+      renderContinuation(box, data, TOKEN);
     })
-    .catch(function () {
-      // 403 已在 then 内分流；走到这里的是网络/代理失败
-      document.getElementById("content").innerHTML =
-        '<div class="expired"><b>' + (L.load_failed || L.invalid) + '</b>' + (L.load_failed ? "" : L.invalid_hint) + '</div>';
+    .catch(function (err) {
+      // 渲染阶段抛错：显示错误详情
+      console.error("share render failed:", err);
+      showFailure(String((err && err.message) || err || ""));
     });
 })();
 </script>
