@@ -1344,10 +1344,11 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
   border-color: rgba(59, 130, 246, 0.25);
   color: var(--qvq-accent, #3b82f6);
 }
-/* 侧栏会话行：徽标贴在名称后 */
+/* 侧栏会话行：徽标贴在名称后，最大宽度 56px */
 .qvq-chat-srow .qvq-acct-badge {
   flex: none;
   margin-left: 6px;
+  max-width: 56px;
 }
 /* 会话页账户筛选 chips */
 .qvq-acct-filter {
