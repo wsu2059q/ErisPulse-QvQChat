@@ -2,6 +2,17 @@
 
 本文件记录 QvQChat 的显著变更。格式参考 Keep a Changelog，版本遵循语义化版本。
 
+## 4.3.3
+
+### 修复
+
+- **子智能体权限断裂**：spawn_agent 给子上下文写死 `platform="sub"`，平台主人判定（onebot11 等）全部落空，只有全局主人能用子智能体。现在子上下文完整继承发起用户的 platform/detail_type/target_id/event/confirmer——管理员判定与 send_message 缺省目标都与主智能体一致，仅 chat_key/session_key 用 `sub:` 前缀隔离上下文
+- **子智能体两眼一抹黑**：system 只有一句任务描述。现在注入父会话的场景块（群名/发言人/触发方式）与最近对话摘要（带发言人标注），子智能体知道"在为谁、在哪个群、最近聊了什么"
+
+### 测试
+
+- 新增子智能体上下文继承（platform/scene/recent-chat 注入断言）与禁止嵌套 spawn 用例
+
 ## 4.3.2
 
 ### 修复

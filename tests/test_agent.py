@@ -328,3 +328,71 @@ async def test_session_block_injected():
     content = pool.requests[0].messages[0]["content"]
     assert content.startswith("s")
     assert "<session>" in content and "platform=test" in content and "</session>" in content
+
+
+async def test_spawn_agent_inherits_user_context():
+    """子智能体权限/发送能力跟随发起用户：platform/detail_type/target_id/event 继承。"""
+    main = FakeMain()
+    registry = ToolRegistry()
+    registry.register(make_tool())
+    captured = {}
+
+    class Pool:
+        async def chat(self, request, **kwargs):
+            return ChatResponse(content="子任务完成", usage={})
+
+    from QvQChat.tools_builtin import agent as agent_tool
+
+    real_runner = agent_tool.AgentRunner
+
+    class SpyRunner(real_runner):
+        def __init__(self, pool, registry, config):
+            super().__init__(pool, registry, config)
+
+        async def run(self, *, system, messages, ctx, **kwargs):
+            captured["platform"] = ctx.platform
+            captured["detail_type"] = ctx.detail_type
+            captured["target_id"] = ctx.target_id
+            captured["user_id"] = ctx.user_id
+            captured["event"] = ctx.event
+            captured["origin"] = ctx.origin
+            captured["scene"] = getattr(ctx, "scene_note", "")
+            captured["system"] = system
+            from QvQChat.agent.runner import AgentResult
+
+            return AgentResult(text="子任务完成")
+
+    agent_tool.AgentRunner = SpyRunner
+    try:
+        main.registry = registry
+        parent_ctx = make_ctx(main, admins=["1"])
+        parent_ctx.chat_key = "onebot11:group:67890"
+        parent_ctx.platform = "onebot11"
+        parent_ctx.detail_type = "group"
+        parent_ctx.target_id = "67890"
+        parent_ctx.event = object()
+        parent_ctx.scene_note = "平台：onebot11 群：测试群"
+        main.sessions.append("onebot11:group:67890", "user", "樱城の心: 帮我导出记录")
+        result = await agent_tool.spawn_agent(parent_ctx, task="导出群记录")
+        assert "子任务完成" in result
+        assert captured["platform"] == "onebot11"
+        assert captured["detail_type"] == "group"
+        assert captured["target_id"] == "67890"
+        assert captured["event"] is parent_ctx.event
+        assert captured["scene"] == "平台：onebot11 群：测试群"
+        assert "<scene>" in captured["system"]
+        assert "<recent-chat>" in captured["system"]
+        assert "樱城の心" in captured["system"]
+    finally:
+        agent_tool.AgentRunner = real_runner
+
+
+async def test_spawn_agent_no_nested_spawn():
+    main = FakeMain()
+    from QvQChat.tools_builtin import agent as agent_tool
+    from QvQChat import texts
+
+    ctx = make_ctx(main, admins=["1"])
+    ctx.chat_key = "sub:onebot11:group:1:abcd1234"
+    result = await agent_tool.spawn_agent(ctx, task="x")
+    assert "cannot spawn" in result.lower()
