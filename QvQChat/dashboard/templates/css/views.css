@@ -1255,3 +1255,94 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
   opacity: 0.75;
   margin-top: 8px;
 }
+
+/* ===== 玻璃拟态外观（参考 ErisPulse Dashboard 透感方案）=====
+   body.qvq-glass-on 时启用：背景图层 + 半透明面板 + 可选磨砂。
+   透明档位（--qvq-glass-alpha）：轻 0.78 / 标准 0.62 / 强 0.45。 */
+body.qvq-glass-on {
+  background: var(--qvq-glass-image, none) center / cover no-repeat fixed;
+}
+body.qvq-glass-on::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--qvq-bg, #f6f7f9);
+  opacity: var(--qvq-glass-dim, 0.18);
+  pointer-events: none;
+}
+body.qvq-glass-on .qvq-card,
+body.qvq-glass-on .qvq-modal > div,
+body.qvq-glass-on .qvq-tabbar,
+body.qvq-glass-on .qvq-chat-inputbar {
+  background: color-mix(in srgb, var(--qvq-surface) calc(var(--qvq-glass-alpha, 0.62) * 100%), transparent);
+  backdrop-filter: blur(var(--qvq-glass-blur, 14px)) saturate(1.25);
+  -webkit-backdrop-filter: blur(var(--qvq-glass-blur, 14px)) saturate(1.25);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+body.qvq-glass-on:not([data-theme="dark"]) .qvq-card {
+  box-shadow: 0 2px 18px rgba(15, 23, 42, 0.12);
+}
+body.qvq-glass-on .qvq-appear-preview {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+body.qvq-glass-low { --qvq-glass-alpha: 0.78; }
+body.qvq-glass-mid { --qvq-glass-alpha: 0.62; }
+body.qvq-glass-high { --qvq-glass-alpha: 0.45; }
+
+/* 外观设置面板 */
+.qvq-appear-fab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.15);
+}
+.qvq-appear-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 64px;
+  z-index: 60;
+  width: 300px;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.22);
+  display: none;
+}
+.qvq-appear-panel.open {
+  display: block;
+}
+.qvq-appear-panel h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.qvq-appear-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.qvq-appear-row .qvq-btn.small.active {
+  outline: 2px solid var(--qvq-accent);
+}
+.qvq-appear-hint {
+  font-size: 11px;
+  opacity: 0.6;
+  margin: 6px 0;
+  line-height: 1.5;
+}

@@ -284,5 +284,128 @@
       if (e.key === "Enter") tryLogin();
     });
   }
+  // ===== 玻璃拟态外观（透感方案）：背景图/透明度/磨砂，localStorage 持久化 =====
+  var APPEAR_KEY = "qvq_appearance";
+  var appearState = { url: "", alpha: "mid", blur: "on", on: false };
+
+  function appearLoad() {
+    try {
+      var raw = localStorage.getItem(APPEAR_KEY);
+      if (raw) {
+        var data = JSON.parse(raw);
+        if (data && typeof data === "object") {
+          appearState.url = String(data.url || "");
+          appearState.alpha = ["low", "mid", "high"].indexOf(data.alpha) >= 0 ? data.alpha : "mid";
+          appearState.blur = data.blur === "off" ? "off" : "on";
+          appearState.on = !!data.on;
+        }
+      }
+    } catch (e) {}
+  }
+
+  function appearSave() {
+    try { localStorage.setItem(APPEAR_KEY, JSON.stringify(appearState)); } catch (e) {}
+  }
+
+  function appearApply() {
+    var body = document.body;
+    if (!appearState.on) {
+      body.classList.remove("qvq-glass-on", "qvq-glass-low", "qvq-glass-mid", "qvq-glass-high");
+      body.style.removeProperty("--qvq-glass-image");
+      return;
+    }
+    body.classList.add("qvq-glass-on", "qvq-glass-" + appearState.alpha);
+    body.classList.remove(appearState.alpha === "low" ? "qvq-glass-mid" : "qvq-glass-low");
+    body.classList.remove(appearState.alpha === "high" ? "qvq-glass-mid" : "qvq-glass-high");
+    body.style.setProperty("--qvq-glass-image", appearState.url ? 'url("' + appearState.url + '")' : "none");
+    body.style.setProperty("--qvq-glass-blur", appearState.blur === "off" ? "0px" : "14px");
+  }
+
+  function appearSyncPanel() {
+    var panel = document.getElementById("qvq-appear-panel");
+    if (!panel) return;
+    panel.querySelector("#qvq-appear-url").value = appearState.url;
+    panel.querySelectorAll("[data-alpha]").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-alpha") === appearState.alpha);
+    });
+    panel.querySelectorAll("[data-blur]").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-blur") === appearState.blur);
+    });
+  }
+
+  function appearBind() {
+    var fab = document.getElementById("qvq-appear-fab");
+    var panel = document.getElementById("qvq-appear-panel");
+    if (!fab || !panel || fab.dataset.bound) return;
+    fab.dataset.bound = "1";
+    fab.onclick = function () {
+      panel.classList.toggle("open");
+      appearSyncPanel();
+    };
+    panel.querySelector("#qvq-appear-url").onchange = function () {
+      appearState.url = this.value.trim();
+      appearState.on = !!appearState.url;
+      appearSave();
+      appearApply();
+    };
+    var fileInput = panel.querySelector("#qvq-appear-file");
+    panel.querySelector("#qvq-appear-file-btn").onclick = function () { fileInput.click(); };
+    fileInput.onchange = function () {
+      var file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      // 压缩到最长边 1600px 的 JPEG dataURL，避免 localStorage 爆容量
+      var reader = new FileReader();
+      reader.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          var scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+          var canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+          try {
+            appearState.url = canvas.toDataURL("image/jpeg", 0.82);
+            appearState.on = true;
+            appearSave();
+            appearApply();
+            appearSyncPanel();
+          } catch (e) {
+            alert("图片过大，无法保存");
+          }
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+      fileInput.value = "";
+    };
+    panel.querySelector("#qvq-appear-clear").onclick = function () {
+      appearState.url = "";
+      appearState.on = false;
+      appearSave();
+      appearApply();
+      appearSyncPanel();
+    };
+    panel.querySelectorAll("[data-alpha]").forEach(function (b) {
+      b.onclick = function () {
+        appearState.alpha = b.getAttribute("data-alpha");
+        appearState.on = true;
+        appearSave();
+        appearApply();
+        appearSyncPanel();
+      };
+    });
+    panel.querySelectorAll("[data-blur]").forEach(function (b) {
+      b.onclick = function () {
+        appearState.blur = b.getAttribute("data-blur");
+        appearSave();
+        appearApply();
+        appearSyncPanel();
+      };
+    });
+  }
+
+  appearLoad();
+  appearApply();
+  appearBind();
   window.loadQvQChatView();
 })();

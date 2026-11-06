@@ -193,6 +193,8 @@ class FakeAdapterManager:
     def __init__(self):
         self._adapters = {}
         self._sends = {}
+        # 单适配器多账户隔离：默认单 bot（不加 @后缀）；测试可改为多 bot 触发隔离
+        self.bots = {"bot": {"status": "running"}}
 
     def add(self, name, chain, sends=("Markdown", "Text")):
         self._adapters[name] = FakeAdapter(chain, sends)
@@ -203,6 +205,9 @@ class FakeAdapterManager:
 
     def list_sends(self, name):
         return list(self._sends.get(name, []))
+
+    def list_bots(self, platform):
+        return {platform: self.bots}
 
     def list_registered(self):
         return list(self._adapters)

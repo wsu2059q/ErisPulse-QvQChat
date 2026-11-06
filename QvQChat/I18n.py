@@ -25,6 +25,14 @@ class QvQI18n(BaseI18n):
     wake_prefixes = _key("群聊文本唤醒前缀", "群聊文字喚醒前綴", "Group text wake prefixes", "グループのテキスト起床プレフィックス", "Префиксы пробуждения в группах")
     command_prefixes = _key("命令消息前缀（命中即放行不处理）", "命令訊息前綴（命中即放行不處理）", "Command prefixes passed through untouched", "コマンドプレフィックス（一致時は素通し）", "Префиксы команд (совпадение — пропустить)")
 
+    account_isolation = _key(
+        "单适配器多账户隔离：适配器在线机器人 ≥2 时按接收账户自动隔离会话/人格/记忆（键追加 @账户 后缀），单账户安装不受影响；关闭则同群多号共用一个大脑。全局设置始终为所有账户共享",
+        "單適配器多賬戶隔離：機器人 ≥2 時按接收賬戶自動隔離；關閉則同群多號共用",
+        "Multi-account per adapter: when 2+ bots are online, sessions/persona/memory are isolated by receiving account (@account suffix); single-bot installs are unaffected. Off = shared brain. Global settings stay shared",
+        "アカウント分離：ボット 2 体以上で受信アカウントごとに分離。オフで共有",
+        "Изоляция аккаунтов: при 2+ ботах — по принимающему аккаунту; выкл. — общий мозг",
+    )
+
     trust_agent = _key("完全信任智能体：跳过所有危险操作确认（仍审计）", "完全信任智慧代理：跳過所有危險操作確認（仍審計）", "Fully trust the agent: skip all danger confirmations (still audited)", "エージェントを完全に信頼：危険操作の確認を全てスキップ（監査は記錄）", "Полностью доверять агенту: без подтверждений (аудит ведётся)")
     admins = _key("管理员用户 id 列表；为空时聊天侧无人拥有管理员权限（Dashboard/本地来源除外）", "管理員使用者 id 列表；為空時聊天側無人擁有管理員權限（Dashboard/本地來源除外）", "Admin user ids; when empty nobody has admin on chat (Dashboard/local excepted)", "管理者ユーザー id 一覧。空欄ではチャット側に管理者なし（Dashboard/ローカル除く）", "id администраторов; пусто — на уровне чата админов нет (кроме Dashboard/локально)")
     admin_tools = _key("仅管理员可用的工具（支持 eco_*/mcp_* 前缀通配）", "僅管理員可用的工具（支援 eco_*/mcp_* 前綴萬用）", "Tools restricted to admins (eco_*/mcp_* prefix wildcards allowed)", "管理者専用ツール（eco_*/mcp_* 接頭辞ワイルドカード可）", "Инструменты только для админов (префиксы eco_*/mcp_*)")

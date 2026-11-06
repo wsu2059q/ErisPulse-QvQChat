@@ -104,6 +104,28 @@ def debounce_window(cfg, is_group: bool, is_at: bool) -> float:
     return group
 
 
+def _account_suffix_for(cfg, sdk, event) -> str:
+    """单适配器多账户隔离：键追加 @账户 后缀。
+
+    自动探测：仅当该适配器在线机器人 >= 2 且事件携带账户信息时生效——
+    单账户安装不加后缀（存量会话/人格/记忆无缝保留）；配置关闭则强制不加。
+    模块级函数：宿主以任意对象为 self 的非绑定调用（测试模式）下依旧可用。
+    """
+    if not getattr(cfg, "account_isolation", True):
+        return ""
+    platform = ""
+    try:
+        platform = str(event.get_platform() or "")
+        bots = sdk.adapter.list_bots(platform) or {}
+        per_platform = bots.get(platform, bots) if isinstance(bots, dict) else {}
+        if not isinstance(per_platform, dict) or len(per_platform) < 2:
+            return ""
+        account = str(event.get_self_account_id() or "")
+    except Exception:
+        return ""
+    return f"@{account}" if account else ""
+
+
 class InboxMixin(RecoveryMixin):
     """Main 的消息入口 mixin（组合 RecoveryMixin：实例重启恢复方法随本链挂到 Main）。
     依赖宿主提供 self.sdk / self.cfg / self.logger /
@@ -168,17 +190,20 @@ class InboxMixin(RecoveryMixin):
 
     def _chat_key_of(self, event) -> str:
         platform = event.get_platform() or ""
+        suffix = _account_suffix_for(self.cfg, self.sdk, event)
         if event.is_group_message():
             gid = str(event.get_group_id() or "")
             if getattr(self.cfg, "group_isolation", False):
                 uid = str(event.get_user_id() or "")
                 if uid:
-                    return make_chat_key(platform, "group", f"{gid}:u{uid}")
-            return make_chat_key(platform, "group", gid)
-        return make_chat_key(platform, "private", str(event.get_user_id() or ""))
+                    return make_chat_key(platform, "group", f"{gid}:u{uid}") + suffix
+            return make_chat_key(platform, "group", gid) + suffix
+        return make_chat_key(platform, "private", str(event.get_user_id() or "")) + suffix
 
     def _chat_ctx(self, event, chat_key: str, origin: str = "chat", scene_note: str = "") -> ToolContext:
-        platform, detail_type, target_id = parse_chat_key(strip_isolation(chat_key))
+        from ..conversation.service import strip_account as _strip_account
+
+        platform, detail_type, target_id = parse_chat_key(_strip_account(strip_isolation(chat_key)))
         session_key = ""
         try:
             session_key = self.sdk.interaction.make_key(event)

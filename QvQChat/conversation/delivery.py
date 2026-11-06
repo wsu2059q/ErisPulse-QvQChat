@@ -325,16 +325,26 @@ class Delivery:
         return bool(len(reply.strip()) <= 150 and RECAP_RE.match(reply.strip()))
 
     def _event_chat_key(self, event) -> str:
-        """事件 -> 会话键（与 Main._chat_key_of 同格式，含群隔离后缀）。"""
+        """事件 -> 会话键（与 Main._chat_key_of 同格式，含群隔离与账户后缀）。"""
         platform = str(event.get_platform() or "")
+        account = ""
+        if getattr(self.config, "account_isolation", True):
+            try:
+                bots = self.sdk.adapter.list_bots(str(event.get_platform() or "")) or {}
+                per_platform = bots.get(str(event.get_platform() or ""), bots) if isinstance(bots, dict) else {}
+                if isinstance(per_platform, dict) and len(per_platform) >= 2:
+                    account = str(event.get_self_account_id() or "")
+            except Exception:
+                account = ""
+        suffix = f"@{account}" if account else ""
         if event.is_group_message():
             gid = str(event.get_group_id() or "")
             if getattr(self.config, "group_isolation", False):
                 uid = str(event.get_user_id() or "")
                 if uid:
-                    return f"{platform}:group:{gid}:u{uid}"
-            return f"{platform}:group:{gid}"
-        return f"{platform}:private:{str(event.get_user_id() or '')}"
+                    return f"{platform}:group:{gid}:u{uid}{suffix}"
+            return f"{platform}:group:{gid}{suffix}"
+        return f"{platform}:private:{str(event.get_user_id() or '')}{suffix}"
 
     def _event_queue(self, event) -> dict | None:
         platform = str(event.get_platform() or "")
