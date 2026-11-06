@@ -463,7 +463,9 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
     async def run_prompt(self, chat_key: str, prompt: str, persona_id: str = "",
                          origin: str = "task", send: bool = True, user_id: str = "",
                          model: str = "", task_kind: str = "chat", scene: str = "") -> str:
-        platform, detail_type, target_id = parse_chat_key(strip_isolation(chat_key))
+        from .conversation.service import strip_account as _strip_account
+
+        platform, detail_type, target_id = parse_chat_key(_strip_account(strip_isolation(chat_key)))
         ctx = ToolContext(
             main=self,
             sdk=self.sdk,
@@ -532,7 +534,9 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         on_tool_event=None,
         on_reasoning=None,
     ) -> str:
-        platform, detail_type, target_id = parse_chat_key(strip_isolation(chat_key))
+        from .conversation.service import strip_account as _strip_account
+
+        platform, detail_type, target_id = parse_chat_key(_strip_account(strip_isolation(chat_key)))
         ctx = ToolContext(
             main=self,
             sdk=self.sdk,

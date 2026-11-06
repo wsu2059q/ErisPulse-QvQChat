@@ -59,6 +59,22 @@ def strip_isolation(chat_key: str) -> str:
     return f"{m.group(1)}:group:{m.group(2)}" if m else (chat_key or "")
 
 
+def strip_account(chat_key: str) -> str:
+    """剥离账户隔离后缀（platform:group:123@bot_a → platform:group:123）。
+
+    @账户 后缀只用于会话/人格/记忆隔离；发送目标必须还原成纯 id。
+    """
+    text = str(chat_key or "")
+    return text.rsplit("@", 1)[0] if "@" in text.rsplit(":", 2)[-1] else text
+
+
+def account_of(chat_key: str) -> str:
+    """取账户隔离后缀（无则空串）。"""
+    text = str(chat_key or "")
+    tail = text.rsplit(":", 2)[-1]
+    return tail.rsplit("@", 1)[1] if "@" in tail else ""
+
+
 class ConversationService:
 
 
