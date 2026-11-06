@@ -75,6 +75,8 @@ def delivery_profile(config, platform: str) -> dict:
         "max_delay": as_float(getattr(config, "max_delay", 6.0), 6.0),
         "min_length": as_int(getattr(config, "split_min_length", 120), 120),
         "max_parts": max(1, as_int(getattr(config, "max_parts", 6), 6)),
+        # 人化节奏（投递层通用行为）：偶尔停顿在想 / 短句连发 / 轻量回复提速
+        "humanize": bool(getattr(config, "rhythm_humanize", True)),
         "reply_split": str(getattr(config, "reply_split", "paragraph")),
         "forward_min_messages": as_int(getattr(config, "forward_min_messages", 2), 2),
         "forward_threshold": as_int(getattr(config, "forward_threshold", 600), 600),

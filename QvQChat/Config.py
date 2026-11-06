@@ -162,6 +162,8 @@ class QvQConfig(BaseConfig):
     send_retry: int = field(default=1, metadata=_desc("send_retry", "发送失败（超时/网络类错误）重试次数", "chat", 42, "number"))
     retry_delay: float = field(default=1.5, metadata=_desc("retry_delay", "重试退避基数（秒），指数递增", "chat", 43, "number"))
     pending_send_max: int = field(default=10, metadata=_desc("pending_send_max", "发送失败待重发队列每会话上限（FIFO 淘汰）", "chat", 44, "number"))
+# 人化节奏：偶尔停顿在想 / 短句连发 / 轻量回复提速（关闭则严格按分段延迟公式）
+    rhythm_humanize: bool = field(default=True, metadata=_desc("rhythm_humanize", "人化打字节奏：偶尔中途停顿（在想）、短句偶尔连发、轻量回复整体提速", "chat", 62, "switch"))
 
 # 人格开场白
     opening_enabled: bool = field(default=True, metadata=_desc("opening_enabled", "新会话首次接触时自动发送人格开场白（随机一条；Dashboard 平台不触发）", "chat", 45, "switch"))

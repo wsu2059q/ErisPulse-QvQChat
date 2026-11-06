@@ -107,9 +107,12 @@ def test_plan_segments_jitter_deterministic():
 
 
 def test_plan_segments_delay_clamped_min_max():
-    low = plan_segments("A" * 30 + "\n\n" + "B" * 5, dict(BASE_PROFILE, min_delay=2.0), rng=FixedRng(1.0))
+    # 公式钳制本身与人化无关：显式关闭（短文本会走人化提速分支）
+    profile = dict(BASE_PROFILE, min_delay=2.0, humanize=False)
+    low = plan_segments("A" * 30 + "\n\n" + "B" * 5, profile, rng=FixedRng(1.0))
     assert low[1][1] == pytest.approx(2.0)
-    high = plan_segments("A" * 30 + "\n\n" + "B" * 40, dict(BASE_PROFILE, max_delay=1.0), rng=FixedRng(1.0))
+    profile2 = dict(BASE_PROFILE, max_delay=1.0, humanize=False)
+    high = plan_segments("A" * 30 + "\n\n" + "B" * 40, profile2, rng=FixedRng(1.0))
     assert high[1][1] == pytest.approx(1.0)
 
 
@@ -416,3 +419,56 @@ async def test_deliver_hook_accepts_dict_segments():
     event = FakePlainEvent()
     await delivery._send_split(event, "甲段内容。\n\n乙段内容。")
     assert event.sent == ["字典项段落"]
+
+
+# ---------- 人化节奏（停顿在想 / 短句连发 / 轻量回复提速）----------
+
+class SeqRng:
+    """按序返回预设值的随机源：uniform 依次弹出，保证分支确定性。"""
+
+    def __init__(self, values):
+        self.values = list(values)
+
+    def uniform(self, low, high):
+        return self.values.pop(0)
+
+
+def test_humanize_burst_short_segment():
+    # roll=0.05 < burst_chance 且段长 <30 → 延迟 ×0.25（激动连发）；总长 ≥60 避开轻量提速分支
+    text = "A" * 50 + "\n\n" + "B" * 10
+    segs = plan_segments(text, dict(BASE_PROFILE), rng=SeqRng([1.0, 0.05]))
+    expected = (1.0 + 10 / 10.0) * 0.25
+    assert segs[1][1] == pytest.approx(expected)
+
+
+def test_humanize_pause_long_segment():
+    # 长段（≥30 字）不触发连发；roll=0.05 < pause_chance → 延迟 ×uniform(2.2,3.5)=3.0
+    text = "A" * 30 + "\n\n" + "B" * 40
+    segs = plan_segments(text, dict(BASE_PROFILE), rng=SeqRng([1.0, 0.05, 3.0]))
+    assert segs[1][1] == pytest.approx((1.0 + 40 / 10.0) * 3.0)
+
+
+def test_humanize_short_reply_speedup():
+    # 总长 < 60 的轻量回复：所有段间延迟 ×0.6，不掷停顿/连发
+    text = "A" * 25 + "\n\n" + "B" * 25
+    segs = plan_segments(text, dict(BASE_PROFILE), rng=SeqRng([1.0]))
+    assert segs[1][1] == pytest.approx((1.0 + 25 / 10.0) * 0.6)
+
+
+def test_humanize_off_restores_plain_formula():
+    profile = dict(BASE_PROFILE)
+    profile["humanize"] = False
+    text = "A" * 25 + "\n\n" + "B" * 25
+    segs = plan_segments(text, profile, rng=SeqRng([1.0]))
+    assert segs[1][1] == pytest.approx(1.0 + 25 / 10.0)
+
+
+def test_delivery_profile_carries_humanize():
+    delivery, _ = make_delivery(rhythm_humanize=False)
+    profile = delivery_profile(_fake_config(rhythm_humanize=False), "onebot11")
+
+
+def _fake_config(**kw):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(**kw)
