@@ -270,7 +270,9 @@
     if (chatBusy && activeLive && activeLive.session === chatSession && !box.querySelector(".qvq-msg.live")) {
       box.appendChild(activeLive.els.root);
     }
-    box.scrollTop = box.scrollHeight;
+    // 只在显式要求贴底、或首屏（原本是空的）时跳底；用户向上翻阅时保留位置
+    if (stick || !prevTop) box.scrollTop = box.scrollHeight;
+    else box.scrollTop = prevTop;
   }
 
 
@@ -483,15 +485,20 @@
       : '<svg class="ico-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
   }
 
+  // 有可见内容（正文/思考/工具段）时返回 true，不显示等待行
+  function hasLiveContent(live) {
+    return !!(live.text || live.reasoning || (live.segments && live.segments.length));
+  }
+
   function renderWaitTimer(box, els, live) {
-    if (live.status !== "running" || live.text) return;
+    if (live.status !== "running" || hasLiveContent(live)) return;
     var secs = Math.max(0, Math.round((Date.now() - (live.started || Date.now())) / 1000));
     els.textEl.innerHTML = '<span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "s</span>";
   }
 
   function startWaitTimer(box, els, live) {
     var timer = setInterval(function () {
-      if (!live.started || live.status !== "running" || live.text) { clearInterval(timer); return; }
+      if (!live.started || live.status !== "running" || hasLiveContent(live)) { clearInterval(timer); return; }
       renderWaitTimer(box, els, live);
     }, 1000);
     return timer;
