@@ -31,19 +31,30 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
     data = vars(main.cfg).copy()
     data["max_tool_rounds"] = max(1, min(int(max_rounds or 8), 15))
     sub_cfg = SimpleNamespace(**data)
+# 权限与发送能力完整跟随发起用户的上下文：继承 platform/detail_type/target_id/event，
+# admin 判定（平台主人/名单）与 send_message 缺省目标都与主智能体一致——
+# 仅 chat_key/session_key 用 sub: 前缀隔离上下文与记忆
     sub_ctx = ToolContext(
         main=main,
         sdk=ctx.sdk,
         config=sub_cfg,
         chat_key=sub_key,
         session_key=sub_key,
-        platform="sub",
-        detail_type="private",
-        target_id="agent",
+        platform=str(ctx.platform or ""),
+        detail_type=str(ctx.detail_type or "private"),
+        target_id=str(ctx.target_id or ""),
         user_id=ctx.user_id,
+        event=ctx.event,
         origin=ctx.origin,
+        confirmer=ctx.confirmer,
+        scene_note=str(getattr(ctx, "scene_note", "") or ""),
+        parent_chat_key=str(ctx.chat_key or ""),
     )
+# 场景与最近对话注入：让子智能体知道在为谁、在哪个群、最近聊了什么
+    context_block = _context_block(main, ctx)
     system = texts.t("subagent_system", task=utils.truncate(task, 500))
+    if context_block:
+        system = system + "\n\n" + context_block
     runner = AgentRunner(main.pool, main.registry, sub_cfg)
     main.sessions.append(sub_key, "user", task)
     main.sessions.set_group_name(sub_key, utils.truncate(task, 40))
@@ -57,6 +68,45 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
     ms = int((time.monotonic() - started) * 1000)
     meta = texts.t("subagent_meta", session=sub_key, tools=len(result.tool_trace), ms=ms)
     return answer + "\n\n" + meta
+
+
+def _context_block(main, ctx) -> str:
+    """子智能体上下文块：场景注记 + 父会话最近对话摘要（带发言人标注）。"""
+    parts: list[str] = []
+    scene = str(getattr(ctx, "scene_note", "") or "").strip()
+    if scene:
+        parts.append("<scene>\n" + scene + "\n</scene>")
+    try:
+# 传入的是父 ctx：读它自己的 chat_key（parent_chat_key 只存在于子 ctx 上）
+        contexts = main.sessions.get_contexts(str(getattr(ctx, "chat_key", "") or ""))
+    except Exception:
+        contexts = []
+    lines: list[str] = []
+    for message in list(contexts or [])[-6:]:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "")
+        content = message.get("content")
+        if isinstance(content, list):
+            content = " ".join(
+                str(part.get("text") or "") for part in content if isinstance(part, dict)
+            )
+        text = utils.truncate(str(content or "").strip(), 160)
+        if not text:
+            continue
+        if role == "user":
+            sender = str(message.get("sender_name") or message.get("sender_id") or "?")
+            lines.append(f"{sender}: {text}")
+        elif role == "assistant":
+            lines.append(f"[bot]: {text}")
+    if lines:
+        parts.append("<recent-chat>\n" + "\n".join(lines) + "\n</recent-chat>")
+    if not parts:
+        return ""
+    return (
+        "Context you inherit from the main agent (for orientation only — do NOT reply to "
+        "the chat directly; your report goes back to the main agent):\n" + "\n".join(parts)
+    )
 
 
 def register(registry: ToolRegistry, main) -> None:

@@ -177,7 +177,7 @@ class InboxMixin(RecoveryMixin):
             return make_chat_key(platform, "group", gid)
         return make_chat_key(platform, "private", str(event.get_user_id() or ""))
 
-    def _chat_ctx(self, event, chat_key: str, origin: str = "chat") -> ToolContext:
+    def _chat_ctx(self, event, chat_key: str, origin: str = "chat", scene_note: str = "") -> ToolContext:
         platform, detail_type, target_id = parse_chat_key(strip_isolation(chat_key))
         session_key = ""
         try:
@@ -197,6 +197,7 @@ class InboxMixin(RecoveryMixin):
             event=event,
             origin=origin,
             confirmer=self._chat_confirmer,
+            scene_note=scene_note,
         )
 
     def _cleanup_takeovers(self) -> None:
@@ -721,6 +722,8 @@ class InboxMixin(RecoveryMixin):
                         scene += texts.t("scene_quote_content", content=quoted)
                     else:
                         scene += texts.t("scene_quote_note")
+# 场景注记随 ctx 走：spawn_agent 时注入子智能体（群名/发言人/触发方式）
+                ctx.scene_note = scene
                 if getattr(self.cfg, "group_isolation", False):
                     scene += texts.t("scene_isolation_note")
             else:
