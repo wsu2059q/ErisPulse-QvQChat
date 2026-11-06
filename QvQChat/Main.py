@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from ErisPulse import sdk
 from ErisPulse.Core.Bases import BaseModule
 from ErisPulse.Core.Event import command, message
@@ -49,6 +51,49 @@ def _master_config_users() -> object:
         return None
 
 
+def _flatten_masters(data) -> tuple[set[str], dict[str, set[str]]]:
+    """递归展平主人表，兼容所有已知形态：
+
+    - list/set：全局主人
+    - {"global": [ids]}：全局主人
+    - {"platform": [ids]}：平台主人
+    - {"platform": {account: [ids]}}：多账户部署下的平台→账户→主人嵌套
+      （账户层展开后归并到平台；同一人在多账户只配置一次）
+    - 平台键下的散值（非列表）：视为单元素集合
+    """
+    global_ids: set[str] = set()
+    platform_ids: dict[str, set[str]] = {}
+
+    def walk(node, platform: str) -> None:
+        if isinstance(node, (list, tuple, set)):
+            ids = {str(i) for i in node if str(i).strip()}
+            if platform in ("", "global"):
+                global_ids.update(ids)
+            else:
+                platform_ids.setdefault(platform, set()).update(ids)
+            return
+        if not isinstance(node, dict):
+# 散值（int/str）：当作单元素主人列表
+            text = str(node).strip()
+            if text:
+                if platform in ("", "global"):
+                    global_ids.add(text)
+                else:
+                    platform_ids.setdefault(platform, set()).add(text)
+            return
+        for key, value in node.items():
+            name = str(key).strip()
+            if name.lower() == "global":
+                walk(value, "global")
+            elif platform and platform != "global":
+                walk(value, platform)  # 已锁定平台（账户层），继续深入
+            else:
+                walk(value, name)
+
+    walk(data, "")
+    return global_ids, platform_ids
+
+
 def framework_masters() -> tuple[set[str], dict[str, set[str]]]:
     """直接读取框架主人表（不依赖 is_master 的版本行为）。
 
@@ -62,30 +107,13 @@ def framework_masters() -> tuple[set[str], dict[str, set[str]]]:
         data = master_manager.list()
     except Exception:
         data = None
-    if isinstance(data, dict):
-        global_ids: set[str] = set()
-        platform_ids: dict[str, set[str]] = {}
-        for key, ids in data.items():
-            if not isinstance(ids, (list, tuple, set)):
-                continue
-            normalized = {str(i) for i in ids if str(i).strip()}
-            if str(key).lower() == "global":
-                global_ids |= normalized
-            else:
-                platform_ids[str(key)] = normalized
+    if isinstance(data, (dict, list)):
+        global_ids, platform_ids = _flatten_masters(data)
         if global_ids or platform_ids:
             return global_ids, platform_ids
     users = _master_config_users()
-    if isinstance(users, list):
-        return {str(u) for u in users if str(u).strip()}, {}
-    if isinstance(users, dict):
-        platform_ids = {}
-        for key, ids in users.items():
-            if isinstance(ids, (list, tuple, set)):
-                platform_ids[str(key)] = {str(i) for i in ids if str(i).strip()}
-            else:
-                platform_ids[str(key)] = {str(ids)}
-        return set(), platform_ids
+    if isinstance(users, (list, dict)):
+        return _flatten_masters(users)
     return set(), {}
 
 
@@ -191,6 +219,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
     def __init__(self):
         self.sdk = sdk
         self.logger = sdk.logger.get_child("QvQChat")
+        self.started_at = time.time()  # 运行时长（状态卡）
         self.pool = None
         self.registry = None
         self.personas = None
@@ -340,15 +369,19 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         agent.register(self.registry, self)
         selfconfig.register(self.registry, self)
         takumi.register(self.registry, self)
-        from .tools_builtin import dev as dev_tools, docs as docs_tools, web as web_tools
+        from .tools_builtin import dev as dev_tools, docs as docs_tools, web as web_tools, files as file_tools
 
         docs_tools.register(self.registry, self)
         web_tools.register(self.registry, self)
         dev_tools.register(self.registry, self)
+        file_tools.register(self.registry, self)
 
     def _register_handlers(self) -> None:
-        message.on_message(priority=50)(self._on_message)
-        for name in ("qvq", "agent"):
+# 置顶消息处理器（高于框架命令分发器的 priority=100）：分工是"让路 + 认领"——
+# 命令前缀消息不认领直接放行给下方分发器；自己接手回复的消息处理完即 event.done()
+# 认领（_on_message 内），其它模块就不会对同一条消息再答一遍
+        message.on_message(priority=99999)(self._on_message)
+        for name in ("qvq", "agent", "qvqchat"):
             command(name, help="QvQChat")(self._cmd_agent)
         registered = getattr(command, "commands", {})
         missing = [n for n in ("qvq", "agent") if n not in registered]
@@ -428,7 +461,9 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         }
 
     def check_tool_permission(self, tool, ctx) -> tuple[bool, str]:
-        return tool_allowed(self.cfg, tool.name, ctx.user_id, ctx.origin, ctx.platform, self._master_checker())
+# 必须传 Tool 对象本体：tool_allowed 靠 getattr(tool, "access", "admin") 判 safe，
+# 传 tool.name 字符串会让所有 safe 工具在调用期被当成 admin（普通用户连联网搜索都被拒）
+        return tool_allowed(self.cfg, tool, ctx.user_id, ctx.origin, ctx.platform, self._master_checker())
 
     def _master_checker(self):
         def checker(platform: str, user_id: str) -> bool:

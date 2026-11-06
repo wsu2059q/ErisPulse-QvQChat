@@ -183,8 +183,17 @@
       '<div class="qvq-health-list">' + breakers.map(function (b) {
         return '<div class="qvq-health-row"><b>' + esc(b.model) + "</b>" +
           "<span class='qvq-tool-desc'>" + esc(t("health_fails").replace("{n}", b.fails)) + " · " +
-          esc(t("health_left").replace("{s}", b.cooldown_left)) + "</span></div>";
+          esc(t("health_left").replace("{s}", b.cooldown_left)) + "</span>" +
+          '<button type="button" class="qvq-btn small ghost" data-breaker-reset="' + esc(b.model) + '">' + esc(t("health_reset")) + "</button></div>";
       }).join("") + "</div>";
+    box.querySelectorAll("button[data-breaker-reset]").forEach(function (btn) {
+      btn.onclick = function () {
+        api("/api/qvq/breakers/reset", "POST", { model: btn.getAttribute("data-breaker-reset") }).then(function (r) {
+          toast(r && r.ok ? t("saved") : "error", !(r && r.ok));
+          loadOrchestrate();
+        });
+      };
+    });
   }
 
   function renderRunning(items) {
@@ -1058,7 +1067,10 @@
       confirmDialog(t("batch_confirm").replace("{n}", picked.length)).then(function (ok) {
         if (!ok) return;
         api("/api/qvq/skills/batch-delete", "POST", { names: picked }).then(function (r) {
-          toast(t("batch_deleted").replace("{n}", (r && r.removed) || 0));
+          var doneSkills = function () { toast(t("batch_deleted").replace("{n}", (r && r.removed) || 0)); loadSkills(); };
+          if (r && r.undo) toastUndo(t("deleted"), function () {
+            api("/api/qvq/trash/restore", "POST", { token: r.undo }).then(function () { doneSkills(); });
+          }); else doneSkills();
           loadSkills();
         });
       });
@@ -1369,8 +1381,14 @@
         btn.onclick = function () {
           confirmDialog(t("confirm_del")).then(function (ok) {
             if (!ok) return;
-            api("/api/qvq/kb/delete", "POST", { id: btn.getAttribute("data-kb-del") }).then(function () {
-              toast(t("deleted"));
+            api("/api/qvq/kb/delete", "POST", { id: btn.getAttribute("data-kb-del") }).then(function (r) {
+              if (r && r.undo) {
+                toastUndo(t("deleted"), function () {
+                  api("/api/qvq/trash/restore", "POST", { token: r.undo }).then(function () { loadKnowledge(); });
+                });
+              } else {
+                toast(t("deleted"));
+              }
               loadKnowledge();
             });
           });
@@ -1413,7 +1431,10 @@
       confirmDialog(t("batch_confirm").replace("{n}", picked.length)).then(function (ok) {
         if (!ok) return;
         api("/api/qvq/kb/batch-delete", "POST", { ids: picked }).then(function (r) {
-          toast(t("batch_deleted").replace("{n}", (r && r.removed) || 0));
+          var doneKb = function () { toast(t("batch_deleted").replace("{n}", (r && r.removed) || 0)); loadKnowledge(); };
+          if (r && r.undo) toastUndo(t("deleted"), function () {
+            api("/api/qvq/trash/restore", "POST", { token: r.undo }).then(function () { doneKb(); });
+          }); else doneKb();
           loadKnowledge();
         });
       });
@@ -1767,6 +1788,40 @@
       }));
       box.innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("storage_domain")) + "</th><th>" + esc(t("storage_count")) +
         "</th><th>" + esc(t("storage_size")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows.join("") + "</tbody></table>";
+      // 回收站节：列出可撤销项，支持恢复/彻底删除
+      api("/api/qvq/trash/list").then(function (tl) {
+        var items = (tl && tl.items) || [];
+        var card = el("qvq-trash-card");
+        if (!card) return;
+        if (!items.length) {
+          card.innerHTML = '<div class="qvq-empty">' + esc(t("trash_empty")) + "</div>";
+          return;
+        }
+        card.innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("bind_key_col")) + "</th><th>" + esc(t("storage_domain")) +
+          "</th><th>" + esc(t("trash_expires")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" +
+          items.map(function (it) {
+            return "<tr><td>" + esc(it.summary) + "</td><td><span class='qvq-chip'>" + esc(it.kind) + "</span></td>" +
+              "<td>" + (it.expires_in >= 0 ? Math.ceil(it.expires_in / 86400) + " " + esc(t("trash_days")) : "-") + "</td>" +
+              "<td><button class='qvq-btn small ghost' data-trash-restore='" + esc(it.token) + "'>" + esc(t("trash_restore")) + "</button> " +
+              "<button class='qvq-btn small danger' data-trash-drop='" + esc(it.token) + "'>" + esc(t("del")) + "</button></td></tr>";
+          }).join("") + "</tbody></table>";
+        card.querySelectorAll("button[data-trash-restore]").forEach(function (btn) {
+          btn.onclick = function () {
+            api("/api/qvq/trash/restore", "POST", { token: btn.getAttribute("data-trash-restore") }).then(function (r) {
+              toast(r && r.ok ? t("saved") : ((r && r.error) || "error"), !(r && r.ok));
+              loadStorage();
+            });
+          };
+        });
+        card.querySelectorAll("button[data-trash-drop]").forEach(function (btn) {
+          btn.onclick = function () {
+            api("/api/qvq/trash/delete", "POST", { token: btn.getAttribute("data-trash-drop") }).then(function () {
+              toast(t("deleted"));
+              loadStorage();
+            });
+          };
+        });
+      });
       box.querySelectorAll("button[data-clear]").forEach(function (btn) {
         btn.onclick = function () {
           var id = btn.getAttribute("data-clear");
@@ -1782,6 +1837,15 @@
       box.querySelectorAll("button[data-keys]").forEach(function (btn) {
         btn.onclick = function () { loadStorageKeys(btn.getAttribute("data-keys")); };
       });
+      var section = document.querySelector(".qvq-tab[data-section='storage']");
+      var trashCard = el("qvq-trash-card");
+      if (!trashCard && section) {
+        trashCard = document.createElement("div");
+        trashCard.className = "qvq-card";
+        trashCard.id = "qvq-trash-card";
+        trashCard.innerHTML = "<h3 class='qvq-card-title'>" + esc(t("trash_page")) + "</h3><div class='qvq-tool-desc'>" + esc(t("trash_hint")) + "</div><div class='qvq-empty'>…</div>";
+        section.appendChild(trashCard);
+      }
     });
     var refresh = el("qvq-storage-refresh");
     if (refresh) refresh.onclick = loadStorage;
@@ -1851,7 +1915,7 @@
 
   function openStorageReset() {
     var ids = ["sessions", "memories", "profiles", "personas", "knowledge", "audit", "usage", "tasks",
-      "participation", "shares", "trash", "recall", "pending", "models", "mcp", "docs", "docs_cache", "uploads", "settings"];
+      "participation", "shares", "trash", "recall", "pending", "models", "mcp", "docs", "docs_cache", "uploads", "work", "settings"];
     var html = '<div class="qvq-tool-desc">' + esc(t("storage_reset_hint")) + "</div>" +
       ids.map(function (id) {
         return '<label class="qvq-check-inline"><input type="checkbox" class="qvq-reset-keep" value="' + esc(id) + '"/> ' + esc(storageDomainLabel(id)) + "</label>";
@@ -2587,10 +2651,6 @@
         input = "<input class='qvq-input qvq-input-bad' type='text' data-key='" + key + "' value='" + esc(value == null ? "" : value) + "' />" +
           "<div class='qvq-field-err show'>" + esc(t("settings_invalid_value")) + "</div>";
       }
-    } else if (f.secret || widget === "password") {
-      input = "<div class='qvq-pw-row' data-key='" + key + "' data-pw-row='1'>" +
-        "<input class='qvq-input' type='password' data-pw-input='1' value='" + esc(value == null ? "" : value) + "' autocomplete='new-password' />" +
-        "<button type='button' class='qvq-btn small ghost' data-pw-toggle='1'>" + esc(t("settings_show")) + "</button></div>";
     } else if (type === "dict" || (value && typeof value === "object")) {
       var jsonText;
       try {
@@ -2598,7 +2658,12 @@
       } catch (e) {
         jsonText = String(value);
       }
+      // dict（JSON 编辑器）分支优先于 secret：值按 JSON 文本上送
       input = "<textarea class='qvq-textarea qvq-mono' style='min-height:90px' data-key='" + key + "' data-json='1'>" + esc(jsonText) + "</textarea>";
+    } else if (f.secret || widget === "password") {
+      input = "<div class='qvq-pw-row' data-key='" + key + "' data-pw-row='1'>" +
+        "<input class='qvq-input' type='password' data-pw-input='1' value='" + esc(value == null ? "" : value) + "' autocomplete='new-password' />" +
+        "<button type='button' class='qvq-btn small ghost' data-pw-toggle='1'>" + esc(t("settings_show")) + "</button></div>";
     } else {
       var ph = f.placeholder ? " placeholder='" + esc(f.placeholder) + "'" : "";
       input = "<input class='qvq-input' data-key='" + key + "' value='" + esc(value == null ? "" : value) + "'" + ph + " />";

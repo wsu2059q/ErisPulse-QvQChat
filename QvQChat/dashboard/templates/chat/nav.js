@@ -17,6 +17,69 @@
   }
 
 
+  // 快速跳转面板：搜会话 / 页面 / 设置项（Ctrl+K / Cmd+K）
+  function openQuickPanel() {
+    var old = el("qvq-quick-panel");
+    if (old) { old.remove(); return; }
+    var wrap = document.createElement("div");
+    wrap.id = "qvq-quick-panel";
+    wrap.innerHTML = '<div class="qvq-quick-card"><input class="qvq-input" id="qvq-quick-input" placeholder="' +
+      esc(t("panel_ph")) + '" /><div class="qvq-quick-list" id="qvq-quick-list"></div></div>';
+    document.body.appendChild(wrap);
+    var input = wrap.querySelector("#qvq-quick-input");
+    var list = wrap.querySelector("#qvq-quick-list");
+    var items = [];
+    el("qvq-nav").querySelectorAll(".qvq-nav-btn").forEach(function (btn) {
+      items.push({ label: btn.querySelector(".qvq-nav-tx") ? btn.querySelector(".qvq-nav-tx").textContent : btn.textContent, tag: t("nav_group_core"), act: function () { switchTab(btn.getAttribute("data-tab")); } });
+    });
+    (chatMeta.sessions || []).forEach(function (s3) {
+      items.push({ label: chatSessionTitle(s3.chat_key), tag: t("nav_chat"), act: function () { switchChatSession(s3.chat_key); } });
+    });
+    (typeof settingsFields !== "undefined" ? settingsFields : []).forEach(function (f) {
+      if (!f) return;
+      items.push({ label: (f.description || f.key), tag: t("nav_settings"), act: function () {
+        switchTab("settings");
+        setTimeout(function () {
+          var node = document.querySelector('[data-field="' + f.key + '"]');
+          if (node && node.scrollIntoView) node.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 120);
+      } });
+    });
+    var picked = -1;
+    function render(q) {
+      q = (q || "").trim().toLowerCase();
+      var shown = items.filter(function (it) { return !q || it.label.toLowerCase().indexOf(q) >= 0; }).slice(0, 30);
+      picked = shown.length ? 0 : -1;
+      if (!shown.length) { list.innerHTML = '<div class="qvq-empty">' + esc(t("panel_none")) + "</div>"; return; }
+      list.innerHTML = shown.map(function (it, i) {
+        return '<div class="qvq-quick-item' + (i === picked ? " on" : "") + '" data-i="' + i + '"><span>' + esc(it.label) + '</span><span class="qvq-chip">' + esc(it.tag) + "</span></div>";
+      }).join("");
+      list.querySelectorAll(".qvq-quick-item").forEach(function (node) {
+        node.onclick = function () { close(); shown[parseInt(node.getAttribute("data-i"), 10)].act(); };
+      });
+      return shown;
+    }
+    function close() { wrap.remove(); document.removeEventListener("keydown", onKey, true); }
+    function onKey(e) {
+      var shown = render(input.value);
+      if (e.key === "Escape") { e.preventDefault(); close(); }
+      else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (!shown.length) return;
+        picked = (picked + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length;
+        list.querySelectorAll(".qvq-quick-item").forEach(function (n, i) { n.classList.toggle("on", i === picked); });
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (picked >= 0 && shown[picked]) { close(); shown[picked].act(); }
+      }
+    }
+    wrap.addEventListener("mousedown", function (e) { if (e.target === wrap) close(); });
+    document.addEventListener("keydown", onKey, true);
+    input.addEventListener("input", function () { render(input.value); });
+    input.focus();
+    render("");
+  }
+
   function closeDrawer() {
     var side = el("qvq-side");
     var mask = el("qvq-mask");
@@ -88,7 +151,12 @@
       var num = el("qvq-hero-tokens");
       if (num) num.textContent = tokens;
       var bar = el("qvq-hero-bar");
-      if (bar) bar.style.width = limit ? Math.min(100, (tokens / limit) * 100) + "%" : "0%";
+      var pct = limit ? Math.min(100, (tokens / limit) * 100) : 0;
+      if (bar) {
+        bar.style.width = pct + "%";
+        bar.classList.toggle("warn", pct >= 80 && pct < 100);
+        bar.classList.toggle("crit", pct >= 100);
+      }
       var lim = el("qvq-hero-limit");
       if (lim) {
         lim.textContent = limit

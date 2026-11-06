@@ -496,3 +496,14 @@ async def run_process(
         return {"code": -1, "output": f"process timed out after {timeout}s and was terminated"}
     output = decode_bytes(out) if out else ""
     return {"code": code if code is not None else -1, "output": truncate(output, OUTPUT_LIMIT)}
+
+def module_version() -> str:
+    """本模块版本号（状态卡显示用）。"""
+    from importlib.metadata import version as _v
+
+    try:
+        return _v("ErisPulse-QvQChat")
+    except Exception:
+        from .version import __version__
+
+        return __version__

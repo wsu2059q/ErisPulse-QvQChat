@@ -456,3 +456,56 @@ async def test_spawn_agent_without_hook_stays_silent():
         assert "完成" in out
     finally:
         agent_tool.AgentRunner = real_runner
+
+
+async def test_runner_nudges_empty_final_after_tools():
+    """R10：跑完工具后模型返回空文本 → 自动补一轮重问要最终结论，而不是发"没有回复"。"""
+    from QvQChat.engine.base import ChatResponse, ToolCall
+
+    main = FakeMain()
+    registry = ToolRegistry()
+    registry.register(make_tool())
+
+    responses = [
+        ChatResponse(content="", tool_calls=[ToolCall(call_id="c1", name="echo", arguments={"text": "hi"})], usage={}),
+        ChatResponse(content="", usage={}),  # 空最终回复 → 触发 nudge
+        ChatResponse(content="最终结论", usage={}),
+    ]
+    seen_prompts = []
+
+    class Pool:
+        async def chat(self, request, **k):
+            seen_prompts.append(request.messages[-1]["content"])
+            return responses.pop(0)
+
+    runner = AgentRunner(Pool(), registry, main.cfg)
+    ctx = make_ctx(main)
+    result = await runner.run(system="s", messages=[{"role": "user", "content": "任务"}], ctx=ctx)
+    assert result.text == "最终结论"
+    assert any("最终结论" in p or "final answer" in p or "直接给出" in p for p in seen_prompts)
+    assert result.rounds[-1]["text"] == "最终结论"
+
+
+async def test_runner_nudge_only_once():
+    """nudge 限一次：二次空文本不再重问，空串原样返回（外层兜底文案接管）。"""
+    from QvQChat.engine.base import ChatResponse, ToolCall
+
+    main = FakeMain()
+    registry = ToolRegistry()
+    registry.register(make_tool())
+
+    responses = [
+        ChatResponse(content="", tool_calls=[ToolCall(call_id="c1", name="echo", arguments={})], usage={}),
+        ChatResponse(content="", usage={}),
+        ChatResponse(content="", usage={}),
+    ]
+
+    class Pool:
+        async def chat(self, request, **k):
+            return responses.pop(0)
+
+    runner = AgentRunner(Pool(), registry, main.cfg)
+    ctx = make_ctx(main)
+    result = await runner.run(system="s", messages=[{"role": "user", "content": "任务"}], ctx=ctx)
+    assert result.text == ""
+    assert not responses  # 三轮全部用掉，没有无限重问

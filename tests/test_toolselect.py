@@ -79,3 +79,17 @@ async def test_select_ttl_cache_skips_second_call():
 
 async def test_core_tools_constant():
     assert "send_message" in CORE_TOOLS
+
+
+def test_apply_always_keeps_eco_tools():
+    """动态注入豁免 eco_*：表情包等生态工具不被裁掉（否则模型看不见就永不调用）。"""
+    from QvQChat.agent.toolselect import ToolSelector
+
+    schemas = [
+        {"type": "function", "function": {"name": n, "description": n}}
+        for n in ("send_message", "search_web", "eco_QvQMemes_send_sticker", "tool_a", "tool_b")
+    ]
+    selected = ToolSelector._apply(schemas, picked=["tool_a"])
+    names = {s["function"]["name"] for s in selected}
+    assert "eco_QvQMemes_send_sticker" in names  # 没被选中也保留
+    assert "tool_b" not in names                 # 未选中的普通工具被裁

@@ -37,6 +37,13 @@
       } catch (err) {}
     });
     el("qvq-chat-attach-btn").onclick = function () { el("qvq-chat-file").click(); };
+    // 快速跳转面板（Ctrl+K / Cmd+K）
+    document.addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        if (typeof openQuickPanel === "function") openQuickPanel();
+      }
+    });
     el("qvq-chat-box").addEventListener("scroll", function () {
       // suppressScrollLoad 期间跳过"加载更早"（scrollTop 归零的非用户滚动）
       if (suppressScrollLoad) return;

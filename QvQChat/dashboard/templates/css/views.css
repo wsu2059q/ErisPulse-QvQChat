@@ -1566,3 +1566,51 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
 .qvq-modal-body .qvq-btn {
   overflow-wrap: anywhere;
 }
+
+/* 用量超限预警：hero 进度条 80% 橙 / 100% 红 */
+.qvq-hero-bar.warn i {
+  background: linear-gradient(90deg, #f5a623, #f7b95c);
+}
+.qvq-hero-bar.crit i {
+  background: linear-gradient(90deg, #e5484d, #f26d6d);
+}
+
+/* 快速跳转面板（Ctrl+K） */
+.qvq-quick-card {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 92vw);
+  z-index: 320;
+  background: var(--qvq-surface);
+  border: 1px solid var(--qvq-bd);
+  border-radius: 14px;
+  box-shadow: var(--qvq-shadow-hover);
+  padding: 12px;
+}
+#qvq-quick-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 319;
+  background: rgba(8, 12, 20, 0.45);
+}
+.qvq-quick-list {
+  margin-top: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.qvq-quick-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.qvq-quick-item:hover,
+.qvq-quick-item.on {
+  background: var(--qvq-accent-soft, rgba(59, 130, 246, 0.12));
+}

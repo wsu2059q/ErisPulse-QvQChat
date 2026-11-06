@@ -7,6 +7,25 @@
         if (!m || typeof m !== "object") return;
         var role = m.role === "user" ? t("role_user") : m.role === "assistant" ? "AI" : (m.role || "");
         lines.push("## " + role, "", contentText(m.content), "");
+        // 导出含过程：rounds（工具/已思考）与 trace 回退
+        var rounds = Array.isArray(m.rounds) ? m.rounds : null;
+        if (rounds) {
+          rounds.forEach(function (r, ri) {
+            if (r.think) lines.push("> " + t("chat_thought") + "：", ">" + r.think.split("\n").join("\n>"), "");
+            (r.tools || []).forEach(function (tl) {
+              lines.push("**" + t("col_tool") + "：** `" + (tl.tool || "?") + "`" + (tl.ms != null ? " (" + tl.ms + "ms)" : ""));
+              if (tl.arguments && tl.arguments !== "{}") lines.push("- args: `" + String(tl.arguments).slice(0, 300) + "`");
+              if (tl.output) lines.push("- out: " + String(tl.output).slice(0, 600));
+              lines.push("");
+            });
+          });
+        } else if (Array.isArray(m.trace) && m.trace.length) {
+          m.trace.forEach(function (tl) {
+            lines.push("**" + t("col_tool") + "：** `" + (tl.tool || "?") + "`" + (tl.ms != null ? " (" + tl.ms + "ms)" : ""));
+            if (tl.output) lines.push("- out: " + String(tl.output).slice(0, 600));
+            lines.push("");
+          });
+        }
       });
       var blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
       var a = document.createElement("a");
@@ -561,8 +580,13 @@
   }
 
   function renderSerial(items) {
-    // items: [{type:"text",text} | {type:"tool",start,end}] → AI 消息内串行交错 HTML
+    // items: [{type:"text",text} | {type:"tool",start,end} | {type:"think",text}] → AI 消息内串行交错 HTML
     return items.map(function (seg) {
+      if (seg.type === "think") {
+        var body = esc(seg.text || "");
+        return '<details class="qvq-think"><summary><span class="qvq-think-label">' + esc(t("chat_thought")) +
+          '</span></summary><div class="qvq-think-body">' + body + "</div></details>";
+      }
       if (seg.type === "text") {
         return '<div class="qvq-round-text">' + (mdRender(seg.text) || esc(seg.text)) + "</div>";
       }
@@ -573,6 +597,7 @@
   function roundsToItems(rounds) {
     var items = [];
     (rounds || []).forEach(function (r) {
+      if (r.think) items.push({ type: "think", text: r.think });  // 持久化的思考块（已思考）
       if (r.text) items.push({ type: "text", text: r.text });
       (r.tools || []).forEach(function (t2) {
         items.push({ type: "tool", start: { step_id: "r", name: t2.tool, arguments: t2.arguments }, end: { output: t2.output, ms: t2.ms } });
@@ -584,6 +609,13 @@
   function segmentsToRounds(segs) {
     var rounds = [];
     (segs || []).forEach(function (seg) {
+      if (seg.type === "think") {
+        var thinkText = String(seg.text || "").trim();
+        if (!thinkText) return;
+        if (!rounds.length) rounds.push({ text: "", tools: [] });
+        rounds[rounds.length - 1].think = ((rounds[rounds.length - 1].think || "") + thinkText).slice(-4000);
+        return;
+      }
       if (seg.type === "text") {
         var piece = String(seg.text || "");
         if (!piece) return; // 跳过空段

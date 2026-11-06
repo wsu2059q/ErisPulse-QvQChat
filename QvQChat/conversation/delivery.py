@@ -274,9 +274,35 @@ class Delivery:
         """D2：取平台投递 profile（reply/工具两条路径共用）。"""
         return delivery_profile(self.config, platform)
 
-    def quote_enabled(self) -> bool:
-        """常规回复是否引用触发消息（reply_quote 开关；平台无 Reply 修饰时框架自动跳过引用）。"""
-        return str(getattr(self.config, "reply_quote", "on") or "on") == "on"
+    def _dbg(self, msg: str) -> None:
+        """log_debug 开关下的关键路径调试日志（引用决策/拆分/后台跳过等）。"""
+        if bool(getattr(self.config, "log_debug", False)):
+            logger = getattr(self.main, "logger", None)
+            if logger is not None:
+                logger.debug(f"delivery: {msg}")
+
+    def quote_enabled(self, event=None, origin: str = "chat") -> bool:
+        """常规回复是否引用触发消息（平台无 Reply 修饰时框架自动跳过引用）。
+
+        reply_quote：on=全部引用 / off=全部不引用 / auto=自适应——
+        私聊不引用（对方明确在与 bot 对话）；群聊 @/唤醒词引用（多人环境
+        明确指向）；插话（origin=plugin）不引用（没人问它，引用反而像抬杠）。
+        """
+        mode = str(getattr(self.config, "reply_quote", "auto") or "auto")
+        if mode == "on":
+            return True
+        if mode == "off":
+            return False
+        try:
+            is_group = bool(event.is_group_message()) if event is not None else True
+        except Exception:
+            is_group = True
+        if not is_group:
+            self._dbg(f"quote auto -> off (private, origin={origin})")
+            return False
+        result = str(origin or "chat") != "plugin"
+        self._dbg(f"quote auto -> {result} (group, origin={origin})")
+        return result
 
     def merges(self, platform: str) -> bool:
         if platform in [b for b in [str(x) for x in (getattr(self.config, "no_forward_platforms", []) or [])] if platform == b or (b.endswith("*") and platform.startswith(b[:-1]))]:
@@ -502,9 +528,12 @@ class Delivery:
             return result
         return getattr(result, "message_id", None)
 
-    async def _send_split(self, event, reply: str, quote: bool = False) -> None:
+    async def _send_split(self, event, reply: str, quote: bool = False,
+                          allow_short_burst: bool = False) -> None:
         profile = self.profile_for(str(event.get_platform() or ""))
-        segments = plan_segments(reply, profile, rng=self._rng)
+        segments = plan_segments(reply, profile, rng=self._rng, allow_short_burst=allow_short_burst)
+        if segments and allow_short_burst:
+            self._dbg(f"short-line burst: {len(segments)} segments")
         if not segments:
             segments = [(reply, 0.0)]
         segments = await self._emit_deliver_hook(event, segments)
@@ -536,26 +565,32 @@ class Delivery:
             break
 
     async def deliver_reply(self, event, reply: str, tool_trace: list, force: bool | None = None,
-                            rounds: list | None = None) -> None:
+                            rounds: list | None = None, origin: str = "chat") -> None:
         try:
             if self._is_recap(reply, tool_trace):
                 self.main.logger.info("reply suppressed as send recap")
                 return
             await self._replay_pending(self._event_chat_key(event))
-            quote = self.quote_enabled()
+            quote = self.quote_enabled(event, origin)
+# 短行连发：仅闲聊路径（无工具轮次、非任务/面板来源）且人化节奏开启时允许
+            allow_burst = (
+                not tool_trace
+                and str(origin or "chat") in ("chat", "plugin")
+                and bool(getattr(self.config, "rhythm_humanize", True))
+            )
             if await self._try_forward(event, reply, tool_trace, force=force, rounds=rounds):
 # 卡外直发结论：转发卡只装过程与中间发言，最终结论以普通消息直发到卡外
 # （结论仍在卡内重复时可关闭 forward_external_reply）
                 if bool(getattr(self.config, "forward_external_reply", True)) and str(reply or "").strip():
                     profile = self.profile_for(str(event.get_platform() or ""))
                     if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
-                        await self._send_split(event, reply, quote=quote)
+                        await self._send_split(event, reply, quote=quote, allow_short_burst=allow_burst)
                     else:
                         await self._send_plain(event, reply, quote=quote)
                 return
             profile = self.profile_for(str(event.get_platform() or ""))
             if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
-                await self._send_split(event, reply, quote=quote)
+                await self._send_split(event, reply, quote=quote, allow_short_burst=allow_burst)
                 return
             await self._send_plain(event, reply, quote=quote)
         finally:

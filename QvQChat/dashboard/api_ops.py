@@ -42,6 +42,11 @@ class OpsApiMixin:
     async def breakers_get(self, request):
         return {"breakers": self.main.pool.breaker_state()}
 
+    async def breakers_reset(self, request):
+        body = await request.json() or {}
+        cleared = self.main.pool.breaker_reset(str(body.get("model") or ""))
+        return {"ok": True, "cleared": cleared}
+
     async def costs_get(self, request):
 # 每百万 token 单价 × 用量明细（in/out），换算每日与按模型成本
         prices = {str(k).lower(): v for k, v in self.main.pool.model_costs().items()}
@@ -128,8 +133,13 @@ class OpsApiMixin:
 
     async def kb_delete(self, request):
         body = await request.json()
-        ok = self.main.knowledge.delete(str((body or {}).get("id") or ""))
-        return {"ok": ok}
+        kid = str((body or {}).get("id") or "")
+        entry = self.main.knowledge.get(kid)
+        ok = self.main.knowledge.delete(kid)
+        undo = ""
+        if ok and entry:
+            undo = self._trash_put("kb", dict(entry))
+        return {"ok": ok, "undo": undo if ok else ""}
 
     async def kb_export(self, request):
         return {"entries": self.main.knowledge.export()}
@@ -192,10 +202,15 @@ class OpsApiMixin:
         if not isinstance(ids, list):
             return ({"error": "ids required"}, 400)
         removed = 0
+        saved = []
         for kid in ids:
+            entry = self.main.knowledge.get(str(kid))
             if self.main.knowledge.delete(str(kid)):
                 removed += 1
-        return {"ok": True, "removed": removed}
+                if entry:
+                    saved.append(dict(entry))
+        undo = self._trash_put("kb_batch", {"entries": saved}) if saved else ""
+        return {"ok": True, "removed": removed, "undo": undo}
 
     async def skills_batch_delete(self, request):
         body = await request.json()
@@ -203,13 +218,17 @@ class OpsApiMixin:
         if not isinstance(names, list):
             return ({"error": "names required"}, 400)
         removed = 0
+        saved = []
         for name in names:
             try:
-                if self.main.skills.delete_skill(str(name)):
+                sk = self.main.skills.get_skill(str(name))
+                if sk and self.main.skills.delete_skill(str(name)):
                     removed += 1
+                    saved.append({"name": sk.get("name") or str(name), "description": sk.get("description") or "", "body": sk.get("body") or ""})
             except Exception:
                 continue
-        return {"ok": True, "removed": removed}
+        undo = self._trash_put("skill_batch", {"items": saved}) if saved else ""
+        return {"ok": True, "removed": removed, "undo": undo}
 
     async def sessions_batch_delete(self, request):
         body = await request.json()
@@ -421,6 +440,7 @@ PROTECTED_KEYS = {"QvQChat:auth_token"}
 STORAGE_FILE_DOMAINS = [
     ("uploads", "data/QvQChat/uploads"),
     ("docs_cache", "data/QvQChat/docs"),
+    ("work", "data/QvQChat/work"),
 ]
 MAX_ENTRY_CHARS = 200_000
 

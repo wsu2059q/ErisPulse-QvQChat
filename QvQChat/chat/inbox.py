@@ -411,11 +411,8 @@ class InboxMixin(RecoveryMixin):
             if is_self_event(self.cfg, self.sdk, event):
                 return
             text = (event.get_alt_message() or "").strip()
-            if event.is_command():
+            if self._is_command_message(event, text):
                 return
-            for prefix in getattr(self.cfg, "command_prefixes", []) or []:
-                if prefix and text.startswith(prefix):
-                    return
             self._cleanup_takeovers()
             chat_key = self._chat_key_of(event)
             routed = self.sessions.resolve_route(chat_key)
@@ -490,6 +487,32 @@ class InboxMixin(RecoveryMixin):
             self._batch_message(event, chat_key, text, images)
         except Exception as e:
             self.logger.warning(f"on_message failed: {e}")
+
+    def _command_yields(self) -> list[str]:
+        """命令让路前缀表：配置 command_prefixes ∪ 框架命令系统当前配置的前缀。
+
+        本处理器在框架分发器（priority=100）之上运行，is_command() 在我们的优先级
+        还未打标——必须按前缀自己让路。框架前缀支持自定义（如 qvqchat），动态读取
+        而不是硬编码，部署者改前缀后无需同步本模块配置。长前缀优先匹配。
+        """
+        prefixes = [str(p) for p in (getattr(self.cfg, "command_prefixes", []) or []) if p]
+        try:
+            from ErisPulse.Core.Event import command as _command
+
+            fw = getattr(_command, "prefix", "")
+            if isinstance(fw, str):
+                prefixes.append(fw)
+            elif isinstance(fw, (list, tuple)):
+                prefixes.extend(str(p) for p in fw)
+        except Exception:
+            pass
+        return sorted({p for p in prefixes if p}, key=len, reverse=True)
+
+    def _is_command_message(self, event, text: str) -> bool:
+        """命令消息让路判定：让分发器处理，本处理器不认领不拦截。"""
+        if event.is_command():
+            return True
+        return any(text.startswith(p) for p in self._command_yields())
 
     def _interject_overloaded(self, chat_key: str) -> bool:
         """插话降载判定：并发闸门满载 / 本会话锁被占 / 本会话有任务在跑。"""
@@ -588,6 +611,13 @@ class InboxMixin(RecoveryMixin):
         返回 ("interrupt"|"queue", 理由)；任何失败回退 ("queue", "fallback")——
         宁可排队也不要误杀正在跑的任务。
         """
+# 高负载降载：并发满载时不发判定调用（它本身也是一次模型请求），直接排队——
+# 排队本就是安全默认，把并发槽位留给正在跑的任务与用户直答
+        pool = getattr(self, "pool", None)
+        if pool is not None and callable(getattr(pool, "background_blocked", None)) and pool.background_blocked():
+            if bool(getattr(self.cfg, "log_debug", False)):
+                self.logger.debug("background skip: interrupt-decide (saturated) -> queue")
+            return "queue", "saturated-skip"
         try:
             current = utils.truncate(str(old_live.text or "").strip(), 300) or "（工具执行中，暂无输出）"
             incoming = utils.truncate(str(new_text or "").strip(), 300)
@@ -956,14 +986,23 @@ class InboxMixin(RecoveryMixin):
                 await event.reply(texts.t("processing_notice", tools="、".join(labels) + suffix))
 
             async def on_intermediate(speech):
-# 边做边说：reply_narrate 开启时独立生效，不再依赖 tool_notice_mode=all
-                if getattr(self.cfg, "tool_notice_mode", "brief") != "all" and not getattr(
-                    self.cfg, "reply_narrate", False
-                ):
+# 开场与阶段性发言：brief 及以上都投递（与 tool_notice_mode 配置描述一致——
+# brief="发送 AI 的开场与阶段性发言"）；off 且未开 narrate 时静默；narrate 独立生效
+                mode = getattr(self.cfg, "tool_notice_mode", "brief")
+                if mode == "off" and not bool(getattr(self.cfg, "reply_narrate", False)):
                     return
                 text = utils.truncate(str(speech).strip(), 1200)
-                if text:
-                    await event.reply(text)
+                if not text:
+                    return
+                try:
+# 走投递层单条发送（方法降级+重试链）：裸 event.reply 在部分适配器上不生效，
+# 且失败无信号——这正是"普通消息能发、第一句发不出"的根因
+                    ok = await self.delivery._send_plain(event, text)
+                    if bool(getattr(self.cfg, "log_debug", False)):
+                        self.logger.debug(f"intermediate speech delivered={ok} ({len(text)} chars, mode={mode})")
+                except Exception as e:
+# 投递失败必须留痕，不能无声消失
+                    self.logger.warning(f"intermediate speech send failed: {e}")
 
 # 悬空回复标记：生成开始落盘（记录将送入模型的 labeled 文本），实例崩溃重启后
 # 据此重跑该轮；完成/异常/取消均在 finally 清除，保证正常路径无残留
@@ -1049,7 +1088,7 @@ class InboxMixin(RecoveryMixin):
                     )
                 except Exception as e:
                     self.logger.debug(f"emit qvq.replied failed: {e}")
-                await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None))
+                await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None), origin=origin)
                 self._drain_waiting(chat_key)
             finally:
 # 删除失败必须当场暴露并重试：残留标记会在下次重启被恢复例程重放成"自动重发"

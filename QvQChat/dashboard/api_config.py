@@ -162,9 +162,15 @@ class ConfigApiMixin:
         body = await request.json()
         chat_key = str((body or {}).get("chat_key") or "")
         persona = (body or {}).get("persona") or None
+# 覆盖/解绑前把既有绑定入回收站（撤销按钮恢复）
+        undo = ""
+        if chat_key:
+            previous = str(self.sdk.storage.get(f"QvQChat:binding:{chat_key}", "") or "")
+            if previous and (not persona or str(persona) != previous):
+                undo = self._trash_put("binding", {"chat_key": chat_key, "persona": previous})
 # 仅写 KV 权威绑定（state.persona 镜像已废弃，不再回写）
         self.main.personas.bind(chat_key, persona)
-        return {"ok": True}
+        return {"ok": True, "undo": undo}
 
     async def tools_get(self, request):
         tools = []

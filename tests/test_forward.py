@@ -176,13 +176,13 @@ def test_split_paragraphs():
     assert split_paragraphs("只有一段", min_length=10) == []
 
 
-def _split_event(sent, quotes=None):
+def _split_event(sent, quotes=None, group=False):
     class FakeEvent:
         def get_platform(self):
             return "onebot11"
 
         def is_group_message(self):
-            return False
+            return group
 
         def get_user_id(self):
             return "1"
@@ -317,3 +317,102 @@ async def test_forward_nodes_use_persona_nickname():
     calls2 = forward_calls(harness2)
     nicknames2 = {n["data"]["nickname"] for n in calls2[0][0]}
     assert "阿波" not in nicknames2
+
+
+async def test_deliver_reply_quote_auto_private_no_quote():
+    """auto：私聊不引用——对方明确在与 bot 一对一对话。"""
+    sent, quotes = [], []
+    harness = make_harness(split_min_length=5, split_delay=0, reply_quote="auto")
+    delivery = Delivery(harness)
+    await delivery.deliver_reply(_split_event(sent, quotes, group=False), "私聊回复", [], force=None, origin="chat")
+    assert sent == ["私聊回复"]
+    assert quotes == [False]
+
+
+async def test_deliver_reply_quote_auto_group_quotes():
+    """auto：群聊 @/唤醒词触发引用（多人环境明确指向）。"""
+    sent, quotes = [], []
+    harness = make_harness(split_min_length=5, split_delay=0, reply_quote="auto")
+    delivery = Delivery(harness)
+    await delivery.deliver_reply(_split_event(sent, quotes, group=True), "群聊回复", [], force=None, origin="chat")
+    assert quotes == [True]
+
+
+async def test_deliver_reply_quote_auto_plugin_no_quote():
+    """auto：插话（origin=plugin）不引用——没人问它，引用反而像抬杠。"""
+    sent, quotes = [], []
+    harness = make_harness(split_min_length=5, split_delay=0, reply_quote="auto")
+    delivery = Delivery(harness)
+    await delivery.deliver_reply(_split_event(sent, quotes, group=True), "插话", [], force=None, origin="plugin")
+    assert quotes == [False]
+
+
+async def test_deliver_reply_quote_on_off_overrides_auto():
+    """on/off 优先于 auto 自适应。"""
+    sent, quotes = [], []
+    harness = make_harness(split_min_length=5, split_delay=0, reply_quote="on")
+    delivery = Delivery(harness)
+    await delivery.deliver_reply(_split_event(sent, quotes, group=False), "私聊", [], force=None, origin="chat")
+    assert quotes == [True]
+
+
+async def test_short_line_burst_splits_casual_reply():
+    """闲聊短行连发：模型刻意分行的短句逐条发送（即使总长 < split_min_length）。"""
+    sent, quotes = [], []
+    harness = make_harness(split_min_length=120, split_delay=0, reply_quote="off", rhythm_humanize=True)
+    delivery = Delivery(harness)
+    event = _split_event(sent, quotes, group=False)
+    await delivery.deliver_reply(event, "好喵！\n收到！", [], force=None, origin="chat")
+    assert sent == ["好喵！", "收到！"]
+
+
+async def test_short_line_burst_off_keeps_single():
+    """人化节奏关闭时不拆：单条原样发。"""
+    sent, quotes = [], []
+    harness = make_harness(split_min_length=120, split_delay=0, reply_quote="off", rhythm_humanize=False)
+    delivery = Delivery(harness)
+    event = _split_event(sent, quotes, group=False)
+    await delivery.deliver_reply(event, "好喵！\n收到！", [], force=None, origin="chat")
+    assert sent == ["好喵！\n收到！"]
+
+
+async def test_short_line_burst_not_for_tool_replies():
+    """有工具轮次（任务报告）不拆碎：工具输出走同一 deliver_reply 但 tool_trace 非空。"""
+    sent, quotes = [], []
+    harness = make_harness(split_min_length=120, split_delay=0, reply_quote="off", rhythm_humanize=True)
+    delivery = Delivery(harness)
+    event = _split_event(sent, quotes, group=False)
+    await delivery.deliver_reply(event, "结论一\n结论二", [{"tool": "x"}], force=None, origin="chat")
+    assert sent == ["结论一\n结论二"]
+
+
+def test_plan_segments_burst_line_cap():
+    """超过 max_parts 或单行过长时不 burst（回退单条）。"""
+    from QvQChat.conversation.rhythm import plan_segments
+
+    profile = {"min_length": 120, "max_parts": 6, "base_delay": 0, "min_delay": 0, "max_delay": 0}
+    long_line = "x" * 61
+    assert plan_segments("a\n" + long_line, dict(profile), allow_short_burst=True) == []
+    many = "\n".join(str(i) for i in range(9))
+    assert plan_segments(many, dict(profile), allow_short_burst=True) == []
+    ok = plan_segments("好喵！\n收到！", dict(profile), allow_short_burst=True)
+    assert [t for t, _ in ok] == ["好喵！", "收到！"]
+    assert ok[0][1] == 0.0
+
+
+async def test_persist_thinking_off_strips_think_from_rounds():
+    """persist_thinking=False：落库时剥离 think 块（省存储）；True 保留。"""
+    from fakes import FakeMain
+
+    main = FakeMain(persist_thinking=False)
+    main.sessions.append("dashboard:private:web", "assistant", "答案",
+                         rounds=[{"think": "内心戏", "text": "答案", "tools": []}])
+    entry = main.sessions.get_contexts("dashboard:private:web")[-1]
+    assert "think" not in entry["rounds"][0]
+    assert entry["rounds"][0]["text"] == "答案"
+
+    main2 = FakeMain(persist_thinking=True)
+    main2.sessions.append("dashboard:private:web", "assistant", "答案",
+                          rounds=[{"think": "内心戏", "text": "答案", "tools": []}])
+    entry2 = main2.sessions.get_contexts("dashboard:private:web")[-1]
+    assert entry2["rounds"][0]["think"] == "内心戏"

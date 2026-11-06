@@ -4,6 +4,8 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta
 
+from .. import texts
+
 # 上次清理日标记（跨天首条记账才执行一次全扫）
 USAGE_LAST_PRUNE_KEY = "QvQChat:usage:last_prune"
 
@@ -43,9 +45,46 @@ class UsageMixin:
                 data["by_model"] = by_model
             self.sdk.storage.set(key, data)
             self._prune_usage(today)
+            self._usage_warn_check(chat_key, int(data.get("tokens", 0) or 0), today)
         except Exception as e:
 # 记账路径不允许完全静默
             self.logger.debug(f"record_usage failed: {e}")
+
+    def _usage_warn_check(self, chat_key: str, tokens_today: int, today: str) -> None:
+        """R5 用量超限预警：跨 usage_warn_at%/100% 各发一次提示（每阈值每天一次）。"""
+        limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
+        warn_at = int(getattr(self.cfg, "usage_warn_at", 80) or 0)
+        if limit <= 0 or warn_at <= 0:
+            return
+        pct = tokens_today * 100 // limit
+        marker_key = f"QvQChat:usage:warned:{today}"
+        try:
+            warned = self.sdk.storage.get(marker_key, {})
+            warned = warned if isinstance(warned, dict) else {}
+        except Exception:
+            warned = {}
+        crossed = []
+        if pct >= 100 and not warned.get("100"):
+            warned["100"] = True
+            crossed.append(("100", texts.t("usage_warn_100", limit=limit)))
+        elif pct >= warn_at and not warned.get(str(warn_at)):
+            warned[str(warn_at)] = True
+            crossed.append((str(warn_at), texts.t("usage_warn_80", at=warn_at, pct=pct, limit=limit)))
+        if not crossed:
+            return
+        self.sdk.storage.set(marker_key, warned)
+        logger = self.logger
+        for _, message in crossed:
+            logger.info(f"usage warn: {message}")
+        main = getattr(self, "main", None)
+        sender = getattr(main, "speak", None) if main is not None else None
+        if callable(sender):
+            try:
+                import asyncio as _asyncio
+
+                _asyncio.get_event_loop().create_task(sender(chat_key, reason="usage warn", prompt=message))
+            except Exception:
+                pass
 
     def _prune_usage(self, today: str) -> None:
         days = int(getattr(self.cfg, "usage_retention_days", 14) or 0)

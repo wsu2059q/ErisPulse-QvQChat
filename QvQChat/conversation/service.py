@@ -250,7 +250,18 @@ class ConversationService:
         if trace and not rounds:
             entry["trace"] = list(trace)
         if rounds:
+# persist_thinking=False 时剥离 think 块（省存储；历史不显示已思考）
+            if not getattr(self.config, "persist_thinking", True):
+                rounds = [{k: v for k, v in r.items() if k in ("text", "tools")} if isinstance(r, dict) else r for r in rounds]
             entry["rounds"] = list(rounds)
+            if bool(getattr(self.config, "log_debug", False)):
+                logger = getattr(self.main, "logger", None)
+                if logger is not None:
+                    shape = [
+                        {"len": len(r.get("text") or ""), "tools": len(r.get("tools") or []),
+                         "think": len(r.get("think") or "")} for r in rounds if isinstance(r, dict)
+                    ]
+                    logger.debug(f"persist assistant ({chat_key}): rounds={shape} trace={'dropped' if trace else 'n/a'}")
         state["contexts"].append(entry)
         self._save(chat_key, state)
 
@@ -942,6 +953,11 @@ class ConversationService:
         return reply
 
     async def _summarize_overflow(self, chat_key: str, removed: list) -> None:
+# 高负载降载：满载时跳过压缩——removed 条目仍在上下文里，下轮 trim 会再次触发
+        pool = getattr(self.main, "pool", None)
+        if pool is not None and callable(getattr(pool, "background_blocked", None)) and pool.background_blocked():
+            self.main.logger.debug("background skip: overflow-summary (saturated)")
+            return
         summary = await self.compactor.summarize_entries(removed)
         if not summary:
             return
@@ -989,6 +1005,26 @@ class ConversationService:
             lines.append("<persona-examples>\n" + "\n".join(blocks) + "\n</persona-examples>")
         return "\n".join(lines)
 
+    def _persona_roster_text(self, persona: dict) -> str:
+        """人格名册：除当前人格外的已定义人格（名字 + 别名 + id），供"认出熟人"。
+
+        不含绑定位置/系统提示词——跨会话信息不能借名册泄露；仅一个角色时不注入。
+        """
+        if not bool(getattr(self.config, "persona_roster_enabled", True)):
+            return ""
+        manager = getattr(self.main, "personas", None)
+        entries = manager.list() if manager is not None else []
+        current_id = str(persona.get("id") or "")
+        lines: list[str] = []
+        for entry in entries or []:
+            pid = str(entry.get("id") or "")
+            if not pid or pid == current_id:
+                continue
+            name = str(entry.get("name") or "").strip() or pid
+            nickname = str(entry.get("nickname") or "").strip()
+            lines.append(f"- {name}" + (f"（别名：{nickname}）" if nickname and nickname != name else "") + f"（{pid}）")
+        return "\n".join(lines) if len(lines) >= 1 else ""
+
     def build_system_parts(
         self,
         persona: dict,
@@ -1018,6 +1054,10 @@ class ConversationService:
         persona_extra = self._persona_extra_text(persona)
         if persona_extra:
             parts.insert(1, SystemPart("persona_extra", persona_extra))
+# 人格名册感知：注入已定义人格（名字/别名），被提到时能"认出"并自然谈起
+        roster = self._persona_roster_text(persona)
+        if roster:
+            parts.append(SystemPart("roster", texts.t("persona_roster_note") + "\n" + roster))
         if getattr(self.config, "reply_narrate", False):
             parts.append(SystemPart("narrate", NARRATE_PROMPT))
         if getattr(self.config, "chat_output_rules", True):
@@ -1172,6 +1212,10 @@ class ConversationService:
 
         pool = getattr(self.main, "pool", None)
         if pool is None:
+            return
+# 高负载降载：满载时跳过标题生成（会话没有标题只是显示难看，不丢数据）
+        if callable(getattr(pool, "background_blocked", None)) and pool.background_blocked():
+            self.main.logger.debug("background skip: title-task (saturated)")
             return
         from ..engine.base import ChatRequest
 

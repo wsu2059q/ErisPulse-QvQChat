@@ -48,8 +48,20 @@ _UPGRADE_KEYWORDS = (
 )
 
 # 工具任务暗示：命中则至少 balanced（保底不下探 cheap）
+# 任务动词要全：用户场景里"描述很简单但要启动长任务"很常见（装/部署/打包/迁移…），
+# 只靠"查/搜/看"会让这类短任务被判 cheap（降思考甚至换便宜模型）
 _TOOL_HINTS = ("查", "搜", "打开", "找", "检索", "翻一下", "看下", "看一下",
-               "search", "find", "look up", "lookup", "open", "check")
+               "装", "安装", "卸载", "部署", "升级", "更新", "下载", "上传",
+               "打包", "解压", "发送", "发给", "发到", "迁移", "备份", "还原",
+               "恢复", "同步", "拉取", "克隆", "运行", "执行", "重启", "启动",
+               "创建", "新建", "删除", "清理", "修改", "改成", "修复", "生成",
+               "调用", "配置", "设置", "写个", "写一个", "做个", "做一下",
+               "跑一下", "试试", "帮我", "麻烦",
+               "search", "find", "look up", "lookup", "open", "check",
+               "install", "uninstall", "deploy", "download", "upload", "run",
+               "execute", "restart", "create", "delete", "remove", "update",
+               "upgrade", "package", "zip", "unzip", "send", "migrate",
+               "backup", "restore", "sync", "clone", "build", "generate")
 
 # 表情符号区间（emoji 杂项区 + 常用符号区 + 变体选择符/零宽连接符）
 _EMOJI_RE = re.compile(
@@ -110,6 +122,10 @@ def classify(text: str) -> RouteDecision:
         if score < 0:
             score = 0
         parts.append("tool-task hint")
+# 疑问句保底：问句永远至少 balanced（"XX 的配置是什么样"这类短问题不能判 cheap）
+    if ("？" in raw or "?" in raw) and score < 0:
+        score = 0
+        parts.append("question")
 
     if score <= -1:
         return RouteDecision("cheap", "; ".join(parts) or "plain message")

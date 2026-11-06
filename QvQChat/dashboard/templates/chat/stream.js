@@ -126,11 +126,14 @@
         var bodyNode = el.querySelector(".qvq-think-body");
         if (!bodyNode) {
           el.innerHTML = '<details class="qvq-think"' + (inProgress ? " open" : "") +
-            '><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>';
+            '><summary><span class="qvq-think-label">' + esc(inProgress ? t("chat_thinking") : t("chat_thought")) +
+            '</span></summary><div class="qvq-think-body"></div></details>';
           bodyNode = el.querySelector(".qvq-think-body");
         }
         var details = el.querySelector("details.qvq-think");
         if (details && details.open !== inProgress) details.open = inProgress;
+        var label = el.querySelector(".qvq-think-label");
+        if (label) label.textContent = inProgress ? t("chat_thinking") : t("chat_thought");
         if (bodyNode && bodyNode.textContent !== thinkBody) bodyNode.textContent = thinkBody;
         continue; // 不能 return：think 之后的文本/工具段必须继续渲染
       }
@@ -215,39 +218,51 @@
         if (!done) renderLiveNode(box, els, live);
       }, 60);
     }
-    streamLive(snapshot.session, function (ev, data) {
+    var retries = 0;
+    function subscribe() {
       if (done) return;
-      if (chatEpoch !== epochAtAttach || chatSession !== snapshot.session) { cleanup(false); return; }
-      if (ev === "snapshot") {
-        applySnapshot(live, data);
-        renderLiveNode(box, els, live);
-      } else if (ev === "delta" && data.t) {
-        live.text += data.t;
-        var i = data.i;
-        while (live.segments.length <= i) live.segments.push({ type: "text", text: "" });
-        if (live.segments[i].type !== "text") live.segments[i] = { type: "text", text: "" };
-        live.segments[i].text += data.t;
-        scheduleRender();
-      } else if (ev === "reasoning" && data.t) {
-        live.reasoning += data.t;
-        scheduleRender();
-      } else if (ev === "reset") {
-        live.text = ""; live.reasoning = ""; live.steps = []; live.segments = [];
-        renderLiveNode(box, els, live);
-      } else if (ev === "tool") {
-        applyToolEvent(live, data);
-        renderLiveNode(box, els, live);
-      } else if (ev === "done" || ev === "end") {
-        live.status = (data && data.status) || "done";
-        setTimeout(function () { cleanup(true); }, 400);
-      } else if (ev === "error") {
-        live.error = data.error;
-        setTimeout(function () { cleanup(true); }, 400);
-      }
-    }, ctrl ? ctrl.signal : undefined).catch(function () {
-      // 订阅不可用（服务端无直播流/网络中断）：直接按服务端已落盘内容刷新
-      setTimeout(function () { cleanup(true); }, 200);
-    });
+      streamLive(snapshot.session, function (ev, data) {
+        if (done) return;
+        if (chatEpoch !== epochAtAttach || chatSession !== snapshot.session) { cleanup(false); return; }
+        if (ev !== "done" && ev !== "end" && ev !== "error") retries = 0;
+        if (ev === "snapshot") {
+          applySnapshot(live, data);
+          renderLiveNode(box, els, live);
+        } else if (ev === "delta" && data.t) {
+          live.text += data.t;
+          var i = data.i;
+          while (live.segments.length <= i) live.segments.push({ type: "text", text: "" });
+          if (live.segments[i].type !== "text") live.segments[i] = { type: "text", text: "" };
+          live.segments[i].text += data.t;
+          scheduleRender();
+        } else if (ev === "reasoning" && data.t) {
+          live.reasoning += data.t;
+          scheduleRender();
+        } else if (ev === "reset") {
+          live.text = ""; live.reasoning = ""; live.steps = []; live.segments = [];
+          renderLiveNode(box, els, live);
+        } else if (ev === "tool") {
+          applyToolEvent(live, data);
+          renderLiveNode(box, els, live);
+        } else if (ev === "done" || ev === "end") {
+          live.status = (data && data.status) || "done";
+          setTimeout(function () { cleanup(true); }, 400);
+        } else if (ev === "error") {
+          live.error = data.error;
+          setTimeout(function () { cleanup(true); }, 400);
+        }
+      }, ctrl ? ctrl.signal : undefined).then(function () {
+// 流断开但没收到 end（代理空闲超时/网络抖动）：重订阅并以快照续播
+        if (done || chatEpoch !== epochAtAttach || chatSession !== snapshot.session) return;
+        if (++retries > 5) { cleanup(true); return; }
+        setTimeout(subscribe, 1000);
+      }).catch(function () {
+// 订阅不可用（服务端无直播流/网络中断）：直接按服务端已落盘内容刷新
+        if (done) return;
+        setTimeout(function () { cleanup(true); }, 200);
+      });
+    }
+    subscribe();
   }
 
   // 工具事件应用到本地 live（start/end 配对），SSE 与快照路径共用

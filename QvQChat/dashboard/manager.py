@@ -73,6 +73,44 @@ class TrashMixin:
             return None
         return entry
 
+    async def trash_delete(self, request):
+        body = await request.json()
+        token = str((body or {}).get("token") or "")
+        entry = self._trash_pop(token)
+        return {"ok": entry is not None}
+
+    async def trash_list(self, request):
+        """R9D 回收站浏览：kind/摘要/剩余秒（按 trash_retention_days 计）。"""
+        import time as _time
+
+        days = int(getattr(self.main.cfg, "trash_retention_days", 14) or 0)
+        now = _time.time()
+        out = []
+        for key in self.sdk.storage.keys():
+            if not (isinstance(key, str) and key.startswith(TRASH_PREFIX)):
+                continue
+            entry = self.sdk.storage.get(key, None)
+            if not isinstance(entry, dict):
+                continue
+            ts = float(entry.get("ts") or 0)
+            payload = entry.get("payload")
+            summary = ""
+            if isinstance(payload, dict):
+                summary = str(payload.get("chat_key") or payload.get("name") or payload.get("title") or "")
+                if payload.get("entries") is not None:
+                    summary += f" ({len(payload['entries'])} entries)"
+                if payload.get("items") is not None:
+                    summary += f" ({len(payload['items'])} items)"
+            out.append({
+                "token": key[len(TRASH_PREFIX):],
+                "kind": str(entry.get("kind") or ""),
+                "summary": summary or "-",
+                "ts": ts,
+                "expires_in": max(0, int(ts + days * 86400 - now)) if days else -1,
+            })
+        out.sort(key=lambda item: -item["ts"])
+        return {"items": out[:200], "retention_days": days}
+
     async def trash_restore(self, request):
         body = await request.json()
         entry = self._trash_pop(str((body or {}).get("token") or ""))
@@ -92,6 +130,16 @@ class TrashMixin:
                 payload = restored
             elif kind == "provider":
                 self.main.pool.save_provider(dict(payload))
+            elif kind == "kb":
+                self.main.knowledge.restore_entry(dict(payload))
+            elif kind == "binding":
+                self.main.personas.bind(str(payload.get("chat_key") or ""), str(payload.get("persona") or "") or None)
+            elif kind == "kb_batch":
+                for kb_entry in payload.get("entries") or []:
+                    self.main.knowledge.restore_entry(dict(kb_entry))
+            elif kind == "skill_batch":
+                for sk in payload.get("items") or []:
+                    self.main.skills.save_skill(str(sk.get("name") or ""), str(sk.get("description") or ""), str(sk.get("body") or ""))
             else:
                 return ({"error": f"unknown kind: {kind}"}, 400)
         except Exception as e:
@@ -183,6 +231,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("POST", "/api/qvq/session/rename", self.session_rename),
             ("POST", "/api/qvq/session/regenerate", self.session_regenerate),
             ("POST", "/api/qvq/trash/restore", self.trash_restore),
+            ("GET", "/api/qvq/trash/list", self.trash_list),
+            ("POST", "/api/qvq/trash/delete", self.trash_delete),
             ("GET", "/api/qvq/audit", self.audit_get),
             ("POST", "/api/qvq/audit/delete", self.audit_delete),
             ("POST", "/api/qvq/kb/batch-delete", self.kb_batch_delete),

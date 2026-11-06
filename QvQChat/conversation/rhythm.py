@@ -85,7 +85,8 @@ def split_sentences(paragraph: str, sentence_max: int) -> list[str]:
     return chunks
 
 
-def plan_segments(text: str, profile: dict | None = None, rng=random) -> list[tuple[str, float]]:
+def plan_segments(text: str, profile: dict | None = None, rng=random,
+                  allow_short_burst: bool = False) -> list[tuple[str, float]]:
     """把回复切成 (文本, 发送前延迟) 序列，模拟真人分段节奏。
 
     - 沿用 \\n{2,} 段落切分 + 短段前移合并（同 split_paragraphs 语义）
@@ -94,8 +95,11 @@ def plan_segments(text: str, profile: dict | None = None, rng=random) -> list[tu
     - 每段延迟 = clamp(base_delay + len/typing_speed, min_delay, max_delay) × uniform(1±split_jitter)
       首段延迟恒为 0（立即发出）
     - 总延迟超 total_delay_cap 时按比例压缩（cap<=0 表示不封顶）
+    - allow_short_burst：总长不足 min_length 时，若文本本身是多行短句
+      （闲聊里模型刻意分行），逐行拆成快速连发（首条 0s，后续 0.3~1.6s 随机）——
+      真人就是一行一条地发；仅用于无工具轮次的闲聊路径
 
-    不可切分（单段且未开句切、总长不足 min_length）时返回 []，调用方单条发送。
+    不可切分（单段且未开句切、总长不足 min_length 且不允许 burst）时返回 []，调用方单条发送。
     """
     cfg = dict(DEFAULT_PROFILE)
     cfg.update(dict(profile or {}))
@@ -113,7 +117,16 @@ def plan_segments(text: str, profile: dict | None = None, rng=random) -> list[tu
         else:
             merged.append(part)
     if sum(len(p) for p in merged) < min_length:
-        return []
+        if not allow_short_burst:
+            return []
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        if len(lines) < 2 or len(lines) > max_parts or any(len(ln) > 60 for ln in lines):
+            return []
+        segments: list[tuple[str, float]] = [(lines[0], 0.0)]
+        for line in lines[1:]:
+            # 连发间隔固定 0.3~1.6s：短行不需要按打字速度算，快节奏才像真人
+            segments.append((line, max(0.3, min(1.6, rng.uniform(0.3, 1.6)))))
+        return segments
     chunks: list[str] = []
     if bool(cfg.get("sentence_split")) and sentence_max > 0:
         for para in merged:
