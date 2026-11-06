@@ -168,3 +168,29 @@ async def test_sessions_get_accounts_overview():
     assert accts[0]["sessions"] == 1
     assert resp["accounts"]["adapters"][0]["platform"] == "onebot11"
     assert sorted(resp["accounts"]["adapters"][0]["bots"]) == ["bot_a", "bot_b"]
+
+
+async def test_session_rewind_drops_message_and_after():
+    """编辑并重发：删除目标消息及其之后所有内容，返回原文。"""
+    main, manager = make_manager()
+    key = "dashboard:private:web"
+    main.sessions.append_user(key, "第一问")
+    main.sessions.append(key, "assistant", "第一答")
+    main.sessions.append_user(key, "要改的问题")
+    main.sessions.append(key, "assistant", "旧回答")
+
+    resp = await manager.session_rewind(_Req({"chat_key": key, "index": 2}))
+    assert resp["ok"] is True
+    assert resp["text"] == "要改的问题"
+    contexts = main.sessions.get_contexts(key)
+    assert [c.get("content") for c in contexts] == ["第一问", "第一答"]
+
+
+async def test_session_rewind_rejects_bad_index_and_busy():
+    main, manager = make_manager()
+    key = "dashboard:private:web"
+    main.sessions.append_user(key, "hi")
+    assert await manager.session_rewind(_Req({"chat_key": key, "index": 9})) == ({"error": "index out of range"}, 400)
+    assert await manager.session_rewind(_Req({"index": 0})) == ({"error": "chat_key required"}, 400)
+    manager._live.start(key)
+    assert await manager.session_rewind(_Req({"chat_key": key, "index": 0})) == ({"error": "session busy"}, 409)

@@ -501,6 +501,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                 persona_tools=prepared["persona"].get("tools"),
                 model=(resolved_model or prepared.get("model") or "") or None,
                 task_kind=task_kind,
+                priority=(6 if origin in ("plugin", "proactive") else 0),
             )
             reply = utils.strip_stray_tags(result.text.strip()) or texts.t("no_reply_content")
             if send and platform:

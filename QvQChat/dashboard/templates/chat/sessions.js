@@ -291,64 +291,83 @@
     });
   }
 
-  // 平台侧新消息实时同步：对话页激活且空闲时轻量轮询
+  var syncDesync = 0; // 本地窗口与服务端总数不一致的连续次数（用于自愈重同步）
+
+  // 平台侧新消息同步：只轮询轻量会话元数据（几 KB），有变化才增量取尾部新消息。
+  // 以前这里每 4 秒拉一次完整窗口（图片 base64 + 工具明细，单次可达数 MB），是请求堆积的元凶。
   function startChatSync() {
     if (chatSyncTimer) return;
     chatSyncTimer = setInterval(function () {
       if (chatBusy || currentQueue().length) return;
+      if (document.hidden) return;
       var section = document.querySelector('.qvq-tab[data-section="chat"]');
       if (!section || !section.classList.contains("active")) return;
+      if (chatLoading || loadingOlder) return;
       var box = el("qvq-chat-box");
       if (!box) return;
-      // 过期防护：请求发出后会话可能已切走，响应只作用于发出时的会话
       var sessionAtPoll = chatSession;
       var epochAtPoll = chatEpoch;
       var versionAtPoll = chatHistoryVersion;
-      api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtPoll) + "&limit=30").then(function (data) {
+      api("/api/qvq/sessions").then(function (data) {
         if (epochAtPoll !== chatEpoch || sessionAtPoll !== chatSession) return;
         if (versionAtPoll !== chatHistoryVersion) return;
-        if (chatLoading || loadingOlder) return; // 本地加载在途，不覆盖
-        var start = (data && data.start) || 0;
-        if (chatWindowStart > 0 && start > chatWindowStart) {
-          // 用户上翻加载过更早消息（窗口错位）：增量拉取新尾部并追加，而不是整窗替换
-          var newTotal = (data && data.total) || 0;
-          if (newTotal <= chatTotal) return;
-          var tail = [];
-          api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtPoll) + "&start=" + chatTotal + "&limit=" + (newTotal - chatTotal)).then(function (d2) {
-            if (epochAtPoll !== chatEpoch || sessionAtPoll !== chatSession) return;
-            if (versionAtPoll !== chatHistoryVersion) return;
-            ((d2 && d2.messages) || []).forEach(function (m, idx) {
-              if (m && typeof m === "object" && (m.role === "user" || m.role === "assistant")) tail.push(mapServerMessage(m, (d2 && d2.start) || chatTotal, idx));
-            });
-            if (!tail.length) return;
-            var tailSig = tail.map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
-            var curTailSig = chatHistory.slice(-tail.length).map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
-            if (tailSig === curTailSig) return;
-            var stickTail = nearBottom(box);
-            chatHistory = chatHistory.concat(tail);
-            chatTotal = newTotal;
-            renderChat({ stick: stickTail });
-          });
+        var found = null;
+        ((data && data.sessions) || []).forEach(function (s) { if (s.chat_key === sessionAtPoll) found = s; });
+        var serverTotal = found ? (found.turns || 0) : 0;
+        // 本地窗口末尾的绝对下标：服务端多出来的才是需要拉的新消息
+        var localEnd = chatWindowStart + chatHistory.length;
+        if (serverTotal <= localEnd) {
+          // 本地比服务端多（发送失败/取消后服务端没落盘）：连续两次则整窗重同步，避免永久错位
+          syncDesync = serverTotal < localEnd ? syncDesync + 1 : 0;
+          if (syncDesync >= 2) {
+            syncDesync = 0;
+            loadChatHistory();
+          }
           return;
         }
-        var msgs = (data && data.messages) || [];
-        var fresh = [];
-        msgs.forEach(function (m, idx) {
-          if (!m || typeof m !== "object") return;
-          if (m.role === "user" || m.role === "assistant") fresh.push(mapServerMessage(m, start, idx));
-        });
-        var sig = fresh.map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
-        var curSig = chatHistory.map(function (m) { return m.role + "\u0001" + m.text; }).join("\u0002");
-        if (sig !== curSig) {
-          // 上翻阅读时不拽到底部
+        syncDesync = 0;
+        var want = serverTotal - localEnd;
+        api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtPoll) + "&start=" + localEnd + "&limit=" + want).then(function (d2) {
+          if (epochAtPoll !== chatEpoch || sessionAtPoll !== chatSession) return;
+          if (versionAtPoll !== chatHistoryVersion) return;
+          var tail = [];
+          ((d2 && d2.messages) || []).forEach(function (m, idx) {
+            if (m && typeof m === "object" && (m.role === "user" || m.role === "assistant")) {
+              tail.push(mapServerMessage(m, (d2 && d2.start) || localEnd, idx));
+            }
+          });
+          if (!tail.length) return;
           var stick = nearBottom(box);
-          chatHistory = fresh;
-          chatWindowStart = start;
-          chatTotal = (data && data.total) || fresh.length;
+          chatHistory = chatHistory.concat(tail);
+          chatTotal = serverTotal;
           renderChat({ stick: stick });
-        }
+        });
       });
-    }, 4000);
+    }, 5000);
+  }
+
+  // 进入对话页（切标签/刷新/切回浏览器）：已在跑的任务要能重新接上直播状态。
+  // 历史只在该会话未加载过时才拉一次，避免每次切回来都整段重渲染。
+  function enterChat() {
+    var needHistory = chatSession !== lastHistorySession || !chatHistory.length;
+    loadChatMeta({ history: needHistory });
+  }
+
+  // 页面重开/刷新后：服务端若仍有正在跑的回复，自动跳回该会话并接上直播流
+  function resumeRunning() {
+    api("/api/qvq/running").then(function (data) {
+      var items = ((data && data.running) || []).filter(function (x) {
+        return x && x.status === "running" && x.session;
+      });
+      if (!items.length) return;
+      var target = String(items[0].session);
+      if (target === chatSession) {
+        checkLive();
+        return;
+      }
+      switchChatSession(target); // 内部会加载历史并在结尾 checkLive → attachLive
+      toast(t("chat_resumed_running"));
+    }, function () {});
   }
 
   function checkLive() {
@@ -528,9 +547,13 @@
     var compact = args.replace(/\s+/g, " ");
     var short = compact && compact !== "{}" ? "(" + (compact.length > 52 ? compact.slice(0, 52) + "…" : compact) + ")" : "";
     var key = seg.start && seg.start.step_id ? String(seg.start.step_id) : "";
-    return '<div class="qvq-step' + (runningStep ? " running" : "") + '"' + (key ? ' data-step-key="' + esc(key) + '"' : "") + '><div class="qvq-step-row" data-step-toggle="1">' +
+    // 子智能体内部步骤：缩进 + 标记，和主智能体的步骤区分开
+    var isSub = !!(seg.start && seg.start.agent === "sub");
+    var name = seg.start ? seg.start.name : "?";
+    return '<div class="qvq-step' + (runningStep ? " running" : "") + (isSub ? " sub" : "") + '"' + (key ? ' data-step-key="' + esc(key) + '"' : "") + '><div class="qvq-step-row" data-step-toggle="1">' +
       '<span class="qvq-step-ico">' + STEP_ICON_SVG + '</span>' +
-      '<span class="qvq-step-name">' + esc(seg.start ? seg.start.name : "?") + "</span>" +
+      (isSub ? '<span class="qvq-chip qvq-sub-chip">' + esc(t("subagent_chip")) + "</span>" : "") +
+      '<span class="qvq-step-name">' + esc(name) + "</span>" +
       (short ? '<span class="qvq-step-args">' + esc(short) + "</span>" : "") +
       '<span class="qvq-step-ms">' + esc(cost) + "</span></div>" +
       (output ? '<pre class="qvq-step-detail">' + esc(output) + "</pre>" : "") +

@@ -1488,3 +1488,81 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
   font-size: 12px;
   word-break: break-all;
 }
+
+/* 弹窗绝不横向滚动：长 URL / 长 key 让输入框自己缩，不要撑破卡片 */
+.qvq-modal-body {
+  overflow-x: hidden;
+  min-width: 0;
+}
+.qvq-modal-body .qvq-input,
+.qvq-modal-body .qvq-select,
+.qvq-modal-body .qvq-textarea {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.qvq-share-url {
+  min-width: 0;
+}
+.qvq-share-url .qvq-input {
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+.qvq-share-hint,
+.qvq-modal-body .qvq-tool-desc {
+  overflow-wrap: anywhere;
+}
+
+/* ===== 所有模态窗统一：不出现横向滚动 ===== */
+.qvq-modal-card {
+  max-width: 100%;
+  min-width: 0;
+}
+.qvq-modal-body {
+  overflow-x: hidden;
+  min-width: 0;
+}
+/* 宽表格改为可换行：列自己收缩，而不是把弹窗撑出横向滚动条
+   （保留 auto 布局，避免复选框等窄列被平均分配宽度） */
+.qvq-modal-body .qvq-table {
+  table-layout: auto;
+  width: 100%;
+}
+.qvq-modal-body .qvq-table th,
+.qvq-modal-body .qvq-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* 代码/JSON：长行折行显示（弹窗内不做横向滚动） */
+.qvq-modal-body pre,
+.qvq-modal-body code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+.qvq-modal-body img,
+.qvq-modal-body video {
+  max-width: 100%;
+  height: auto;
+}
+/* flex 子项默认 min-width:auto 会被长内容顶开 */
+.qvq-modal-body .qvq-field-row,
+.qvq-modal-body .qvq-actions,
+.qvq-modal-body .qvq-share-url {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.qvq-modal-body .qvq-field-row > *,
+.qvq-modal-body .qvq-share-url > * {
+  min-width: 0;
+}
+.qvq-modal-body .qvq-kv {
+  grid-template-columns: minmax(64px, 92px) minmax(0, 1fr);
+}
+.qvq-modal-body .qvq-tool-desc,
+.qvq-modal-body .qvq-hint,
+.qvq-modal-body .qvq-btn {
+  overflow-wrap: anywhere;
+}

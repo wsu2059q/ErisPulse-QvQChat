@@ -1,7 +1,13 @@
 /* 消息流：历史按需加载（尾部窗口 + 上滚补更早）、渲染、原地编辑与附件 */
   var historySeq = 0;
   var chatLoading = false;
-  var HISTORY_PAGE = 30;
+  var loadingSession = ""; // 正在加载的会话（防同会话重复请求叠加）
+  // 重渲染期间屏蔽 scroll 监听的"上翻加载"判定（innerHTML 替换会瞬时归零 scrollTop）
+  var suppressScrollLoad = false;
+  // 已加载过历史的会话：切回对话页时不必再拉一次
+  var lastHistorySession = "";
+  // 首屏/上翻步长：历史单条可能含图片 base64 与工具明细（几十 KB），页越小首屏越快
+  var HISTORY_PAGE = 12;
   // 已加载窗口在服务端历史中的绝对起点与总数（>0 表示上方还有更早消息）
   var chatWindowStart = 0;
   var chatTotal = 0;
@@ -35,15 +41,19 @@
   }
 
   function loadChatHistory() {
+// 同一会话已有加载在飞：不再叠加请求（页面会被成排挂起的请求拖死）
+    if (chatLoading && loadingSession === chatSession) return Promise.resolve();
     var seq = ++historySeq;
     var sessionAtRequest = chatSession;
     var epochAtRequest = chatEpoch;
     var versionAtRequest = chatHistoryVersion;
     chatLoading = true;
+    loadingSession = sessionAtRequest;
     renderChat();
     return api("/api/qvq/session/messages?chat_key=" + encodeURIComponent(sessionAtRequest) + "&limit=" + HISTORY_PAGE).then(function (data) {
       if (seq !== historySeq) return; // 新请求已接管本会话的加载
       chatLoading = false;
+      loadingSession = "";
       if (data && data.__http >= 400) {
         toast(data.error || ("HTTP " + data.__http), true);
         renderChat();
@@ -54,10 +64,12 @@
         return;
       }
       applyHistoryWindow(data);
+      lastHistorySession = sessionAtRequest; // 记录已加载会话：再次进入同一会话不必重拉
       renderChat({ stick: true });
     }, function () {
       if (seq !== historySeq) return;
       chatLoading = false;
+      loadingSession = "";
       renderChat();
     });
   }
@@ -112,28 +124,22 @@
   var CHIP_KEYS = ["chat_chip_1", "chat_chip_2", "chat_chip_3", "chat_chip_4"];
   var HERO_SVG = "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='7' width='16' height='12' rx='3' stroke-dasharray='3 2'/><circle cx='9' cy='13' r='1.2' fill='currentColor'/><circle cx='15' cy='13' r='1.2' fill='currentColor'/><path d='M12 7V4'/><circle cx='12' cy='3' r='1' fill='currentColor'/></svg>";
 
-  function stickChatBottom(box) {
-    if (stick) stickChatBottom(box);
-    else if (prevTop) box.scrollTop = prevTop;
-    // base64 图片异步解码会继续撑高容器：解码完成后补偿一次
-    box.querySelectorAll("img").forEach(function (img) {
-      if (img.complete) return;
-      var done = false;
-      function restick() {
-        if (done) return;
-        done = true;
-        if (box.scrollHeight - box.scrollTop - box.clientHeight < 600) box.scrollTop = box.scrollHeight;
-      }
-      img.addEventListener("load", restick, { once: true });
-      img.addEventListener("error", restick, { once: true });
-    });
-  }
+  // 注意：旧的 stickChatBottom 是死代码且引用了未定义的 stick/prevTop（误调用必抛错），已移除。
 
   function renderChat(opts) {
     var stick = !!(opts && opts.stick);
     var box = el("qvq-chat-box");
     var main = document.querySelector(".qvq-chat-main");
     var chips = el("qvq-chat-chips");
+    // 加载中优先显示加载态：历史为空时若先走"空会话 hero"分支，用户会看到空白页且没有任何进度提示。
+    // 已有内容时不替换（后台刷新期间保持画面，避免"输出完闪一下"）。
+    if (chatLoading && !chatHistory.length && !(activeLive && activeLive.session === chatSession)) {
+      box.removeAttribute("data-html");
+      if (main) main.classList.remove("is-empty");
+      if (chips) { chips.style.display = "none"; chips.innerHTML = ""; }
+      box.innerHTML = '<div class="qvq-chat-loading">' + HERO_SVG + '<span class="qvq-chat-loading-tx">QvQ Chat</span></div>';
+      return;
+    }
     if (!chatHistory.length) {
 
       
@@ -163,11 +169,6 @@
     if (chips) {
       chips.style.display = "none";
       chips.innerHTML = "";
-    }
-    if (chatLoading) {
-      box.removeAttribute("data-html");
-      box.innerHTML = '<div class="qvq-chat-loading">' + HERO_SVG + '<span class="qvq-chat-loading-tx">QvQ Chat</span></div>';
-      return;
     }
     var chatHtmlKey = chatSession + "::" + chatWindowStart + "::" + chatHistory.map(function (m) {
       return [m.role, m.text, m.steps ? m.steps.length : 0, (m.atts || []).length,
@@ -219,6 +220,7 @@
       return '<div class="qvq-msg-wrap bot"' + timeAttr + '><div class="qvq-msg bot' + freshCls + '">' + stepsBlock + inner + body + "</div>" + botActs + "</div>";
     });
     var prevTop = stick ? 0 : box.scrollTop;
+    suppressScrollLoad = true; // 重建 DOM 前屏蔽"到底部即加载更早"的误判
     box.innerHTML = build.join("");
     box.querySelectorAll(".qvq-msg-img").forEach(function (img) {
       img.onclick = function () {
@@ -273,6 +275,12 @@
     // 只在显式要求贴底、或首屏（原本是空的）时跳底；用户向上翻阅时保留位置
     if (stick || !prevTop) box.scrollTop = box.scrollHeight;
     else box.scrollTop = prevTop;
+    // 下一帧再恢复监听（挂载后浏览器可能补发一次 scroll）
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(function () { suppressScrollLoad = false; });
+    } else {
+      suppressScrollLoad = false;
+    }
   }
 
 
@@ -337,9 +345,11 @@
       '<div class="qvq-composer-bar">' +
       '<button type="button" class="qvq-icon-btn" data-ed-add title="' + esc(t("chat_attach")) + '"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>' +
       '<input type="file" multiple style="display:none"/>' +
+      '<button type="button" class="qvq-icon-btn danger" data-ed-trunc title="' + esc(t("chat_edit_cut")) + '"><svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg></button>' +
       '<span class="qvq-composer-spacer"></span>' +
+      '<button type="button" class="qvq-btn small ghost" data-ed-save>' + esc(t("chat_edit_only")) + "</button>" +
+      '<button type="button" class="qvq-btn small" data-ed-send>' + esc(t("chat_edit_send")) + "</button>" +
       '<button type="button" class="qvq-icon-btn" data-ed-cancel title="' + esc(t("cancel")) + '"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' +
-      '<button type="button" class="qvq-composer-send" data-ed-save title="' + esc(t("save")) + '"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>' +
       "</div>";
     var ta = ed.querySelector("textarea");
     ta.value = m.text;
@@ -349,7 +359,8 @@
     });
     ta.addEventListener("keydown", function (e) {
       if (e.key === "Escape") { e.stopPropagation(); close(); }
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+      // Ctrl/Cmd+Enter = 保存并重新发送（主操作）；仅保存请点左侧文字按钮
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveAndSend(); }
     });
 
     function renderAtts() {
@@ -380,24 +391,72 @@
       ed.remove();
     }
     ed.querySelector("[data-ed-cancel]").onclick = close;
-    function save() {
-      var payload = {
+
+    function payloadOf() {
+      return {
         chat_key: chatSession,
         index: m.idx,
         content: ta.value,
-
         attachments: atts.map(function (a) {
           return { name: a.name, mime: a.mime || (a.isImage ? "image/png" : "application/octet-stream"), data: a.data };
         }),
       };
-      api("/api/qvq/session/context/edit", "POST", payload).then(function (data) {
+    }
+
+    // ① 仅保存：只改这条消息的文本/附件，不动后续对话
+    function saveOnly() {
+      api("/api/qvq/session/context/edit", "POST", payloadOf()).then(function (data) {
         if (data && data.error) { toast(data.error, true); return; }
-        toast(t("saved"));
+        m.text = ta.value;
+        chatHistoryVersion++;
         close();
-        loadChatHistory();
+        renderChat();
+        toast(t("saved"));
       });
     }
-    ed.querySelector("[data-ed-save]").onclick = save;
+
+    // ② 保存并重新发送：丢弃这条及其之后的消息，用新内容重跑（旧回答不会残留）
+    function saveAndSend() {
+      var text = ta.value.trim();
+      if (!text && !atts.length) { toast(t("chat_empty_send"), true); return; }
+      api("/api/qvq/session/rewind", "POST", { chat_key: chatSession, index: m.idx }).then(function (r) {
+        if (!r || r.error) { toast((r && r.error) || "error", true); return; }
+        var localIdx = m.idx - chatWindowStart;
+        chatHistory = chatHistory.slice(0, Math.max(0, localIdx));
+        chatTotal = chatHistory.length + chatWindowStart;
+        chatHistoryVersion++;
+        close();
+        renderChat({ stick: true });
+        chatAtts = atts.map(function (a) {
+          return { isImage: !!a.isImage, name: a.name, data: a.data, mime: a.mime };
+        });
+        renderAttach();
+        var input = el("qvq-chat-input");
+        if (input) { input.value = text; input.dispatchEvent(new Event("input")); }
+        sendChat();
+      });
+    }
+
+    // ③ 删除这条及之后（不重发）
+    function cutFromHere() {
+      confirmDialog(t("chat_edit_cut_confirm")).then(function (ok) {
+        if (!ok) return;
+        api("/api/qvq/session/rewind", "POST", { chat_key: chatSession, index: m.idx }).then(function (r) {
+          if (!r || r.error) { toast((r && r.error) || "error", true); return; }
+          var localIdx = m.idx - chatWindowStart;
+          chatHistory = chatHistory.slice(0, Math.max(0, localIdx));
+          chatTotal = chatHistory.length + chatWindowStart;
+          chatHistoryVersion++;
+          close();
+          renderChat({ stick: true });
+          toast(t("deleted"));
+        });
+      });
+    }
+
+    ed.querySelector("[data-ed-save]").onclick = saveOnly;
+    ed.querySelector("[data-ed-send]").onclick = saveAndSend;
+    ed.querySelector("[data-ed-trunc]").onclick = cutFromHere;
 
     wrapNode.appendChild(ed);
     renderAtts();
@@ -490,10 +549,21 @@
     return !!(live.text || live.reasoning || (live.segments && live.segments.length));
   }
 
+  // 等待行只更新秒数文本：整块重建会让呼吸动画每秒重启（看起来卡顿/像回到初始态）
+  function renderWaitRow(els, secs) {
+    var row = els.textEl.querySelector(".qvq-live-wait-row");
+    if (!row) {
+      els.textEl.innerHTML = '<div class="qvq-live-wait-row"><span class="qvq-dots"><span></span><span></span><span></span></span><span class="qvq-live-wait"></span></div>';
+      row = els.textEl.querySelector(".qvq-live-wait-row");
+    }
+    var label = row ? row.querySelector(".qvq-live-wait") : null;
+    if (label) label.textContent = t("steps_running") + " " + secs + "s";
+  }
+
   function renderWaitTimer(box, els, live) {
     if (live.status !== "running" || hasLiveContent(live)) return;
     var secs = Math.max(0, Math.round((Date.now() - (live.started || Date.now())) / 1000));
-    els.textEl.innerHTML = '<span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "s</span>";
+    renderWaitRow(els, secs);
   }
 
   function startWaitTimer(box, els, live) {

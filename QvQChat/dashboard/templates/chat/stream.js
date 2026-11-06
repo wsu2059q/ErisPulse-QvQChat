@@ -1,37 +1,56 @@
-  function streamChat(payload, onEvent) {
-    var headers = { "Content-Type": "application/json" };
+  // 通用 SSE 读取：POST 聊天流与 GET 直播订阅共用一套解析
+  function readSSE(resp, onEvent) {
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buf = "";
+    function pump() {
+      return reader.read().then(function (chunk) {
+        if (chunk.done) return;
+        buf += decoder.decode(chunk.value, { stream: true });
+        var idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          var block = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          var ev = "message", data = "";
+          block.split("\n").forEach(function (line) {
+            if (line.indexOf("event:") === 0) ev = line.slice(6).trim();
+            else if (line.indexOf("data:") === 0) data += line.slice(5).trim();
+          });
+          if (!data) continue;
+          try { onEvent(ev, JSON.parse(data)); } catch (e) { (window.__pumpErrs = window.__pumpErrs || []).push(String((e && e.stack) || e)); }
+        }
+        return pump();
+      });
+    }
+    return pump();
+  }
+
+  function authHeaders(extra) {
+    var headers = extra || {};
     var token = getToken();
     if (token) headers["Authorization"] = "Bearer " + token;
+    return headers;
+  }
+
+  function streamChat(payload, onEvent) {
     return fetch("/QvQChat/api/qvq/chat/stream", {
       method: "POST",
-      headers: headers,
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(payload),
     }).then(function (resp) {
       if (resp.status === 409) return { __busy: true };
       if (!resp.ok || !resp.body) throw new Error("stream unavailable");
-      var reader = resp.body.getReader();
-      var decoder = new TextDecoder();
-      var buf = "";
-      function pump() {
-        return reader.read().then(function (chunk) {
-          if (chunk.done) return;
-          buf += decoder.decode(chunk.value, { stream: true });
-          var idx;
-          while ((idx = buf.indexOf("\n\n")) >= 0) {
-            var block = buf.slice(0, idx);
-            buf = buf.slice(idx + 2);
-            var ev = "message", data = "";
-            block.split("\n").forEach(function (line) {
-              if (line.indexOf("event:") === 0) ev = line.slice(6).trim();
-              else if (line.indexOf("data:") === 0) data += line.slice(5).trim();
-            });
-            if (!data) continue;
-            try { onEvent(ev, JSON.parse(data)); } catch (e) { (window.__pumpErrs = window.__pumpErrs || []).push(String((e && e.stack) || e)); }
-          }
-          return pump();
-        });
-      }
-      return pump();
+      return readSSE(resp, onEvent);
+    });
+  }
+
+  // 单条常驻 SSE 订阅服务端直播流（替代 800ms 轮询）：先收到 snapshot，再逐条收增量
+  function streamLive(session, onEvent, signal) {
+    var opts = { headers: authHeaders({}) };
+    if (signal) opts.signal = signal;
+    return fetch("/QvQChat/api/qvq/chat/live/subscribe?session=" + encodeURIComponent(session), opts).then(function (resp) {
+      if (!resp.ok || !resp.body) throw new Error("live subscribe unavailable");
+      return readSSE(resp, onEvent);
     });
   }
 
@@ -65,6 +84,26 @@
   }
 
   // 增量渲染文字/工具交错流：只重建内容变化的段
+// 快照 → 本地 live 状态（服务端权威）：SSE 被中间层缓冲时，靠轮询也能逐段实时显示
+  function applySnapshot(live, snap) {
+    live.status = snap.status || live.status;
+    live.text = snap.text || "";
+    live.reasoning = snap.reasoning || "";
+    live.steps = snap.steps || [];
+    live.segments = snap.segments || [];
+    if ((!live.segments || !live.segments.length) && live.steps.length) {
+      live.segments = live.steps.map(function (st) {
+        return { type: "tool", start: st.start, end: st.end || null };
+      });
+    }
+    live.error = snap.error || null;
+  }
+
+  // 思考原文常带成串空行/首尾空白，pre-wrap 下会渲染成大段空白，看起来像"巨大间距"
+  function tidyThink(text) {
+    return String(text || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
   function renderSegments(container, segments, expMap) {
     var host = container.querySelector(".qvq-rounds");
     if (!host) {
@@ -80,18 +119,24 @@
     for (var i = 0; i < segments.length; i++) {
       var el = host.children[i];
       var seg = segments[i];
-      var sig = seg.type === "think" ? "k" + String(seg.text || "").length + (seg.open ? "!" : "") : segSignature(seg);
-      if (el.__qvqSig === sig) continue;
-      el.__qvqSig = sig;
       if (seg.type === "think") {
-        var thinkBody = String(seg.text || "");
+        // 思考块只增量追加文本：整块重建会让每次增量都重排一次（看起来像界面在定期刷新）
+        var thinkBody = tidyThink(seg.text);
         var inProgress = !!seg.open;
-        el.innerHTML = '<details class="qvq-think"' + (inProgress ? " open" : "") +
-          '><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>';
         var bodyNode = el.querySelector(".qvq-think-body");
-        if (bodyNode) bodyNode.textContent = thinkBody;
+        if (!bodyNode) {
+          el.innerHTML = '<details class="qvq-think"' + (inProgress ? " open" : "") +
+            '><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>';
+          bodyNode = el.querySelector(".qvq-think-body");
+        }
+        var details = el.querySelector("details.qvq-think");
+        if (details && details.open !== inProgress) details.open = inProgress;
+        if (bodyNode && bodyNode.textContent !== thinkBody) bodyNode.textContent = thinkBody;
         continue; // 不能 return：think 之后的文本/工具段必须继续渲染
       }
+      var sig = segSignature(seg);
+      if (el.__qvqSig === sig) continue;
+      el.__qvqSig = sig;
       if (seg.type === "text") {
         el.innerHTML = '<div class="qvq-round-text">' + (mdRender(seg.text) || esc(seg.text)) + "</div>";
       } else {
@@ -103,6 +148,7 @@
   }
 
   function renderLiveNode(box, els, live) {
+    // 弱滚动：仅在用户当前处于底部附近时跟随；一旦上翻就完全不动
     var stick = nearBottom(box);
     var expMap = collectExpSteps(els.textEl);
 
@@ -115,76 +161,122 @@
         segments.push({ type: "tool", start: st.start, end: st.end || null });
       });
     }
-    if (live.reasoning) segments.push({ type: "think", text: live.reasoning, open: true });
+    if (live.reasoning) segments.push({ type: "think", text: tidyThink(live.reasoning), open: true });
 
     if (segments.length) {
 // 进行中的思考段（open:true）随流重建保持展开；已完成块静态保留用户展开态
       renderSegments(els.textEl, segments, expMap);
     } else if (!live.text && live.started && !live.reasoning) {
       var secs = Math.max(0, Math.round((Date.now() - live.started) / 1000));
-      els.textEl.innerHTML = '<div class="qvq-live-wait-row"><span class="qvq-dots"><span></span><span></span><span></span></span><span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "</span></div>";
+      renderWaitRow(els, secs); // 复用同一行，不重建节点（避免呼吸动画反复重启）
     } else {
       var textHtml = mdRender(live.text);
       els.textEl.innerHTML = (textHtml || '<span class="qvq-cursor"></span>');
     }
-    if (stick) box.scrollTop = box.scrollHeight;
+    if (stick) box.scrollTop = box.scrollHeight; // 只在原本就在底部时跟随
   }
 
+  // 切到正在运行的会话：挂一条常驻 SSE（snapshot + 增量），不再每 800ms 轮询
   function attachLive(snapshot) {
     if (activeLive && activeLive.session === snapshot.session) return;
     var epochAtAttach = chatEpoch;
     var box = el("qvq-chat-box");
-    var live = { status: snapshot.status || "running", text: snapshot.text || "", reasoning: snapshot.reasoning || "", steps: snapshot.steps || [], error: snapshot.error || null };
+    var live = { status: snapshot.status || "running", text: "", reasoning: "", steps: [], segments: [], error: null };
 /* 流式：SSE、实时输出节点、恢复挂载、消息派发 */
     setSessionBusy(snapshot.session, true);
     var els = makeLiveNode();
     box.appendChild(els.root);
     activeLive = { els: els, session: snapshot.session };
     live.started = (snapshot.started || 0) * 1000 || Date.now();
-    live.segments = snapshot.segments || [];
+    applySnapshot(live, snapshot);
     renderLiveNode(box, els, live);
-    var poll = setInterval(function () {
-      if (chatEpoch !== epochAtAttach || chatSession !== snapshot.session) {
-        clearInterval(poll);
-        els.root.remove();
-        setSessionBusy(snapshot.session, false);
-        activeLive = null;
-        return;
+
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var done = false;
+    function cleanup(reload) {
+      if (done) return;
+      done = true;
+      if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+      if (ctrl) { try { ctrl.abort(); } catch (e) {} }
+      els.root.remove();
+      setSessionBusy(snapshot.session, false);
+      activeLive = null;
+      if (epochAtAttach === chatEpoch) {
+        if (reload) loadChatHistory();
+        pumpQueue();
       }
-      api("/api/qvq/chat/live?session=" + encodeURIComponent(chatSession)).then(function (snap) {
-        if (!snap || snap.status === "idle") {
-          clearInterval(poll);
-          els.root.remove();
-          setSessionBusy(snapshot.session, false);
-          activeLive = null;
-          return;
-        }
-        live.status = snap.status;
-        live.text = snap.text || "";
-        live.reasoning = snap.reasoning || "";
-        live.steps = snap.steps || [];
-        live.segments = snap.segments || [];
-        if ((!live.segments || !live.segments.length) && live.steps.length) {
-          live.segments = live.steps.map(function (st) {
-            return { type: "tool", start: st.start, end: st.end || null };
-          });
-        }
-        live.error = snap.error || null;
+    }
+    // 增量事件 60ms 合并渲染：每 token 都整段重排会卡住主线程（呼吸动画也跟着卡）
+    var renderTimer = null;
+    function scheduleRender() {
+      if (renderTimer) return;
+      renderTimer = setTimeout(function () {
+        renderTimer = null;
+        if (!done) renderLiveNode(box, els, live);
+      }, 60);
+    }
+    streamLive(snapshot.session, function (ev, data) {
+      if (done) return;
+      if (chatEpoch !== epochAtAttach || chatSession !== snapshot.session) { cleanup(false); return; }
+      if (ev === "snapshot") {
+        applySnapshot(live, data);
         renderLiveNode(box, els, live);
-        if (snap.status !== "running") {
-          clearInterval(poll);
-          setSessionBusy(snapshot.session, false);
-          setTimeout(function () {
-            els.root.remove();
-            activeLive = null;
-            if (chatEpoch === epochAtAttach) {
-              loadChatHistory();
-              pumpQueue();
-            }
-          }, 400);
-        }
-      });
-    }, 800);
+      } else if (ev === "delta" && data.t) {
+        live.text += data.t;
+        var i = data.i;
+        while (live.segments.length <= i) live.segments.push({ type: "text", text: "" });
+        if (live.segments[i].type !== "text") live.segments[i] = { type: "text", text: "" };
+        live.segments[i].text += data.t;
+        scheduleRender();
+      } else if (ev === "reasoning" && data.t) {
+        live.reasoning += data.t;
+        scheduleRender();
+      } else if (ev === "reset") {
+        live.text = ""; live.reasoning = ""; live.steps = []; live.segments = [];
+        renderLiveNode(box, els, live);
+      } else if (ev === "tool") {
+        applyToolEvent(live, data);
+        renderLiveNode(box, els, live);
+      } else if (ev === "done" || ev === "end") {
+        live.status = (data && data.status) || "done";
+        setTimeout(function () { cleanup(true); }, 400);
+      } else if (ev === "error") {
+        live.error = data.error;
+        setTimeout(function () { cleanup(true); }, 400);
+      }
+    }, ctrl ? ctrl.signal : undefined).catch(function () {
+      // 订阅不可用（服务端无直播流/网络中断）：直接按服务端已落盘内容刷新
+      setTimeout(function () { cleanup(true); }, 200);
+    });
+  }
+
+  // 工具事件应用到本地 live（start/end 配对），SSE 与快照路径共用
+  function applyToolEvent(live, data) {
+    if (data.phase === "start") {
+      live.steps.push({ start: data });
+      live.segments.push({ type: "tool", start: data });
+      return;
+    }
+    var match = null;
+    for (var i = live.steps.length - 1; i >= 0; i--) {
+      if (live.steps[i].start && live.steps[i].start.step_id === data.step_id && !live.steps[i].end) { match = live.steps[i]; break; }
+    }
+    if (!match) {
+      for (var j = live.steps.length - 1; j >= 0; j--) { if (!live.steps[j].end) { match = live.steps[j]; break; } }
+    }
+    if (match) match.end = data;
+    var segMatch = null;
+    for (var k = live.segments.length - 1; k >= 0; k--) {
+      var sg = live.segments[k];
+      if (sg.type === "tool" && sg.start && sg.start.step_id === data.step_id && !sg.end) { segMatch = sg; break; }
+    }
+    if (!segMatch) {
+      for (var m = live.segments.length - 1; m >= 0; m--) {
+        var sg2 = live.segments[m];
+        if (sg2.type === "tool" && !sg2.end) { segMatch = sg2; break; }
+      }
+    }
+    if (segMatch) segMatch.end = data;
   }
 
   function sendChat() {
@@ -276,7 +368,7 @@
       chatHistory.push({ role: "assistant", text: reply, steps: stepsOut, rounds: roundsOut.length ? roundsOut : null, err: !!isErr });
       chatHistoryVersion++;
       renderChat({ stick: true });
-      loadChatMeta();
+      loadChatMeta({ history: false, live: false }); // 只刷新会话清单：历史本地已增量追加，不再整段重拉
       pumpQueue();
     }
 

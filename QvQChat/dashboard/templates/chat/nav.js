@@ -355,7 +355,10 @@
     if (psel.value !== chatPersona) { chatPersona = ""; }
   }
 
-  function loadChatMeta() {
+  // opts.history=false：只刷新会话/人格/模型清单，不重拉整段历史
+  // （每轮回复结束后重拉整段历史会造成闪屏 + 数 MB 的重复传输，历史由本地增量维护）
+  function loadChatMeta(opts) {
+    var withHistory = !(opts && opts.history === false);
     Promise.all([
       api("/api/qvq/sessions"),
       api("/api/qvq/personas"),
@@ -374,9 +377,15 @@
       renderChatSessions();
       syncPersonaSelect();
       updateMmLabel();
-      loadChatHistory().then(function () {
-        checkLive();
-      });
+      if (withHistory) {
+        loadChatHistory().then(function () {
+          checkLive();
+        });
+      } else {
+        renderChat();
+        // opts.live=false：本会话刚结束（调用方已自行 settle），别再触发重挂/重拉
+        if (!(opts && opts.live === false)) checkLive();
+      }
     });
   }
 
