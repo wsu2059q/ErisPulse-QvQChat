@@ -169,6 +169,19 @@
     return i >= 0 ? s.slice(i + 1) : "";
   }
 
+  // 人格绑定的层级判定与排序（回落链：会话 → 群 → 账户 → 平台 → 全局默认）
+  function bindTierOf(key) {
+    var s = String(key || "");
+    if (s.indexOf(":*") >= 0) return "platform";
+    if (s.charAt(0) === "@") return "account";
+    return "session";
+  }
+
+  function bindTierRank(key) {
+    var order = { session: 0, account: 1, platform: 2 };
+    return order[bindTierOf(key)];
+  }
+
   var chatShowArchived = false;
 
   var PIN_SVG = "<svg viewBox='0 0 24 24'><path d='M12 17v5M9 3h6l-1 7 3 2v2H7v-2l3-2z'/></svg>";

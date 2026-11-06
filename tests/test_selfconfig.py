@@ -212,3 +212,40 @@ async def test_manage_config_get_full_is_parseable_and_masks_secrets():
     assert len(everything) > 100
     assert everything["view_token"] == "***"
     assert "forward_external_reply" in everything and "eco_admin" in everything
+
+
+async def test_manage_personas_account_tier_binding():
+    """AI 可给「某个 bot 账户」绑人格：list 暴露 current_account，bind 支持 @账户 / platform:* 层级。"""
+    ctx = make_ctx()
+    ctx.chat_key = "onebot11:group:123@643319481"
+    json.loads(await selfconfig.manage_personas(
+        ctx, action="save", persona_id="amer", name="Amer", system="你是 Amer，猫娘。",
+    ))
+    listing = json.loads(await selfconfig.manage_personas(ctx, action="list"))
+    assert listing["current_account"] == "643319481"
+    assert listing["account_binding_key"] == "@643319481"
+
+    # 账户级绑定：该账户的全部会话都生效
+    json.loads(await selfconfig.manage_personas(
+        ctx, action="bind", persona="amer", chat_key="@643319481",
+    ))
+    assert ctx.main.personas.resolve("onebot11:group:999@643319481")["id"] == "amer"
+    assert ctx.main.personas.resolve("onebot11:private:7@643319481")["id"] == "amer"
+    # 其它账户不受影响
+    assert ctx.main.personas.resolve("onebot11:group:999@111111")["id"] != "amer"
+
+    # 会话级覆盖账户级
+    json.loads(await selfconfig.manage_personas(
+        ctx, action="bind", persona="concise", chat_key="onebot11:group:123@643319481",
+    ))
+    assert ctx.main.personas.resolve(ctx.chat_key)["id"] == "concise"
+
+    # 平台级：别的平台不受影响
+    json.loads(await selfconfig.manage_personas(
+        ctx, action="unbind", chat_key="@643319481",
+    ))
+    json.loads(await selfconfig.manage_personas(
+        ctx, action="bind", persona="amer", chat_key="onebot11:*",
+    ))
+    assert ctx.main.personas.resolve("onebot11:group:1@222")["id"] == "amer"
+    assert ctx.main.personas.resolve("yunhu:group:1")["id"] != "amer"
