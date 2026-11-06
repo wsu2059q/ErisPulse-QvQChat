@@ -348,6 +348,31 @@
     </section>
   </main>
 
+<button type="button" class="qvq-appear-fab" id="qvq-appear-fab" title="外观">🎨</button>
+<div class="qvq-appear-panel" id="qvq-appear-panel">
+  <h4>外观 / 透感</h4>
+  <div class="qvq-appear-row">
+    <input class="qvq-input" id="qvq-appear-url" style="flex:1 1 auto; min-width:0" placeholder="背景图 URL…" />
+  </div>
+  <div class="qvq-appear-row">
+    <button type="button" class="qvq-btn small" id="qvq-appear-file-btn">上传图片</button>
+    <input type="file" id="qvq-appear-file" accept="image/*" style="display:none" />
+    <button type="button" class="qvq-btn small ghost" id="qvq-appear-clear">清除背景</button>
+  </div>
+  <div class="qvq-appear-row">
+    <span style="font-size:12px; opacity:.7">透明度</span>
+    <button type="button" class="qvq-btn small ghost" data-alpha="low">轻</button>
+    <button type="button" class="qvq-btn small ghost" data-alpha="mid">标准</button>
+    <button type="button" class="qvq-btn small ghost" data-alpha="high">强</button>
+  </div>
+  <div class="qvq-appear-row">
+    <span style="font-size:12px; opacity:.7">磨砂</span>
+    <button type="button" class="qvq-btn small ghost" data-blur="on">开</button>
+    <button type="button" class="qvq-btn small ghost" data-blur="off">关</button>
+  </div>
+  <div class="qvq-appear-hint">背景与透感仅保存在本浏览器（localStorage），不影响其他访问者；上传图片会压缩后本地保存。</div>
+</div>
+
   <div class="qvq-modal" id="qvq-modal" style="display:none">
     <div class="qvq-modal-mask" id="qvq-modal-mask"></div>
     <div class="qvq-modal-card">

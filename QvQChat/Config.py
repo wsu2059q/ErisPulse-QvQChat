@@ -100,6 +100,7 @@ class QvQConfig(BaseConfig):
     reply_at: bool = field(default=True, metadata=_desc("reply_at", "群聊被 @ 时触发智能体", "trigger", 2, "switch"))
     wake_prefixes: list[str] = field(default_factory=list, metadata=_desc("wake_prefixes", "群聊文本唤醒前缀", "trigger", 3, "list"))
     command_prefixes: list[str] = field(default_factory=lambda: ["#", "/"], metadata=_desc("command_prefixes", "命令消息前缀（命中即放行不处理）", "trigger", 4, "list"))
+    account_isolation: bool = field(default=True, metadata=_desc("account_isolation", "单适配器多账户隔离：适配器在线机器人 ≥2 时按接收账户自动隔离会话/人格/记忆（键追加 @账户 后缀），单账户安装不受影响；关闭则同群多号共用一个大脑。全局设置始终为所有账户共享", "trigger", 5, "switch"))
 
     admins: list[str] = field(default_factory=list, metadata=_desc("admins", "管理员用户 id 列表；为空时聊天侧无人拥有管理员权限（Dashboard/本地来源除外）", "security", 1, "list", dangerous=True))
     admin_tools: list[str] = field(default_factory=list, metadata=_desc("admin_tools", "强制仅管理员的工具覆盖名单（支持 eco_*/mcp_* 前缀通配）：写在这里的工具即便本身标记为 safe 也仅限管理员", "security", 2, "list"))
