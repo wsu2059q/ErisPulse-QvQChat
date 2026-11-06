@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from .. import texts, utils# noqa: F401 — utils 供后续扩展；texts 为 chat 附件注入使用
 from .api_config import ConfigApiMixin
-from .api_ops import OpsApiMixin
+from .api_ops import OpsApiMixin, StorageApiMixin
 from .api_sessions import SessionsApiMixin
 TEMPLATES = Path(__file__).parent / "templates"
 
@@ -99,10 +99,10 @@ class TrashMixin:
         return {"ok": True, "kind": kind}
 
 
-class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, TrashMixin):
+class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApiMixin, TrashMixin):
     """Dashboard 管理器（拆分后）。
 
-    会话/配置/运维三个 API 域分别在 api_sessions.py / api_config.py / api_ops.py（mixin），
+    会话/配置/运维/存储四个 API 域分别在 api_sessions.py / api_config.py / api_ops.py（mixin），
     本文件保留：路由注册表、鉴权、视图与 OpenAI 兼容 / 聊天流式端点。
     HTTP 路径零变化。
     """
@@ -191,6 +191,12 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, TrashMixin
             ("POST", "/api/qvq/skills/organize", self.skills_organize),
             ("GET", "/api/qvq/config", self.config_get),
             ("POST", "/api/qvq/config", self.config_set),
+            ("GET", "/api/qvq/storage", self.storage_get),
+            ("GET", "/api/qvq/storage/keys", self.storage_keys),
+            ("GET", "/api/qvq/storage/entry", self.storage_entry),
+            ("POST", "/api/qvq/storage/delete", self.storage_delete),
+            ("POST", "/api/qvq/storage/cleanup", self.storage_cleanup),
+            ("POST", "/api/qvq/storage/slim", self.storage_slim),
             ("GET", "/api/qvq/plugin_settings", self.plugin_settings_get),
             ("POST", "/api/qvq/plugin_settings/save", self.plugin_settings_save),
             ("POST", "/api/qvq/chat", self.chat_post),

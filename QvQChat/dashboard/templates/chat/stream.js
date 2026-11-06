@@ -80,17 +80,17 @@
     for (var i = 0; i < segments.length; i++) {
       var el = host.children[i];
       var seg = segments[i];
-      var sig = segSignature(seg);
+      var sig = seg.type === "think" ? "k" + String(seg.text || "").length + (seg.open ? "!" : "") : segSignature(seg);
       if (el.__qvqSig === sig) continue;
       el.__qvqSig = sig;
       if (seg.type === "think") {
-        var thinkBody = seg.text || "";
-        var sigLen = String(thinkBody).length;
-        el.innerHTML = '<details class="qvq-think" open><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>';
+        var thinkBody = String(seg.text || "");
+        var inProgress = !!seg.open;
+        el.innerHTML = '<details class="qvq-think"' + (inProgress ? " open" : "") +
+          '><summary>' + esc(t("chat_thinking")) + '</summary><div class="qvq-think-body"></div></details>';
         var bodyNode = el.querySelector(".qvq-think-body");
         if (bodyNode) bodyNode.textContent = thinkBody;
-        el.__qvqSig = "k" + sigLen + ":" + sigLen;
-        return;
+        continue; // 不能 return：think 之后的文本/工具段必须继续渲染
       }
       if (seg.type === "text") {
         el.innerHTML = '<div class="qvq-round-text">' + (mdRender(seg.text) || esc(seg.text)) + "</div>";
@@ -105,22 +105,21 @@
   function renderLiveNode(box, els, live) {
     var stick = nearBottom(box);
     var expMap = collectExpSteps(els.textEl);
-    var thinkEl = els.textEl.querySelector(".qvq-think");
-    var thinkOpen = thinkEl ? thinkEl.hasAttribute("open") : null;
 
-// 统一段列表：思考作为首段内联，其后是文本/工具交错段——与消息流渲染一致
+// 统一段列表：服务端按轮 flush 的 think 段 + 进行中的思考（末尾块，随流增长）
     var segments = [];
-    if (live.reasoning) segments.push({ type: "think", text: live.reasoning });
     (live.segments || []).forEach(function (seg) { segments.push(seg); });
+// 快照只有 steps 没有 segments 时：回退成工具段
+    if (!live.segments || !live.segments.length) {
+      (live.steps || []).forEach(function (st) {
+        segments.push({ type: "tool", start: st.start, end: st.end || null });
+      });
+    }
+    if (live.reasoning) segments.push({ type: "think", text: live.reasoning, open: true });
 
     if (segments.length) {
+// 进行中的思考段（open:true）随流重建保持展开；已完成块静态保留用户展开态
       renderSegments(els.textEl, segments, expMap);
-// 思考块展开状态：跟随 running；用户手动收起后尊重选择
-      var thinkNow = els.textEl.querySelector(".qvq-think");
-      if (thinkNow) {
-        if (thinkOpen === false) thinkNow.removeAttribute("open");
-        else if (live.status !== "running" || thinkOpen) thinkNow.setAttribute("open", "");
-      }
     } else if (!live.text && live.started && !live.reasoning) {
       var secs = Math.max(0, Math.round((Date.now() - live.started) / 1000));
       els.textEl.innerHTML = '<div class="qvq-live-wait-row"><span class="qvq-dots"><span></span><span></span><span></span></span><span class="qvq-live-wait">' + esc(t("steps_running")) + " " + secs + "</span></div>";
@@ -165,6 +164,11 @@
         live.reasoning = snap.reasoning || "";
         live.steps = snap.steps || [];
         live.segments = snap.segments || [];
+        if ((!live.segments || !live.segments.length) && live.steps.length) {
+          live.segments = live.steps.map(function (st) {
+            return { type: "tool", start: st.start, end: st.end || null };
+          });
+        }
         live.error = snap.error || null;
         renderLiveNode(box, els, live);
         if (snap.status !== "running") {
@@ -291,10 +295,20 @@
         }
       });
     }
+    function flushThink() {
+// 思考阶段结束（轮内出现文本/工具）：落成独立 think 段（每轮一块，不跨轮合并）
+      if (!live.reasoning) return;
+      var segs = live.segments;
+      var last = segs[segs.length - 1];
+      if (!last || last.type !== "think" || last.text) segs.push({ type: "think", text: "" });
+      segs[segs.length - 1].text += live.reasoning;
+      live.reasoning = "";
+    }
     streamChat(payload, function (ev, data) {
       if (epochAtStart !== chatEpoch) return;
       if (ev !== "meta") gotEvent = true;
       if (ev === "delta" && data.t) {
+        flushThink();
         live.text += data.t;
         if (data.i != null) {
           while (live.segments.length <= data.i) live.segments.push({ type: "text", text: "" });
@@ -317,6 +331,7 @@
         live.reasoning += data.t;
         scheduleText();
       } else if (ev === "tool") {
+        flushThink();
         if (data.phase === "start") {
           live.steps.push({ start: data });
           live.segments.push({ type: "tool", start: data });

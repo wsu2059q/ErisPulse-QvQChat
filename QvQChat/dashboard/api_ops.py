@@ -392,3 +392,218 @@ class OpsApiMixin:
         except Exception as e:
             self.main.logger.debug(f"participation_status failed: {e}")
             return {"enabled": False, "providers": [], "budget": {}, "decisions": [], "error": str(e)}
+
+# ===== 存储管理：全库查看 / 分域清理 / 一键重置 / 瘦身 =====
+# 原则：一切数据库内容交给用户——任意键可看可删；auth_token 永不出现在任何读写里（防自锁+防泄漏）
+
+STORAGE_DOMAINS: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = [
+    # (域 id, 前缀匹配, 精确键)
+    ("sessions", ("QvQChat:conv:",), ("QvQChat:conv_index", "QvQChat:routes")),
+    ("memories", ("QvQChat:mem:",), ()),
+    ("profiles", ("QvQChat:profile:",), ()),
+    ("personas", ("QvQChat:binding:",), ("QvQChat:personas", "QvQChat:default_persona")),
+    ("knowledge", ("QvQChat:kbvec:",), ("QvQChat:kb",)),
+    ("audit", (), ("QvQChat:audit",)),
+    ("usage", ("QvQChat:usage:",), ()),
+    ("tasks", ("QvQChat:task_runs:",), ("QvQChat:tasks", "QvQChat:task_runs")),
+    ("participation", ("QvQChat:participation:",), ()),
+    ("shares", (), ("QvQChat:shares",)),
+    ("trash", ("QvQChat:trash:",), ()),
+    ("recall", ("QvQChat:user_seen:", "QvQChat:recall_last:"), ()),
+    ("pending", ("QvQChat:pending_send:", "QvQChat:inflight:"), ()),
+    ("models", (), ("QvQChat:models", "QvQChat:models_enriched_at", "QvQChat:modelsdev", "QvQChat:providers", "QvQChat:model_chain")),
+    ("mcp", (), ("QvQChat:mcp_servers",)),
+    ("docs", (), ("QvQChat:docs_meta",)),
+    ("settings", (), ("QvQChat:ui_defaults",)),
+]
+PROTECTED_KEYS = {"QvQChat:auth_token"}
+# 磁盘目录域：路径 + 清空行为（只清内容不删目录）
+STORAGE_FILE_DOMAINS = [
+    ("uploads", "data/QvQChat/uploads"),
+    ("docs_cache", "data/QvQChat/docs"),
+]
+MAX_ENTRY_CHARS = 200_000
+
+
+def _kv_size(value) -> int:
+    """KV 值的持久化体积估算（JSON 序列化长度，失败退 repr）。"""
+    import json as _json
+
+    try:
+        return len(_json.dumps(value, ensure_ascii=False, default=str))
+    except Exception:
+        return len(repr(value))
+
+
+def _storage_domain_of(key: str) -> str:
+    for domain, prefixes, exacts in STORAGE_DOMAINS:
+        if key in exacts:
+            return domain
+        for prefix in prefixes:
+            if key.startswith(prefix):
+                return domain
+    return "other"
+
+
+class StorageApiMixin:
+    """依赖宿主提供 self.main / self.sdk / self._query。"""
+
+    def _kv_keys(self) -> list[str]:
+        out = []
+        for key in self.sdk.storage.keys():
+            if isinstance(key, str) and key.startswith("QvQChat:") and key not in PROTECTED_KEYS:
+                out.append(key)
+        return out
+
+    def _domain_keys(self, domain: str) -> list[str]:
+        if domain in ("uploads", "docs_cache"):
+            return []
+        return [k for k in self._kv_keys() if _storage_domain_of(k) == domain]
+
+    def _dir_stats(self, path: str) -> dict:
+        from pathlib import Path
+
+        root = Path(path)
+        files = bytes_total = 0
+        if root.exists():
+            for item in root.rglob("*"):
+                try:
+                    if item.is_file():
+                        files += 1
+                        bytes_total += item.stat().st_size
+                except OSError:
+                    continue
+        return {"files": files, "bytes": bytes_total}
+
+    async def storage_get(self, request):
+        stats: dict[str, dict] = {}
+        for key in self._kv_keys():
+            domain = _storage_domain_of(key)
+            entry = stats.setdefault(domain, {"keys": 0, "bytes": 0})
+            entry["keys"] += 1
+            try:
+                entry["bytes"] += _kv_size(self.sdk.storage.get(key, None))
+            except Exception:
+                continue
+        files = []
+        for domain, path in STORAGE_FILE_DOMAINS:
+            info = self._dir_stats(path)
+            info.update({"id": domain, "path": path})
+            files.append(info)
+        total = sum(v["bytes"] for v in stats.values()) + sum(f["bytes"] for f in files)
+        return {
+            "domains": [
+                {"id": domain, "keys": stats[domain]["keys"], "bytes": stats[domain]["bytes"]}
+                for domain in sorted(stats, key=lambda d: -stats[d]["bytes"])
+            ],
+            "files": files,
+            "total_bytes": total,
+        }
+
+    async def storage_keys(self, request):
+        domain = self._query(request, "domain") or ""
+        if not domain or domain in ("uploads", "docs_cache"):
+            return ({"error": "bad domain"}, 400)
+        keys = []
+        for key in self._domain_keys(domain):
+            try:
+                size = _kv_size(self.sdk.storage.get(key, None))
+            except Exception:
+                size = 0
+            keys.append({"key": key, "bytes": size})
+        keys.sort(key=lambda item: (-item["bytes"], item["key"]))
+        return {"domain": domain, "keys": keys[:600], "total": len(keys)}
+
+    async def storage_entry(self, request):
+        import json as _json
+
+        key = self._query(request, "key") or ""
+        if not key or not key.startswith("QvQChat:") or key in PROTECTED_KEYS:
+            return ({"error": "bad key"}, 400)
+        value = self.sdk.storage.get(key, None)
+        try:
+            text = _json.dumps(value, ensure_ascii=False, indent=1, default=str)
+        except Exception:
+            text = repr(value)
+        truncated = len(text) > MAX_ENTRY_CHARS
+        return {"key": key, "value": text[:MAX_ENTRY_CHARS], "truncated": truncated, "bytes": len(text)}
+
+    async def storage_delete(self, request):
+        body = await request.json()
+        wanted = [str(k) for k in ((body or {}).get("keys") or []) if isinstance(k, str)]
+        wanted = [k for k in wanted if k.startswith("QvQChat:") and k not in PROTECTED_KEYS]
+        removed = freed = 0
+        for key in wanted:
+            try:
+                freed += _kv_size(self.sdk.storage.get(key, None))
+                self.sdk.storage.delete(key)
+                removed += 1
+            except Exception:
+                continue
+        return {"ok": True, "removed": removed, "freed": freed}
+
+    async def storage_cleanup(self, request):
+        """分域清理 / 一键重置。reset=true 时清全部域（keep 列表除外）；否则清 domains 列表。"""
+        body = await request.json() or {}
+        keep = {str(k) for k in (body.get("keep") or [])}
+        if body.get("reset"):
+            domains = [d for d, _, _ in STORAGE_DOMAINS if d not in keep] + [
+                d for d, _ in STORAGE_FILE_DOMAINS if d not in keep
+            ]
+        else:
+            domains = [str(d) for d in (body.get("domains") or [])]
+        removed = freed = 0
+        for domain in domains:
+            if domain in ("uploads", "docs_cache"):
+                removed += self._clear_dir(dict(STORAGE_FILE_DOMAINS)[domain])
+                continue
+            for key in self._domain_keys(domain):
+                try:
+                    freed += _kv_size(self.sdk.storage.get(key, None))
+                    self.sdk.storage.delete(key)
+                    removed += 1
+                except Exception:
+                    continue
+        return {"ok": True, "domains": domains, "removed": removed, "freed": freed}
+
+    def _clear_dir(self, path: str) -> int:
+        from pathlib import Path
+
+        root = Path(path)
+        if not root.exists():
+            return 0
+        count = 0
+        for item in root.iterdir():
+            try:
+                if item.is_dir():
+                    import shutil
+
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+                count += 1
+            except OSError:
+                continue
+        return count
+
+    async def storage_slim(self, request):
+        """瘦身：历史消息里 rounds 与 trace 双写的旧数据去重（新写入已不双写）。"""
+        from ..conversation.service import CONV_PREFIX
+
+        freed = changed = 0
+        for key in self._kv_keys():
+            if not key.startswith(CONV_PREFIX):
+                continue
+            state = self.sdk.storage.get(key, None)
+            if not isinstance(state, dict) or not isinstance(state.get("contexts"), list):
+                continue
+            dirty = False
+            for entry in state["contexts"]:
+                if isinstance(entry, dict) and entry.get("rounds") and entry.get("trace"):
+                    freed += _kv_size(entry["trace"])
+                    del entry["trace"]
+                    dirty = True
+            if dirty:
+                self.sdk.storage.set(key, state)
+                changed += 1
+        return {"ok": True, "sessions": changed, "freed": freed}

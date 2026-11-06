@@ -37,7 +37,51 @@ class SessionsApiMixin:
                     s["live"] = True
         except Exception as e:
             self.main.logger.debug(f"live session mark failed: {e}")
-        return {"sessions": sessions, "live_sessions": sorted(live_keys), "ui_defaults": self._ui_defaults()}
+        return {
+            "sessions": sessions,
+            "live_sessions": sorted(live_keys),
+            "ui_defaults": self._ui_defaults(),
+            "accounts": self._accounts_overview(sessions),
+        }
+
+    def _accounts_overview(self, sessions: list) -> dict:
+        """多账户概览：各平台在线 bot + 每个已隔离账户（chat_key 的 @account 后缀）的会话数。
+
+        单账户平台不产生后缀，不进 accounts；账户仍出现在 sessions 里说明历史隔离数据在。
+        """
+        counts: dict[str, dict] = {}
+        for s in sessions:
+            key = str(s.get("chat_key") or "")
+            if "@" not in key:
+                continue
+            base, _, acct = key.rpartition("@")
+            if not acct:
+                continue
+            platform = base.split(":", 1)[0] or "?"
+            entry = counts.setdefault(acct, {"account": acct, "platforms": set(), "sessions": 0})
+            entry["platforms"].add(platform)
+            entry["sessions"] += 1
+        adapters: list[dict] = []
+        try:
+            names = list(self.sdk.adapter.list_registered() or [])
+        except Exception:
+            names = []
+        for name in names:
+            try:
+                # 框架返回 {platform: {bot_id: {...}}}；兼容裸 dict / list 两种形态
+                raw = self.sdk.adapter.list_bots(str(name)) or {}
+                per = raw.get(name, raw) if isinstance(raw, dict) else {}
+                bots = [str(b) for b in per.keys()] if isinstance(per, dict) else [str(b) for b in per]
+            except Exception:
+                bots = []
+            adapters.append({"platform": str(name), "bots": bots})
+        return {
+            "adapters": adapters,
+            "accounts": [
+                {**entry, "platforms": sorted(entry["platforms"])}
+                for entry in sorted(counts.values(), key=lambda x: (-x["sessions"], x["account"]))
+            ],
+        }
 
     async def session_messages(self, request):
         chat_key = self._query(request, "chat_key")

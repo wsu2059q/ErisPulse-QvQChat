@@ -104,6 +104,34 @@ def debounce_window(cfg, is_group: bool, is_at: bool) -> float:
     return group
 
 
+# 近期消息指纹：chat_key -> [(sender:text, ts)]（进程内即可：适配器双投递都在本进程）
+_RECENT_MSGS: dict[str, list] = {}
+
+
+def _dup_recent(chat_key: str, sender_id: str, text: str, window: float = 6.0) -> bool:
+    """短窗去重：同一会话内同发送者+相同文本在 window 秒内重复到达 → 丢弃。
+
+    针对适配器对多账户同群消息的双投递/重放（毫秒级连发），不影响人类正常复读。
+    """
+    import hashlib
+
+    key = str(chat_key or "")
+    fp = hashlib.sha1(f"{sender_id}\n{text}".encode("utf-8", "replace")).hexdigest()[:16]
+    now = time.time()
+    recent = _RECENT_MSGS.get(key)
+    if recent is None:
+        recent = []
+        _RECENT_MSGS[key] = recent
+    recent[:] = [item for item in recent if now - item[1] < window]
+    if any(item[0] == fp for item in recent):
+        return True
+    recent.append((fp, now))
+    if len(_RECENT_MSGS) > 512:
+        for k in list(_RECENT_MSGS)[: len(_RECENT_MSGS) - 512]:
+            _RECENT_MSGS.pop(k, None)
+    return False
+
+
 def _account_suffix_for(cfg, sdk, event) -> str:
     """单适配器多账户隔离：键追加 @账户 后缀。
 
@@ -124,6 +152,34 @@ def _account_suffix_for(cfg, sdk, event) -> str:
     except Exception:
         return ""
     return f"@{account}" if account else ""
+
+
+
+
+def _seed_dedupe(rows, contexts) -> list:
+    """冷启动回填去重：跳过当前上下文里已存在的相同文本（防止同一条消息既在
+    历史又在本次输入中出现两次）。"""
+    if not rows:
+        return rows
+    known = set()
+    for message in contexts or []:
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, list):
+                content = " ".join(
+                    str(part.get("text") or "") for part in content if isinstance(part, dict)
+                )
+            text = str(content or "").strip()
+            if text:
+                known.add(text[-200:])
+    out = []
+    for row in rows:
+        text = str((row or {}).get("text") or "").strip()
+        if text and text[-200:] in known:
+            continue
+        known.add(text[-200:])
+        out.append(row)
+    return out
 
 
 class InboxMixin(RecoveryMixin):
@@ -666,11 +722,18 @@ class InboxMixin(RecoveryMixin):
         entry = self._pending.setdefault(chat_key, {"items": [], "event": event, "timer": None})
 # origin（chat/plugin）随聚合条目传递，进 ToolContext 记账可观测
         entry.setdefault("origin", origin)
+# 短窗去重：多账户同群双投递/适配器重放会在同一会话插入重复文本（用户看到多条重复）。
+# 仅在多账户生效（与 @账户 后缀同条件）——单账户场景不做去重，不误伤人类复读
+        sender_id = str(event.get_user_id() or "")
+        multi_account = bool(_account_suffix_for(self.cfg, self.sdk, event))
+        if multi_account and str(text or "").strip() and _dup_recent(chat_key, sender_id, str(text)):
+            self.logger.debug(f"duplicate incoming dropped ({chat_key})")
+            return
         entry["items"].append(
             {
                 "text": text,
                 "images": images,
-                "sender_id": str(event.get_user_id() or ""),
+                "sender_id": sender_id,
                 "sender_name": self._sender_name(event),
             }
         )
@@ -845,7 +908,7 @@ class InboxMixin(RecoveryMixin):
                 labeled,
                 images=images,
                 scene=scene,
-                seed_provider=lambda: self._seed_history(event),
+                seed_provider=lambda: self._seed_history(event, chat_key),
                 cross_user_id=("" if is_group else sender_id),
                 sender_id=sender_id,
                 profile_user=(f"{event.get_platform()}:{sender_id}" if sender_id else ""),
@@ -1014,7 +1077,7 @@ class InboxMixin(RecoveryMixin):
         except Exception as e:
             self.logger.debug(f"opening send failed: {e}")
 
-    async def _seed_history(self, event) -> list:
+    async def _seed_history(self, event, chat_key: str = "") -> list:
         """冷启动回填：优先取带 sender 的收件箱记录并逐条标注发言者，避免历史对话者被误认成当前发言者。"""
         limit = int(getattr(self.cfg, "history_seed", 20) or 0)
         if limit <= 0:
@@ -1024,6 +1087,7 @@ class InboxMixin(RecoveryMixin):
         except Exception as e:
             self.logger.debug(f"transcript rows fetch failed: {e}")
             rows = []
+        rows = _seed_dedupe(rows, self.sessions.get_contexts(chat_key)) if chat_key else rows
         if not rows:
 # 降级：框架收件箱不可用时走 event.history（无 sender，统一标注为未记录）
             try:

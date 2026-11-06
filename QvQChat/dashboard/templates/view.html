@@ -68,6 +68,10 @@
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg></span>
         <span class="qvq-nav-tx" data-i18n="nav_audit">审计</span>
       </button>
+      <button class="qvq-nav-btn" data-tab="storage">
+        <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span>
+        <span class="qvq-nav-tx" data-i18n="nav_storage">存储</span>
+      </button>
       <div class="qvq-nav-group" data-i18n="nav_settings">设置</div>
       <button class="qvq-nav-btn" data-tab="settings">
         <span class="qvq-nav-ico"><svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" /></svg></span>
@@ -132,6 +136,11 @@
           <h3 class="qvq-card-title" data-i18n="orch_running">运行状态</h3>
           <div id="qvq-orch-running"></div>
         </div>
+      </div>
+      <div class="qvq-card">
+        <h3 class="qvq-card-title" data-i18n="orch_accounts">适配器账户</h3>
+        <div class="qvq-tool-desc" data-i18n="orch_accounts_hint">各平台登录的 bot 账户；同平台多账户时会话按 @账户 隔离</div>
+        <div id="qvq-orch-accounts"></div>
       </div>
       <div class="qvq-card">
         <h3 class="qvq-card-title" data-i18n="orch_capabilities">能力开关</h3>
@@ -322,6 +331,29 @@
       </div>
     </section>
 
+    <section class="qvq-tab" data-section="storage">
+      <div class="qvq-orch-top">
+        <div>
+          <h1 class="qvq-h1" data-i18n="nav_storage">存储</h1>
+          <p class="qvq-desc" data-i18n="storage_desc">全部数据库内容：查看 / 清理 / 重置</p>
+        </div>
+        <div class="qvq-storage-total" id="qvq-storage-total"></div>
+      </div>
+      <div class="qvq-toolbar">
+        <button class="qvq-btn ghost" id="qvq-storage-refresh" type="button" data-i18n="refresh">刷新</button>
+        <button class="qvq-btn ghost" id="qvq-storage-slim" type="button" data-i18n="storage_slim">瘦身</button>
+        <button class="qvq-btn danger" id="qvq-storage-reset" type="button" data-i18n="storage_reset">一键重置…</button>
+      </div>
+      <div class="qvq-card">
+        <div id="qvq-storage-domains"></div>
+      </div>
+      <div class="qvq-card">
+        <h3 class="qvq-card-title" data-i18n="storage_keys_title">键浏览</h3>
+        <div class="qvq-tool-desc" data-i18n="storage_keys_hint">展开一个域后，这里列出它的全部键，可查看内容或删除</div>
+        <div id="qvq-storage-keys"></div>
+      </div>
+    </section>
+
     <section class="qvq-tab" data-section="settings">
       <h1 class="qvq-h1" data-i18n="nav_settings">设置</h1>
       <p class="qvq-desc" data-i18n="settings_desc">运行时配置，保存即生效</p>
@@ -348,29 +380,7 @@
     </section>
   </main>
 
-<button type="button" class="qvq-appear-fab" id="qvq-appear-fab" title="外观">🎨</button>
-<div class="qvq-appear-panel" id="qvq-appear-panel">
-  <h4>外观 / 透感</h4>
-  <div class="qvq-appear-row">
-    <input class="qvq-input" id="qvq-appear-url" style="flex:1 1 auto; min-width:0" placeholder="背景图 URL…" />
-  </div>
-  <div class="qvq-appear-row">
-    <button type="button" class="qvq-btn small" id="qvq-appear-file-btn">上传图片</button>
-    <input type="file" id="qvq-appear-file" accept="image/*" style="display:none" />
-    <button type="button" class="qvq-btn small ghost" id="qvq-appear-clear">清除背景</button>
-  </div>
-  <div class="qvq-appear-row">
-    <span style="font-size:12px; opacity:.7">透明度</span>
-    <button type="button" class="qvq-btn small ghost" data-alpha="low">轻</button>
-    <button type="button" class="qvq-btn small ghost" data-alpha="mid">标准</button>
-    <button type="button" class="qvq-btn small ghost" data-alpha="high">强</button>
-  </div>
-  <div class="qvq-appear-row">
-    <span style="font-size:12px; opacity:.7">磨砂</span>
-    <button type="button" class="qvq-btn small ghost" data-blur="on">开</button>
-    <button type="button" class="qvq-btn small ghost" data-blur="off">关</button>
-  </div>
-  <div class="qvq-appear-hint">背景与透感仅保存在本浏览器（localStorage），不影响其他访问者；上传图片会压缩后本地保存。</div>
+
 </div>
 
   <div class="qvq-modal" id="qvq-modal" style="display:none">

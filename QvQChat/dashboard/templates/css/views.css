@@ -1256,93 +1256,205 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
   margin-top: 8px;
 }
 
-/* ===== 玻璃拟态外观（参考 ErisPulse Dashboard 透感方案）=====
-   body.qvq-glass-on 时启用：背景图层 + 半透明面板 + 可选磨砂。
-   透明档位（--qvq-glass-alpha）：轻 0.78 / 标准 0.62 / 强 0.45。 */
-body.qvq-glass-on {
-  background: var(--qvq-glass-image, none) center / cover no-repeat fixed;
+/* ===== 移动端：卡片单元格纵向布局 ===== */
+@media (max-width: 720px) {
+  /* 表格卡片：标签在上（整行宽），值整宽左对齐；只在确有必要时断词 */
+  table.qvq-table[data-cards] td {
+    display: block;
+    text-align: left;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    padding: 6px 0;
+  }
+  table.qvq-table[data-cards] td::before {
+    display: block;
+    margin: 0 0 3px;
+    letter-spacing: 0.04em;
+  }
+  /* 长标识（assistant / knowledge_add / chat_key）整词换行 */
+  table.qvq-table[data-cards] td b,
+  table.qvq-table[data-cards] td .qvq-chip {
+    word-break: break-word;
+  }
+  /* 操作按钮行：独立一行、可横向滚动 */
+  table.qvq-table[data-cards] td:last-child {
+    white-space: nowrap;
+    overflow-x: auto;
+    padding-top: 8px;
+    border-top: 1px dashed var(--qvq-bd);
+    margin-top: 4px;
+  }
+  table.qvq-table[data-cards] td:last-child::before {
+    display: none;
+  }
+  /* 通用列表行（知识库/工具/技能）：纵向堆叠，名称与描述各占整行 */
+  .qvq-tool-row {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+  .qvq-tool-row .qvq-tool-name {
+    flex: 1 1 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .qvq-tool-row .qvq-tool-desc {
+    flex: 1 1 100%;
+    text-align: left;
+  }
+  .qvq-tool-row .qvq-btn,
+  .qvq-tool-row button {
+    flex: none;
+  }
+  /* KB 行复选框外边距 */
+  .qvq-tool-row .qvq-kb-check {
+    margin: 4px 8px 0 0;
+  }
+  /* 页面留白与卡片内边距收紧 */
+  .qvq-main {
+    padding: 0 10px 24px;
+  }
+  .qvq-card {
+    padding: 14px 12px;
+    border-radius: 12px;
+  }
+  /* 小屏顶栏标题字号 */
+  .qvq-topbar-title {
+    font-size: 16px;
+  }
 }
-body.qvq-glass-on::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: var(--qvq-bg, #f6f7f9);
-  opacity: var(--qvq-glass-dim, 0.18);
-  pointer-events: none;
-}
-body.qvq-glass-on .qvq-card,
-body.qvq-glass-on .qvq-modal > div,
-body.qvq-glass-on .qvq-tabbar,
-body.qvq-glass-on .qvq-chat-inputbar {
-  background: color-mix(in srgb, var(--qvq-surface) calc(var(--qvq-glass-alpha, 0.62) * 100%), transparent);
-  backdrop-filter: blur(var(--qvq-glass-blur, 14px)) saturate(1.25);
-  -webkit-backdrop-filter: blur(var(--qvq-glass-blur, 14px)) saturate(1.25);
-  border-color: rgba(255, 255, 255, 0.16);
-}
-body.qvq-glass-on:not([data-theme="dark"]) .qvq-card {
-  box-shadow: 0 2px 18px rgba(15, 23, 42, 0.12);
-}
-body.qvq-glass-on .qvq-appear-preview {
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-body.qvq-glass-low { --qvq-glass-alpha: 0.78; }
-body.qvq-glass-mid { --qvq-glass-alpha: 0.62; }
-body.qvq-glass-high { --qvq-glass-alpha: 0.45; }
 
-/* 外观设置面板 */
-.qvq-appear-fab {
-  position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 60;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 1px solid var(--qvq-bd);
-  background: var(--qvq-surface);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 17px;
-  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.15);
+/* ===== 多账户隔离：徽标 / 筛选 / 账户卡 ===== */
+.qvq-acct-badge {
+  display: inline-block;
+  vertical-align: middle;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--qvq-muted, #888);
+  border: 1px solid rgba(127, 127, 127, 0.18);
 }
-.qvq-appear-panel {
-  position: fixed;
-  right: 16px;
-  bottom: 64px;
-  z-index: 60;
-  width: 300px;
-  max-height: 70vh;
-  overflow: auto;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid var(--qvq-bd);
-  background: var(--qvq-surface);
-  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.22);
-  display: none;
+.qvq-acct-badge.iso {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.25);
+  color: var(--qvq-accent, #3b82f6);
 }
-.qvq-appear-panel.open {
-  display: block;
+/* 侧栏会话行：徽标贴在名称后 */
+.qvq-chat-srow .qvq-acct-badge {
+  flex: none;
+  margin-left: 6px;
 }
-.qvq-appear-panel h4 {
+/* 会话页账户筛选 chips */
+.qvq-acct-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0 0 10px;
-  font-size: 13px;
 }
-.qvq-appear-row {
+.qvq-chip-btn {
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  background: transparent;
+  color: inherit;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.qvq-chip-btn:hover {
+  border-color: var(--qvq-accent, #3b82f6);
+}
+.qvq-chip-btn.on {
+  background: var(--qvq-accent, #3b82f6);
+  border-color: var(--qvq-accent, #3b82f6);
+  color: #fff;
+}
+/* 编排页适配器账户卡 */
+.qvq-acct-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 8px 0;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px dashed rgba(127, 127, 127, 0.15);
   flex-wrap: wrap;
 }
-.qvq-appear-row .qvq-btn.small.active {
-  outline: 2px solid var(--qvq-accent);
+.qvq-acct-row:last-child {
+  border-bottom: none;
 }
-.qvq-appear-hint {
-  font-size: 11px;
-  opacity: 0.6;
-  margin: 6px 0;
-  line-height: 1.5;
+.qvq-acct-row.stale .qvq-acct-platform {
+  color: var(--qvq-muted, #888);
+}
+.qvq-acct-platform {
+  min-width: 92px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.qvq-acct-bots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ===== 存储管理页 ===== */
+.qvq-storage-total {
+  font-size: 13px;
+  color: var(--qvq-muted, #888);
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.08);
+}
+.qvq-storage-total b {
+  color: var(--qvq-accent, #3b82f6);
+  font-size: 15px;
+}
+.qvq-storage-key {
+  font-family: var(--qvq-mono, monospace);
+  font-size: 12px;
+  word-break: break-all;
+  max-width: 420px;
+}
+.qvq-storage-entry {
+  max-height: 60vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ===== 卡片头（标题左/操作右）、记忆画像分节 ===== */
+.qvq-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.qvq-card-head .qvq-h2 {
+  margin: 0;
+  flex: none;
+}
+.qvq-card-head .qvq-btn {
+  margin-left: auto; /* 按钮靠右 */
+}
+.qvq-card-head .qvq-tool-desc {
+  flex: none;
+}
+.qvq-actions.head {
+  justify-content: flex-end;
+  margin: 0 0 10px;
+}
+.qvq-profile-sec {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.qvq-profile-sec:first-of-type {
+  margin-top: 4px;
+}
+.qvq-col-acts {
+  text-align: right;
+  white-space: nowrap;
 }

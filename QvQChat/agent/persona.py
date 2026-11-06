@@ -234,15 +234,32 @@ class PersonaManager:
         return out
 
     def resolve(self, chat_key: str) -> dict:
-        """两级回落：会话精确 key → strip_isolation 群 base key → 全局默认 → assistant。"""
-        bound = str(self.sdk.storage.get(BINDING_PREFIX + chat_key, "") or "")
-        if not bound and chat_key:
-            from ..conversation.service import strip_isolation
+        """绑定回落链（从具体到宽泛，首个命中生效）：
 
-            base = strip_isolation(chat_key)
-            if base != chat_key:
-                bound = str(self.sdk.storage.get(BINDING_PREFIX + base, "") or "")
-        return self.get(bound or None)
+        会话精确 key → 群 base key（跨账户的同一群）→ @账户 级（该 bot 账户全部会话）
+        → platform:* 平台级 → 全局默认 → assistant。
+        层级 key 通过 bind() 直接写入即可（chat_key 填 "@账号" / "平台名:*"）。
+        """
+        from ..conversation.service import account_of, strip_account, strip_isolation
+
+        candidates: list[str] = []
+        key = str(chat_key or "")
+        if key:
+            candidates.append(key)
+            base = strip_account(strip_isolation(key))
+            if base and base != key:
+                candidates.append(base)
+            account = account_of(key)
+            if account:
+                candidates.append("@" + account)
+            platform = key.split(":", 1)[0]
+            if platform:
+                candidates.append(f"{platform}:*")
+        for candidate in candidates:
+            bound = str(self.sdk.storage.get(BINDING_PREFIX + candidate, "") or "")
+            if bound:
+                return self.get(bound)
+        return self.get(None)
 
     def migrate_state_mirror(self) -> int:
         """启动迁移：KV 绑定为权威源，conv state.persona 指向不同则回填一次。
