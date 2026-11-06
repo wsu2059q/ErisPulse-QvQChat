@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
-from . import utils
+from . import texts, utils
 from .utils import schedule_next
 
 TASKS_KEY = "QvQChat:tasks"
@@ -14,6 +15,10 @@ TASK_RUNS_KEEP = 50
 # 用户画像固化内置任务（非对话任务：_fire 走 _fire_profile_consolidate 而非 run_prompt）
 PROFILE_TASK_KIND = "profile_consolidate"
 PROFILE_TASK_NAME = "qvq:profile_consolidate"
+
+# 存储自动维护内置任务（每日：slim 去重 / trash 过期 / work 沙箱过期）
+MAINTAIN_TASK_KIND = "storage_maintain"
+MAINTAIN_TASK_NAME = "qvq:storage_maintain"
 
 
 class Scheduler:
@@ -57,6 +62,8 @@ class Scheduler:
                 }
             )
             self.sdk.storage.set(TASK_RUNS_KEY, runs)
+            if status == "error":
+                self._alert_if_persistent(task, error)
         except Exception:
             pass
 
@@ -201,6 +208,7 @@ class Scheduler:
         self.ensure_delegations()
         self.register_cron_handler()
         self.ensure_profile_task()
+        self.ensure_storage_maintain_task()
         self.main.spawn(self._loop())
 # 启动恢复钩子：悬空回复重跑 / 待发队列重放 / 任务中断对账（例程自带延迟避开加载期）
         recover = getattr(self.main, "recover_inflight_routine", None)
@@ -232,8 +240,80 @@ class Scheduler:
         )
         return task
 
+    def ensure_storage_maintain_task(self) -> dict | None:
+        """每日存储自动维护（R7）：slim 去重 / trash 过期 / work 沙箱过期。开关关闭不注册。"""
+        if not bool(getattr(self.main.cfg, "storage_auto_maintain", True)):
+            return None
+        for task in self._load():
+            if task.get("task_kind") == MAINTAIN_TASK_KIND:
+                return None
+        return self.add(
+            {
+                "name": MAINTAIN_TASK_NAME,
+                "schedule": {"type": "interval", "seconds": 24 * 3600},
+                "schedule_raw": "every:24h",
+                "prompt": "",
+                "task_kind": MAINTAIN_TASK_KIND,
+            }
+        )
+
+    async def _fire_storage_maintain(self) -> dict:
+        """回收站/work 沙箱过期清理 + 历史 rounds/trace 双写去重。全部容错。"""
+        import time as _time
+        from pathlib import Path as _Path
+
+        sdk = self.sdk
+        report = {"trash": 0, "work": 0, "slimmed": 0}
+        trash_days = int(getattr(self.main.cfg, "trash_retention_days", 14) or 0)
+        if trash_days > 0:
+            cutoff = _time.time() - trash_days * 86400
+            for key in list(sdk.storage.keys()):
+                if isinstance(key, str) and key.startswith("QvQChat:trash:"):
+                    entry = sdk.storage.get(key, None)
+                    ts = float(entry.get("ts") or 0) if isinstance(entry, dict) else 0
+                    if ts and ts < cutoff:
+                        sdk.storage.delete(key)
+                        report["trash"] += 1
+        work_days = int(getattr(self.main.cfg, "work_retention_days", 30) or 0)
+        if work_days > 0:
+            root = _Path(str(getattr(self.main.cfg, "file_workdir", "") or "data/QvQChat/work"))
+            if root.exists():
+                cutoff = _time.time() - work_days * 86400
+                for d in root.iterdir():
+                    try:
+                        if d.is_dir() and d.stat().st_mtime < cutoff:
+                            import shutil
+
+                            shutil.rmtree(d, ignore_errors=True)
+                            report["work"] += 1
+                    except OSError:
+                        continue
+        conv_prefix = "QvQChat:conv:"
+        for key in list(sdk.storage.keys()):
+            if not (isinstance(key, str) and key.startswith(conv_prefix)):
+                continue
+            state = sdk.storage.get(key, None)
+            if not (isinstance(state, dict) and isinstance(state.get("contexts"), list)):
+                continue
+            dirty = False
+            for entry in state["contexts"]:
+                if isinstance(entry, dict) and entry.get("rounds") and entry.get("trace"):
+                    del entry["trace"]
+                    dirty = True
+            if dirty:
+                sdk.storage.set(key, state)
+                report["slimmed"] += 1
+        logger = getattr(self.main, "logger", None)
+        if logger is not None:
+            logger.info(f"storage maintain: {report}")
+        return report
+
     async def _fire_profile_consolidate(self) -> int:
         """对 user_seen 倒排里近 24h 活跃用户跑画像固化；单用户失败跳过（低频容错）。"""
+# 高负载降载：满载时整轮跳过（定时任务下轮再跑，画像不急）
+        pool = getattr(self.main, "pool", None)
+        if pool is not None and callable(getattr(pool, "background_blocked", None)) and pool.background_blocked():
+            return 0
         service = getattr(self.main, "conversations", None) or getattr(self.main, "sessions", None)
         profile = getattr(service, "profile", None) if service is not None else None
         if profile is None:
@@ -299,12 +379,51 @@ class Scheduler:
         for task in to_fire:
             await self._fire(task)
 
+
+    def _alert_if_persistent(self, task: dict, error: str) -> None:
+        """R9B 定时任务连续失败告警：≥3 次时向首个管理员会话每日提醒一次。"""
+        try:
+            task_id = str(task.get("id") or "")
+            marker_day = f"QvQChat:tasks:alerted:{time.strftime('%Y-%m-%d')}"
+            recent = [r for r in self.runs(30) if r.get("task_id") == task_id]
+            streak = 0
+            for r in reversed(recent):
+                if r.get("status") != "error":
+                    break
+                streak += 1
+            if streak < 3:
+                return
+            if self.sdk.storage.get(marker_day, "") == "1":
+                return
+            self.sdk.storage.set(marker_day, "1")
+            admins = [str(a) for a in (getattr(self.main.cfg, "admins", []) or []) if str(a).strip()]
+            if not admins:
+                return
+            admin_id = admins[0]
+            from .conversation.service import make_chat_key
+
+            speak = getattr(self.main, "speak", None)
+            if not callable(speak):
+                return
+            import asyncio as _asyncio
+
+            message = texts.t("task_fail_alert", name=str(task.get("name") or task_id), n=streak, error=utils.truncate(error, 120))
+            _asyncio.get_event_loop().create_task(
+                speak(make_chat_key("dashboard", "private", admin_id), reason=f"任务连续失败 ×{streak}", prompt=message)
+            )
+        except Exception as e:
+            logger = getattr(self.main, "logger", None)
+            if logger is not None:
+                logger.debug(f"task alert failed: {e}")
+
     async def _fire(self, task: dict) -> None:
         task_id = str(task.get("id") or "")
         self._mark_run_state(task_id, "running")
         try:
             if task.get("task_kind") == PROFILE_TASK_KIND:
                 await self._fire_profile_consolidate()
+            elif task.get("task_kind") == MAINTAIN_TASK_KIND:
+                await self._fire_storage_maintain()
             else:
                 await self.main.run_task(task)
             self._record_run(task, "ok")

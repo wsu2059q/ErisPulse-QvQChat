@@ -274,3 +274,25 @@ def test_h1_system_parts_switches():
     joined_off = "\n".join(p.text for p in parts_off)
     assert "闲聊输出规则" not in joined_off
     assert "其他机器人或智能体" not in joined_off
+
+
+def test_persona_roster_recognition():
+    """人格名册感知：其它已定义人格以 名字/别名 注入 roster 部件；当前人格不进名册；可关闭。"""
+    from fakes import FakeMain
+
+    main = FakeMain()
+    saved = main.personas.save({"id": "cat", "name": "猫娘", "system": "你是猫娘。", "nickname": "喵喵"})
+    # 用内置 assistant 视角看名册：应含 猫娘（别名：喵喵）等其它人格，不含 assistant 自己
+    parts = main.sessions.build_system_parts(main.personas.get("assistant"))
+    roster = [p for p in parts if p.kind == "roster"]
+    assert roster, "应产生 roster 部件"
+    text = roster[0].text
+    assert "猫娘" in text and "（别名：喵喵）" in text and "（cat）" in text
+    assert "- assistant" not in text  # 自己不进名册
+    for entry in main.personas.list():
+        pid = str(entry.get("id") or "")
+        if pid != "assistant":
+            assert pid in text, pid
+    # 关闭开关 → 无 roster 部件
+    main_off = FakeMain(persona_roster_enabled=False)
+    assert all(p.kind != "roster" for p in main_off.sessions.build_system_parts(main_off.personas.get("assistant")))

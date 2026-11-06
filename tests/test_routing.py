@@ -255,3 +255,19 @@ async def test_routing_without_chat_key_classifies_each_dispatch():
     await pool.dispatch(TaskSpec(kind="chat"), req(QUALITY_TEXT))
     await pool.dispatch(TaskSpec(kind="chat"), req("嗯嗯"))
     assert [e["prefer"] for e in pool.routing_log] == ["quality", "cheap"]
+
+
+def test_classify_short_task_verbs_not_cheap():
+    """用户场景：描述很简单但要启动长任务——动词命中工具暗示，短消息不下探 cheap。"""
+    for text in ("帮我装一下snowluma", "把配置打包发到群里", "拉取最新代码并部署",
+                 "装个表情包模块", "install snowluma adapter"):
+        decision = classify(text)
+        assert decision.prefer != "cheap", f"{text} -> {decision}"
+
+
+def test_classify_short_question_not_cheap():
+    """疑问句保底：短问题至少 balanced（不能因为短就关思考/换便宜模型）。"""
+    for text in ("snowluma 的配置格式是什么样？", "这个怎么用?", "epsdk 是什么？"):
+        decision = classify(text)
+        assert decision.prefer != "cheap", f"{text} -> {decision}"
+        assert decision.reason

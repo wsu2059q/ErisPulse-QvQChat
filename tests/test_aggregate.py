@@ -24,6 +24,7 @@ def make_main(**overrides):
         "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
         "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice",
         "_maybe_send_opening",
+        "_is_command_message", "_command_yields",
     ):
         static_attr = inspect.getattr_static(Main, name)
         if isinstance(static_attr, staticmethod):

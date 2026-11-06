@@ -102,10 +102,21 @@ def _platform_not_found_msg(ctx: ToolContext, platform: str) -> str:
 async def send_message(ctx: ToolContext, platform: str = "", target_type: str = "",
                        target_id: str = "",
                        text: str = "", image_url: str = "", audio_path: str = "",
+                       file_path: str = "",
                        at: str = "", reply_to: str = "", method: str = "",
                        as_forward: bool = False) -> str:
-    if not text and not image_url and not audio_path:
+    if not text and not image_url and not audio_path and not file_path:
         return texts.t("send_need_content")
+# 文件发送：只允许发本会话工作区内的文件（任意群友都能触发 AI——
+# 放开任意路径等于把机器上的文件外泄给任何人）
+    resolved_file = ""
+    if file_path:
+        from . import files as file_tools
+
+        try:
+            resolved_file = str(file_tools.sandbox_resolve(ctx, file_path, must_exist=True))
+        except ValueError as e:
+            return f"file_path rejected: {e}"
     if text:
         text = utils.strip_stray_tags(str(text))
     # 目标缺省=当前会话：模型不确定发给谁时无需瞎猜平台/ID（系统提示 <session> 块同步此约定）
@@ -207,6 +218,11 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
         result = await chain.Image(image_url)
     if audio_path:
         result = await chain.Voice(audio_path)
+    if resolved_file:
+        try:
+            result = await chain.File(resolved_file)
+        except AttributeError:
+            return texts.t("platform_method_unsupported", platform=platform, method="File", methods=", ".join(sends) or "-")
     if used:
         _record_sent(ctx, platform, target_type, target_id)
     body = utils.to_text(result)
@@ -372,6 +388,7 @@ def register(registry: ToolRegistry, main) -> None:
                 "text": _s(type="string", description="Text content (markdown allowed; downgraded to plain text automatically when the platform only supports Text)"),
                 "image_url": _s(type="string", description="Image URL or local path"),
                 "audio_path": _s(type="string", description="Local audio file path"),
+                "file_path": _s(type="string", description="Send a local file as a document. MUST be a path inside this chat's work sandbox (list_files to browse; write_file/download_file/zip_files to produce one). Paths outside the sandbox are rejected."),
                 "at": _s(type="string", description="User id to mention"),
                 "reply_to": _s(type="string", description="Message id to quote"),
                 "method": _s(type="string", description="Force a specific send method (e.g. Markdown, EmojiFace); empty for auto"),

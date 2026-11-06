@@ -103,8 +103,8 @@ class QvQConfig(BaseConfig):
     account_isolation: bool = field(default=True, metadata=_desc("account_isolation", "单适配器多账户隔离：适配器在线机器人 ≥2 时按接收账户自动隔离会话/人格/记忆（键追加 @账户 后缀），单账户安装不受影响；关闭则同群多号共用一个大脑。全局设置始终为所有账户共享", "trigger", 5, "switch"))
 
     admins: list[str] = field(default_factory=list, metadata=_desc("admins", "管理员用户 id 列表；为空时聊天侧无人拥有管理员权限（Dashboard/本地来源除外）", "security", 1, "list", dangerous=True))
-    admin_tools: list[str] = field(default_factory=list, metadata=_desc("admin_tools", "强制仅管理员的工具覆盖名单（支持 eco_*/mcp_* 前缀通配）：写在这里的工具即便本身标记为 safe 也仅限管理员", "security", 2, "list"))
-    safe_tools: list[str] = field(default_factory=list, metadata=_desc("safe_tools", "在基础安全集之外追加给所有人的工具（支持前缀通配，如让所有人可用生图扩展）", "security", 3, "list"))
+    admin_tools: list[str] = field(default_factory=list, metadata=_desc("admin_tools", "强制仅管理员的工具覆盖名单（支持 eco_*/mcp_* 前缀通配）：写在这里的工具即便本身标记为 safe 也仅限管理员", "security", 2, "list", items="tools"))
+    safe_tools: list[str] = field(default_factory=list, metadata=_desc("safe_tools", "在基础安全集之外追加给所有人的工具（支持前缀通配，如让所有人可用生图扩展）", "security", 3, "list", items="tools"))
     safe_commands: list[str] = field(default_factory=lambda: ["ping *"], metadata=_desc("safe_commands", "非管理员也允许执行的简单命令（通配匹配，如 ping *）", "security", 4, "list"))
     security_level: str = field(default="standard", metadata=_desc("security_level", "电脑操作安全级别：strict 只读+确认 / standard 白名单+危险确认 / permissive 放开但审计", "security", 5, "select", ["strict", "standard", "permissive"], dangerous=True))
     trust_agent: bool = field(default=False, metadata=_desc("trust_agent", "完全信任智能体：跳过所有危险操作确认（仍审计）", "security", 6, "switch", dangerous=True))
@@ -173,6 +173,7 @@ class QvQConfig(BaseConfig):
     opening_on_seed: bool = field(default=False, metadata=_desc("opening_on_seed", "冷启动历史回填发生时也发送开场白（默认关闭：回填说明已有过对话，不再打招呼）", "chat", 46, "switch"))
     opening_on_reset: bool = field(default=False, metadata=_desc("opening_on_reset", "/qvq reset 重置会话时同时清除开场白已发标记，下次对话重新发送开场白", "chat", 47, "switch"))
     opening_max_len: int = field(default=200, metadata=_desc("opening_max_len", "开场白单条最大字符数（超出截断）", "chat", 48, "number"))
+    persona_roster_enabled: bool = field(default=True, metadata=_desc("persona_roster_enabled", "人格名册感知：把已定义人格（名字/别名）注入系统提示词，Bot 能认出被提到的其他人格并自然地以熟人口吻谈起（不冒充不扮演）", "chat", 72, "switch"))
     reply_narrate: bool = field(default=False, metadata=_desc("reply_narrate", "边做边说：工具任务的每一步先说一句要做什幺、拿到结果简短汇报、结束给简短结论（每句单独发到群里，像真人工作播报）", "chat", 49, "switch"))
     notify_on_passive_failure: bool = field(default=False, metadata=_desc("notify_on_passive_failure", "被动触发的任务（如插件插话）失败时也在群里回复错误详情；默认关闭只记日志，避免错误刷屏", "chat", 53, "switch"))
     forward_exclude_trace: bool = field(default=False, metadata=_desc("forward_exclude_trace", "合并转发卡不生成「执行过程」工具节点（纯结论卡片，过程仍可在网页端查看）", "chat", 54, "switch"))
@@ -182,7 +183,7 @@ class QvQConfig(BaseConfig):
     forward_external_reply: bool = field(default=True, metadata=_desc("forward_external_reply", "转发卡外直发结论：合并转发只装执行过程与中间发言，最终结论性回复以普通消息直发到卡外（结论不进卡，避免重复）；关闭则回到旧行为（结论只在卡内）", "chat", 58, "switch"))
     forward_args_chars: int = field(default=140, metadata=_desc("forward_args_chars", "转发卡「执行过程」节点参数摘要的截断字符数（0 恢复默认 140；调大可减少显示不全）", "chat", 59, "number"))
     forward_output_chars: int = field(default=500, metadata=_desc("forward_output_chars", "转发卡「执行过程」节点输出摘要的截断字符数（默认 500，旧值 180 常显示不全；0 恢复默认）", "chat", 60, "number"))
-    reply_quote: str = field(default="on", metadata=_desc("reply_quote", "引用回复：常规回复引用触发消息（分段发送仅首段引用；平台不支持引用时自动跳过）。工具发送的引用由模型经 send_message 的 reply_to 显式指定", "chat", 61, "select", ["on", "off"]))
+    reply_quote: str = field(default="auto", metadata=_desc("reply_quote", "引用回复：auto=自适应（私聊不引用——对方就是在和你说；群聊 @/唤醒词引用——多人环境明确指向；插话不引用——没人问它）/ on 全部引用 / off 全部不引用。分段发送仅首段引用；平台不支持引用时自动跳过", "chat", 61, "select", ["auto", "on", "off"]))
 
 # 实例重启恢复（chat/recovery.py）
     recovery_enabled: bool = field(default=True, metadata=_desc("recovery_enabled", "实例重启后自动恢复被中断的回复", "chat", 50, "switch"))
@@ -220,27 +221,28 @@ class QvQConfig(BaseConfig):
     tool_self_heal: bool = field(default=True, metadata=_desc("tool_self_heal", "工具自愈：同一工具连续两次调用失败时向模型注入一条修正提示（含错误摘要），让它自行调整参数重试；调用成功即重置计数", "tools", 6, "switch"))
     skill_induct: bool = field(default=True, metadata=_desc("skill_induct", "技能自动习得：注册 save_skill 工具并在系统提示中说明——用户要求\"记住这个做法\"时把多步任务的做法保存为可复用技能", "tools", 7, "switch"))
     tool_select: str = field(default="auto", metadata=_desc("tool_select", "动态工具注入：auto 可见工具数超过阈值时先用廉价模型挑子集 / on 总是挑 / off 关闭（全量注入）。选择失败或超时自动回退全量", "tools", 8, "select", ["auto", "on", "off"]))
-    tool_select_threshold: int = field(default=16, metadata=_desc("tool_select_threshold", "工具数超过该值才启用动态注入（auto 模式）", "tools", 9, "number"))
-    tool_select_top_k: int = field(default=12, metadata=_desc("tool_select_top_k", "动态注入最多保留的工具数（send_message 等核心工具始终保留）", "tools", 10, "number"))
+    tool_select_threshold: int = field(default=50, metadata=_desc("tool_select_threshold", "工具数超过该值才启用动态注入（auto 模式）；默认 50——更少的工具全量注入更稳（筛选有选漏与首回合延迟成本），50 个约 10k+ token 时筛选才开始划算", "tools", 9, "number"))
+    tool_select_top_k: int = field(default=16, metadata=_desc("tool_select_top_k", "动态注入最多保留的工具数（send_message 等核心工具与联网/文档工具始终保留）", "tools", 10, "number"))
     tool_select_model: str = field(default="", metadata=_desc("tool_select_model", "工具选择用的模型（模型池 id），留空跟随 task_models.toolselect 或池内最便宜模型", "tools", 11, "text", placeholder="provider:model"))
     tool_select_ttl: int = field(default=180, metadata=_desc("tool_select_ttl", "工具选择结果的会话级缓存秒数（同一话题连续回合跳过小模型调用，0 不缓存）", "tools", 12, "number"))
     tool_select_timeout: float = field(default=3.0, metadata=_desc("tool_select_timeout", "工具选择调用超时（秒），超时回退全量注入", "tools", 13, "number"))
 
 # 内置联网（搜索 + 网页阅读；站点专有解析交给生态模块，见 docs/ecosystem-web.md）
-    web_tools_enabled: bool = field(default=True, metadata=_desc("web_tools_enabled", "内置联网工具：注册 web_search（DuckDuckGo 搜索）与 web_fetch（网页转文本）", "tools", 14, "switch"))
+    web_tools_enabled: bool = field(default=True, metadata=_desc("web_tools_enabled", "内置联网工具：注册 web_search（聚合搜索）与 web_fetch（网页转文本）", "tools", 14, "switch"))
     web_timeout: int = field(default=20, metadata=_desc("web_timeout", "联网请求超时（秒）", "tools", 15, "number"))
-    web_search_results: int = field(default=5, metadata=_desc("web_search_results", "web_search 返回结果条数", "tools", 16, "number"))
-    web_fetch_chars: int = field(default=6000, metadata=_desc("web_fetch_chars", "web_fetch 返回正文最大字符数", "tools", 17, "number"))
+    web_search_engine: str = field(default="bing", metadata=_desc("web_search_engine", "web_search 搜索源：bing（默认，国内直连）/ baidu / sogou / so360 / duckduckgo；首选失败或无结果时自动按 bing→baidu→sogou→duckduckgo 兜底", "tools", 16, "text"))
+    web_search_results: int = field(default=5, metadata=_desc("web_search_results", "web_search 返回结果条数", "tools", 17, "number"))
+    web_fetch_chars: int = field(default=6000, metadata=_desc("web_fetch_chars", "web_fetch 返回正文最大字符数", "tools", 18, "number"))
 
     eco_exclude: list[str] = field(default_factory=lambda: ["QvQChat"], metadata=_desc("eco_exclude", "不桥接服务目录的模块名单", "eco", 1, "list"))
     eco_include: list[str] = field(default_factory=list, metadata=_desc("eco_include", "仅桥接这些模块的服务，留空表示全部", "eco", 2, "list"))
     eco_safe: list[str] = field(
         default_factory=list,
-        metadata=_desc("eco_safe", "运营方覆盖：强制对所有人开放的服务（「模块:服务」，支持通配）。默认留空——正常由模块经 qvq_access 约定服务自声明；此配置用于抬高未声明服务的权限", "eco", 3, "list", dangerous=True),
+        metadata=_desc("eco_safe", "运营方覆盖：强制对所有人开放的服务（「模块:服务」，支持通配）。默认留空——正常由模块经 qvq_access 约定服务自声明；此配置用于抬高未声明服务的权限", "eco", 3, "list", items="tools", dangerous=True),
     )
     eco_admin: list[str] = field(
         default_factory=list,
-        metadata=_desc("eco_admin", "运营方覆盖：强制仅管理员可用的服务（「模块:服务」，支持通配）。优先级最高——用于否决模块的 safe 自声明", "eco", 4, "list", dangerous=True),
+        metadata=_desc("eco_admin", "运营方覆盖：强制仅管理员可用的服务（「模块:服务」，支持通配）。优先级最高——用于否决模块的 safe 自声明", "eco", 4, "list", items="tools", dangerous=True),
     )
 
     mcp_timeout: int = field(default=30, metadata=_desc("mcp_timeout", "MCP 请求超时（秒）", "mcp", 1, "number"))
@@ -277,6 +279,23 @@ class QvQConfig(BaseConfig):
     skills_disabled: list[str] = field(default_factory=list, metadata=_desc("skills_disabled", "禁用的技能名列表", "skills", 2, "list", items="skills"))
     skill_dev: bool = field(default=True, metadata=_desc("skill_dev", "模块开发能力：启用内置 erispulse-dev 技能（开发流程/约定）与 reload_module 热加载工具（仅管理员）", "skills", 3, "switch"))
     multi_agent: bool = field(default=True, metadata=_desc("multi_agent", "多智能体：注册 spawn_agent 工具并在提示词中教模型把耗时的抓取/检索/长内容任务派给子智能体，自己先回复用户进度", "tools", 18, "switch"))
+# 文件工作区沙箱：读/写/列/删/下载/打包对所有人开放但框死在沙箱内；沙箱外一律拒绝
+    file_tools_enabled: bool = field(default=True, metadata=_desc("file_tools_enabled", "文件工作区沙箱工具（list/read/write/delete/download/zip + send_message file_path）：所有文件活动框死在本会话工作区内，敏感名（*.env/*.db/config*）拒绝读取，全部走审计", "tools", 19, "switch"))
+    file_workdir: str = field(default="data/QvQChat/work", metadata=_desc("file_workdir", "文件工作区根目录（每会话一个子目录）", "tools", 20, "text"))
+    file_max_read_chars: int = field(default=20000, metadata=_desc("file_max_read_chars", "read_file 单次返回最大字符数", "tools", 21, "number"))
+    file_max_write_chars: int = field(default=200000, metadata=_desc("file_max_write_chars", "write_file 单次写入最大字符数", "tools", 22, "number"))
+    file_max_download_mb: int = field(default=20, metadata=_desc("file_max_download_mb", "download_file 单文件大小上限（MB）", "tools", 23, "number"))
+# 多提供商负载分流
+    provider_load_steering: bool = field(default=True, metadata=_desc("provider_load_steering", "负载分流：首选提供商在飞请求数达到阈值时，新请求直接导向池内更闲的提供商（并发时转移，不用等报错）", "model", 20, "switch"))
+    provider_steer_active: int = field(default=2, metadata=_desc("provider_steer_active", "触发分流的单提供商在飞请求数阈值", "model", 21, "number"))
+    provider_steer_keep: list = field(default_factory=list, metadata=_desc("provider_steer_keep", "质量绑定名单（约束分流转出与熔断回退）：名单内提供商满载也继续用、不把请求转移到别家；其模型熔断时也只允许同提供商的其它模型顶上——宁可报错触发告警，也不静默换弱模型回答。填 provider id，支持通配", "model", 22, "list"))
+    log_debug: bool = field(default=False, metadata=_desc("log_debug", "调试日志：并发闸门等待/负载分流/后台任务跳过/引用决策等关键路径输出 debug 日志", "chat", 65, "switch"))
+    persist_thinking: bool = field(default=True, metadata=_desc("persist_thinking", "历史消息保留思考块（前端显示为可展开的「已思考」，流式期间为「思考中…」）；关闭可省存储", "chat", 66, "switch"))
+    effort_smalltalk: str = field(default="", metadata=_desc("effort_smalltalk", "简单场景自动降思考：难度路由（routing_enabled）判为 cheap 的消息注入此思考档位——off 尝试关闭思考（Qwen/GLM 系 extra_body），low/medium/high 为 reasoning_effort 档位（OpenAI o 系等），留空不干预。需同时开启难度路由", "chat", 67, "select", ["", "off", "low", "medium", "high"]))
+    usage_warn_at: int = field(default=80, metadata=_desc("usage_warn_at", "今日用量达到 daily_token_limit 的该百分比时提示一次（100% 再提示一次）；0 关闭。仅设了 daily_token_limit 时生效", "chat", 68, "number"))
+    storage_auto_maintain: bool = field(default=True, metadata=_desc("storage_auto_maintain", "每日自动存储维护：rounds/trace 双写去重、回收站与文件工作区过期清理", "chat", 69, "switch"))
+    trash_retention_days: int = field(default=14, metadata=_desc("trash_retention_days", "回收站保留天数（过期自动清理；撤销按钮在此期限内有效）", "chat", 70, "number"))
+    work_retention_days: int = field(default=30, metadata=_desc("work_retention_days", "文件工作区会话目录保留天数（按最后修改时间；0 不清理）", "chat", 71, "number"))
 
 # 群聊参与决策（插件化扩展点；默认关闭：装插件≠放行）
     participation_enabled: bool = field(default=False, metadata=_desc("participation_enabled", "群聊参与决策：未被 @/前缀命中时问询生态插件的 qvq_decision 服务判断是否插话（默认关闭，需自行开启）", "participation", 1, "switch", dangerous=True))
@@ -374,6 +393,17 @@ class QvQConfig(BaseConfig):
         if kind == "dict":
             if isinstance(value, dict):
                 return True, value, None
+            if value is None or (isinstance(value, str) and not value.strip()):
+                return True, {}, None
+            if isinstance(value, str):
+                import json as _json
+
+                try:
+                    parsed = _json.loads(value)
+                except ValueError:
+                    return False, None, texts.t("config_err_dict", name=key)
+                if isinstance(parsed, dict):
+                    return True, parsed, None
             return False, None, texts.t("config_err_dict", name=key)
 
 # str（含 select：校验成员）

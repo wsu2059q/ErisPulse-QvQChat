@@ -249,3 +249,18 @@ async def test_manage_personas_account_tier_binding():
     ))
     assert ctx.main.personas.resolve("onebot11:group:1@222")["id"] == "amer"
     assert ctx.main.personas.resolve("yunhu:group:1")["id"] != "amer"
+
+
+def test_coerce_dict_field_tolerates_empty_and_json_string():
+    """回归：secret+dict 字段（embedding_provider）此前以字符串上送必被拒，且空值/None 全部失败。"""
+    from QvQChat.Config import QvQConfig
+
+    ok, coerced, err = QvQConfig.coerce("embedding_provider", {"base_url": "https://x/v1"})
+    assert ok and coerced == {"base_url": "https://x/v1"}
+    for empty in (None, "", "{}", "  "):
+        ok, coerced, err = QvQConfig.coerce("embedding_provider", empty)
+        assert ok and coerced == {}, (empty, err)
+    ok, coerced, err = QvQConfig.coerce("embedding_provider", '{"base_url":"https://y/v1","api_key":"sk-1"}')
+    assert ok and coerced["api_key"] == "sk-1"
+    ok, coerced, err = QvQConfig.coerce("embedding_provider", "not json")
+    assert not ok

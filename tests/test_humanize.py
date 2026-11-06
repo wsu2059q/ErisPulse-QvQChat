@@ -141,7 +141,7 @@ async def test_budget_merge_and_interrupt_drop(monkeypatch):
     main = FakeMain(humanize_budget_seconds=7.0)
     delivery = Delivery(main, rng=__import__("random"))
 
-    def fake_plan(reply, profile, rng=None):
+    def fake_plan(reply, profile, rng=None, allow_short_burst=False):
         return [("一。", 0.0), ("二。", 0.0), ("三。", 0.0)]
 
     monkeypatch.setattr(delivery_mod, "plan_segments", fake_plan)

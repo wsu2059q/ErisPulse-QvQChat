@@ -59,12 +59,31 @@ async def test_intermediate_speech_sent_in_narrate_mode():
     assert narrations, f"narrate 开启时中间口播应直达群里, replies={ev.replies}"
 
 
-async def test_intermediate_speech_not_sent_when_narrate_off():
+async def test_intermediate_speech_sent_in_brief_mode():
+    """对齐配置描述：brief = 发送 AI 的开场与阶段性发言（长任务前先应一声的载体）。"""
     main = _make_processing_main(reply_narrate=False, aggregate_window=0.05, tool_notice_mode="brief")
     ev = FakeChatEvent(text="查一下他的GitHub", group=True, group_id="1", user_id="u2", user_name="群主", at=True)
     await Main._on_message(main, ev)
     await asyncio.sleep(0.15)
+    assert any("先看看是真的" in str(r) for r in ev.replies), f"brief 应投递模型开场发言, replies={ev.replies}"
+
+
+async def test_intermediate_speech_silent_when_notice_off():
+    """off + 未开 narrate：完全静默。"""
+    main = _make_processing_main(reply_narrate=False, aggregate_window=0.05, tool_notice_mode="off")
+    ev = FakeChatEvent(text="查一下他的GitHub", group=True, group_id="1", user_id="u2", user_name="群主", at=True)
+    await Main._on_message(main, ev)
+    await asyncio.sleep(0.15)
     assert not any("先看看是真的" in str(r) for r in ev.replies)
+
+
+async def test_intermediate_speech_narrate_independent_of_off():
+    """narrate 独立生效：即使 tool_notice_mode=off，边做边说仍投递。"""
+    main = _make_processing_main(reply_narrate=True, aggregate_window=0.05, tool_notice_mode="off")
+    ev = FakeChatEvent(text="查一下他的GitHub", group=True, group_id="1", user_id="u2", user_name="群主", at=True)
+    await Main._on_message(main, ev)
+    await asyncio.sleep(0.15)
+    assert any("先看看是真的" in str(r) for r in ev.replies)
 
 
 async def test_intermediate_speech_sent_when_notice_all():

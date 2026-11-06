@@ -1,4 +1,4 @@
-from QvQChat.Main import is_admin_user, tool_allowed
+from QvQChat.Main import _flatten_masters, is_admin_user, is_framework_master, tool_allowed
 from QvQChat.agent.tools import Tool, ToolRegistry
 
 from fakes import make_config
@@ -8,7 +8,9 @@ def make_policy_config(**overrides):
     return make_config(**overrides)
 
 
-SAFE_TOOLS = {"send_message", "send_dsl", "read_file", "list_dir", "recall", "create_scheduled_task"}
+SAFE_TOOLS = {"send_message", "send_dsl", "read_file", "list_dir", "recall", "create_scheduled_task",
+# 内置联网工具（tools_builtin/web.py 注册为 safe）
+              "web_search", "web_fetch"}
 
 
 def make_tool(name):
@@ -22,9 +24,10 @@ def make_tool(name):
 
 
 class StubCtx:
-    def __init__(self, user_id="1", origin="chat"):
+    def __init__(self, user_id="1", origin="chat", platform="onebot11"):
         self.user_id = user_id
         self.origin = origin
+        self.platform = platform
 
 
 def test_is_admin_semantics():
@@ -195,3 +198,136 @@ def test_access_override_and_dynamic_tools():
     assert not allowed
     allowed, _ = tool_allowed(cfg, make_tool("mcp_srv_tool"), "1", "chat")
     assert not allowed
+
+
+def test_flatten_masters_nested_account_shape():
+    """多账户部署：平台→账户→主人列表 的嵌套形态要能展平识别（主人不算主人的根因）。"""
+    g, p2 = _flatten_masters({"onebot11": {"643319481": [1345197918]}})
+    assert "1345197918" in p2["onebot11"]
+    # 平台匹配走宽容前缀
+    g2, p3 = _flatten_masters({"global": [42], "yunhu": [77]})
+    assert 42 in g2 or "42" in g2
+    assert "77" in p3["yunhu"]
+    # 散值形态
+    g4, p4 = _flatten_masters({"onebot11": 1345197918})
+    assert "1345197918" in p4["onebot11"]
+
+
+def test_command_args_text_accepts_list():
+    """回归：Napcat 等适配器 get_command_args 返回 list——此前直接 strip 炸掉整条 /qvq 命令。"""
+    from QvQChat.chat.cli import command_args_text
+
+    assert command_args_text(["whoami"]) == "whoami"
+    assert command_args_text(["persona", "switch ", "cat "]) == "persona switch cat"
+    assert command_args_text("whoami") == "whoami"
+    assert command_args_text(None) == ""
+    assert command_args_text([]) == ""
+
+
+def test_check_tool_permission_passes_tool_object():
+    """回归：check_tool_permission 此前把 tool.name（str）传给 tool_allowed——
+    getattr(tool, "access", "admin") 恒为 admin，普通用户连 safe 工具（联网搜索）都被拒。"""
+    from QvQChat.Main import Main
+
+    class StubSelf:
+        cfg = make_policy_config(admins=["10001"])
+
+        def _master_checker(self):
+            return lambda platform, uid: False
+
+    # safe 工具（如 web_search）：非管理员也能在调用期放行
+    ok, reason = Main.check_tool_permission(StubSelf(), make_tool("web_search"), StubCtx(user_id="999"))
+    assert ok, reason
+    # admin 工具：非管理员仍然拒绝
+    ok, reason = Main.check_tool_permission(StubSelf(), make_tool("run_command"), StubCtx(user_id="999"))
+    assert not ok and reason
+    # 管理员全放行
+    ok, _ = Main.check_tool_permission(StubSelf(), make_tool("run_command"), StubCtx(user_id="10001", origin="chat"))
+    assert ok
+
+
+def test_web_tools_safe_for_everyone():
+    """联网工具 access=safe：普通用户可搜索/读网页（用户报告"网络搜索需要框架主人"）。"""
+    cfg = make_policy_config()
+    for name in ("web_search", "web_fetch"):
+        allowed, reason = tool_allowed(cfg, make_tool(name), "999", "chat", "onebot11")
+        assert allowed, f"{name}: {reason}"
+
+
+def test_command_yields_framework_prefix(monkeypatch):
+    """命令让路：配置前缀 ∪ 框架命令系统动态前缀（如自定义 qvqchat），不拦截只放行。"""
+    from QvQChat.Main import Main
+
+    class StubSelf:
+# 非绑定调用：stub 需要自带方法引用（self 查找发生在 stub 上）
+        _command_yields = Main._command_yields
+        _is_command_message = Main._is_command_message
+
+        def __init__(self, prefixes):
+            self.cfg = make_config(command_prefixes=prefixes)
+
+    # 框架命令系统可导入：动态读 prefix（str 或 list 都要认）
+    try:
+        from ErisPulse.Core.Event import command as fw_command
+    except Exception:
+        fw_command = None
+    if fw_command is not None:
+        original = getattr(fw_command, "prefix", None)
+        try:
+            fw_command.prefix = ["/", "qvqchat"]
+            yields = StubSelf(["#"])._command_yields()
+            assert "#" in yields and "qvqchat" in yields and "/" in yields
+            # 长前缀优先（qvqchat 长于 /），避免前缀互为前缀时误判
+            assert yields == sorted(set(yields), key=len, reverse=True)
+            # 框架前缀自定义后：qvqchat 开头的消息让路给分发器（前缀命中即让路，与分发器行为一致）
+            assert StubSelf(["#"])._is_command_message(_StubEvent(False), "qvqchat status")
+            assert not StubSelf(["#"])._is_command_message(_StubEvent(False), "qvq 状态")
+        finally:
+            if original is not None:
+                fw_command.prefix = original
+    else:
+        # 测试环境无框架：仅验证配置前缀与排序不变量
+        yields = StubSelf(["#", "/"])._command_yields()
+        assert "#" in yields and "/" in yields
+        assert yields == sorted(set(yields), key=len, reverse=True)
+
+
+class _StubEvent:
+    def __init__(self, is_command):
+        self._is_command = is_command
+
+    def is_command(self):
+        return self._is_command
+
+
+def test_is_command_message_yield_and_pass():
+    """命令消息让路判定：前缀命中让路（不认领），普通聊天照常处理。"""
+    from QvQChat.Main import Main
+
+    class StubSelf:
+# 非绑定调用：stub 需要自带方法引用
+        _command_yields = Main._command_yields
+        _is_command_message = Main._is_command_message
+        cfg = type("Cfg", (), {"command_prefixes": ["#", "/"]})()
+
+    # 让路：框架已打标的命令 + 前缀命中
+    s = StubSelf()
+    assert s._is_command_message(_StubEvent(True), "随便什么")
+    assert s._is_command_message(_StubEvent(False), "/help")
+    assert s._is_command_message(_StubEvent(False), "#话题")
+    # 普通聊天：不命中任何前缀 → 走正常触发流程
+    assert not s._is_command_message(_StubEvent(False), "今天天气怎么样")
+
+
+def test_whoami_renders_identity_view():
+    """whoami 精简为身份视角：身份/判定来源/账号/可用范围（完整诊断降级到 debug 日志）。"""
+    from QvQChat import texts
+
+    admin = texts.t("cmd_whoami", identity=texts.t("whoami_admin"), source=texts.t("whoami_source_master"),
+                    uid="42", platform="onebot11", scope=texts.t("whoami_scope_admin"))
+# 测试环境语言不定：关键内容中英任一命中即可
+    assert ("管理员" in admin or "admin" in admin) and ("主人表" in admin or "master table" in admin) and "42" in admin
+    member = texts.t("cmd_whoami", identity=texts.t("whoami_member"), source=texts.t("whoami_source_none"),
+                     uid="999", platform="qq", scope=texts.t("whoami_scope_member"))
+    assert ("普通用户" in member or "member" in member) and ("未命中" in member or "no admin source" in member) \
+        and ("联网搜索" in member or "web search" in member)

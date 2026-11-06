@@ -15,6 +15,7 @@ MAIN_STATIC_NAMES = (
     "_process_locked", "_chat_ctx", "_sender_name", "_resolve_group_name",
     "_seed_history", "_transcript_rows", "_label_seed_rows", "_group_nicknames",
     "is_admin", "check_tool_permission", "_master_checker",
+    "_is_command_message", "_command_yields",
     "record_usage", "_usage_today", "_prune_usage", "_usage_history",
     "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
     "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
@@ -106,7 +107,7 @@ def test_config_coerce_new_keys():
     ok, v, err = QvQConfig.coerce("context_reserve", "0.99")
     assert not ok# 超出 max 0.95
     ok, v, err = QvQConfig.coerce("task_models", '{"compact": "a:b"}')
-    assert not ok# dict 不收 JSON 字符串
+    assert ok and v == {"compact": "a:b"}# dict 收合法 JSON 字符串（secret 字段经密码框上送的形态）
     ok, v, err = QvQConfig.coerce("task_models", {"compact": "a:b"})
     assert ok and v == {"compact": "a:b"}
     ok, v, err = QvQConfig.coerce("facts_extract", True)
@@ -126,6 +127,7 @@ def _make_lock_main():
         "_process_locked", "_chat_ctx", "_sender_name", "_resolve_group_name",
         "_seed_history", "_transcript_rows", "_label_seed_rows", "_group_nicknames",
         "is_admin", "check_tool_permission", "_master_checker",
+    "_is_command_message", "_command_yields",
         "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
         "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
         "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice",
