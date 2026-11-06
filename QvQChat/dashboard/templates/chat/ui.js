@@ -167,7 +167,7 @@
   var loaders = {
     overview: loadOverview,
     orchestrate: loadOrchestrate,
-    chat: loadChatMeta,
+    chat: enterChat,
     models: loadModels,
     personas: loadPersonas,
     skills: loadSkills,

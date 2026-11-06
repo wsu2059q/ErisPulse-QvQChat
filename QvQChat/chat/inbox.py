@@ -471,6 +471,9 @@ class InboxMixin(RecoveryMixin):
                     and bool(getattr(self.cfg, "participation_enabled", False))
                     and event.is_group_message()
                     and manager.chat_allowed(chat_key)
+# 高负载降载：并发闸门满载或本会话正在处理时跳过问询——
+# 插话是可选行为，绝不能和用户的直接提问抢资源
+                    and not self._interject_overloaded(chat_key)
                 ):
                     decision = await manager.decide(chat_key, event, text)
                     if isinstance(decision, dict):
@@ -487,6 +490,19 @@ class InboxMixin(RecoveryMixin):
             self._batch_message(event, chat_key, text, images)
         except Exception as e:
             self.logger.warning(f"on_message failed: {e}")
+
+    def _interject_overloaded(self, chat_key: str) -> bool:
+        """插话降载判定：并发闸门满载 / 本会话锁被占 / 本会话有任务在跑。"""
+        pool = getattr(self, "pool", None)
+        gate = getattr(pool, "gate", None)
+        if gate is not None and gate.saturated:
+            return True
+        if self._lock_for(chat_key).locked():
+            return True
+        registry = getattr(self, "live_registry", None)
+        if registry is not None and registry.busy(chat_key):
+            return True
+        return False
 
     async def _interject(self, manager, event, chat_key: str, text: str, decision: dict) -> None:
         """参与决策 speak 后的插话落地：成员准入按会话整体判断 → 输出预算 → 聚合入队。
@@ -722,6 +738,8 @@ class InboxMixin(RecoveryMixin):
         entry = self._pending.setdefault(chat_key, {"items": [], "event": event, "timer": None})
 # origin（chat/plugin）随聚合条目传递，进 ToolContext 记账可观测
         entry.setdefault("origin", origin)
+# 入队时间戳：陈旧插话丢弃的依据（首个到达时间，聚合不刷新）
+        entry.setdefault("ts", time.time())
 # 短窗去重：多账户同群双投递/适配器重放会在同一会话插入重复文本（用户看到多条重复）。
 # 仅在多账户生效（与 @账户 后缀同条件）——单账户场景不做去重，不误伤人类复读
         sender_id = str(event.get_user_id() or "")
@@ -761,11 +779,17 @@ class InboxMixin(RecoveryMixin):
         entry = self._pending.pop(chat_key, None)
         if not entry:
             return
+# 陈旧插话丢弃：多人洪流里等到锁时话题早已翻页——插话（origin=plugin）等太久
+# 就不追了；用户直接触发（@/前缀/私聊）永不丢弃，再久也要答
+        origin = entry.get("origin", "chat")
+        if origin == "plugin":
+            stale_after = float(getattr(self.cfg, "interject_stale_seconds", 90) or 0)
+            if stale_after > 0 and time.time() - float(entry.get("ts") or 0) > stale_after:
+                self.logger.debug(f"stale interject dropped ({chat_key})")
+                return
 # per-chat 锁真正生效——聚合触发与定时任务/面板并发互斥，防止交错写上下文
         async with self._lock_for(chat_key):
-            await self._process_locked(
-                entry["event"], entry["items"], chat_key, entry.get("origin", "chat")
-            )
+            await self._process_locked(entry["event"], entry["items"], chat_key, origin)
 
     async def _process_locked(self, event, items: list, chat_key: str, origin: str = "chat") -> None:
         try:
@@ -949,6 +973,7 @@ class InboxMixin(RecoveryMixin):
             )
             try:
                 try:
+# 并发闸门优先级：插话让位于用户直接提问（0=直答 / 6=插话）
                     result = await self.runner.run(
                         system=system,
                         messages=contexts + [user_msg],
@@ -960,6 +985,7 @@ class InboxMixin(RecoveryMixin):
                         on_reset=on_reset,
                         on_tool_event=on_tool_event,
                         on_reasoning=on_reasoning,
+                        priority=6 if origin == "plugin" else 0,
                     )
                 except asyncio.CancelledError:
                     if live is not None:

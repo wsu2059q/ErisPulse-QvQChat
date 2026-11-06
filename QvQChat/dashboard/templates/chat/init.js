@@ -38,6 +38,8 @@
     });
     el("qvq-chat-attach-btn").onclick = function () { el("qvq-chat-file").click(); };
     el("qvq-chat-box").addEventListener("scroll", function () {
+      // suppressScrollLoad 期间跳过"加载更早"（scrollTop 归零的非用户滚动）
+      if (suppressScrollLoad) return;
       if (el("qvq-chat-box").scrollTop < 60) loadOlderMessages();
     });
     el("qvq-chat-file").onchange = function () {
@@ -232,6 +234,7 @@
     startChatSync();
     var activeNav = el("qvq-nav").querySelector(".qvq-nav-btn.active");
     if (activeNav) switchTab(activeNav.getAttribute("data-tab"));
+    resumeRunning(); // 上次关闭页面时若仍在回复：自动回到该会话并接上流式
     renderChat();
     loadOverview();
   }

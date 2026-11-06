@@ -441,7 +441,7 @@
 }
 
 .qvq-think {
-  margin: 10px 0 12px;
+  margin: 2px 0 6px;
   font-size: 12.5px;
   border-left: 2px solid var(--qvq-line, rgba(128, 128, 128, 0.35));
   padding-left: 10px;
@@ -456,9 +456,9 @@
 .qvq-think-body {
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 220px;
+  max-height: 140px;
   overflow-y: auto;
-  margin-top: 6px;
+  margin-top: 4px;
   padding-right: 4px;
 }
 .qvq-steps {
@@ -1144,4 +1144,27 @@
 }
 .qvq-step-detail {
   margin: 4px 0 8px 30px;
+}
+
+/* 子智能体步骤：缩进 + 左侧竖线 */
+.qvq-step.sub {
+  margin-left: 14px;
+  border-left: 2px solid var(--qvq-bd-h);
+  padding-left: 8px;
+}
+.qvq-sub-chip {
+  font-size: 10px;
+  padding: 0 5px;
+  margin-right: 4px;
+}
+
+/* 消息编辑器：三档操作（仅保存 / 保存并发送 / 删除此条及之后） */
+.qvq-msg-editor .qvq-composer-bar {
+  gap: 6px;
+}
+.qvq-msg-editor .qvq-composer-bar .qvq-btn {
+  white-space: nowrap;
+}
+.qvq-icon-btn.danger {
+  color: #e5484d;
 }

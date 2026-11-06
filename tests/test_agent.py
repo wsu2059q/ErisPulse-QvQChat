@@ -396,3 +396,63 @@ async def test_spawn_agent_no_nested_spawn():
     ctx.chat_key = "sub:onebot11:group:1:abcd1234"
     result = await agent_tool.spawn_agent(ctx, task="x")
     assert "cannot spawn" in result.lower()
+
+
+async def test_spawn_agent_forwards_sub_tool_events():
+    """子智能体内部步骤透传到父直播流：带 agent=sub 标记与 sub: 前缀的 step_id。"""
+    main = FakeMain()
+    from QvQChat.tools_builtin import agent as agent_tool
+    from QvQChat.agent.runner import AgentResult
+
+    seen = []
+
+    def parent_hook(evt):
+        seen.append(evt)
+
+    real_runner = agent_tool.AgentRunner
+
+    class HookRunner(real_runner):
+        async def run(self, *, system, messages, ctx, **kwargs):
+            hook = kwargs.get("on_tool_event")
+            if hook is not None:
+                hook({"phase": "start", "step_id": "s0", "name": "web_fetch", "arguments": "{}"})
+                hook({"phase": "end", "step_id": "s0", "name": "web_fetch", "output": "ok", "ms": 5})
+            return AgentResult(text="完成")
+
+    agent_tool.AgentRunner = HookRunner
+    try:
+        ctx = make_ctx(main, admins=["1"])
+        ctx.chat_key = "onebot11:group:1"
+        ctx.on_tool_event = parent_hook
+        out = await agent_tool.spawn_agent(ctx, task="抓页面")
+        assert "完成" in out
+        assert len(seen) == 2
+        assert seen[0]["agent"] == "sub"
+        assert seen[0]["step_id"] == "sub:s0"
+        assert seen[1]["phase"] == "end"
+        assert seen[1]["step_id"] == "sub:s0"
+    finally:
+        agent_tool.AgentRunner = real_runner
+
+
+async def test_spawn_agent_without_hook_stays_silent():
+    """没有直播回调（命令行/群聊路径）时不报错、不产生事件。"""
+    main = FakeMain()
+    from QvQChat.tools_builtin import agent as agent_tool
+    from QvQChat.agent.runner import AgentResult
+
+    real_runner = agent_tool.AgentRunner
+
+    class HookRunner(real_runner):
+        async def run(self, *, system, messages, ctx, **kwargs):
+            assert kwargs.get("on_tool_event") is None
+            return AgentResult(text="完成")
+
+    agent_tool.AgentRunner = HookRunner
+    try:
+        ctx = make_ctx(main, admins=["1"])
+        ctx.chat_key = "onebot11:group:1"
+        out = await agent_tool.spawn_agent(ctx, task="x")
+        assert "完成" in out
+    finally:
+        agent_tool.AgentRunner = real_runner

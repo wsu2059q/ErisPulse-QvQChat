@@ -363,6 +363,8 @@ def make_config(**overrides):
         debounce_mention_seconds=0.0,
         humanize_echo_filter=True,
         interrupt_mode="queue",
+        max_concurrent_requests=0,
+        interject_stale_seconds=90,
         skills_dir="data/QvQChat/skills",
         skills_disabled=[],
         memory_max=200,

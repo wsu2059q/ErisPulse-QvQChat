@@ -138,6 +138,23 @@ class SessionsApiMixin:
             return {"ok": True}
         return ({"error": "index out of range"}, 400)
 
+    async def session_rewind(self, request):
+        """编辑并重发：丢弃该条及其之后的消息，返回原文（前端拿到后走正常发送管线）。"""
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        if not chat_key:
+            return ({"error": "chat_key required"}, 400)
+        try:
+            index = int((body or {}).get("index", -1))
+        except (TypeError, ValueError):
+            return ({"error": "bad index"}, 400)
+        if self._live.busy(chat_key):
+            return ({"error": "session busy"}, 409)
+        ok, text = self.main.conversations.rewind_to(chat_key, index)
+        if not ok:
+            return ({"error": "index out of range"}, 400)
+        return {"ok": True, "text": text}
+
     async def sessions_delete(self, request):
         body = await request.json()
         chat_key = str((body or {}).get("chat_key") or "")
@@ -408,6 +425,14 @@ class SessionsApiMixin:
         share = self._share_token(token) if token else None
         if share is None:
             return ({"error": "invalid or expired share"}, 403)
+        try:
+            return self._share_payload(share)
+        except Exception as e:
+            # 返回 JSON 而非框架的 HTML 500：分享页才能显示具体原因，不至于只剩"加载失败"
+            self.main.logger.warning(f"share_messages failed: {e}")
+            return ({"error": f"{type(e).__name__}: {e}"}, 500)
+
+    def _share_payload(self, share: dict) -> dict:
         contexts = self._share_contexts(share)
         summary = self.main.sessions.summary_of(str(share.get("chat_key") or ""))
         rounds = int(share.get("rounds") or 0)

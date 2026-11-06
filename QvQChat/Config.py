@@ -92,7 +92,7 @@ class QvQConfig(BaseConfig):
     max_tokens: int = field(default=0, metadata=_desc("max_tokens", "单次回复的最大生成 token 数，0 = 不限制（跟随模型上限）。长任务建议保持 0，截断会导致规划文本泄漏。", "model", 3, "number"))
     model_failover: bool = field(default=True, metadata=_desc("model_failover", "模型调用失败时按池顺序切换备用模型", "model", 4, "switch"))
     token_estimator: str = field(default="", metadata=_desc("token_estimator", "token 估算器：留空用启发式（中文≈1字1token、其余≈4字符1token）；tiktoken 按精确编码计数（需自行安装 tiktoken 依赖，未安装自动回退启发式）", "model", 5, "select", ["", "tiktoken"]))
-    task_models: dict = field(default_factory=dict, metadata=_desc("task_models", "按任务类别指定模型（JSON，如 {\"compact\": \"provider:model\"}）；未命中时走能力过滤/成本偏好/池序", "model", 6, "json"))
+    task_models: dict = field(default_factory=dict, metadata=_desc("task_models", "任务分派：给指定类别的任务固定用某个模型。值为池内模型 id（provider:model）。可选类别：chat 主对话 / compact 上下文压缩 / title 会话标题 / vision 视觉描述 / toolselect 工具筛选 / announce 定时播报。示例：{\"vision\": \"provider:glm-4v\", \"compact\": \"provider:cheap-model\"}。留空 {} 则按能力过滤与成本自动选择", "model", 6, "json"))
     routing_enabled: bool = field(default=False, metadata=_desc("routing_enabled", "难度感知模型路由（实验性，默认关闭）：按本轮首条用户消息的难度自动选择便宜/均衡/高质量模型（寒暄短句走便宜、含代码或长分析走高质量）；仅对未显式指定模型/偏好/能力过滤的对话生效", "model", 7, "switch"))
     routing_ttl: int = field(default=300, metadata=_desc("routing_ttl", "难度分级结果的会话内缓存秒数：同会话短时间连续消息复用上次分级（0 表示不缓存，每条独立分级）", "model", 8, "number"))
 
@@ -164,6 +164,9 @@ class QvQConfig(BaseConfig):
     pending_send_max: int = field(default=10, metadata=_desc("pending_send_max", "发送失败待重发队列每会话上限（FIFO 淘汰）", "chat", 44, "number"))
 # 人化节奏：偶尔停顿在想 / 短句连发 / 轻量回复提速（关闭则严格按分段延迟公式）
     rhythm_humanize: bool = field(default=True, metadata=_desc("rhythm_humanize", "人化打字节奏：偶尔中途停顿（在想）、短句偶尔连发、轻量回复整体提速", "chat", 62, "switch"))
+# 多人/高负载平台：并发上限与插话降载
+    max_concurrent_requests: int = field(default=0, metadata=_desc("max_concurrent_requests", "全局同时在飞的模型请求数上限（0 不限流）。多人高负载平台建议 2~4：满载时直接提问优先排队，插话/后台任务让位", "chat", 63, "number"))
+    interject_stale_seconds: int = field(default=90, metadata=_desc("interject_stale_seconds", "插话（参与决策触发）从入队到实际处理超过该秒数直接丢弃，不追过期话题（0 不丢弃；用户直接提问不受影响）", "chat", 64, "number"))
 
 # 人格开场白
     opening_enabled: bool = field(default=True, metadata=_desc("opening_enabled", "新会话首次接触时自动发送人格开场白（随机一条；Dashboard 平台不触发）", "chat", 45, "switch"))

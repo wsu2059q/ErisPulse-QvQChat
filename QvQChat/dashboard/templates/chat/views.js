@@ -2886,6 +2886,19 @@
     }
   }
 
+
+  // 保存失败：toast 列出具体字段与原因，并把第一个出错字段滚进视野
+  function settingsReportErrors(errors) {
+    var lines = Object.keys(errors || {}).map(function (k) {
+      return k + "： " + (errors[k] || "invalid");
+    });
+    toast(t("settings_save_partial") + "\n" + lines.join("\n"), true);
+    var first = document.querySelector("#qvq-settings-form .qvq-field-err.show");
+    if (first && first.scrollIntoView) {
+      first.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
   // QvQChat 自身配置：只送 dirty 字段到 /api/qvq/config
   function saveConfigSettings(dirty) {
     var keys = dirty.filter(function (k) { return k.indexOf(PLUGIN_KEY_PREFIX) !== 0; });
@@ -2896,7 +2909,7 @@
       if (r && r.errors && Object.keys(r.errors).length) {
         Object.keys(r.errors).forEach(function (k) { settingsShowError(k, r.errors[k]); });
         (r.applied || []).forEach(function (k) { settingsOriginal[k] = settingsDraft[k]; });
-        toast(t("settings_save_partial"), true);
+        settingsReportErrors(r.errors);
       } else if (r && r.ok) {
         keys.forEach(function (k) { settingsOriginal[k] = settingsDraft[k]; });
         toast(t("settings_saved"));
@@ -2927,7 +2940,7 @@
         if (r && r.errors && Object.keys(r.errors).length) {
           Object.keys(r.errors).forEach(function (rk) { settingsShowError(full(rk), r.errors[rk]); });
           (r.applied || []).forEach(function (rk) { settingsOriginal[full(rk)] = settingsDraft[full(rk)]; });
-          toast(t("settings_save_partial"), true);
+          settingsReportErrors(r.errors);
         } else if (r && r.ok) {
           Object.keys(byModule[mod]).forEach(function (rk) { settingsOriginal[full(rk)] = settingsDraft[full(rk)]; });
           toast(t("settings_saved"));

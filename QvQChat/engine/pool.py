@@ -9,6 +9,7 @@ from typing import Any
 from .. import texts, utils
 from ..providers import PROVIDER_PRESETS, get_preset
 from .base import ChatRequest, ChatResponse, EngineError, TaskSpec
+from .gate import PriorityGate
 from .openai import OpenAIEngine
 from .router import classify
 
@@ -33,6 +34,8 @@ class ModelPool:
         self.sdk = sdk
         self.config = config
         self.engine = OpenAIEngine()
+# 全局并发闸门（多人高负载）：limit 随配置实时生效；0 = 不限流
+        self.gate = PriorityGate(int(getattr(config, "max_concurrent_requests", 0) or 0))
         self._migrate_legacy()
 # 模型熔断状态：model_id -> {"fails": 连续失败次数, "until": 冷却截止时间戳}
         self._breaker: dict[str, dict] = {}
@@ -711,7 +714,11 @@ class ModelPool:
         on_reset=None,
         on_reasoning=None,
     ) -> ChatResponse:
-        """按 TaskSpec 分派任务模型后走统一 chat 链（failover/熔断照常生效）。"""
+        """按 TaskSpec 分派任务模型后走统一 chat 链（failover/熔断照常生效）。
+
+        并发闸门优先级：kind=="chat" 用 spec.priority（用户直答默认 0）；其余
+        （compact/title/toolselect 等后台任务）固定 8，满载时让位给真实用户。
+        """
         self._route_chat_spec(spec, request)# 难度感知路由（默认关闭，不改显式约束）
         model = self.resolve_task_model(spec)
         scoped = ChatRequest(
@@ -722,9 +729,15 @@ class ModelPool:
             max_tokens=request.max_tokens,
             needs=request.needs,
         )
-        return await self.chat(scoped, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning)
+        priority = int(spec.priority or 0) if str(spec.kind) == "chat" else 8
+        return await self.chat(scoped, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning, priority=priority)
 
-    async def chat(self, request: ChatRequest, on_delta=None, on_reset=None, on_reasoning=None) -> ChatResponse:
+    @property
+    def saturated(self) -> bool:
+        """并发闸门满载：上游可据此跳过插话问询等可选工作。"""
+        return self.gate.saturated
+
+    async def chat(self, request: ChatRequest, on_delta=None, on_reset=None, on_reasoning=None, priority: int = 0) -> ChatResponse:
         primary = self.resolve_model(request.model, request.needs)
         chain = [primary]
         if getattr(self.config, "model_failover", True):
@@ -741,45 +754,54 @@ class ModelPool:
 # 熔断：冷却中的模型沉底而不是丢弃（全冷却时仍按链尝试）
         chain.sort(key=lambda m: 1 if self._is_open(m["id"]) else 0)
         errors: list[str] = []
-        for index, model in enumerate(chain):
-            temperature = request.temperature
-            if temperature is None:
-                temperature = model.get("temperature")
-            if temperature is None:
-                temperature = getattr(self.config, "temperature", 0.7)
-            max_tokens = request.max_tokens or model.get("max_tokens") or getattr(self.config, "max_tokens", 2048)
-            scoped = ChatRequest(
-                messages=request.messages,
-                tools=request.tools,
-                model=model["model"],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            try:
-                extra = {"on_reasoning": on_reasoning} if on_reasoning is not None else {}
-                response = await self.engine.chat(
-                    model.get("base_url", ""),
-                    model.get("api_key", ""),
-                    scoped,
-                    on_delta=on_delta,
-                    on_reset=on_reset,
-                    **extra,
+# 绕过 __init__ 构造的池（测试/老式用法）可能没有 gate：懒补一个不限流闸门
+        gate = getattr(self, "gate", None)
+        if gate is None:
+            self.gate = gate = PriorityGate(0)
+        gate.set_limit(int(getattr(self.config, "max_concurrent_requests", 0) or 0))
+        await gate.acquire(priority)
+        try:
+            for index, model in enumerate(chain):
+                temperature = request.temperature
+                if temperature is None:
+                    temperature = model.get("temperature")
+                if temperature is None:
+                    temperature = getattr(self.config, "temperature", 0.7)
+                max_tokens = request.max_tokens or model.get("max_tokens") or getattr(self.config, "max_tokens", 2048)
+                scoped = ChatRequest(
+                    messages=request.messages,
+                    tools=request.tools,
+                    model=model["model"],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
                 )
-            except EngineError as e:
-                self._record_fail(model["id"])
-                errors.append(f"{model['id']}: {e}")
-                if index + 1 < len(chain) and on_reset is not None:
-                    try:
-                        result = on_reset()
-                        if asyncio.iscoroutine(result):
-                            await result
-                    except Exception:
-                        pass
-                continue
-            response.model = model["id"]
-            self._record_success(model["id"])
-            return response
-        raise EngineError(texts.t("engine_all_failed", errors=" | ".join(errors)))
+                try:
+                    extra = {"on_reasoning": on_reasoning} if on_reasoning is not None else {}
+                    response = await self.engine.chat(
+                        model.get("base_url", ""),
+                        model.get("api_key", ""),
+                        scoped,
+                        on_delta=on_delta,
+                        on_reset=on_reset,
+                        **extra,
+                    )
+                except EngineError as e:
+                    self._record_fail(model["id"])
+                    errors.append(f"{model['id']}: {e}")
+                    if index + 1 < len(chain) and on_reset is not None:
+                        try:
+                            result = on_reset()
+                            if asyncio.iscoroutine(result):
+                                await result
+                        except Exception:
+                            pass
+                    continue
+                response.model = model["id"]
+                self._record_success(model["id"])
+                return response
+            raise EngineError(texts.t("engine_all_failed", errors=" | ".join(errors)))
+        finally:
+            self.gate.release()
 
     async def describe_images(self, image_urls: list, prompt: str = "", on_error: str = "empty") -> list[str]:
         """逐张图片走视觉模型描述。
