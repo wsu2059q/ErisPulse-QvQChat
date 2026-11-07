@@ -9,6 +9,7 @@ from pathlib import Path
 from ..engine.base import ChatRequest
 
 from .. import texts, utils
+from ..chat.events import EVENT_INBOX_KEY
 
 TEMPLATES = Path(__file__).parent / "templates"
 SHARES_KEY = "QvQChat:shares"
@@ -65,6 +66,83 @@ class SessionsApiMixin:
         body = await request.json()
         source = str((body or {}).get("source") or "")
         return {"ok": self.main.sessions.remove_identity(source)}
+
+    def _inbox_entries(self, kind: str = "", account: str = "") -> list:
+        """聚合全部账户的事件收件箱（storage 为准），新的在前。"""
+        entries: list = []
+        try:
+            keys = [str(k) for k in (self.sdk.storage.keys() or []) if str(k).startswith(EVENT_INBOX_KEY)]
+        except Exception:
+            keys = [EVENT_INBOX_KEY + account] if account else []
+        for key in keys:
+            stored = self.sdk.storage.get(key)
+            if not isinstance(stored, list):
+                continue
+            owner = key[len(EVENT_INBOX_KEY):]
+            if account and owner != account:
+                continue
+            for entry in stored:
+                if not isinstance(entry, dict):
+                    continue
+                if kind and str(entry.get("kind") or "") != kind:
+                    continue
+                item = dict(entry)
+                item["account"] = owner
+                entries.append(item)
+        entries.sort(key=lambda e: float(e.get("ts") or 0), reverse=True)
+        return entries
+
+    async def inbox_get(self, request):
+        """事件收件箱面板：通知/请求列表（聚合多账户），支持类型过滤与条数。"""
+        kind = str(self._query(request, "kind") or "").strip().lower()
+        account = str(self._query(request, "account") or "").strip()
+        try:
+            limit = max(1, min(int(self._query(request, "limit") or 100), 500))
+        except ValueError:
+            limit = 100
+        entries = self._inbox_entries(kind, account)
+        unread = sum(1 for e in entries if not e.get("read"))
+        return {"events": entries[:limit], "total": len(entries), "unread": unread}
+
+    def _inbox_cache_drop(self, account: str) -> None:
+        # AI 侧读的是 main._event_inbox 里的同一个 list 对象：面板删改后必须
+        # 失效缓存，否则下次 AI 读取/保存会把删除的条目原样写回
+        cache = getattr(self.main, "_event_inbox", None)
+        if isinstance(cache, dict):
+            cache.pop(account, None)
+
+    async def inbox_delete(self, request):
+        body = await request.json()
+        account = str((body or {}).get("account") or "")
+        entry_id = str((body or {}).get("id") or "")
+        if not account or not entry_id:
+            return ({"error": "account/id required"}, 400)
+        key = EVENT_INBOX_KEY + account
+        stored = self.sdk.storage.get(key)
+        if not isinstance(stored, list):
+            return {"ok": False}
+        kept = [e for e in stored if not (isinstance(e, dict) and str(e.get("id") or "") == entry_id)]
+        if len(kept) == len(stored):
+            return {"ok": False}
+        self.sdk.storage.set(key, kept)
+        self._inbox_cache_drop(account)
+        return {"ok": True}
+
+    async def inbox_clear(self, request):
+        body = await request.json()
+        account = str((body or {}).get("account") or "")
+        if account:
+            self.sdk.storage.set(EVENT_INBOX_KEY + account, [])
+            self._inbox_cache_drop(account)
+            return {"ok": True}
+        try:
+            keys = [str(k) for k in (self.sdk.storage.keys() or []) if str(k).startswith(EVENT_INBOX_KEY)]
+        except Exception:
+            keys = []
+        for key in keys:
+            self.sdk.storage.set(key, [])
+            self._inbox_cache_drop(key[len(EVENT_INBOX_KEY):])
+        return {"ok": True, "cleared": len(keys)}
 
     def _accounts_overview(self, sessions: list) -> dict:
         """多账户概览：各平台在线 bot + 每个已隔离账户（chat_key 的 @account 后缀）的会话数。
