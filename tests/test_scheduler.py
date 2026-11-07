@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from QvQChat.scheduler import Scheduler
@@ -142,3 +143,55 @@ async def test_cron_trigger_dispatches_fire():
     await scheduler._on_cron_trigger({"callback_data": {"qvq_task_id": task["id"]}})
     assert len(main.spawned) == 1
     assert scheduler.list() == []
+
+
+def test_jitter_randomizes_next_run_within_window():
+    """jitter_minutes>0：下次触发落在 [计划, 计划+N 分钟) 内且每次重算重新掷点。"""
+    main, scheduler = make_scheduler()
+    task = scheduler.add(
+        {
+            "name": "jittered",
+            "schedule": parse_schedule("every:1h"),
+            "schedule_raw": "every:1h",
+            "jitter_minutes": 10,
+        }
+    )
+    seen = []
+    for _ in range(30):
+        seen.append(scheduler._next_with_jitter(task, 1000.0))
+    base = 1000.0 + 3600.0
+    assert all(base <= t < base + 600 for t in seen), (min(seen), max(seen))
+# 随机性：30 次至少出现两个不同值（防实现退化为恒定偏移）
+    assert len(set(seen)) > 1
+
+
+def test_no_jitter_is_exact():
+    main, scheduler = make_scheduler()
+    task = scheduler.add({"name": "x", "schedule": parse_schedule("every:1h"), "schedule_raw": "every:1h"})
+    assert scheduler._next_with_jitter(task, 1000.0) == 1000.0 + 3600.0
+
+
+async def test_run_now_fires_without_reschedule():
+    """手动触发：立即执行一次，不改 next_run 计划。"""
+    main, scheduler = make_scheduler()
+    task = scheduler.add(
+        {
+            "name": "manual",
+            "schedule": parse_schedule("every:1h"),
+            "schedule_raw": "every:1h",
+            "platform": "test",
+            "target_type": "user",
+            "target_id": "7",
+            "prompt": "run me now",
+        }
+    )
+    planned = task["next_run"]
+    name = scheduler.run_now(task["id"])
+    assert name == "manual"
+    await asyncio.sleep(0.05)
+    assert len(main.tasks_fired) == 1
+    assert main.tasks_fired[0]["prompt"] == "run me now"
+# 计划不变
+    after = [t for t in scheduler.list() if t["id"] == task["id"]]
+    assert after and after[0]["next_run"] == planned
+    assert scheduler.run_now("missing") == ""

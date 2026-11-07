@@ -485,8 +485,13 @@ class Delivery:
                     persona_nick = ""
                 if persona_nick:
                     nickname = persona_nick
+            account = ""
+            try:
+                account = str(event.get_self_account_id() or "")
+            except Exception:
+                account = ""
             used = await utils.deliver_forward(adapter, detail_type, target_id, sections, sends,
-                                               nickname=nickname, user_id=user_id)
+                                               nickname=nickname, user_id=user_id, account=account)
         except Exception as e:
             self.main.logger.warning(f"forward send failed, fallback to normal reply: {e}")
             return False
@@ -622,9 +627,17 @@ class Delivery:
         methods = [m for m in REPLY_PREFERENCE if not sends or m in sends]
         if "Text" not in methods:
             methods.append("Text")
+        _account = ""
+        raw_key = str(entry.get("chat_key") or "")
+        if raw_key and "@" in raw_key.rsplit(":", 2)[-1]:
+            _account = raw_key.rsplit("@", 1)[1] or ""
+        _chain = adapter.Send
+        if _account:
+            _chain = _chain.Using(_account)
+        _chain = _chain.To(detail_type, target_id)
         used, _, last_error = await dispatch_text(
             self.sdk, self.config,
-            lambda name, content: getattr(adapter.Send.To(detail_type, target_id), name)(content),
+            lambda name, content: getattr(_chain, name)(content),
             methods, text, queue=None, logger=self.main.logger,
         )
         if not used:
@@ -657,6 +670,10 @@ class Delivery:
             self.main.logger.warning(texts.t("adapter_not_found", platform=platform))
             return
         target_type = detail_type if detail_type in ("group", "channel") else "user"
+# 多账户后端：会话键带 @账户 后缀时必须绑该账户发送（适配器默认账户会张冠李戴）
+        account = ""
+        if chat_key and "@" in str(chat_key).rsplit(":", 2)[-1]:
+            account = str(chat_key).rsplit("@", 1)[1] or ""
         try:
             sends = list(self.sdk.adapter.list_sends(platform))
         except Exception:
@@ -669,6 +686,7 @@ class Delivery:
                     target_id,
                     [segment for _, segment in segments],
                     sends,
+                    account=account,
                 )
                 if used:
                     return
@@ -686,9 +704,13 @@ class Delivery:
         for delay, segment in segments:
             if delay and delay > 0:
                 await asyncio.sleep(delay)
+            _chain = adapter.Send
+            if account:
+                _chain = _chain.Using(account)
+            _chain = _chain.To(target_type, target_id)
             used, _, _ = await dispatch_text(
                 self.sdk, self.config,
-                lambda name, content: getattr(adapter.Send.To(target_type, target_id), name)(content),
+                lambda name, content: getattr(_chain, name)(content),
                 methods, segment, queue=queue, logger=self.main.logger,
             )
             if not used:

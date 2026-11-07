@@ -413,3 +413,27 @@ def test_skill_offer_note_is_standalone_constant():
 
     assert "save_skill" in SKILL_OFFER_NOTE and "记住这个做法" in SKILL_OFFER_NOTE
     assert SKILL_OFFER_NOTE not in CAPABILITY_PROMPT
+
+
+def test_capability_prompt_chinese_and_slim():
+    """人味工程：CAPABILITY_PROMPT 中文、精简（契约齐全但不再 ops 手册轰炸）。"""
+    from QvQChat.prompts import CAPABILITY_PROMPT
+
+    assert CAPABILITY_PROMPT.startswith("你是运行在 ErisPulse 框架上的智能体")
+# 关键契约仍在
+    for token in ("[[直发]]", "[[转发]]", "spawn_agent", "search_erispulse_docs", "web_search", "scene"):
+        assert token in CAPABILITY_PROMPT, token
+# 不超过 1100 字符（原英文版 ~6100，中文重写后约 1/6）
+    assert len(CAPABILITY_PROMPT) <= 1100, len(CAPABILITY_PROMPT)
+
+
+def test_budget_priority_keeps_human_parts():
+    """预算裁剪：人味部件（chat_rules/identity_note/recall_hint/roster）已收录 PRIORITY，
+    不再落兜底 9 最先被裁；chat_rules 应比 kb/skill_list 更重要。"""
+    from QvQChat.conversation.budget import PRIORITY
+
+    for kind in ("chat_rules", "identity_note", "recall_hint", "roster"):
+        assert kind in PRIORITY, kind
+    assert PRIORITY["chat_rules"] < PRIORITY["kb"]
+    assert PRIORITY["chat_rules"] < PRIORITY["skill_list"]
+    assert PRIORITY["roster"] < PRIORITY["extra"]

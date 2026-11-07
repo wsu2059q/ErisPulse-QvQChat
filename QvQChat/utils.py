@@ -16,7 +16,7 @@ OUTPUT_LIMIT = 8000
 
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _DELAY_RE = re.compile(r"^(\d+)\s*([smhd])$", re.IGNORECASE)
-_WEEKDAY_EN = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_WEEKDAY_ZH = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
 # 输出投递控制标签：[[转发]] 强制合并转发 / [[直发]] 强制普通消息直发。
 # 可出现在任意一段 AI 发言开头（首个命中对整轮生效，见 AgentRunner.delivery_hint）
@@ -340,7 +340,7 @@ def format_ts(ts: float) -> str:
 
 def time_line() -> str:
     moment = datetime.now()
-    return f"Current time: {moment.strftime('%Y-%m-%d %H:%M:%S')} ({_WEEKDAY_EN[moment.weekday()]})"
+    return f"当前时间：{moment.strftime('%Y-%m-%d %H:%M:%S')}（{_WEEKDAY_ZH[moment.weekday()]}）"
 
 
 def markdown_to_text(text: str) -> str:
@@ -428,7 +428,7 @@ def _send_failed(result) -> bool:
 
 
 async def deliver_forward(adapter, target_type: str, target_id: str, sections: list, sends,
-                          nickname: str = "", user_id: str = "") -> str:
+                          nickname: str = "", user_id: str = "", account: str = "") -> str:
 
 
     cleaned = [str(s).strip() for s in sections if s and str(s).strip()]
@@ -436,7 +436,11 @@ async def deliver_forward(adapter, target_type: str, target_id: str, sections: l
         return ""
     nodes = build_forward_nodes(cleaned, nickname=nickname, user_id=user_id)
     try:
-        chain = adapter.Send.To(target_type, target_id)
+# 多账户后端：不绑账户会用适配器默认 bot 发出（错乱根源），有 account 必绑
+        chain = adapter.Send
+        if account:
+            chain = chain.Using(account)
+        chain = chain.To(target_type, target_id)
         result = await chain.MergeForward(nodes)
         if not _send_failed(result):
             return "forward"
