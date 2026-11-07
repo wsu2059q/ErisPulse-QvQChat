@@ -185,3 +185,62 @@ async def test_event_raw_and_platform_fields_preserved():
     entry = main._inbox_load("bot")[-1]
     assert entry["detail_type"] == "onebot11_honor"
     assert "honor_type" in (entry["raw"] or "")
+
+
+# ---------- dashboard 收件箱面板（API 层） ----------
+
+class _Req:
+    def __init__(self, body):
+        self._b = body or {}
+
+    async def json(self):
+        return self._b
+
+
+def _api_stub(main):
+    from types import SimpleNamespace
+
+    from QvQChat.dashboard.api_sessions import SessionsApiMixin
+
+    api = SimpleNamespace(main=main, sdk=main.sdk)
+    for name in ("_inbox_entries", "_inbox_cache_drop", "inbox_delete", "inbox_clear", "inbox_get"):
+        attr = inspect.getattr_static(SessionsApiMixin, name)
+        setattr(api, name, getattr(SessionsApiMixin, name).__get__(api))
+    return api
+
+
+async def test_inbox_panel_api_aggregate_delete_clear():
+    """面板 API：聚合多账户、类型过滤、新的在前；删除/清空且 AI 侧缓存同步失效。"""
+    main = make_main()
+    await Main._on_notice(main, FakeNoticeEvent(group_id="1", target_id="bot", account="bot", event_id="n1"))
+    await Main._on_request(main, FakeRequestEvent(user_id="u7", account="bot", event_id="r1"))
+    await Main._on_notice(main, FakeNoticeEvent(group_id="2", target_id="bot2", account="bot2", event_id="n2"))
+    api = _api_stub(main)
+
+    entries = api._inbox_entries()
+    assert len(entries) == 3
+    assert entries[0]["ts"] >= entries[-1]["ts"]  # 新的在前
+    assert {e["account"] for e in entries} == {"bot", "bot2"}
+    only_req = api._inbox_entries(kind="request")
+    assert len(only_req) == 1 and only_req[0]["id"] == "r1"
+
+    result = await api.inbox_delete(_Req({"account": "bot", "id": "n1"}))
+    assert result["ok"] is True
+    assert len(api._inbox_entries()) == 2
+    # 缓存失效：AI 侧（list_events）读到的是删除后的收件箱
+    assert "n1" not in [e["id"] for e in main._inbox_load("bot")]
+
+    result2 = await api.inbox_clear(_Req({}))
+    assert result2["ok"] is True and api._inbox_entries() == []
+    assert main._inbox_load("bot") == []
+
+
+def test_inbox_note_in_system_parts():
+    """模型感知（默认开启）：system 部件带 inbox_note，模型才知道能自主查看收件箱。"""
+    from fakes import FakeMain
+
+    main = FakeMain()
+    persona = {"id": "p", "name": "P", "system": "sys"}
+    parts = main.sessions.build_system_parts(persona)
+    note = next(p for p in parts if p.kind == "inbox_note")
+    assert "list_events" in note.text

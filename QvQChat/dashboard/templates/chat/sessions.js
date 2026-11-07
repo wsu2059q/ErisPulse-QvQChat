@@ -95,6 +95,73 @@
   }
   if (el("qvq-identity-btn")) el("qvq-identity-btn").onclick = toggleIdentityBox;
 
+  // ===== 事件收件箱面板：通知/请求一览（聚合多账户），类型过滤 + 删除 + 清空 =====
+  var inboxKind = ""; // 当前过滤类型（""=全部 / notice / request）
+  function toggleInboxBox() {
+    var box = el("qvq-inbox-box");
+    if (!box) return;
+    var show = box.style.display === "none";
+    box.style.display = show ? "" : "none";
+    if (show) renderInboxBox();
+  }
+
+  function renderInboxBox() {
+    var box = el("qvq-inbox-box");
+    if (!box) return;
+    api("/api/qvq/inbox?kind=" + encodeURIComponent(inboxKind) + "&limit=200").then(function (data) {
+      if (!box || !data || data.__http >= 400) return;
+      var events = (data && data.events) || [];
+      var unread = (data && data.unread) || 0;
+      var kindOpts = [
+        '<option value="">' + esc(t("inbox_filter_all")) + "</option>",
+        '<option value="notice"' + (inboxKind === "notice" ? " selected" : "") + ">" + esc(t("inbox_kind_notice")) + "</option>",
+        '<option value="request"' + (inboxKind === "request" ? " selected" : "") + ">" + esc(t("inbox_kind_request")) + "</option>",
+      ].join("");
+      var rows = events.map(function (e2) {
+        var when = e2.ts ? new Date(e2.ts * 1000).toLocaleString() : "-";
+        var kindLabel = e2.kind === "request" ? t("inbox_kind_request") : t("inbox_kind_notice");
+        var detail = e2.detail_type || "";
+        if (e2.sub_type) detail += ":" + e2.sub_type;
+        var state = e2.read
+          ? '<span class="qvq-tool-desc">' + esc(t("inbox_read")) + "</span>"
+          : '<strong>' + esc(t("inbox_unread")) + "</strong>";
+        var acct = e2.account || "-";
+        return "<tr><td>" + esc(when) + "</td><td>" + esc(acct) + "</td><td>" + esc(kindLabel +
+          (detail ? " · " + detail : "")) + "</td><td>" + esc(e2.summary || "") + "</td><td>" + state +
+          '</td><td><button class="qvq-btn small danger" data-inbox-del="' + esc(e2.id) + '" data-inbox-acct="' + esc(acct) + '">' + esc(t("del")) + "</button></td></tr>";
+      }).join("");
+      box.innerHTML =
+        "<div class='qvq-actions' style='margin-bottom:6px'>" +
+        "<select class='qvq-select' id='inbox-kind'>" + kindOpts + "</select>" +
+        "<button class='qvq-btn small' id='inbox-refresh'>" + esc(t("retry")) + "</button>" +
+        "<button class='qvq-btn small danger' id='inbox-clear'>" + esc(t("inbox_clear")) + "</button>" +
+        "<span class='qvq-tool-desc'>" + esc(t("inbox_count")) .replace("{n}", events.length) .replace("{u}", unread) + "</span>" +
+        "</div>" +
+        (rows
+          ? "<table class='qvq-table'><thead><tr><th>" + esc(t("col_time")) + "</th><th>" + esc(t("acct_filter_all")) +
+            "</th><th>" + esc(t("col_tool")) + "</th><th>" + esc(t("col_detail")) + "</th><th></th><th></th></tr></thead><tbody>" + rows + "</tbody></table>"
+          : "<div class='qvq-tool-desc'>" + esc(t("inbox_empty")) + "</div>");
+      var kindSel = box.querySelector("#inbox-kind");
+      if (kindSel) kindSel.onchange = function () { inboxKind = kindSel.value; renderInboxBox(); };
+      var refresh = box.querySelector("#inbox-refresh");
+      if (refresh) refresh.onclick = renderInboxBox;
+      var clear = box.querySelector("#inbox-clear");
+      if (clear) clear.onclick = function () {
+        confirmDialog(t("inbox_clear_confirm")).then(function (ok) {
+          if (!ok) return;
+          api("/api/qvq/inbox/clear", "POST", {}).then(function () { renderInboxBox(); });
+        });
+      };
+      box.querySelectorAll("[data-inbox-del]").forEach(function (btn) {
+        btn.onclick = function () {
+          api("/api/qvq/inbox/delete", "POST", { id: btn.getAttribute("data-inbox-del"), account: btn.getAttribute("data-inbox-acct") })
+            .then(function () { renderInboxBox(); });
+        };
+      });
+    });
+  }
+  if (el("qvq-inbox-btn")) el("qvq-inbox-btn").onclick = toggleInboxBox;
+
   function applyEffectiveSettings() {
     var curSess = null;
     chatMeta.sessions.forEach(function (s3) { if (s3.chat_key === chatSession) curSess = s3; });

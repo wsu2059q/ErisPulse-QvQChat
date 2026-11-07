@@ -1248,6 +1248,8 @@ class ConversationService:
             ))
         if getattr(self.config, "skill_induct", True):
             parts.append(SystemPart("skill_offer", SKILL_OFFER_NOTE))
+# 事件收件箱感知（默认开启）：让模型知道平台事件都在收件箱里、可自主查看
+        parts.append(SystemPart("inbox_note", texts.t("inbox_note")))
 # 生态能力清单：只列所有人可用的 eco 工具，避免模型"不知道装了表情包模块"
 # 生态建议紧跟人格规则（而非压在提示词最尾部）——位置太靠后注意力权重低，模块装了也不被调用
         eco = getattr(self.main, "eco", None)

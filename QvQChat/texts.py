@@ -563,6 +563,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "（このターンはプラットフォームのリクエストイベントで発生しました：{summary}。管理者として対応してください。handle_request ツールで承認/拒否（action=accept または reject）できます。判断に迷う場合はリクエストに手を付けず、返信で方針を説明してください。）",
         "ru": "(Этот ход вызван событием-запросом платформы, а не сообщением пользователя: {summary}. Вы обрабатываете его с правами администратора: инструмент handle_request может принять/отклонить (action=accept или reject). Если уверены недостаточно — не трогайте запрос и объясните в ответе, что рекомендуете.)",
     },
+    "inbox_note": {
+        "zh-CN": "平台事件（通知/请求：戳一戳、撤回、群成员变动、好友申请、群邀请及平台私有类型）会自动进入事件收件箱；list_events 可按类型与条数筛选查看。有人说戳了你/加了你却没见到你反应、或你想确认有没有错过平台事件时，主动查一下——是否查看、看多少，由你判断。",
+        "zh-TW": "平台事件（通知/請求：戳一戳、撤回、群成員變動、好友申請、群邀請及平台私有類型）會自動進入事件收件箱；list_events 可按類型與條數篩選查看。有人說戳了你/加了你卻沒見到你反應、或你想確認有沒有錯過平台事件時，主動查一下——是否查看、看多少，由你判斷。",
+        "en": "Platform events (notices/requests: pokes, recalls, member changes, friend requests, group invites, and platform-specific types) land automatically in the event inbox; list_events can filter by kind and count. If someone says they poked you or sent a request and you never reacted, or you want to check for missed platform events, take a look proactively — whether and how much to check is your call.",
+        "ja": "プラットフォームイベント（通知/リクエスト：ピア、送信取り消し、メンバー変動、フレンド申請、グループ招待、プラットフォーム固有タイプ）は自動的にイベント受信箱に入ります。list_events で種別と件数を絞り込めます。誰かがピアした/申請したのに反応していないようなら、または見逃したイベントを確認したいときは自分の判断で確認してください。",
+        "ru": "События платформы (уведомления/запросы: тычки, отмены сообщений, изменения участников, заявки в друзья, приглашения в группу и типы, специфичные для платформы) автоматически попадают в почтовый ящик событий; list_events фильтрует по типу и количеству. Если кто-то сказал, что тыкал вас или отправлял заявку, а вы не отреагировали, или хотите проверить, не пропустили ли события, — загляните по своей инициативе.",
+    },
     "request_handle_prompt": {
         "zh-CN": "收到平台请求，请处理：\n{summary}\n附言：{comment}\nrequest_id：{request_id}（平台：{platform}）\n请决定如何处理：用 handle_request 工具受理（action=accept 或 reject）。参考：来源 id 是否可疑、附言是否礼貌真诚、请求与你的人格定位是否相配。拿不准就拒绝或先不动，最后用一两句话向管理员说明决定与理由。",
         "zh-TW": "收到平台請求，請處理：\n{summary}\n附言：{comment}\nrequest_id：{request_id}（平台：{platform}）\n請決定如何處理：用 handle_request 工具受理（action=accept 或 reject）。參考：來源 id 是否可疑、附言是否禮貌真誠、請求與你的人格定位是否相配。拿不準就拒絕或先不動，最後用一兩句話向管理員說明決定與理由。",
