@@ -218,10 +218,14 @@ class SessionsApiMixin:
         ui = (body or {}).get("settings")
         if not isinstance(ui, dict):
             return ({"error": "settings object required"}, 400)
-        saved = self.main.sessions.set_ui(chat_key, {k: str(ui[k]) for k in ("density", "model", "effort") if ui.get(k) is not None})
+        saved = self.main.sessions.set_ui(chat_key, {k: str(ui[k]) for k in ("density", "model", "effort", "trigger_mode") if ui.get(k) is not None})
         members = ui.get("members")
         if isinstance(members, list):
             saved["members"] = self.main.sessions.set_members(chat_key, members)
+# 隐私开关：关闭监听后本群消息不再进入旁听/插话/回执事件
+        if "listen_off" in ui:
+            self.main.sessions.set_flags(chat_key, {"listen_off": bool(ui["listen_off"])})
+            saved["listen_off"] = bool(ui["listen_off"])
         return {"ok": True, "ui": saved}
 
     async def session_rename(self, request):
@@ -264,7 +268,12 @@ class SessionsApiMixin:
 
     def _ui_defaults(self) -> dict:
         d = self.sdk.storage.get(UI_DEFAULTS_KEY, {})
-        return d if isinstance(d, dict) else {}
+        if not isinstance(d, dict):
+            d = {}
+# 全局触发规则随 defaults 下发：会话设置弹窗据此隐藏"更松"的档位（会话只能收紧）
+        d = dict(d)
+        d.setdefault("trigger_mode", str(getattr(self.main.cfg, "trigger_mode", "all") or "all"))
+        return d
 
     async def settings_defaults_get(self, request):
         return {"ui_defaults": self._ui_defaults()}

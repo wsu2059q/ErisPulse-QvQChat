@@ -93,7 +93,8 @@ def test_bigram_overlap():
 
 def test_time_line_neutral():
     line = time_line()
-    assert line.startswith("Current time:")
+    assert line.startswith("当前时间：")
+    assert "周" in line
 
 
 def test_split_reply_sections():

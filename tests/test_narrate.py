@@ -1,28 +1,10 @@
-"""边做边说（reply_narrate）模式：提示词注入 + 中间口播独立于 tool_notice_mode 投递。"""
+"""长任务对话风格（tool_notice_mode）：off 静默 / first_last 首尾 / brief 全投递。"""
 
 import asyncio
 
 from QvQChat.Main import Main
-from QvQChat.prompts import NARRATE_PROMPT
 
 from fakes import FakeChatEvent, FakeMain
-
-
-def _build_system(main, chat_key="onebot11:group:1"):
-    persona = main.personas.resolve(chat_key)
-    return main.sessions.build_system(chat_key=chat_key, persona=persona)
-
-
-def test_narrate_prompt_injected_when_enabled():
-    main = FakeMain(reply_narrate=True)
-    system = _build_system(main)
-    assert NARRATE_PROMPT[:40] in system
-
-
-def test_narrate_prompt_absent_when_disabled():
-    main = FakeMain(reply_narrate=False)
-    system = _build_system(main)
-    assert NARRATE_PROMPT[:40] not in system
 
 
 def _make_processing_main(**overrides):
@@ -50,13 +32,47 @@ def _make_processing_main(**overrides):
     return main
 
 
-async def test_intermediate_speech_sent_in_narrate_mode():
-    main = _make_processing_main(reply_narrate=True, aggregate_window=0.05, tool_notice_mode="brief")
+async def test_intermediate_speech_delivered_once_per_speech_brief():
+    """brief：模型每次开口都投递（开场 + 阶段发言）。"""
+    main = _make_processing_main(aggregate_window=0.05, tool_notice_mode="brief")
+
+    class TwoSpeechRunner:
+        async def run(self, *, on_intermediate=None, **kwargs):
+            if on_intermediate is not None:
+                for line in ("收到，我先查一下", "中间进展：找到线索了"):
+                    result = on_intermediate(line)
+                    if asyncio.iscoroutine(result):
+                        await result
+            return type("R", (), {"text": "结论", "usage": {}, "tool_trace": [], "rounds": []})()
+
+    main.runner = TwoSpeechRunner()
     ev = FakeChatEvent(text="查一下他的GitHub", group=True, group_id="1", user_id="u2", user_name="群主", at=True)
     await Main._on_message(main, ev)
     await asyncio.sleep(0.15)
-    narrations = [r for r in ev.replies if "先看看是真的" in str(r)]
-    assert narrations, f"narrate 开启时中间口播应直达群里, replies={ev.replies}"
+    assert any("先查一下" in str(r) for r in ev.replies)
+    assert any("中间进展" in str(r) for r in ev.replies)
+
+
+async def test_first_last_delivers_only_opening():
+    """first_last（首尾）：只发开场一句，其后阶段发言静默（最终结论走正常回复）。"""
+    main = _make_processing_main(aggregate_window=0.05, tool_notice_mode="first_last")
+
+    class TwoSpeechRunner:
+        async def run(self, *, on_intermediate=None, **kwargs):
+            if on_intermediate is not None:
+                for line in ("收到，我先查一下", "中间进展：找到线索了"):
+                    result = on_intermediate(line)
+                    if asyncio.iscoroutine(result):
+                        await result
+            return type("R", (), {"text": "结论：查到了", "usage": {}, "tool_trace": [], "rounds": []})()
+
+    main.runner = TwoSpeechRunner()
+    ev = FakeChatEvent(text="查一下他的GitHub", group=True, group_id="1", user_id="u2", user_name="群主", at=True)
+    await Main._on_message(main, ev)
+    await asyncio.sleep(0.15)
+    assert any("先查一下" in str(r) for r in ev.replies), ev.replies
+    assert not any("中间进展" in str(r) for r in ev.replies), ev.replies
+    assert any("查到了" in str(r) for r in ev.replies)  # 最终结论正常投递
 
 
 async def test_intermediate_speech_sent_in_brief_mode():
@@ -77,13 +93,31 @@ async def test_intermediate_speech_silent_when_notice_off():
     assert not any("先看看是真的" in str(r) for r in ev.replies)
 
 
-async def test_intermediate_speech_narrate_independent_of_off():
-    """narrate 独立生效：即使 tool_notice_mode=off，边做边说仍投递。"""
-    main = _make_processing_main(reply_narrate=True, aggregate_window=0.05, tool_notice_mode="off")
-    ev = FakeChatEvent(text="查一下他的GitHub", group=True, group_id="1", user_id="u2", user_name="群主", at=True)
+async def test_first_last_delivery_failure_does_not_consume_quota():
+    """首句投递失败（发送返回 False）不消耗名额：下一句仍可尝试。"""
+    main = _make_processing_main(aggregate_window=0.05, tool_notice_mode="first_last")
+
+    import QvQChat.conversation.delivery as delivery_mod
+
+    async def fail_send(event, text, quote=False):
+        return False
+
+    main.delivery._send_plain = fail_send
+
+    class TwoSpeechRunner:
+        async def run(self, *, on_intermediate=None, **kwargs):
+            if on_intermediate is not None:
+                for line in ("第一句", "第二句"):
+                    result = on_intermediate(line)
+                    if asyncio.iscoroutine(result):
+                        await result
+            return type("R", (), {"text": "结论", "usage": {}, "tool_trace": [], "rounds": []})()
+
+    main.runner = TwoSpeechRunner()
+    ev = FakeChatEvent(text="查一下", group=True, group_id="1", user_id="u2", user_name="群主", at=True)
     await Main._on_message(main, ev)
     await asyncio.sleep(0.15)
-    assert any("先看看是真的" in str(r) for r in ev.replies)
+    assert len(ev.replies) == 0  # 都失败（fake 直接 False），但两次都尝试了
 
 
 async def test_intermediate_speech_sent_when_notice_all():

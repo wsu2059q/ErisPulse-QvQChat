@@ -48,6 +48,17 @@ class CliMixin:
             elif sub in ("persona", "人格"):
                 await self._cmd_persona(event, chat_key, tokens)
             elif sub in ("tasks", "任务", "任務"):
+# /qvq tasks run <id>：手动触发一次（管理员；不影响下次计划时间）
+                if len(tokens) >= 3 and tokens[1] in ("run", "运行", "執行", "跑"):
+                    if not self.is_admin(user_id, platform=event.get_platform() or ""):
+                        await event.reply(texts.t("needs_admin"))
+                        return
+                    name = self.scheduler.run_now(str(tokens[2]))
+                    if not name:
+                        await event.reply(texts.t("task_not_found", id=str(tokens[2])))
+                    else:
+                        await event.reply(texts.t("task_triggered", name=name, id=str(tokens[2])))
+                    return
                 tasks = self.scheduler.list()
                 if not tasks:
                     await event.reply(texts.t("task_list_empty"))
@@ -57,6 +68,37 @@ class CliMixin:
                         for t in tasks
                     ]
                     await event.reply("\n".join(lines))
+            elif sub in ("trigger", "触发", "觸發"):
+# 会话级触发规则：本群任何人可改（只能收紧不能放宽，全局基线钳制兜底）
+                valid = ("all", "at_only", "lurk", "off")
+                override = self.sessions.trigger_mode_of(chat_key)
+                if len(tokens) >= 2:
+                    mode = tokens[1].strip().lower()
+                    if mode not in valid:
+                        await event.reply("用法：/qvq trigger all|at_only|lurk|off")
+                        return
+                    self.sessions.set_trigger(chat_key, mode)
+                    override = self.sessions.trigger_mode_of(chat_key)
+                effective = self._trigger_mode_of(chat_key)
+                await event.reply(texts.t(
+                    "trigger_show",
+                    effective=effective,
+                    global_mode=str(getattr(self.cfg, "trigger_mode", "all") or "all"),
+                    override=(f"，会话覆盖 {override}" if override else ""),
+                ))
+            elif sub in ("listen", "监听", "監聽"):
+# 隐私开关：关闭后本群消息不再进入旁听/插话/回执事件——本群任何人都可拒绝被监听
+                action = tokens[1].strip().lower() if len(tokens) >= 2 else ""
+                if action not in ("on", "off", "开", "关"):
+                    await event.reply("用法：/qvq listen on|off")
+                    return
+                listening = action in ("on", "开")
+                self.sessions.set_flags(chat_key, {"listen_off": not listening})
+                await event.reply(texts.t(
+                    "listen_set",
+                    state=texts.t("listen_on_state" if listening else "listen_off_state"),
+                    effect="",
+                ))
             elif sub in ("memories", "记忆", "記憶"):
                 await self._cmd_memories(event, chat_key, user_id, tokens)
             elif sub in ("compact", "压缩", "壓縮"):

@@ -215,7 +215,7 @@ class FakeAdapterManager:
 
 class FakeChatEvent:
     def __init__(self, text="", images=None, platform="onebot11", group=True,
-                 group_id="1", user_id="u1", user_name="群主", at=False):
+                 group_id="1", user_id="u1", user_name="群主", at=False, account="bot"):
         self._text = text
         self._images = images or []
         self._platform = platform
@@ -224,6 +224,7 @@ class FakeChatEvent:
         self._uid = user_id
         self._name = user_name
         self._at = at
+        self._account = str(account)
         self.replies = []
         self.claimed = False
 
@@ -258,7 +259,7 @@ class FakeChatEvent:
         return {"nickname": self._name}
 
     def get_self_account_id(self):
-        return "bot"
+        return self._account
 
     def supports(self, method):
         return method == "Text"

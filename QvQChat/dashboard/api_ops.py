@@ -34,6 +34,15 @@ class OpsApiMixin:
         ]
         return {"tasks": tasks, "runs": runs}
 
+    async def tasks_run(self, request):
+        """手动触发一次任务（不改下次计划时间）。"""
+        body = await request.json()
+        task_id = str((body or {}).get("id") or "")
+        name = self.scheduler.run_now(task_id)
+        if not name:
+            return ({"error": "task not found"}, 404)
+        return {"ok": True, "name": name}
+
     async def tasks_delete(self, request):
         body = await request.json()
         ok = self.main.scheduler.cancel(str((body or {}).get("id") or ""))

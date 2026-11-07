@@ -19,15 +19,21 @@ PRIORITY: dict[str, float] = {
     "persona": 0,
     "capability": 1,
     "scene": 2,
+    # 人味部件紧跟核心契约：预算紧张时先裁生态/知识库/技能列表，不先杀人格规则
+    "chat_rules": 2.5,
+    "identity_note": 2.6,
+    "permission": 2.7,
     "summary": 3,
     "facts": 4,
     "profile": 4.5,
     "memory": 5,
+    "recall_hint": 5.2,
     "kb": 6,
     "skill_full": 7,
     "skill_list": 8,
     "eco_hint": 8.5,
     "eco_prompt": 8.6,
+    "roster": 8.7,
     "extra": 9,
 }
 

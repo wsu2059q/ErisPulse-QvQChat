@@ -36,8 +36,8 @@ def test_split_capability_prompt_single_source():
     """常量本体在 prompts.py，Main 为兼容再导出，两者一致。"""
     assert prompts.CAPABILITY_PROMPT is CAPABILITY_PROMPT
 # 身份/触发感知前置，投递规则与标签协议仍在同一常量内（单一事实源）
-    assert CAPABILITY_PROMPT.startswith("You are an agent running on the ErisPulse bot framework")
-    assert "Sending messages:" in CAPABILITY_PROMPT
+    assert CAPABILITY_PROMPT.startswith("你是运行在 ErisPulse 框架上的智能体")
+    assert "发消息" in CAPABILITY_PROMPT and "投递标签" in CAPABILITY_PROMPT and "进度" in CAPABILITY_PROMPT
     assert "[[直发]]" in CAPABILITY_PROMPT and "[[转发]]" in CAPABILITY_PROMPT
 
 

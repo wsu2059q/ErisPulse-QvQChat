@@ -107,9 +107,10 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
                        as_forward: bool = False) -> str:
     if not text and not image_url and not audio_path and not file_path:
         return texts.t("send_need_content")
-# 文件发送：只允许发本会话工作区内的文件（任意群友都能触发 AI——
+# 文件/语音发送：只允许发本会话工作区内的文件（任意群友都能触发 AI——
 # 放开任意路径等于把机器上的文件外泄给任何人）
     resolved_file = ""
+    resolved_audio = ""
     if file_path:
         from . import files as file_tools
 
@@ -117,6 +118,13 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
             resolved_file = str(file_tools.sandbox_resolve(ctx, file_path, must_exist=True))
         except ValueError as e:
             return f"file_path rejected: {e}"
+    if audio_path:
+        from . import files as file_tools
+
+        try:
+            resolved_audio = str(file_tools.sandbox_resolve(ctx, audio_path, must_exist=True))
+        except ValueError as e:
+            return f"audio_path rejected: {e}"
     if text:
         text = utils.strip_stray_tags(str(text))
     # 目标缺省=当前会话：模型不确定发给谁时无需瞎猜平台/ID（系统提示 <session> 块同步此约定）
@@ -162,6 +170,7 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
                 target_id,
                 sections,
                 sends,
+                account=str(getattr(ctx, "self_id", "") or ""),
             )
         except Exception as e:
             used = ""
@@ -171,7 +180,12 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
             _record_sent(ctx, platform, target_type, target_id)
             return texts.t("sent_as_forward")
 
-    chain = adapter.Send.To(target_type, target_id)
+# 多账户后端：默认绑接收事件的账户（ctx.self_id），否则适配器按默认 bot 发出
+    chain = adapter.Send
+    self_id = str(getattr(ctx, "self_id", "") or "")
+    if self_id:
+        chain = chain.Using(self_id)
+    chain = chain.To(target_type, target_id)
     if reply_to:
         chain = chain.Reply(reply_to)
     if at:
@@ -216,8 +230,11 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
 
     if image_url:
         result = await chain.Image(image_url)
-    if audio_path:
-        result = await chain.Voice(audio_path)
+    if resolved_audio:
+        try:
+            result = await chain.Voice(resolved_audio)
+        except AttributeError:
+            return texts.t("platform_method_unsupported", platform=platform, method="Voice", methods=", ".join(sends) or "-")
     if resolved_file:
         try:
             result = await chain.File(resolved_file)
@@ -243,6 +260,8 @@ async def send_dsl(ctx: ToolContext, platform: str, target_type: str, target_id:
         return texts.t("target_type_invalid")
     try:
         chain = adapter.Send
+# 未显式指定账户时默认绑本会话账户（同 send_message 的默认目标约定）
+        account = str(account or getattr(ctx, "self_id", "") or "")
         if account:
             chain = chain.Using(account)
         chain = chain.To(target_type, target_id)
@@ -375,6 +394,52 @@ async def list_takeovers(ctx: ToolContext) -> str:
     return utils.to_text({"active": active})
 
 
+async def get_current_event(ctx: ToolContext) -> str:
+    """读取当前触发消息的完整原始内容：全文、各段（含引用目标 id、图片、@）、发送者等。
+
+    自动注入只带摘要时（如引用原文拉取失败），用它能看到全部细节。
+    网页端/定时任务没有实时事件，返回提示文本。
+    """
+    event = getattr(ctx, "event", None)
+    if event is None:
+        return texts.t("event_unavailable")
+    payload: dict = {
+        "platform": str(event.get_platform() or ""),
+        "message_id": str(event.get("message_id") or "") if hasattr(event, "get") else "",
+        "text": str(event.get_alt_message() or ""),
+        "sender_id": str(event.get_user_id() or ""),
+        "sender_name": str(event.get_user_nickname() or ""),
+    }
+    try:
+        if event.is_group_message():
+            payload["group_id"] = str(event.get_group_id() or "")
+    except Exception:
+        pass
+    segments = []
+    try:
+        for seg in event.get_message() or []:
+            if not isinstance(seg, dict):
+                continue
+            stype = str(seg.get("type") or "")
+            data = seg.get("data") or {}
+            entry: dict = {"type": stype}
+            if stype == "reply":
+                entry["quoted_message_id"] = str(data.get("id") or data.get("message_id") or "")
+                if data.get("text"):
+                    entry["quoted_text"] = str(data.get("text"))[:200]
+            elif stype == "at":
+                entry["at"] = str(data.get("qq") or "")
+            elif stype == "image":
+                entry["url"] = str(data.get("url") or data.get("file") or "")[:200]
+            elif data.get("text"):
+                entry["text"] = str(data.get("text"))[:200]
+            segments.append(entry)
+    except Exception:
+        pass
+    payload["segments"] = segments
+    return utils.to_text(payload)
+
+
 def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="send_message",
@@ -387,7 +452,7 @@ def register(registry: ToolRegistry, main) -> None:
                 "target_id": _s(type="string", description="Target id. OMIT to use the current session's id."),
                 "text": _s(type="string", description="Text content (markdown allowed; downgraded to plain text automatically when the platform only supports Text)"),
                 "image_url": _s(type="string", description="Image URL or local path"),
-                "audio_path": _s(type="string", description="Local audio file path"),
+                "audio_path": _s(type="string", description="Path to an EXISTING audio file in this session's workspace (sandbox). You cannot synthesize/generate audio or voice (no TTS) - never promise voice messages unless such a file already exists"),
                 "file_path": _s(type="string", description="Send a local file as a document. MUST be a path inside this chat's work sandbox (list_files to browse; write_file/download_file/zip_files to produce one). Paths outside the sandbox are rejected."),
                 "at": _s(type="string", description="User id to mention"),
                 "reply_to": _s(type="string", description="Message id to quote"),
@@ -500,4 +565,16 @@ def register(registry: ToolRegistry, main) -> None:
         description="List sessions currently taken over.",
         parameters=OBJECT_PARAMS,
         handler=list_takeovers,
+    ))
+    registry.register(Tool(
+        name="get_current_event",
+        access="safe",
+        description=(
+            "Read the FULL raw content of the message that triggered this turn: complete text, "
+            "all segments (reply/quote target message id, images with urls, @mentions), sender, "
+            "group id. Use it when the auto-injected context seems truncated or a quoted message's "
+            "content is missing. Returns a notice if there is no live event (dashboard/tasks)."
+        ),
+        parameters=OBJECT_PARAMS,
+        handler=get_current_event,
     ))

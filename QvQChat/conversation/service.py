@@ -11,7 +11,7 @@ from urllib.parse import unquote as _unquote
 from .. import texts, utils
 from ..engine import tokens
 from ..engine.base import TaskSpec
-from ..prompts import CAPABILITY_PROMPT, NARRATE_PROMPT, SKILL_OFFER_NOTE
+from ..prompts import CAPABILITY_PROMPT, SKILL_OFFER_NOTE
 from .budget import ContextPacker, SystemPart
 from .compactor import Compactor, context_tokens, estimate_tokens, extract_facts
 
@@ -419,6 +419,25 @@ class ConversationService:
         """读会话布尔标记（缺省 False），与 set_flags 的 dict 形态配对。"""
         return bool(self._state(chat_key).get(name))
 
+    def set_trigger(self, chat_key: str, mode: str) -> None:
+        """会话级触发规则覆盖（all 视为未覆盖，删除覆盖回退全局）。"""
+        state = self._state(chat_key)
+        mode = str(mode or "").strip().lower()
+        if mode in ("", "all"):
+            state.pop("trigger_mode", None)
+        elif mode in ("at_only", "lurk", "off"):
+            state["trigger_mode"] = mode
+        self._save_no_touch(chat_key, state)
+
+    def trigger_mode_of(self, chat_key: str) -> str:
+        """会话触发规则覆盖值（"" 表示未覆盖，跟随全局）；设置弹窗存于 ui。"""
+        ui = self._state(chat_key).get("ui")
+        if isinstance(ui, dict):
+            mode = str(ui.get("trigger_mode") or "").strip().lower()
+            if mode in ("at_only", "lurk", "off", "all"):
+                return "" if mode == "all" else mode
+        return str(self._state(chat_key).get("trigger_mode") or "")
+
 # ===== 会话成员白名单与跨会话路由 =====
 
     def routes(self) -> dict:
@@ -713,6 +732,7 @@ class ConversationService:
                     "preview": preview,
                     "pinned": bool(state.get("pinned")),
                     "archived": bool(state.get("archived")),
+                    "listen_off": bool(state.get("listen_off")),
                     "ui": state.get("ui") if isinstance(state.get("ui"), dict) else {},
                 }
             )
@@ -829,11 +849,13 @@ class ConversationService:
             kb_query=self._text_of(text),
             kb_texts=kb_texts,
             profile_user=profile_user,
+            restricted=self._sender_restricted(sender_id, profile_user),
+            admin_ids=(self._admin_ids_for(str(profile_user or "").split(":", 1)[0])
+                       if self._sender_restricted(sender_id, profile_user) else None),
         )
         if recalled:
             lines = "\n".join(f"- {entry.get('content', '')}" for entry in recalled)
-            parts.append(SystemPart("memory", "Related memories:\n" + lines))
-# H6 记忆回捞钩子：相关记忆命中且距上次提及超过冷却时，允许自然带一句「记得你」；
+            parts.append(SystemPart("memory", texts.t("memory_header") + "\n" + lines))# H6 记忆回捞钩子：相关记忆命中且距上次提及超过冷却时，允许自然带一句「记得你」；
 # 冷却内/非对方先开口的回合不提旧事（禁止沉默期主动翻旧账）
         if recalled and self._recall_hint_allowed(chat_key, text, sender_id or cross_user_id):
             parts.append(SystemPart("recall_hint", texts.t("recall_hint_note")))
@@ -999,9 +1021,9 @@ class ConversationService:
                 user = str(item.get("user") or "").strip()
                 assistant = str(item.get("assistant") or "").strip()
                 if user:
-                    blocks.append(f"User: {user}")
+                    blocks.append(f"用户：{user}")
                 if assistant:
-                    blocks.append(f"Assistant: {assistant}")
+                    blocks.append(f"助手：{assistant}")
             lines.append("<persona-examples>\n" + "\n".join(blocks) + "\n</persona-examples>")
         return "\n".join(lines)
 
@@ -1025,6 +1047,32 @@ class ConversationService:
             lines.append(f"- {name}" + (f"（别名：{nickname}）" if nickname and nickname != name else "") + f"（{pid}）")
         return "\n".join(lines) if len(lines) >= 1 else ""
 
+    def _sender_restricted(self, sender_id: str, profile_user: str) -> bool:
+        """发话者是否非管理员（受限模式提示的依据）；无宿主/无发送者时不限制。"""
+        if not sender_id:
+            return False
+        is_admin = getattr(self.main, "is_admin", None)
+        if not callable(is_admin):
+            return False
+        platform = str(profile_user or "").split(":", 1)[0]
+        try:
+            return not bool(is_admin(str(sender_id), "chat", platform))
+        except Exception:
+            return False
+
+    def _admin_ids_for(self, platform: str) -> list[str]:
+        """当前平台的管理员 id 集（配置 admins + 框架主人表），供受限模式提示展示"该找谁"。"""
+        ids = {str(x) for x in (getattr(self.config, "admins", []) or []) if str(x).strip()}
+        try:
+            from ..Main import framework_masters
+
+            g, p = framework_masters()
+            ids |= {str(x) for x in g}
+            ids |= {str(x) for x in (p.get(platform) or set())}
+        except Exception:
+            pass
+        return sorted(ids)
+
     def build_system_parts(
         self,
         persona: dict,
@@ -1035,6 +1083,8 @@ class ConversationService:
         kb_query: str = "",
         profile_user: str = "",
         kb_texts: list[str] | None = None,
+        restricted: bool = False,
+        admin_ids: list[str] | None = None,
     ) -> list[SystemPart]:
         """系统提示词按语义拆分为部件（供 ContextPacker 按优先级装填）。"""
 # 首行人格身份认知 + 主人称呼（并入 persona 部件，required 保位）
@@ -1058,20 +1108,44 @@ class ConversationService:
         roster = self._persona_roster_text(persona)
         if roster:
             parts.append(SystemPart("roster", texts.t("persona_roster_note") + "\n" + roster))
-        if getattr(self.config, "reply_narrate", False):
-            parts.append(SystemPart("narrate", NARRATE_PROMPT))
         if getattr(self.config, "chat_output_rules", True):
             parts.append(SystemPart("chat_rules", texts.t("chat_output_rules")))
         if getattr(self.config, "identity_note_other_agents", True):
             parts.append(SystemPart("identity_note", texts.t("identity_other_agents")))
+# 受限模式：非管理员发话时明确告知权限边界——遇越界请求必须提醒找管理员（附当前平台管理员 id）
+        if restricted:
+            parts.append(SystemPart(
+                "permission",
+                texts.t("restricted_mode_note", admins="、".join(admin_ids or []) or "-"),
+            ))
         if getattr(self.config, "skill_induct", True):
             parts.append(SystemPart("skill_offer", SKILL_OFFER_NOTE))
+# 生态能力清单：只列所有人可用的 eco 工具，避免模型"不知道装了表情包模块"
+# 生态建议紧跟人格规则（而非压在提示词最尾部）——位置太靠后注意力权重低，模块装了也不被调用
+        eco = getattr(self.main, "eco", None)
+        if eco is not None and hasattr(eco, "safe_tool_hint"):
+            try:
+                hint = eco.safe_tool_hint()
+            except Exception:
+                hint = ""
+            if hint:
+                parts.append(SystemPart("eco_hint", texts.t("eco_system_note") + "\n" + hint))
+        if eco is not None and hasattr(eco, "external_prompts"):
+            try:
+                advice = eco.external_prompts()
+            except Exception:
+                advice = []
+            if advice:
+                parts.append(SystemPart(
+                    "eco_prompt",
+                    texts.t("eco_prompt_note") + "\n" + "\n".join(f"- {line}" for line in advice),
+                ))
         if scene:
             parts.append(SystemPart("scene", scene))
         if chat_key:
             summary = self.summary_of(chat_key)
             if summary:
-                parts.append(SystemPart("summary", "Earlier conversation summary (older than recent messages):\n" + summary))
+                parts.append(SystemPart("summary", texts.t("summary_header") + "\n" + summary))
             facts = self.facts_of(chat_key)
             if facts:
                 parts.append(SystemPart("facts", texts.t("facts_header") + "\n" + "\n".join(f"- {f}" for f in facts)))
@@ -1103,26 +1177,6 @@ class ConversationService:
             tools_hint = [str(t) for t in mcp_tools if str(t)]
             if tools_hint:
                 parts.append(SystemPart("extra", texts.t("dashboard_mcp_hint", tools=", ".join(tools_hint))))
-# 生态能力清单：只列所有人可用的 eco 工具，避免模型"不知道装了表情包模块"
-        eco = getattr(self.main, "eco", None)
-        if eco is not None and hasattr(eco, "safe_tool_hint"):
-            try:
-                hint = eco.safe_tool_hint()
-            except Exception:
-                hint = ""
-            if hint:
-                parts.append(SystemPart("eco_hint", texts.t("eco_system_note") + "\n" + hint))
-# 模块贡献的使用建议（qvq_extensions.prompts）：只给判断依据，是否调用由 AI 自行决定
-        if eco is not None and hasattr(eco, "external_prompts"):
-            try:
-                advice = eco.external_prompts()
-            except Exception:
-                advice = []
-            if advice:
-                parts.append(SystemPart(
-                    "eco_prompt",
-                    texts.t("eco_prompt_note") + "\n" + "\n".join(f"- {line}" for line in advice),
-                ))
         if getattr(self.config, "kb_auto_inject", True) and kb_query:
             kb = getattr(self.main, "knowledge", None)
 # 可见域：全局条目 + 本会话/本适配器私有条目（AI 默认写会话级，跨会话共享需显式声明）

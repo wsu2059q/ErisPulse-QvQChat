@@ -220,6 +220,10 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         self.sdk = sdk
         self.logger = sdk.logger.get_child("QvQChat")
         self.started_at = time.time()  # 运行时长（状态卡）
+# 跨账户同消息认领表：指纹 -> (账户, 时间戳, 是否@)，防多账户各跑一份
+        self._msg_claims: dict = {}
+# bot 连锁计数：chat_key -> 连续兄弟 bot 触发轮数（超限静默等真人）
+        self._bot_chain: dict = {}
         self.pool = None
         self.registry = None
         self.personas = None
@@ -501,6 +505,10 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         from .conversation.service import strip_account as _strip_account
 
         platform, detail_type, target_id = parse_chat_key(_strip_account(strip_isolation(chat_key)))
+# 多账户：会话键 @账户 后缀还原出发送账户（工具主动发送要绑对 bot）
+        self_id = ""
+        if "@" in str(chat_key).rsplit(":", 2)[-1]:
+            self_id = str(chat_key).rsplit("@", 1)[1] or ""
         ctx = ToolContext(
             main=self,
             sdk=self.sdk,
@@ -511,6 +519,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
             target_id=target_id,
             user_id=user_id,
             origin=origin,
+            self_id=self_id,
         )
 # A2: task_kind 尾参——runner 暂未暴露 kind，非默认类别先经 TaskSpec 解析
 # （cfg.task_models[kind]）得到任务模型，作为显式 model 传给 runner.run
@@ -536,7 +545,9 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
                 persona_tools=prepared["persona"].get("tools"),
                 model=(resolved_model or prepared.get("model") or "") or None,
                 task_kind=task_kind,
-                priority=(6 if origin in ("plugin", "proactive") else 0),
+# 并发闸门让步：用户直答(0) > 插话(6) > 定时/后台任务(8)——
+# 任务永远排队不丢失，但饱和时绝不和用户的直接提问抢槽位
+                priority=(6 if origin in ("plugin", "proactive") else (8 if origin in ("task", "dashboard", "rpc") else 0)),
             )
             reply = utils.strip_stray_tags(result.text.strip()) or texts.t("no_reply_content")
             if send and platform:
@@ -573,6 +584,10 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
         from .conversation.service import strip_account as _strip_account
 
         platform, detail_type, target_id = parse_chat_key(_strip_account(strip_isolation(chat_key)))
+# 多账户：会话键 @账户 后缀还原出发送账户
+        self_id = ""
+        if "@" in str(chat_key).rsplit(":", 2)[-1]:
+            self_id = str(chat_key).rsplit("@", 1)[1] or ""
         ctx = ToolContext(
             main=self,
             sdk=self.sdk,
@@ -583,6 +598,7 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
             target_id=target_id,
             user_id="dashboard",
             origin="dashboard",
+            self_id=self_id,
         )
 # prepare→finalize 段持 per-chat 锁，与聊天触发/定时任务互斥写上下文
         async with self._lock_for(chat_key):

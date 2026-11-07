@@ -1330,7 +1330,8 @@
           "<td>" + esc(task.schedule_raw) + "<div class='qvq-tool-desc'>" + esc(task.next_formatted || "") + "</div></td>" +
           "<td>" + esc(task.platform) + "/" + esc(task.target_type) + "/" + esc(task.target_id) + "</td>" +
           "<td>" + esc((task.prompt || "").slice(0, 60)) + "</td>" +
-          "<td><button class='qvq-btn small danger' data-id='" + esc(task.id) + "'>" + esc(t("del")) + "</button></td></tr>";
+          "<td><button class='qvq-btn small' data-run='" + esc(task.id) + "'>" + esc(t("nav_group_run")) + "</button> " +
+          "<button class='qvq-btn small danger' data-id='" + esc(task.id) + "'>" + esc(t("del")) + "</button></td></tr>";
       }).join("");
       el("qvq-tasks-list").innerHTML = "<table class='qvq-table'><thead><tr><th>" + esc(t("models_name")) + "</th><th>" +
         esc(t("col_schedule")) + "</th><th>" + esc(t("col_target")) + "</th><th>" + esc(t("col_prompt")) + "</th><th>" +
@@ -1340,6 +1341,14 @@
           confirmDialog(t("confirm_del")).then(function (ok) {
             if (!ok) return;
             api("/api/qvq/tasks/delete", "POST", { id: btn.getAttribute("data-id") }).then(function () { toast(t("deleted")); loadTasks(); });
+          });
+        };
+      });
+      el("qvq-tasks-list").querySelectorAll("button[data-run]").forEach(function (btn) {
+        btn.onclick = function () {
+          api("/api/qvq/tasks/run", "POST", { id: btn.getAttribute("data-run") }).then(function (r) {
+            toast(r && r.ok ? t("nav_group_run") + ": " + (r.name || "") : ((r && r.error) || "error"), !(r && r.ok));
+            setTimeout(loadTasks, 800);
           });
         };
       });
