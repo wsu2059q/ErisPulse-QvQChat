@@ -1,3 +1,11 @@
+## 4.5.3（2026-11-07）
+
+### 修复（热修，含 4.5.2 全部内容——4.5.2 因 PyPI/sigstore 500 未上到 PyPI）
+
+- **致命崩溃热修**：on_message 崩溃告警误用 logger.exception——框架 LoggerChild 无此方法（__getattr__ 把 .exception 变成子 logger，一调用即 'LoggerChild' object is not callable），导致所有入站消息处理中断、bot 完全哑火。改为 error + traceback.format_exc，完整堆栈照常输出
+- **file_extra_dirs 可发送白名单**（4.5.2 内容随本版一并发布）：默认含 TTS 缓存目录，tts_synthesize 产物可直接经 send_message 发出；写入/删除仍严格限沙箱
+
+686 passed
 ## 4.5.2（2026-11-07）
 
 ### 新增
