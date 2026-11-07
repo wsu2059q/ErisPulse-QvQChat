@@ -632,8 +632,9 @@ class InboxMixin(RecoveryMixin):
                 return
             images = self._extract_images(event)
             self._batch_message(event, chat_key, text, images)
-        except Exception as e:
-            self.logger.warning(f"on_message failed: {e}")
+        except Exception:
+# 完整堆栈：'float' object is not subscriptable 这类信息不带行号没法定位
+            self.logger.exception("on_message failed")
 
     def _command_yields(self) -> list[str]:
         """命令让路前缀表：配置 command_prefixes ∪ 框架命令系统当前配置的前缀。
@@ -744,7 +745,10 @@ class InboxMixin(RecoveryMixin):
             return ""
         try:
             info = await adapter.call_api("get_group_info", group_id=group_id)
-            name = str((info or {}).get("group_name") or "")
+# 兼容两种形态：有信封（{status, data:{group_name}}）取 data 层，无信封直接取顶层
+            payload = info if isinstance(info, dict) else {}
+            data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+            name = str(data.get("group_name") or "")
         except Exception as e:
             self.logger.debug(f"get_group_info failed: {e}")
             name = ""
@@ -1402,7 +1406,10 @@ class InboxMixin(RecoveryMixin):
                     info = await asyncio.wait_for(
                         adapter.call_api("get_group_member_info", group_id=group_id, user_id=uid), 5
                     )
-                    return uid, str((info or {}).get("card") or (info or {}).get("nickname") or "")
+# 信封兼容：昵称在 data 层（{status, data:{card, nickname}}），无信封则取顶层
+                    payload = info if isinstance(info, dict) else {}
+                    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+                    return uid, str(data.get("card") or data.get("nickname") or "")
                 except Exception:
                     return uid, ""
 
