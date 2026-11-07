@@ -37,6 +37,64 @@
     });
   }
 
+  // ===== 身份迁移：映射 / 合并 / 覆盖 =====
+  function toggleIdentityBox() {
+    var box = el("qvq-identity-box");
+    if (!box) return;
+    var show = box.style.display === "none";
+    box.style.display = show ? "" : "none";
+    if (show) renderIdentityBox();
+  }
+
+  function renderIdentityBox() {
+    api("/api/qvq/sessions").then(function (data) {
+      var box = el("qvq-identity-box");
+      if (!box) return;
+      var sessions = (data && data.sessions) || [];
+      var imap = (data && data.identity_map) || {};
+      var opts = sessions.map(function (s) {
+        return '<option value="' + esc(s.chat_key) + '">' + esc((s.name || s.chat_key) + " · " + s.chat_key) + "</option>";
+      }).join("");
+      var rows = Object.keys(imap).map(function (src) {
+        return "<tr><td>" + esc(src) + "</td><td>→</td><td>" + esc(imap[src]) +
+          "</td><td><button class='qvq-btn small danger' data-identity-remove='" + esc(src) + "'>" + esc(t("del")) + "</button></td></tr>";
+      }).join("");
+      box.innerHTML =
+        "<label class='qvq-label'>" + esc(t("identity_source")) + "</label>" +
+        "<select class='qvq-select' id='identity-source'><option value=''>" + esc(t("identity_none")) + "</option>" + opts + "</select>" +
+        "<label class='qvq-label'>" + esc(t("identity_target")) + "</label>" +
+        "<select class='qvq-select' id='identity-target'><option value=''>" + esc(t("identity_none")) + "</option>" + opts + "</select>" +
+        "<label class='qvq-label'>" + esc(t("identity_mode")) + "</label>" +
+        "<select class='qvq-select' id='identity-mode'>" +
+        "<option value='alias'>" + esc(t("identity_mode_alias")) + "</option>" +
+        "<option value='merge'>" + esc(t("identity_mode_merge")) + "</option>" +
+        "<option value='overwrite'>" + esc(t("identity_mode_overwrite")) + "</option></select>" +
+        "<div class='qvq-actions'><button class='qvq-btn' id='identity-save'>" + esc(t("identity_save")) + "</button></div>" +
+        "<div class='qvq-tool-desc'>" + esc(t("identity_note")) + "</div>" +
+        (rows ? "<table class='qvq-table'><tbody>" + rows + "</tbody></table>" : "");
+      box.querySelector("#identity-save").onclick = function () {
+        var src = box.querySelector("#identity-source").value;
+        var tgt = box.querySelector("#identity-target").value;
+        var mode = box.querySelector("#identity-mode").value;
+        if (!src || !tgt || src === tgt) { toast(t("identity_none"), true); return; }
+        var doSave = function () {
+          api("/api/qvq/identity/set", "POST", { source: src, target: tgt, mode: mode }).then(function (r) {
+            toast(r && r.ok ? t("saved") : ((r && r.error) || "error"), !(r && r.ok));
+            renderIdentityBox();
+          });
+        };
+        if (mode === "overwrite") confirmDialog(t("identity_overwrite_confirm")).then(function (ok) { if (ok) doSave(); });
+        else doSave();
+      };
+      box.querySelectorAll("[data-identity-remove]").forEach(function (btn) {
+        btn.onclick = function () {
+          api("/api/qvq/identity/remove", "POST", { source: btn.getAttribute("data-identity-remove") }).then(function () { renderIdentityBox(); });
+        };
+      });
+    });
+  }
+  if (el("qvq-identity-btn")) el("qvq-identity-btn").onclick = toggleIdentityBox;
+
   function applyEffectiveSettings() {
     var curSess = null;
     chatMeta.sessions.forEach(function (s3) { if (s3.chat_key === chatSession) curSess = s3; });
