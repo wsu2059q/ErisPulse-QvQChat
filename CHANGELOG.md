@@ -1,3 +1,12 @@
+## 4.5.1（2026-11-07）
+
+### 修复（会话命名任务 / 适配器调用层）
+
+- **复合 id 直发被拒**：account_isolation 下会话键带 @botQQ 后缀，命名任务把复合 target_id 原样发给适配器被服务端 uint 校验拒收——现在先过 strip_account() 还原纯 id
+- **端点错配**：get_user_info 是 OB12 动作名，裸 call_api 无名字映射，OB11 后端（SnowLuma 等）必 404——只保留 OB11 标准 get_stranger_info
+- **信封层读取错误**：get_group_info / get_group_member_info / get_stranger_info 的群名昵称此前读 OneBot 信封顶层（永远为空），改从 data 层读取并兼容无信封适配器
+- on_message 崩溃告警升级为完整堆栈输出（logger.exception）
+
 ## 4.5.0（2026-11-07）
 
 ### 修复
