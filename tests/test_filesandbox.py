@@ -129,3 +129,55 @@ async def test_send_message_file_path_sandbox_guard(ctx):
 
     out3 = await send_message(ctx, platform="onebot11", target_type="user", target_id="1", text="x", file_path="not_exists.csv")
     assert "rejected" in out3
+
+
+async def test_send_allow_extra_dirs(tmp_path):
+    """file_extra_dirs 白名单：TTS 缓存等生态产物可发送（仅发送，写/删不豁免）。"""
+    tts_dir = tmp_path / "tts"
+    tts_dir.mkdir()
+    audio = tts_dir / "hi.mp3"
+    audio.write_bytes(b"x")
+    main = FakeMain(file_workdir=str(tmp_path / "work"))
+    c = make_ctx(main)
+    main.cfg.file_extra_dirs = [str(tts_dir)]
+# 白名单目录内的文件：allow_extra 放行
+    resolved = file_tools.sandbox_resolve(c, str(audio), must_exist=False, allow_extra=True)
+    assert str(tts_dir) in str(resolved)
+# 默认（不豁免）：同样路径仍拒绝
+    with pytest.raises(ValueError, match="escapes"):
+        file_tools.sandbox_resolve(c, str(audio), must_exist=False)
+# 白名单目录之外（隔壁目录）：即便 allow_extra 也拒绝
+    outside = tmp_path / "elsewhere" / "hi.mp3"
+    outside.parent.mkdir()
+    outside.write_bytes(b"x")
+    with pytest.raises(ValueError, match="escapes"):
+        file_tools.sandbox_resolve(c, str(outside), must_exist=False, allow_extra=True)
+# 端到端：send_message audio_path 白名单放行并发出（Voice）
+    seen = {}
+
+    class Chain:
+        def Using(self, acc):
+            seen["account"] = acc
+            return self
+
+        def To(self, t, i):
+            return self
+
+        def __getattr__(self, name):
+            async def call(arg=None):
+                seen["method"] = name
+                seen["arg"] = arg
+                return {"status": "ok"}
+
+            return call
+
+    class Adapter:
+        Send = Chain()
+
+    c.sdk.adapter._adapters["onebot11"] = Adapter()
+    c.sdk.adapter._sends["onebot11"] = ["Voice"]
+    out = await send_message(c, platform="onebot11", target_type="group",
+                             target_id="1", audio_path=str(audio))
+    assert "rejected" not in out
+    assert seen.get("method") == "Voice"
+    assert str(seen.get("arg") or "").endswith("hi.mp3")

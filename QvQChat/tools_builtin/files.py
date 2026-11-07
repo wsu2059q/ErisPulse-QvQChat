@@ -38,10 +38,27 @@ def sandbox_root(ctx: ToolContext) -> Path:
     return root
 
 
-def sandbox_resolve(ctx: ToolContext, path: str, *, must_exist: bool = False) -> Path:
+def _extra_send_dirs(ctx: ToolContext) -> list[Path]:
+    """file_extra_dirs 配置解析为绝对路径列表（相对路径按框架工作目录）。"""
+    result = []
+    for item in getattr(ctx.config, "file_extra_dirs", []) or []:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        try:
+            result.append(Path(text).expanduser().resolve())
+        except OSError:
+            continue
+    return result
+
+
+def sandbox_resolve(ctx: ToolContext, path: str, *, must_exist: bool = False,
+                    allow_extra: bool = False) -> Path:
     """把相对路径解析到沙箱内；越界抛 ValueError（消息可直接回给模型）。
 
     绝对路径/包含 .. 的路径在 resolve 后必须仍位于沙箱根之下。
+    allow_extra=True（发送场景）：file_extra_dirs 白名单目录内的文件也放行——
+    生态模块（如 TTS 缓存）的产物要能直接发给用户；写入/删除不受此豁免。
     """
     root = sandbox_root(ctx).resolve()
     text = str(path or "").strip()
@@ -55,6 +72,10 @@ def sandbox_resolve(ctx: ToolContext, path: str, *, must_exist: bool = False) ->
     except OSError as e:
         raise ValueError(f"invalid path: {path} ({e})")
     if resolved != root and root not in resolved.parents:
+        if allow_extra:
+            for extra in _extra_send_dirs(ctx):
+                if resolved == extra or extra in resolved.parents:
+                    return resolved
         raise ValueError(f"path escapes the work sandbox: {path} (all file paths must stay inside list_files root)")
     if must_exist and not resolved.exists():
         raise ValueError(f"file not found: {path} (use list_files to inspect the sandbox)")

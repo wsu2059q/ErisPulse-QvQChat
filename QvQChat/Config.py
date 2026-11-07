@@ -286,6 +286,7 @@ class QvQConfig(BaseConfig):
     file_max_read_chars: int = field(default=20000, metadata=_desc("file_max_read_chars", "read_file 单次返回最大字符数", "tools", 21, "number"))
     file_max_write_chars: int = field(default=200000, metadata=_desc("file_max_write_chars", "write_file 单次写入最大字符数", "tools", 22, "number"))
     file_max_download_mb: int = field(default=20, metadata=_desc("file_max_download_mb", "download_file 单文件大小上限（MB）", "tools", 23, "number"))
+    file_extra_dirs: list[str] = field(default_factory=lambda: ["data/TTS/audio"], metadata=_desc("file_extra_dirs", "可发送的额外目录白名单（沙箱外的只读发送来源，如生态模块产物；默认含 TTS 缓存目录，让 tts_synthesize 的文件能直接经 send_message 发出）。写入/删除仍严格限会话沙箱", "tools", 24, "list"))
 # 多提供商负载分流
     provider_load_steering: bool = field(default=True, metadata=_desc("provider_load_steering", "负载分流：首选提供商在飞请求数达到阈值时，新请求直接导向池内更闲的提供商（并发时转移，不用等报错）", "model", 20, "switch"))
     provider_steer_active: int = field(default=2, metadata=_desc("provider_steer_active", "触发分流的单提供商在飞请求数阈值", "model", 21, "number"))
