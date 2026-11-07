@@ -66,6 +66,21 @@
     api("/api/qvq/session/settings", "POST", { chat_key: chatSession, settings: patch }).catch(function () {});
   }
 
+  // 触发规则严格度：会话级只能收紧不能放宽——按全局档过滤掉"更松"的选项
+  var TRIGGER_RANK = { all: 0, at_only: 1, lurk: 2, off: 3 };
+  function triggerOptions() {
+    var g = (chatMeta && chatMeta.uiDefaults && chatMeta.uiDefaults.trigger_mode) || "all";
+    if (!(g in TRIGGER_RANK)) g = "all";
+    var labels = { all: t("trigger_all"), at_only: t("trigger_at"), lurk: t("trigger_lurk"), off: t("trigger_off") };
+    var html = '<option value="">' + esc(t("trigger_follow")) + "</option>";
+    Object.keys(TRIGGER_RANK).forEach(function (k) {
+      if (TRIGGER_RANK[k] >= TRIGGER_RANK[g]) {
+        html += '<option value="' + k + '">' + esc(labels[k]) + "</option>";
+      }
+    });
+    return html;
+  }
+
   function openSessionSettings() {
     api("/api/qvq/models").then(function (data) {
       var models = (data && data.models) || [];
@@ -84,6 +99,9 @@
         "<select class='qvq-select' id='qs-effort'><option value=''>" + esc(t("effort_s_auto")) + "</option><option value='0.3'>" + esc(t("effort_s_low")) + "</option><option value='0.7'>" + esc(t("effort_s_mid")) + "</option><option value='1.0'>" + esc(t("effort_s_high")) + "</option></select>" +
         "<label class='qvq-label'>" + esc(t("chat_persona_binding")) + "</label>" +
         "<select class='qvq-select' id='qs-persona'>" + pOpts + "</select>" +
+        "<label class='qvq-label'>" + esc(t("chat_trigger")) + "</label>" +
+        "<select class='qvq-select' id='qs-trigger'>" + triggerOptions() + "</select>" +
+        "<label class='qvq-labelqvq-checkbox'><input type='checkbox' id='qs-listen-off'> " + esc(t("listen_off_toggle")) + "</label>" +
         "<div class='qvq-actions'><button class='qvq-btn' data-qs-save>" + esc(t("settings_save_session")) + "</button>" +
         "<button class='qvq-btn ghost' data-qs-all>" + esc(t("settings_apply_all")) + "</button></div>" +
         "<div class='qvq-actions'><button class='qvq-btn ghost' data-qs-compact>" + esc(t("chat_compact")) + "</button></div>" +
@@ -95,17 +113,22 @@
       if (body.querySelector("#qs-model").value !== chatModel) body.querySelector("#qs-model").value = "";
       body.querySelector("#qs-effort").value = chatEffort;
       body.querySelector("#qs-persona").value = chatPersona;
+      body.querySelector("#qs-trigger").value = (chatMeta && chatMeta.ui && chatMeta.ui.trigger_mode) || "";
+      body.querySelector("#qs-listen-off").checked = !!(chatMeta && chatMeta.listen_off);
       function collect() {
         return {
           density: body.querySelector("#qs-density").value,
           model: body.querySelector("#qs-model").value,
           effort: body.querySelector("#qs-effort").value,
+          trigger_mode: body.querySelector("#qs-trigger").value,
+          listen_off: body.querySelector("#qs-listen-off").checked,
         };
       }
       function applyLocal(vals) {
         chatDensity = vals.density;
         chatModel = vals.model;
         chatEffort = vals.effort;
+        if (chatMeta) chatMeta.listen_off = vals.listen_off;
         try {
           localStorage.setItem("qvq_chat_density", chatDensity);
           localStorage.setItem("qvq_chat_model", chatModel);

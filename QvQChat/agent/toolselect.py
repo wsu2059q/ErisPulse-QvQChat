@@ -159,7 +159,20 @@ class ToolSelector:
         if not picked:
             return schemas
         self._remember(chat_key, picked)
-        return self._apply(schemas, picked)
+        selected = self._apply(schemas, picked)
+# 诊断：log_debug 打开时可见被裁掉的内置工具（"明明装了却不调用"的排查入口）
+        sdk = getattr(self.runner, "pool", None)
+        sdk = getattr(sdk, "sdk", None) if sdk is not None else None
+        cfg = getattr(self.runner, "config", None)
+        if sdk is not None and bool(getattr(cfg, "log_debug", False)):
+            kept = {s["function"]["name"] for s in selected}
+            dropped = sorted(n for n in allowed if n not in kept)
+            if dropped:
+                try:
+                    sdk.logger.debug(f"tool select pruned: {', '.join(dropped)}")
+                except Exception:
+                    pass
+        return selected
 
     @staticmethod
     def _apply(schemas: list, picked: list[str]) -> list:

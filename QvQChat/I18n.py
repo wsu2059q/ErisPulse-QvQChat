@@ -198,11 +198,11 @@ class QvQI18n(BaseI18n):
         "Только для владельца: сообщения не-админов не запускают агента (Dashboard не затронут)",
     )
     tool_notice_mode = _key(
-        "平台侧长任务播报：off 静默 / brief 发送 AI 的开场与阶段性发言（默认，不发工具明细）/ all 另加每轮工具明细",
-        "平台側長任務播報：off 靜默 / brief 發送 AI 的開場與階段性發言（預設，不發工具明細）/ all 另加每輪工具明細",
-        "Long-task announcements on chat platforms: off silent / brief post the AI's opening and milestone messages (default, no tool details) / all also post per-round tool details",
-        "長時間タスクの通知：off サイレント / brief AI の開場と経過発言を送信（既定、ツール詳細なし）/ all 加えて每回のツール詳細も送信",
-        "Оповещения о длинных задачах: off тихо / brief присылать вступление и промежуточные сообщения ИИ (по умолчанию, без деталей инструментов) / all ещё и детали каждого раунда",
+        "平台侧长任务播报（对话风格）：off 静默 / first_last 首尾（只发开场一句与最终结论）/ brief 发送全部开场与阶段性发言（默认，不发工具明细）/ all 另加每轮工具明细",
+        "平台側長任務播報（對話風格）：off 靜默 / first_last 首尾（只發開場一句與最終結論）/ brief 發送全部開場與階段性發言（預設，不發工具明細）/ all 另加每輪工具明細",
+        "Long-task announcements (chat style): off silent / first_last bookends (opening line and final reply only) / brief post all opening and milestone messages (default, no tool details) / all also post per-round tool details",
+        "長時間タスクの通知（会話スタイル）：off サイレント / first_last 最初と最後のみ（開場の一言と最終結論）/ brief AI の開場と経過発言を送信（既定、ツール詳細なし）/ all 加えて每回のツール詳細も送信",
+        "Оповещения о длинных задачах (стиль чата): off тихо / first_last только начало и конец (вступление и итог) / brief все вступительные и промежуточные сообщения ИИ (по умолчанию, без деталей инструментов) / all ещё и детали каждого раунда",
     )
     aggregate_window = _key("消息聚合窗口（秒）：窗口内的多条消息合并为一次请求，0 关闭", "訊息聚合視窗（秒）：視窗內的多條訊息合併為一次請求，0 關閉", "Message aggregation window in seconds; messages within merge into one request (0 disables)", "メッセージ集約ウィンドウ（秒）。0 で無効", "Окно агрегации сообщений (сек), 0 — выкл")
 
@@ -635,14 +635,6 @@ class QvQI18n(BaseI18n):
         "Max characters per opening line (truncated beyond)",
         "Max characters per opening line (truncated beyond)（詳細はドキュメント参照）",
         "Max characters per opening line (truncated beyond) (см. документацию)",
-    )
-
-    reply_narrate = _key(
-        "边做边说：工具任务的每一步先说一句要做什幺、拿到结果简短汇报、结束给简短结论（每句单独发到群里，像真人工作播报）",
-        "边做边说：工具任务的每一步先说一句要做什幺、拿到结果简短汇报、结束给简短结论（每句单独发到群里，像真人工作播报）",
-        "Work out loud: announce each tool step, report results briefly, close with a short summary",
-        "Work out loud: announce each ツール step, report results briefly, close with a short summary（詳細はドキュメント参照）",
-        "Work out loud: announce each инструменты step, report results briefly, close with a short summary (см. документацию)",
     )
 
     notify_on_passive_failure = _key(

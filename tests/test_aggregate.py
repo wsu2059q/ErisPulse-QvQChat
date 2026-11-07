@@ -12,6 +12,7 @@ def make_main(**overrides):
     if not hasattr(main.cfg, "context_compress_tokens"):
         main.cfg.context_compress_tokens = 0
     main._pending = {}
+    main._waiting = {}
     main._chat_locks = {}
     main._rate_window = {}
     main._rate_notice_shown = {}
@@ -24,7 +25,7 @@ def make_main(**overrides):
         "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
         "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice",
         "_maybe_send_opening",
-        "_is_command_message", "_command_yields",
+        "_is_command_message", "_command_yields", "_drain_waiting", "_enqueue_waiting", "_trigger_mode_of", "_is_direct_address", "_dup_delivery_gate", "_is_sibling_bot", "_quote_content",
     ):
         static_attr = inspect.getattr_static(Main, name)
         if isinstance(static_attr, staticmethod):

@@ -28,6 +28,9 @@ class ToolContext:
     scene_note: str = ""
 # 父会话键：子智能体（sub: 前缀）回溯来源用
     parent_chat_key: str = ""
+# 接收本会话事件的机器人账户：多账户后端下所有主动发送必须绑它（Send.Using），
+# 否则适配器按默认账户发出——群里看到"别人家的 bot 在替本 bot 说话"
+    self_id: str = ""
 # 本轮工具事件回调（dashboard 直播）：spawn_agent 借它把子智能体内部步骤透传出来
     on_tool_event: Any = None
 

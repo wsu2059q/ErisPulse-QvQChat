@@ -198,6 +198,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("POST", "/api/qvq/import", self.import_data),
             ("GET", "/api/qvq/tasks", self.tasks_get),
             ("POST", "/api/qvq/tasks/delete", self.tasks_delete),
+            ("POST", "/api/qvq/tasks/run", self.tasks_run),
             ("GET", "/api/qvq/breakers", self.breakers_get),
             ("GET", "/api/qvq/costs", self.costs_get),
             ("GET", "/api/qvq/running", self.running_get),

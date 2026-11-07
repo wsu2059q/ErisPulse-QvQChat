@@ -24,6 +24,12 @@ from .recovery import INFLIGHT_KEY_PREFIX, RecoveryMixin
 
 CONFIRM_WORDS = {"确认", "確認", "确定", "確定", "是", "confirm", "yes", "y", "ok"}
 
+# 触发规则严格度排序（数值越大越严）：会话级只能收紧不能放宽——全局 at_only 时会话最多 at_only
+TRIGGER_RANK = {"all": 0, "at_only": 1, "lurk": 2, "off": 3}
+
+# 同账户重复投递去重窗口（秒）：适配器重试/回声会把同一消息再投一次
+DUP_DELIVERY_WINDOW = 6.0
+
 # 限频滑窗字典容量上限（群聊×用户数远达不到，防极端场景只增不减）
 RATE_WINDOW_CAP = 512
 
@@ -205,9 +211,10 @@ class InboxMixin(RecoveryMixin):
 # 本地图片转 base64 失败即放弃该图（降级语义：返回空串由调用方过滤）
             return ""
 
-    @staticmethod
-    def _quote_content(event, limit: int = 300) -> str:
-        """从 reply 段尽力提取被引用消息的原文（QQ/NapCat 等实现里在 data.text 或 data.content）。"""
+    async def _quote_content(self, event, limit: int = 300) -> str:
+        """提取被引用消息原文：先读 reply 段内联 text/content（部分适配器带），
+        拿不到（多数适配器 reply 段只有 id）再按 message_id 走适配器 get_msg 拉取。"""
+        platform = str(event.get_platform() or "")
         try:
             for segment in event.get_message() or []:
                 if not isinstance(segment, dict) or segment.get("type") != "reply":
@@ -225,6 +232,33 @@ class InboxMixin(RecoveryMixin):
                         raw = str(content).strip()
                 if raw:
                     return raw[:limit]
+# 内联没有原文：按 message_id 向适配器拉取（OneBot 系 get_msg 标准接口）
+                mid = str(data.get("id") or data.get("message_id") or "")
+                if mid and platform:
+                    try:
+                        adapter = self.sdk.adapter.get(platform)
+                        result = None
+                        if adapter is not None and hasattr(adapter, "call_api"):
+                            result = await adapter.call_api("get_msg", message_id=mid)
+                        payload = result if isinstance(result, dict) else {}
+                        msg = payload.get("message")
+                        sender = payload.get("sender") or {}
+                        nick = ""
+                        if isinstance(sender, dict):
+                            nick = str(sender.get("nickname") or sender.get("card") or "")
+                        if isinstance(msg, list):
+                            text = "".join(
+                                str(s.get("data", {}).get("text") or "") if isinstance(s, dict) else str(s)
+                                for s in msg
+                            ).strip()
+                        else:
+                            text = str(msg or "").strip()
+                        if not text:
+                            text = str(payload.get("raw_message") or "").strip()
+                        if text:
+                            return (f"{nick}：{text}" if nick else text)[:limit]
+                    except Exception as e:
+                        self.logger.debug(f"quote fetch failed: {e}")
         except Exception:
             return ""
         return ""
@@ -265,6 +299,11 @@ class InboxMixin(RecoveryMixin):
             session_key = self.sdk.interaction.make_key(event)
         except Exception:
             session_key = ""
+        self_id = ""
+        try:
+            self_id = str(event.get_self_account_id() or "") if event is not None else ""
+        except Exception:
+            self_id = ""
         return ToolContext(
             main=self,
             sdk=self.sdk,
@@ -279,6 +318,7 @@ class InboxMixin(RecoveryMixin):
             origin=origin,
             confirmer=self._chat_confirmer,
             scene_note=scene_note,
+            self_id=self_id,
         )
 
     def _cleanup_takeovers(self) -> None:
@@ -389,6 +429,81 @@ class InboxMixin(RecoveryMixin):
         except Exception as e:
             self.logger.debug(f"rate limit notice reply failed: {e}")
 
+    def _trigger_mode_of(self, chat_key: str) -> str:
+        """生效触发规则：会话覆盖只能比全局更严（取两者中更严格的档）。"""
+        g = str(getattr(self.cfg, "trigger_mode", "all") or "all").lower()
+        if g not in TRIGGER_RANK:
+            g = "all"
+        try:
+            per = self.sessions.trigger_mode_of(chat_key).lower()
+        except Exception:
+            per = ""
+        if per not in TRIGGER_RANK:
+            return g
+        return per if TRIGGER_RANK[per] >= TRIGGER_RANK[g] else g
+
+    def _is_direct_address(self, event, text: str) -> bool:
+        """群里是否被点名：@机器人 或 命中唤醒前缀。"""
+        if event.is_at_message():
+            return True
+        for prefix in getattr(self.cfg, "wake_prefixes", []) or []:
+            if prefix and text.startswith(prefix):
+                return True
+        return False
+
+    def _is_sibling_bot(self, event, sender_id: str) -> bool:
+        """发话者是否同后端的其它 bot 账户（平台在册账户且不是本事件自己的账户）。"""
+        sender = str(sender_id or "")
+        if not sender:
+            return False
+        try:
+            me = str(event.get_self_account_id() or "")
+            if sender == me:
+                return False
+            platform = str(event.get_platform() or "")
+            bots = self.sdk.adapter.list_bots(platform) or {}
+            per = bots.get(platform, bots) if isinstance(bots, dict) else {}
+            return isinstance(per, dict) and sender in {str(k) for k in per}
+        except Exception:
+            return False
+
+    def _dup_delivery_gate(self, event, text: str) -> bool:
+        """同账户重复投递去重：适配器重试/回声会把同一条消息再投一次。
+
+        只认"真实投递身份"：message_id 或事件时间戳与上一份完全一致才算重复
+        （人类重发/连发必然是新 id 新时间戳，不受影响；不同账户各回各的，不在此限）。
+        两者都拿不到的事件不做判定（无法区分，宁可不拦）。
+        返回 True=继续处理，False=重复投递丢弃。
+        """
+        account = str(event.get_self_account_id() or "")
+        now = time.time()
+        mid = str(event.get("message_id") or "") if hasattr(event, "get") else ""
+        ts = event.get("time") if hasattr(event, "get") else None
+        if not mid and not ts:
+            return True
+        import re as _re
+
+        fp = "{}:{}:{}:{}".format(
+            event.get_platform() or "",
+            str(event.get_group_id() or "") if event.is_group_message() else "",
+            event.get_user_id() or "",
+            _re.sub(r"\s+", "", str(text or ""))[:120],
+        )
+        identity = mid or f"{fp}@{ts}"
+        key = f"{account}:{identity}"
+        claims = getattr(self, "_msg_claims", None)
+        if claims is None:
+            claims = {}
+            self._msg_claims = claims
+        if len(claims) > 256:
+            claims = {k: v for k, v in claims.items() if now - v[1] < DUP_DELIVERY_WINDOW}
+            self._msg_claims = claims
+        seen = claims.get(key)
+        if seen and now - seen < DUP_DELIVERY_WINDOW:
+            return False
+        claims[key] = now
+        return True
+
     def _should_trigger(self, event, chat_key: str, text: str) -> bool:
         if chat_key in self.takeover:
             return True
@@ -425,40 +540,72 @@ class InboxMixin(RecoveryMixin):
                 self.logger.debug(f"interrupt check failed: {e}")
 #  扩展点 A：qvq.observe 旁听通道——命令过滤后、触发判定前广播纯数据载荷
 # （含未触发回复的消息，插件借此观察全部群聊；异常吞掉不打断主流程）
-            try:
-                is_group = event.is_group_message()
-                await self.sdk.lifecycle.emit(
-                    "qvq.observe",
-                    {
-                        "chat_key": chat_key,
-                        "platform": event.get_platform() or "",
-                        "detail_type": "group" if is_group else "private",
-                        "group_id": str(event.get_group_id() or "") if is_group else "",
-                        "sender_id": str(event.get_user_id() or ""),
-                        "sender_name": self._sender_name(event),
-                        "text": text,
-                        "is_group": is_group,
-                        "at_bot": bool(event.is_at_message()),
-                        "reply_to_bot": False,
-                        "is_command_prefix": False,
-                        "images": self._extract_images(event),
-                        "is_reply": any(
-                            isinstance(seg, dict) and seg.get("type") == "reply"
-                            for seg in (event.get_message() or [])
-                        ),
-                        "reply_message_id": next(
-                            (
-                                str(seg.get("data", {}).get("message_id") or "")
+# 跨账户同消息仲裁：多账户部署同一条群消息只允许一个账户接手（@ 优先）
+            if not self._dup_delivery_gate(event, text):
+                return
+# 同后端兄弟 bot 判定（拟人化 bot 互聊的前提），observe 载荷带上标记
+            sender_id = str(event.get_user_id() or "")
+            sibling = self._is_sibling_bot(event, sender_id)
+# 隐私开关：会话开了 listen_off 就不向第三方广播本群消息（Stalker/插话随之静音）
+            if not self.sessions.get_flag(chat_key, "listen_off"):
+                try:
+                    is_group = event.is_group_message()
+                    await self.sdk.lifecycle.emit(
+                        "qvq.observe",
+                        {
+                            "chat_key": chat_key,
+                            "platform": event.get_platform() or "",
+                            "detail_type": "group" if is_group else "private",
+                            "group_id": str(event.get_group_id() or "") if is_group else "",
+                            "sender_id": str(event.get_user_id() or ""),
+                            "sender_name": self._sender_name(event),
+                            "text": text,
+                            "is_group": is_group,
+                            "at_bot": bool(event.is_at_message()),
+                            "sender_is_bot": sibling,
+                            "reply_to_bot": False,
+                            "is_command_prefix": False,
+                            "images": self._extract_images(event),
+                            "is_reply": any(
+                                isinstance(seg, dict) and seg.get("type") == "reply"
                                 for seg in (event.get_message() or [])
-                                if isinstance(seg, dict) and seg.get("type") == "reply"
                             ),
-                            "",
-                        ),
-                        "ts": time.time(),
-                    },
-                )
-            except Exception as e:
-                self.logger.debug(f"emit qvq.observe failed: {e}")
+                            "reply_message_id": next(
+                                (
+                                    str(seg.get("data", {}).get("message_id") or "")
+                                    for seg in (event.get_message() or [])
+                                    if isinstance(seg, dict) and seg.get("type") == "reply"
+                                ),
+                                "",
+                            ),
+                            "ts": time.time(),
+                        },
+                    )
+                except Exception as e:
+                    self.logger.debug(f"emit qvq.observe failed: {e}")
+# bot 互聊（拟人化）：关闭时兄弟 bot 的消息只旁听不响应；
+# 开启也只连续陪聊 3 轮就收口，等真人发言重置（防两个 bot 绕圈）
+            if sibling and not bool(getattr(self.cfg, "bot_cross_talk", True)):
+                return
+            if sibling:
+                chain = getattr(self, "_bot_chain", None)
+                if chain is None:
+                    chain = {}
+                    self._bot_chain = chain
+                count = int(chain.get(chat_key, 0))
+                if count >= 3:
+                    return
+                chain[chat_key] = count + 1
+            else:
+                chain = getattr(self, "_bot_chain", None)
+                if chain is not None and chain.get(chat_key):
+                    chain[chat_key] = 0
+# 触发规则（会话级覆盖全局）：off 不响应 / lurk 只旁听（observe 已发出）/ at_only 群里仅点名
+            mode = self._trigger_mode_of(chat_key)
+            if mode in ("off", "lurk"):
+                return
+            if mode == "at_only" and event.is_group_message() and not self._is_direct_address(event, text):
+                return
             if not self._should_trigger(event, chat_key, text):
 #  扩展点 B：未被 @/前缀命中时问询参与决策提供者（默认关闭），
 # speak 则过输出预算后以 origin="plugin" 进入聚合回复，不消耗发送者限频
@@ -859,7 +1006,7 @@ class InboxMixin(RecoveryMixin):
                         scene += texts.t("scene_at_narrate")
                 # 引用回复认知：优先注入被引原文，提取不到再退回泛化提示
                 if any(isinstance(seg, dict) and seg.get("type") == "reply" for seg in (event.get_message() or [])):
-                    quoted = self._quote_content(event)
+                    quoted = await self._quote_content(event)
                     if quoted:
                         scene += texts.t("scene_quote_content", content=quoted)
                     else:
@@ -985,11 +1132,14 @@ class InboxMixin(RecoveryMixin):
                 suffix = " …" if len(calls) > 3 else ""
                 await event.reply(texts.t("processing_notice", tools="、".join(labels) + suffix))
 
+            speech_sent = False
+
             async def on_intermediate(speech):
-# 开场与阶段性发言：brief 及以上都投递（与 tool_notice_mode 配置描述一致——
-# brief="发送 AI 的开场与阶段性发言"）；off 且未开 narrate 时静默；narrate 独立生效
+# 对话风格：off 静默 / first_last 只投第一句开场（其后阶段发言静默，最终结论走正常回复）/
+# brief 及以上全部投递。speech_sent 防重：同一轮多次发言只算一次
+                nonlocal speech_sent
                 mode = getattr(self.cfg, "tool_notice_mode", "brief")
-                if mode == "off" and not bool(getattr(self.cfg, "reply_narrate", False)):
+                if mode == "off" or (mode == "first_last" and speech_sent):
                     return
                 text = utils.truncate(str(speech).strip(), 1200)
                 if not text:
@@ -998,6 +1148,8 @@ class InboxMixin(RecoveryMixin):
 # 走投递层单条发送（方法降级+重试链）：裸 event.reply 在部分适配器上不生效，
 # 且失败无信号——这正是"普通消息能发、第一句发不出"的根因
                     ok = await self.delivery._send_plain(event, text)
+                    if ok:
+                        speech_sent = True
                     if bool(getattr(self.cfg, "log_debug", False)):
                         self.logger.debug(f"intermediate speech delivered={ok} ({len(text)} chars, mode={mode})")
                 except Exception as e:
@@ -1082,10 +1234,12 @@ class InboxMixin(RecoveryMixin):
                 reply = reply or texts.t("no_reply_content")
                 self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""))
                 try:
-                    await self.sdk.lifecycle.emit(
-                        "qvq.replied",
-                        {"chat_key": chat_key, "reply": reply, "tools": len(result.tool_trace)},
-                    )
+# 隐私开关：listen_off 时回执事件也不出群
+                    if not self.sessions.get_flag(chat_key, "listen_off"):
+                        await self.sdk.lifecycle.emit(
+                            "qvq.replied",
+                            {"chat_key": chat_key, "reply": reply, "tools": len(result.tool_trace)},
+                        )
                 except Exception as e:
                     self.logger.debug(f"emit qvq.replied failed: {e}")
                 await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None), origin=origin)

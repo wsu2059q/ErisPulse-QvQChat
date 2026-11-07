@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 
 from . import texts, utils
@@ -98,12 +99,14 @@ class Scheduler:
 # 任务分派字段透传（task_models[kind] / 显式模型）
             "task_kind": str(spec.get("task_kind") or "chat"),
             "model": str(spec.get("model") or ""),
+            "jitter_minutes": float(spec.get("jitter_minutes") or 0),
             "created_by": str(spec.get("created_by") or ""),
             "created": now,
-            "next_run": schedule_next(schedule, now),
+            "next_run": 0,
             "managed_by": "",
             "cron_ref": "",
         }
+        task["next_run"] = self._next_with_jitter(task, now)
         tasks = self._load()
         tasks.append(task)
         self._save(tasks)
@@ -182,6 +185,29 @@ class Scheduler:
                     self.cancel(task_id)
                 self.main.spawn(self._fire(task))
                 return
+
+    def _next_with_jitter(self, task: dict, now: float) -> float:
+        """下次触发时间：计划时间 + [0, jitter_minutes] 随机偏移（每次重算都重新掷点）。
+
+        "每天 16:23 左右随机"这类需求——计划仍写 16:23，jitter_minutes=30 则
+        实际每天在 16:23~16:53 之间随机；列表里显示的就是本次真实的触发时间。
+        """
+        nxt = schedule_next(task.get("schedule") or {}, now)
+        jitter = float(task.get("jitter_minutes") or 0)
+        if jitter > 0:
+            nxt += random.uniform(0.0, jitter * 60.0)
+        return nxt
+
+    def run_now(self, task_id: str) -> str:
+        """手动触发一次：立即执行，不改 next_run 计划。返回任务名；未找到返回空串。"""
+        for task in self._load():
+            if str(task.get("id")) == str(task_id):
+                try:
+                    asyncio.get_running_loop().create_task(self._fire(dict(task)))
+                    return str(task.get("name") or task_id)
+                except RuntimeError:
+                    return ""
+        return ""
 
     def cancel(self, task_id: str) -> bool:
         tasks = self._load()
@@ -369,7 +395,7 @@ class Scheduler:
                 to_fire.append(task)
                 continue
             try:
-                task["next_run"] = schedule_next(schedule, now)
+                task["next_run"] = self._next_with_jitter(task, now)
             except ValueError:
                 continue
             remaining.append(task)
