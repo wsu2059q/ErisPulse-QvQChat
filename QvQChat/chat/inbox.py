@@ -11,6 +11,7 @@ import base64
 import mimetypes
 import random
 import time
+import traceback
 from pathlib import Path
 
 from .. import texts, utils
@@ -633,8 +634,10 @@ class InboxMixin(RecoveryMixin):
             images = self._extract_images(event)
             self._batch_message(event, chat_key, text, images)
         except Exception:
-# 完整堆栈：'float' object is not subscriptable 这类信息不带行号没法定位
-            self.logger.exception("on_message failed")
+# 完整堆栈：'float' object is not subscriptable 这类信息不带行号没法定位。
+# 注意 LoggerChild 无 exception 方法（__getattr__ 会把 .exception 变成子 logger，
+# 一调用就是 'LoggerChild' object is not callable）——用 error + format_exc
+            self.logger.error("on_message failed:\n" + traceback.format_exc())
 
     def _command_yields(self) -> list[str]:
         """命令让路前缀表：配置 command_prefixes ∪ 框架命令系统当前配置的前缀。
