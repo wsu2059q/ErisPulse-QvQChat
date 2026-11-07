@@ -107,8 +107,9 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
                        as_forward: bool = False) -> str:
     if not text and not image_url and not audio_path and not file_path:
         return texts.t("send_need_content")
-# 文件/语音发送：只允许发本会话工作区内的文件（任意群友都能触发 AI——
-# 放开任意路径等于把机器上的文件外泄给任何人）
+# 文件/语音发送：默认只允许本会话工作区内的文件（任意群友都能触发 AI——
+# 放开任意路径等于把机器上的文件外泄给任何人）；file_extra_dirs 白名单目录
+# （如 TTS 缓存）的产物放行发送，写入/删除仍严格限沙箱
     resolved_file = ""
     resolved_audio = ""
     if file_path:
@@ -122,7 +123,8 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
         from . import files as file_tools
 
         try:
-            resolved_audio = str(file_tools.sandbox_resolve(ctx, audio_path, must_exist=True))
+            resolved_audio = str(file_tools.sandbox_resolve(ctx, audio_path, must_exist=True,
+                                                            allow_extra=True))
         except ValueError as e:
             return f"audio_path rejected: {e}"
     if text:
