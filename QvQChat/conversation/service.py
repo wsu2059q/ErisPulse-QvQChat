@@ -1227,7 +1227,9 @@ class ConversationService:
                 continue
             platform = str(session.get("platform") or "")
             detail_type = str(session.get("detail_type") or "")
-            target_id = str(session.get("target_id") or "")
+# 目标 id 必须还原成纯 id：account_isolation 时代的会话键带 @botQQ 后缀，
+# 复合 id 直发适配器会被服务端 uint 校验拒收（strip_account 就是为这个存在的）
+            target_id = strip_account(str(session.get("target_id") or ""))
             if platform == DASHBOARD_PLATFORM or not platform or not target_id:
                 continue
             try:
@@ -1242,21 +1244,21 @@ class ConversationService:
                     info = await asyncio.wait_for(
                         adapter.call_api("get_group_info", group_id=target_id), 6
                     )
-                    name = str((info or {}).get("group_name") or "") if isinstance(info, dict) else ""
+# 信封兼容：群名在 data 层（{status, data:{group_name}}），无信封则取顶层
+                    payload = info if isinstance(info, dict) else {}
+                    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+                    name = str(data.get("group_name") or "")
                     if name:
                         self.set_group_name(chat_key, name)
                 else:
-                    for endpoint in ("get_stranger_info", "get_user_info"):
-                        try:
-                            info = await asyncio.wait_for(
-                                adapter.call_api(endpoint, user_id=target_id), 6
-                            )
-                        except Exception:
-                            continue
-                        if isinstance(info, dict):
-                            name = str(info.get("nickname") or info.get("card") or "")
-                            if name:
-                                break
+# 只用 OB11 标准 get_stranger_info（get_user_info 是 OB12 动作名，裸 call_api 无映射必 404）；
+# 昵称在信封 data 层（{status, retcode, data:{nickname,...}}），读顶层永远拿不到
+                    info = await asyncio.wait_for(
+                        adapter.call_api("get_stranger_info", user_id=target_id), 6
+                    )
+                    if isinstance(info, dict):
+                        data = info.get("data") if isinstance(info.get("data"), dict) else info
+                        name = str(data.get("nickname") or data.get("card") or "")
                     if name:
                         self.set_user_name(chat_key, name)
             except Exception:

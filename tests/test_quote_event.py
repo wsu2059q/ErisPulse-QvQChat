@@ -91,3 +91,52 @@ def test_get_current_event_without_event():
     ctx = make_ctx(main, event=None)
     out = asyncio.run(get_current_event(ctx))
     assert out  # 返回提示文本而非报错
+
+
+def _name_stub(main, responses):
+    async def _call(endpoint, **params):
+        if endpoint in responses:
+            return responses[endpoint]
+        return {}
+
+    main.sdk.adapter._adapters["onebot11"] = SimpleNamespace(call_api=_call)
+
+
+async def test_resolve_session_names_strips_account_and_reads_data():
+    """命名任务：复合 id 先 strip_account 再发；昵称从信封 data 层取。"""
+    main = make_main()
+    calls = []
+
+    async def _call(endpoint, **params):
+        calls.append((endpoint, params.get("user_id") or params.get("group_id")))
+        if endpoint == "get_stranger_info":
+            return {"status": "ok", "retcode": 0, "data": {"nickname": "小白", "user_id": 1}}
+        return {}
+
+    main.sdk.adapter._adapters["onebot11"] = SimpleNamespace(call_api=_call)
+    sessions = [{
+        "chat_key": "onebot11:private:3838648009@643319481",
+        "platform": "onebot11", "detail_type": "private",
+        "target_id": "3838648009@643319481", "name": "",
+    }]
+    from QvQChat.conversation.service import strip_account
+
+    assert strip_account("onebot11:private:3838648009@643319481") == "onebot11:private:3838648009"
+    await main.sessions.resolve_session_names(sessions)
+    assert calls and calls[0][1] == "3838648009", calls  # 复合后缀已剥离
+    assert sessions[0]["name"] == "小白" or main.sessions._state(
+        "onebot11:private:3838648009@643319481").get("user_name") == "小白"
+
+
+async def test_group_name_reads_envelope_data():
+    """群名解析兼容信封：group_name 在 data 层也能取到（走真实 _resolve_group_name）。"""
+    from QvQChat.chat.inbox import InboxMixin
+
+    main = make_main()
+    _name_stub(main, {"get_group_info": {"status": "ok", "data": {"group_name": "测试群"}}})
+    info = await main.sdk.adapter.get("onebot11").call_api("get_group_info", group_id="1")
+    data = info.get("data") if isinstance(info.get("data"), dict) else info
+    assert data.get("group_name") == "测试群"
+    ev = FakeChatEvent(text="x", group=True, group_id="1")
+    name = await InboxMixin._resolve_group_name(main, ev, "onebot11:group:1", "1")
+    assert name == "测试群"
