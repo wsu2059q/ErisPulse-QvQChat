@@ -42,7 +42,29 @@ class SessionsApiMixin:
             "live_sessions": sorted(live_keys),
             "ui_defaults": self._ui_defaults(),
             "accounts": self._accounts_overview(sessions),
+            "identity_map": self.main.sessions.identity_map(),
         }
+
+    async def identity_set(self, request):
+        """身份迁移：source 会话键的事件此后按 target 会话处理（历史/人格/记忆跟随）。
+
+        mode=alias 仅映射 / merge 合并（上下文/事实/记忆并入）/ overwrite 覆盖（先备份进回收站）。
+        """
+        body = await request.json()
+        source = str((body or {}).get("source") or "").strip()
+        target = str((body or {}).get("target") or "").strip()
+        mode = str((body or {}).get("mode") or "alias").strip().lower()
+        if not source or not target or source == target:
+            return ({"error": "source/target required and must differ"}, 400)
+        summary = self.main.sessions.migrate_identity(source, target, mode)
+        if not summary.get("ok"):
+            return ({"error": summary.get("error") or "migrate failed"}, 400)
+        return summary
+
+    async def identity_remove(self, request):
+        body = await request.json()
+        source = str((body or {}).get("source") or "")
+        return {"ok": self.main.sessions.remove_identity(source)}
 
     def _accounts_overview(self, sessions: list) -> dict:
         """多账户概览：各平台在线 bot + 每个已隔离账户（chat_key 的 @account 后缀）的会话数。

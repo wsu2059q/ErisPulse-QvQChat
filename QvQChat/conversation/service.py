@@ -17,6 +17,7 @@ from .compactor import Compactor, context_tokens, estimate_tokens, extract_facts
 
 CONV_PREFIX = "QvQChat:conv:"
 ROUTES_KEY = "QvQChat:routes"
+IDENTITY_MAP_KEY = "QvQChat:identity_map"
 # 会话索引（单键 list[chat_key]，list_sessions/create 免全库 keys() 扫描）
 CONV_INDEX_KEY = "QvQChat:conv_index"
 # 用户→群会话倒排（recent_user_messages 免全库扫描）
@@ -458,6 +459,133 @@ class ConversationService:
         if base != chat_key:
             return routes.get(base, "")
         return ""
+
+# ===== 身份迁移（跨平台/换号保历史）：旧会话键 → 新会话键 的映射别名 =====
+# 场景：onebot11 迁到 snowluma、换号、复合 id 变化——旧键数据不搬，
+# 入站事件在键生成后按映射改写，历史/人格/记忆/事实全部自动跟到新身份。
+
+    def identity_map(self) -> dict:
+        data = self.sdk.storage.get(IDENTITY_MAP_KEY, {})
+        return {k: str(v) for k, v in data.items() if isinstance(k, str) and v} if isinstance(data, dict) else {}
+
+    def set_identity(self, source: str, target: str) -> None:
+        """绑定身份映射：source 键的事件此后按 target 会话处理。"""
+        source, target = str(source or "").strip(), str(target or "").strip()
+        if not source or not target or source == target:
+            return
+        mapping = self.identity_map()
+        mapping[source] = target
+        self.sdk.storage.set(IDENTITY_MAP_KEY, mapping)
+
+    def remove_identity(self, source: str) -> bool:
+        mapping = self.identity_map()
+        if str(source or "") in mapping:
+            mapping.pop(str(source), None)
+            self.sdk.storage.set(IDENTITY_MAP_KEY, mapping)
+            return True
+        return False
+
+    def resolve_identity(self, chat_key: str) -> str:
+        """跟随身份映射（含链式，环安全）：返回最终会话键；无映射原样返回。"""
+        seen = set()
+        current = str(chat_key or "")
+        while current not in seen:
+            seen.add(current)
+            nxt = self.identity_map().get(current, "")
+            if not nxt or nxt == current:
+                break
+            current = nxt
+        return current
+
+    def migrate_identity(self, source: str, target: str, mode: str = "alias") -> dict:
+        """身份迁移：把 source 的对话身份并入 target，支持三种模式。
+
+        - alias    仅映射：source 事件此后按 target 处理，两边历史都不动
+        - merge    合并：source 的上下文/事实/记忆并入 target（按时间排序、去重），
+                   旧键状态原地保留（撤销映射即回退），随后建立映射
+        - overwrite 覆盖：target 的上下文/事实先备份进回收站，再用 source 的替换，
+                   随后建立映射
+
+        返回摘要 {ok, mode, contexts, facts, memories, backup}。
+        """
+        source, target = str(source or "").strip(), str(target or "").strip()
+        mode = str(mode or "alias").strip().lower()
+        if not source or not target or source == target:
+            return {"ok": False, "error": "source/target 必填且不能相同"}
+        if mode not in ("alias", "merge", "overwrite"):
+            return {"ok": False, "error": f"未知模式：{mode}"}
+
+        summary: dict = {"ok": True, "mode": mode, "contexts": 0, "facts": 0, "memories": 0, "backup": ""}
+        src_state = self._state(source)
+        tgt_state = self._state(target)
+
+        if mode in ("merge", "overwrite"):
+            if mode == "overwrite":
+# 覆盖前进回收站（可一键恢复），沿用 manager 的 trash 存储约定
+                import secrets as _secrets
+
+                token = _secrets.token_urlsafe(9)
+                self.sdk.storage.set(
+                    "QvQChat:trash:" + token,
+                    {"kind": "session", "payload": {"chat_key": target, "state": tgt_state}, "ts": utils.now_ts()},
+                )
+                summary["backup"] = token
+                tgt_state["contexts"] = [e for e in (src_state.get("contexts") or []) if isinstance(e, dict)]
+                tgt_state["facts"] = [str(f) for f in (src_state.get("facts") or [])]
+                summary["contexts"] = len(tgt_state["contexts"])
+                summary["facts"] = len(tgt_state["facts"])
+            else:
+# 合并：上下文按 (role, content) 去重后按时间排序（跨平台时钟不一致，
+# 同一句话 ts 不同也算同一条）；事实并集保序并套上限
+                seen_ctx = set()
+                merged_ctx: list = []
+                for entry in (tgt_state.get("contexts") or []) + (src_state.get("contexts") or []):
+                    if not isinstance(entry, dict):
+                        continue
+                    key = (entry.get("role"), str(entry.get("content") or ""))
+                    if key in seen_ctx:
+                        continue
+                    seen_ctx.add(key)
+                    merged_ctx.append(entry)
+                merged_ctx.sort(key=lambda e: float(e.get("ts") or 0))
+                tgt_state["contexts"] = merged_ctx
+                summary["contexts"] = len(merged_ctx)
+
+                facts_max = int(getattr(self.config, "facts_max", 100) or 100)
+                seen_f: set[str] = set()
+                merged_facts: list[str] = []
+                for fact in (tgt_state.get("facts") or []) + (src_state.get("facts") or []):
+                    text = str(fact).strip()
+                    if not text or text in seen_f:
+                        continue
+                    seen_f.add(text)
+                    merged_facts.append(text)
+                tgt_state["facts"] = merged_facts[-facts_max:]
+                summary["facts"] = len(tgt_state["facts"])
+
+# 记忆合并（content 归一化去重、按时间排序、套 memory_max）
+            mem = getattr(self.main, "memory", None)
+            if mem is not None:
+                tgt_entries = list(mem.entries(target))
+                seen_n = {mem._normalized(e.get("content", "")) for e in tgt_entries}
+                merged_m = list(tgt_entries)
+                for entry in mem.entries(source):
+                    normalized = mem._normalized(entry.get("content", ""))
+                    if not normalized or normalized in seen_n:
+                        continue
+                    seen_n.add(normalized)
+                    merged_m.append(dict(entry))
+                merged_m.sort(key=lambda e: e.get("ts", 0))
+                max_items = int(getattr(self.config, "memory_max", 200) or 200)
+                if len(merged_m) > max_items:
+                    merged_m = merged_m[-max_items:]
+                mem._save(target, merged_m)
+                summary["memories"] = len(merged_m)
+            self._save_no_touch(target, tgt_state)
+
+# 最后建立映射：source 的事件此后按 target 处理（旧键数据原地保留，撤销映射即回退）
+        self.set_identity(source, target)
+        return summary
 
     def routes_into(self, target: str) -> list[str]:
         return sorted(k for k, v in self.routes().items() if v == target)

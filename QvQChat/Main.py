@@ -4,7 +4,7 @@ import time
 
 from ErisPulse import sdk
 from ErisPulse.Core.Bases import BaseModule
-from ErisPulse.Core.Event import command, message
+from ErisPulse.Core.Event import command, message, notice, request
 from ErisPulse.loaders import ModuleLoadStrategy
 
 try:
@@ -14,6 +14,7 @@ except ImportError:
 
 from . import texts, utils
 from .chat.cli import CliMixin
+from .chat.events import EventsMixin
 from .chat.inbox import InboxMixin
 from .chat.usage import UsageMixin
 from .conversation.delivery import Delivery
@@ -206,8 +207,9 @@ def tool_allowed(config, tool, user_id: str, origin: str = "chat",
     return deny
 
 
-class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
-    """消息入口/用量/命令逻辑分别拆至 chat/inbox.py、chat/usage.py、chat/cli.py。
+class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
+    """消息入口/非消息事件/用量/命令逻辑分别拆至 chat/inbox.py、chat/events.py、
+    chat/usage.py、chat/cli.py。
 
     mixin 继承保证全部历史方法名（含 _on_message/_process_locked/record_usage 等）
     仍可通过 getattr_static(Main, name) 在本类上解析到。
@@ -385,6 +387,10 @@ class Main(InboxMixin, UsageMixin, CliMixin, BaseModule):
 # 命令前缀消息不认领直接放行给下方分发器；自己接手回复的消息处理完即 event.done()
 # 认领（_on_message 内），其它模块就不会对同一条消息再答一遍
         message.on_message(priority=99999)(self._on_message)
+# 非消息事件总线：通知/请求入收件箱并按配置唤醒/决策（高优先级先见事件，
+# 不主动 event.done 认领——通知/请求没有命令分发器竞争）
+        notice.on_notice(priority=99998)(self._on_notice)
+        request.on_request(priority=99998)(self._on_request)
         for name in ("qvq", "agent", "qvqchat"):
             command(name, help="QvQChat")(self._cmd_agent)
         registered = getattr(command, "commands", {})

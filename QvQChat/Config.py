@@ -102,6 +102,9 @@ class QvQConfig(BaseConfig):
     wake_prefixes: list[str] = field(default_factory=list, metadata=_desc("wake_prefixes", "群聊文本唤醒前缀", "trigger", 3, "list"))
     command_prefixes: list[str] = field(default_factory=lambda: ["#", "/"], metadata=_desc("command_prefixes", "命令消息前缀（命中即放行不处理）", "trigger", 4, "list"))
     account_isolation: bool = field(default=True, metadata=_desc("account_isolation", "单适配器多账户隔离：适配器在线机器人 ≥2 时按接收账户自动隔离会话/人格/记忆（键追加 @账户 后缀），单账户安装不受影响；关闭则同群多号共用一个大脑。全局设置始终为所有账户共享", "trigger", 5, "switch"))
+    notice_listen: bool = field(default=False, metadata=_desc("notice_listen", "平台通知事件（戳一戳/撤回/群成员变动等，含平台私有拓展）：一律进事件收件箱并广播 qvq.notice；开启后命中白名单的通知还能唤醒 AI 回应", "trigger", 7, "switch"))
+    notice_types: list[str] = field(default_factory=list, metadata=_desc("notice_types", "可唤醒 AI 的通知类型白名单（默认空=只入箱不唤醒）。填 detail_type、sub_type 或 detail:sub，如 poke / group_member_increase / notify:poke；平台私有类型（如 onebot11_poke）填短名或全名均可", "trigger", 8, "list"))
+    request_auto_handle: bool = field(default=False, metadata=_desc("request_auto_handle", "AI 自主处理好友请求/群邀请（危险）：收到请求跑决策回合，可用 handle_request 通过/拒绝，决定与理由汇报到管理员私聊；关闭时仅入收件箱并广播 qvq.request", "trigger", 9, "switch", dangerous=True))
 
     admins: list[str] = field(default_factory=list, metadata=_desc("admins", "管理员用户 id 列表；为空时聊天侧无人拥有管理员权限（Dashboard/本地来源除外）", "security", 1, "list", dangerous=True))
     admin_tools: list[str] = field(default_factory=list, metadata=_desc("admin_tools", "强制仅管理员的工具覆盖名单（支持 eco_*/mcp_* 前缀通配）：写在这里的工具即便本身标记为 safe 也仅限管理员", "security", 2, "list", items="tools"))
