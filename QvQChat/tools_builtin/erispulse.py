@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import time
 
 from .. import texts, utils
@@ -405,6 +406,26 @@ async def get_current_event(ctx: ToolContext) -> str:
     event = getattr(ctx, "event", None)
     if event is None:
         return texts.t("event_unavailable")
+# 非消息事件（通知/请求）：没有消息段可读，直接给摘要 + 平台原始载荷
+    ev_type = ""
+    try:
+        ev_type = str(event.get_type() or "")
+    except Exception:
+        ev_type = ""
+    if ev_type and ev_type != "message":
+        summary = ""
+        try:
+            summary = ctx.main._event_summary(event, ev_type)
+        except Exception:
+            summary = ""
+        raw = ""
+        try:
+            platform = str(event.get_platform() or "")
+            raw_obj = event.get(f"{platform}_raw") if hasattr(event, "get") else None
+            raw = json.dumps(raw_obj, ensure_ascii=False, default=str)[:1500] if raw_obj else ""
+        except Exception:
+            raw = ""
+        return utils.to_text({"event_type": ev_type, "summary": summary, "raw": raw})
     payload: dict = {
         "platform": str(event.get_platform() or ""),
         "message_id": str(event.get("message_id") or "") if hasattr(event, "get") else "",
@@ -442,6 +463,29 @@ async def get_current_event(ctx: ToolContext) -> str:
     return utils.to_text(payload)
 
 
+async def list_events(ctx: ToolContext, kind: str = "", limit: int = 20) -> str:
+    """查看本账户的事件收件箱：平台通知与请求（含平台私有拓展的原始字段）。
+
+    事件到达不一定会触发回复——收件箱是模型主动回看事件流的入口，读取即标记已读。
+    """
+    main = ctx.main
+    account = str(getattr(ctx, "self_id", "") or "") or "default"
+    entries = main._inbox_load(account)
+    want = str(kind or "").strip().lower()
+    picked: list = []
+    for entry in reversed(entries):  # 新的在前
+        if want and str(entry.get("kind") or "") != want:
+            continue
+        picked.append(entry)
+        if len(picked) >= max(1, min(int(limit or 20), 100)):
+            break
+    for entry in picked:
+        entry["read"] = True
+    if picked:
+        main._inbox_save(account)
+    return utils.to_text({"events": picked, "total": len(entries)})
+
+
 def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="send_message",
@@ -454,7 +498,7 @@ def register(registry: ToolRegistry, main) -> None:
                 "target_id": _s(type="string", description="Target id. OMIT to use the current session's id."),
                 "text": _s(type="string", description="Text content (markdown allowed; downgraded to plain text automatically when the platform only supports Text)"),
                 "image_url": _s(type="string", description="Image URL or local path"),
-                "audio_path": _s(type="string", description="Path to an EXISTING audio file in this session's workspace (sandbox). You cannot synthesize/generate audio or voice (no TTS) - never promise voice messages unless such a file already exists"),
+                "audio_path": _s(type="string", description="Path to an EXISTING audio file (sandbox workspace, or a TTS output dir from an eco voice tool such as eco_TTS_*). Produce audio with the eco TTS tool first, then send its returned file path here - that is the whole two-step voice flow."),
                 "file_path": _s(type="string", description="Send a local file as a document. MUST be a path inside this chat's work sandbox (list_files to browse; write_file/download_file/zip_files to produce one). Paths outside the sandbox are rejected."),
                 "at": _s(type="string", description="User id to mention"),
                 "reply_to": _s(type="string", description="Message id to quote"),
@@ -521,6 +565,19 @@ def register(registry: ToolRegistry, main) -> None:
             ["platform", "request_id"],
         ),
         handler=handle_request,
+    ))
+    registry.register(Tool(
+        name="list_events",
+        access="safe",
+        description="List platform events (notices & requests) waiting in this bot account's event inbox - pokes, recalls, member changes, friend/group requests AND platform-specific extended event types, with their raw payload fields preserved. Events land here even when they did not trigger a chat reply. Reading marks entries as read.",
+        parameters=_schema(
+            {
+                "kind": _s(type="string", description="Optional filter: notice / request. Empty for all."),
+                "limit": _s(type="integer", description="Max entries to return (default 20, newest first)"),
+            },
+            [],
+        ),
+        handler=list_events,
     ))
     registry.register(Tool(
         name="call_module",

@@ -15,8 +15,8 @@ def make_main(**overrides):
     return base(**overrides)
 
 
-async def _send(main, text="在吗", at=True):
-    ev = FakeChatEvent(text=text, group=True, group_id="1", user_id="u9", at=at)
+async def _send(main, text="在吗", at=True, **ev_kw):
+    ev = FakeChatEvent(text=text, group=True, group_id="1", user_id="u9", at=at, **ev_kw)
     await Main._on_message(main, ev)
     await asyncio.sleep(0.05)
     return ev
@@ -165,3 +165,137 @@ def test_admin_ids_for_platform_merges_sources():
         if original is not None:
             main_mod.framework_masters = original
     assert {"10001", "7", "8"} <= set(ids)
+
+
+async def test_identity_migration_alias_and_merge():
+    """身份迁移：alias 只映射；merge 上下文/事实/记忆按时间去重并入，历史跟随新键。"""
+    main = make_main()
+    key_old = "onebot11:private:3838648009@643319481"
+    key_new = "snowluma:private:3838648009@643319481"
+# 旧键里已有历史与事实
+    old_ev = FakeChatEvent(text="我玩 UNDERVALE", group=False, user_id="3838648009@643319481", account="643319481")
+    await Main._on_message(main, old_ev)
+    await asyncio.sleep(0.05)  # 等聚合窗：第一条也要真正进会话
+    assert main.captured
+# 迁移（合并模式）
+    summary = main.sessions.migrate_identity(key_old, key_new, "merge")
+    assert summary["ok"] and summary["contexts"] >= 1
+# 新键来的消息：历史跟到新会话（上下文里带着旧对话）
+    new_ev = FakeChatEvent(text="我刚才说我玩什么来着", group=False,
+                           user_id="3838648009@643319481", account="643319481")
+    await Main._on_message(main, new_ev)
+    await asyncio.sleep(0.05)
+    assert main.captured[-1]["ctx"].chat_key == key_new
+    system = main.captured[-1]["system"] + str(main.captured[-1].get("messages") or "")
+# 上下文合并：旧键的消息在新会话上下文里可见
+    assert any("UNDERVALE" in str(m.get("content") or "") for m in main.captured[-1].get("messages") or [])
+# 映射登记在案
+    assert main.sessions.identity_map()[key_old] == key_new
+    assert main.sessions.resolve_identity(key_old) == key_new
+
+
+def test_identity_merge_dedup_and_overwrite_backup():
+    """合并去重（完全重复条目只留一份）；覆盖替换上下文且先进回收站。"""
+    main = make_main()
+    s, t = "k:src", "k:dst"
+    main.sessions._save_no_touch(s, {"contexts": [
+        {"role": "user", "content": "hello", "ts": 100},
+        {"role": "user", "content": "world", "ts": 200},
+    ], "facts": ["喜欢猫"]})
+    main.sessions._save_no_touch(t, {"contexts": [
+        {"role": "user", "content": "hello", "ts": 150},  # 与 source 重复
+        {"role": "assistant", "content": "hi", "ts": 160},
+    ], "facts": ["喜欢狗"]})
+    summary = main.sessions.migrate_identity(s, t, "merge")
+    merged = main.sessions._state(t)["contexts"]
+    assert summary["contexts"] == 3  # hello 去重，world/hi 保留
+    assert [e["content"] for e in merged] == ["hello", "hi", "world"]
+    assert set(main.sessions._state(t)["facts"]) == {"喜欢猫", "喜欢狗"}
+
+    summary2 = main.sessions.migrate_identity(t, s, "overwrite")
+    assert summary2["ok"] and summary2["backup"]  # 覆盖前备份
+    now_src = main.sessions._state(s)["contexts"]
+    assert [e["content"] for e in now_src] == ["hello", "hi", "world"]  # 被目标历史替换
+    # 回收站里有被覆盖前的目标历史
+    hits = [k for k in main.sdk.storage.keys() if "trash" in str(k)]
+    assert hits
+
+
+def _patched_quote_adapter(main, sender_id):
+    main.sdk.adapter.add("onebot11", None)
+    adapter = main.sdk.adapter.get("onebot11")
+
+    async def fake_call(endpoint, **params):
+        return {"sender": {"user_id": sender_id},
+                "message": [{"type": "text", "data": {"text": "被引用的那条"}}]}
+
+    adapter.call_api = fake_call
+
+
+async def test_quote_of_my_message_counts_as_address():
+    """引用=艾特：引用本账户的消息等同被点名（get_msg 拉被引用者判定）。"""
+    main = make_main(aggregate_window=0.01, trigger_mode="at_only")
+    _patched_quote_adapter(main, "bot")  # 被引用的是本账户
+    await _send(main, text="接着刚才说", at=False, reply_message_id="M1")
+    assert main.captured
+
+
+async def test_quote_of_my_message_triggers_in_all_mode():
+    """all 模式：引用本账户消息也走直触（reply_at），不等插话决策。"""
+    main = make_main(aggregate_window=0.01)
+    _patched_quote_adapter(main, "bot")
+    await _send(main, text="在吗", at=False, reply_message_id="M2")
+    assert main.captured
+
+
+async def test_quote_of_others_does_not_address():
+    """引用别人的消息不点名本账户。"""
+    main = make_main(aggregate_window=0.01, trigger_mode="at_only")
+    _patched_quote_adapter(main, "someone_else")
+    await _send(main, text="帮我看看这条", at=False, reply_message_id="M3")
+    assert not main.captured
+
+
+async def test_quote_inline_sender_skips_api():
+    """reply 段内联被引用者时直接判定，不再走适配器调用（调了就会炸）。"""
+    main = make_main(aggregate_window=0.01, trigger_mode="at_only")
+    main.sdk.adapter.add("onebot11", None)
+    adapter = main.sdk.adapter.get("onebot11")
+
+    async def boom(endpoint, **params):
+        raise AssertionError("get_msg should not be called")
+
+    adapter.call_api = boom
+    await _send(main, text="回复你上一条", at=False,
+                reply_message_id="M4", reply_sender="bot")
+    assert main.captured
+
+
+def test_dup_gate_cleanup_never_crashes():
+    """容量清理曾把纯 float 时间戳当元组下标（'float' object is not subscriptable，
+    claims 超 256 条后每条消息死在触发判定前）——回归：清理安全淘汰、拦截仍有效。"""
+    import time as _time
+
+    main = make_main()
+
+    class IdEv(FakeChatEvent):
+        def __init__(self, mid, text):
+            super().__init__(text=text, group=True, group_id="1", user_id="u9")
+            self._mid = mid
+
+        def get(self, key, default=None):
+            if key == "message_id":
+                return self._mid
+            if key == "time":
+                return 1000
+            return default
+
+    for i in range(300):
+        assert main._dup_delivery_gate(IdEv(f"M{i}", f"消息{i}"), f"消息{i}") is True
+# 清理路径安全（此前在这里 v[1] 下标炸 float）：过期条目被淘汰
+    main._msg_claims["bot:Mold"] = _time.time() - 100
+    assert main._dup_delivery_gate(IdEv("Mnew", "新消息"), "新消息") is True
+    assert "bot:Mold" not in main._msg_claims
+    ev = IdEv("MX", "hello")
+    assert main._dup_delivery_gate(ev, "hello") is True
+    assert main._dup_delivery_gate(ev, "hello") is False  # 6s 窗内同 id 拦截

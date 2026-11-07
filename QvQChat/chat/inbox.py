@@ -265,6 +265,60 @@ class InboxMixin(RecoveryMixin):
         return ""
 
     @staticmethod
+    def _has_reply_segment(event) -> bool:
+        """消息里是否带引用段（不解析内容，只做廉价前置判断）。"""
+        try:
+            return any(
+                isinstance(seg, dict) and seg.get("type") == "reply"
+                for seg in (event.get_message() or [])
+            )
+        except Exception:
+            return False
+
+    async def _quote_targets_me(self, event) -> bool:
+        """被引用消息是否本账户所发：引用=艾特（引用谁，谁被点名）。
+
+        先看 reply 段内联的被引用者信息（部分适配器带），拿不到再按
+        message_id 走适配器 get_msg 查发送者。查不到一律 False（宁可少触发）。
+        """
+        platform = str(event.get_platform() or "")
+        account = str(event.get_self_account_id() or "")
+        mid = ""
+        try:
+            for segment in event.get_message() or []:
+                if not isinstance(segment, dict) or segment.get("type") != "reply":
+                    continue
+                data = segment.get("data") or {}
+                sender = data.get("sender")
+                if isinstance(sender, dict):
+                    uid = str(sender.get("user_id") or sender.get("id") or "")
+                    if uid:
+                        return uid == account
+                mid = str(data.get("id") or data.get("message_id") or "")
+                if mid:
+                    break
+        except Exception:
+            return False
+        if not mid or not platform or not account:
+            return False
+        try:
+            adapter = self.sdk.adapter.get(platform)
+            if adapter is None or not hasattr(adapter, "call_api"):
+                return False
+            result = await adapter.call_api("get_msg", message_id=mid)
+            payload = result if isinstance(result, dict) else {}
+            sender = payload.get("sender")
+            uid = ""
+            if isinstance(sender, dict):
+                uid = str(sender.get("user_id") or "")
+            if not uid:
+                uid = str(payload.get("user_id") or "")
+            return bool(uid) and uid == account
+        except Exception as e:
+            self.logger.debug(f"quote sender fetch failed: {e}")
+            return False
+
+    @staticmethod
     def _extract_images(event) -> list[str]:
         urls: list[str] = []
         try:
@@ -443,9 +497,9 @@ class InboxMixin(RecoveryMixin):
             return g
         return per if TRIGGER_RANK[per] >= TRIGGER_RANK[g] else g
 
-    def _is_direct_address(self, event, text: str) -> bool:
-        """群里是否被点名：@机器人 或 命中唤醒前缀。"""
-        if event.is_at_message():
+    def _is_direct_address(self, event, text: str, quoted_me: bool = False) -> bool:
+        """群里是否被点名：@机器人、命中唤醒前缀，或引用了本账户的消息。"""
+        if quoted_me or event.is_at_message():
             return True
         for prefix in getattr(self.cfg, "wake_prefixes", []) or []:
             if prefix and text.startswith(prefix):
@@ -497,7 +551,9 @@ class InboxMixin(RecoveryMixin):
             claims = {}
             self._msg_claims = claims
         if len(claims) > 256:
-            claims = {k: v for k, v in claims.items() if now - v[1] < DUP_DELIVERY_WINDOW}
+# 值是纯 float 时间戳（见下方写入），不是元组——下标访问会在容量清理时
+# 炸掉后续每一条消息（'float' object is not subscriptable，bot 全哑）
+            claims = {k: v for k, v in claims.items() if now - v < DUP_DELIVERY_WINDOW}
             self._msg_claims = claims
         seen = claims.get(key)
         if seen and now - seen < DUP_DELIVERY_WINDOW:
@@ -505,13 +561,13 @@ class InboxMixin(RecoveryMixin):
         claims[key] = now
         return True
 
-    def _should_trigger(self, event, chat_key: str, text: str) -> bool:
+    def _should_trigger(self, event, chat_key: str, text: str, quoted_me: bool = False) -> bool:
         if chat_key in self.takeover:
             return True
         if event.is_private_message():
             return bool(getattr(self.cfg, "reply_private", True))
         if event.is_group_message():
-            if getattr(self.cfg, "reply_at", True) and event.is_at_message():
+            if getattr(self.cfg, "reply_at", True) and (event.is_at_message() or quoted_me):
                 return True
             for prefix in getattr(self.cfg, "wake_prefixes", []) or []:
                 if prefix and text.startswith(prefix):
@@ -531,6 +587,9 @@ class InboxMixin(RecoveryMixin):
                 return
             self._cleanup_takeovers()
             chat_key = self._chat_key_of(event)
+# 身份迁移：跨平台/换号后旧键映射到新键——历史/人格/记忆/事实全部跟随
+# （映射在路由解析之前应用，映射目标自身仍可再走路由）
+            chat_key = self.sessions.resolve_identity(chat_key)
             routed = self.sessions.resolve_route(chat_key)
             if routed:
                 chat_key = routed
@@ -601,13 +660,18 @@ class InboxMixin(RecoveryMixin):
                 chain = getattr(self, "_bot_chain", None)
                 if chain is not None and chain.get(chat_key):
                     chain[chat_key] = 0
+# 引用=艾特：有人引用本账户的消息等同被点名。懒判定——只在群聊、未被 @
+# 且带引用段时才向适配器拉取被引用消息，控制 get_msg 调用频率
+            quoted_me = False
+            if event.is_group_message() and not event.is_at_message() and self._has_reply_segment(event):
+                quoted_me = await self._quote_targets_me(event)
 # 触发规则（会话级覆盖全局）：off 不响应 / lurk 只旁听（observe 已发出）/ at_only 群里仅点名
             mode = self._trigger_mode_of(chat_key)
             if mode in ("off", "lurk"):
                 return
-            if mode == "at_only" and event.is_group_message() and not self._is_direct_address(event, text):
+            if mode == "at_only" and event.is_group_message() and not self._is_direct_address(event, text, quoted_me):
                 return
-            if not self._should_trigger(event, chat_key, text):
+            if not self._should_trigger(event, chat_key, text, quoted_me):
 #  扩展点 B：未被 @/前缀命中时问询参与决策提供者（默认关闭），
 # speak 则过输出预算后以 origin="plugin" 进入聚合回复，不消耗发送者限频
                 manager = getattr(self, "participation", None)
@@ -983,7 +1047,11 @@ class InboxMixin(RecoveryMixin):
             except Exception:
                 pass
             ctx = self._chat_ctx(event, chat_key, origin)
-            is_group = event.is_group_message()
+# 群判定兜底：通知/请求事件（如群内戳一戳）没有 is_group_message 的会话语义，
+# 但带 group_id——按群场景处理（is_private_message 排除假 group_id 的私聊桩）
+            is_group = event.is_group_message() or (
+                not event.is_private_message() and bool(str(event.get_group_id() or ""))
+            )
             sender_id = str(event.get_user_id() or "")
             sender_name = self._sender_name(event)
             group_id = str(event.get_group_id() or "") if is_group else ""
@@ -1025,6 +1093,15 @@ class InboxMixin(RecoveryMixin):
             else:
                 if sender_name:
                     scene = texts.t("scene_private", name=sender_name, id=sender_id)
+# 非消息事件来源注记（通知/请求唤醒的回合）：让模型知道这不是用户发言
+            ev_type = ""
+            try:
+                ev_type = str(event.get_type() or "")
+            except Exception:
+                ev_type = ""
+            if ev_type and ev_type != "message":
+                scene += texts.t("scene_notice_trigger", summary=self._event_summary(event, ev_type))
+                ctx.scene_note = scene
             combined_text = "\n".join(str(i.get("text") or "") for i in items if i.get("text"))
             try:
                 await self.sdk.lifecycle.emit(

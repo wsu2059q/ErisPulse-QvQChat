@@ -93,12 +93,23 @@ async def qvq_access(self, **_):
 
 ## 事件订阅
 
-QvQChat 广播两个生命周期事件，扩展模块用 `sdk.lifecycle.on()` 订阅：
+QvQChat 广播以下生命周期事件，扩展模块用 `sdk.lifecycle.on()` 订阅
+（全部只读消费：不要 `event.done()`、不要抛错——异常被吞但会拖慢分发）：
 
 | 事件 | 时机 | 载荷字段 |
 |---|---|---|
-| `qvq.message` | 消息被处理时 | `chat_key` `platform` `sender_id` `sender_name` `text` `is_group` |
+| `qvq.observe` | 每条聊天消息（命令过滤后、触发判定前） | `chat_key` `platform` `detail_type` `group_id` `sender_id` `sender_name` `text` `is_group` `at_bot` `sender_is_bot` `reply_to_bot` `is_command_prefix` `images` `is_reply` `reply_message_id` `ts` |
+| `qvq.message` | 消息被处理时（聚合后） | `chat_key` `platform` `sender_id` `sender_name` `text` `is_group` `merged` |
 | `qvq.replied` | 回复发出后 | `chat_key` `reply` `tools` |
+| `qvq.participation` | 插话决策落定 | `chat_key` `decision` `reason` `provider` `providers_queried` `score` `budget_ok` `ts` |
+| `qvq.deliver` | 分段发送前（**可写 hook**：返回 dict 可改写 segments） | `chat_key` `platform` `segments` `delays` |
+| `qvq.notice` | 平台通知事件入箱时（戳一戳/撤回/群成员变动及平台私有拓展；会话开 `listen_off` 时静音） | `id` `ts` `detail_type` `sub_type` `platform` `account` `chat_key` `user_id` `operator_id` `target_id` `group_id` `summary` |
+| `qvq.request` | 平台请求事件入箱时（好友请求/群邀请；恒广播） | `id` `ts` `detail_type` `sub_type` `platform` `account` `chat_key` `user_id` `group_id` `request_id` `comment` `summary` |
+| `qvq.plugin_config` | 设置页应用配置后（`module` 匹配本模块名即热更新） | `module` `values` |
+
+> 通知/请求事件不枚举类型：`detail_type`/`sub_type` 按框架 OB12 口径原样透传，
+> 平台私有拓展（如 `onebot11_poke`）也照常广播；需要更完整的原始字段可用
+> `get(f"{platform}_raw")` 口径自行解析，或提示用户让 AI 通过 `list_events` 查看。
 
 ```python
 async def setup(self):

@@ -214,6 +214,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("POST", "/api/qvq/memory/delete", self.memory_delete),
             ("POST", "/api/qvq/profile/clear", self.profile_clear),
             ("GET", "/api/qvq/sessions", self.sessions_get),
+            ("POST", "/api/qvq/identity/set", self.identity_set),
+            ("POST", "/api/qvq/identity/remove", self.identity_remove),
             ("GET", "/api/qvq/session/messages", self.session_messages),
             ("POST", "/api/qvq/session/messages/delete", self.session_message_delete),
             ("POST", "/api/qvq/session/context/edit", self.session_context_edit),

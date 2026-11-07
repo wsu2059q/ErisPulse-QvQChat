@@ -34,6 +34,9 @@ class FakeLogger:
     def warning(self, *args, **kwargs):
         self.records.append(("warning", args))
 
+    def error(self, *args, **kwargs):
+        self.records.append(("error", args))
+
     def debug(self, *args, **kwargs):
         self.records.append(("debug", args))
 
@@ -215,7 +218,8 @@ class FakeAdapterManager:
 
 class FakeChatEvent:
     def __init__(self, text="", images=None, platform="onebot11", group=True,
-                 group_id="1", user_id="u1", user_name="群主", at=False, account="bot"):
+                 group_id="1", user_id="u1", user_name="群主", at=False, account="bot",
+                 reply_message_id="", reply_sender=""):
         self._text = text
         self._images = images or []
         self._platform = platform
@@ -225,6 +229,8 @@ class FakeChatEvent:
         self._name = user_name
         self._at = at
         self._account = str(account)
+        self._reply_mid = str(reply_message_id)
+        self._reply_sender = str(reply_sender)
         self.replies = []
         self.claimed = False
 
@@ -278,6 +284,11 @@ class FakeChatEvent:
 
     def get_message(self):
         segments = []
+        if self._reply_mid:
+            data = {"message_id": self._reply_mid}
+            if self._reply_sender:
+                data["sender"] = {"user_id": self._reply_sender}
+            segments.append({"type": "reply", "data": data})
         for url in self._images:
             segments.append({"type": "image", "data": {"url": url}})
         if self._text:
@@ -289,6 +300,109 @@ class FakeInteraction:
     @staticmethod
     def make_key(event):
         return "fake:interaction:key"
+
+
+class FakePlatformEvent:
+    """非消息事件桩（notice/request 共用）：OB12 口径 type/detail_type/sub_type。"""
+
+    def __init__(self, ev_type="notice", detail_type="notify", sub_type="poke",
+                 platform="onebot11", group_id="", user_id="u1", operator_id="",
+                 target_id="", account="bot", nickname="路人", event_id="",
+                 request_id="", comment="", raw=None, time_ts=0):
+        self._d = {
+            "id": event_id or f"{ev_type}-evt-1",
+            "time": time_ts,
+            "type": ev_type,
+            "detail_type": detail_type,
+            "sub_type": sub_type,
+            "group_id": group_id,
+            "user_id": user_id,
+            "operator_id": operator_id,
+            "target_id": target_id,
+            "request_id": request_id,
+            "comment": comment,
+            f"{platform}_raw": raw if raw is not None else {"detail_type": detail_type},
+        }
+        self._platform = platform
+        self._account = str(account)
+        self._nickname = nickname
+        self.replies = []
+        self.claimed = False
+
+    def get(self, key, default=None):
+        return self._d.get(key, default)
+
+    def get_type(self):
+        return self._d["type"]
+
+    def get_detail_type(self):
+        return self._d["detail_type"]
+
+    def get_platform(self):
+        return self._platform
+
+    def get_group_id(self):
+        return self._d["group_id"]
+
+    def get_user_id(self):
+        return self._d["user_id"]
+
+    def get_operator_id(self):
+        return self._d["operator_id"]
+
+    def get_target_id(self):
+        return self._d["target_id"]
+
+    def get_user_nickname(self):
+        return self._nickname
+
+    def get_sender(self):
+        return {"nickname": self._nickname}
+
+    def get_self_account_id(self):
+        return self._account
+
+    def get_request_id(self):
+        return self._d["request_id"]
+
+    def get_comment(self):
+        return self._d["comment"]
+
+    def get_alt_message(self):
+        return ""
+
+    def get_message(self):
+        return []
+
+    def is_group_message(self):
+        return bool(self._d["group_id"])
+
+    def is_private_message(self):
+        return not self.is_group_message()
+
+    def is_at_message(self):
+        return False
+
+    def supports(self, method):
+        return method == "Text"
+
+    def done(self, *args, **kwargs):
+        self.claimed = True
+
+    async def reply(self, content, method="Text", quote=False):
+        self.replies.append((method, content))
+
+
+def FakeNoticeEvent(**kw):
+    kw.setdefault("ev_type", "notice")
+    return FakePlatformEvent(**kw)
+
+
+def FakeRequestEvent(**kw):
+    kw.setdefault("ev_type", "request")
+    kw.setdefault("detail_type", "friend")
+    kw.setdefault("request_id", "req-1")
+    return FakePlatformEvent(**kw)
 
 
 class FakeConfig:
