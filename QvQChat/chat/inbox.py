@@ -169,7 +169,18 @@ def _account_suffix_for(cfg, sdk, event) -> str:
         per_platform = bots.get(platform, bots) if isinstance(bots, dict) else {}
         if not isinstance(per_platform, dict) or len(per_platform) < 2:
             return ""
-        account = str(event.get_self_account_id() or "")
+# 账户身份取稳定值：get_self_user_id()（机器人的固定用户 id）优先——
+# get_self_account_id() 返回的是框架配置的账户名（如 "Amer"），同一机器人
+# 换配置名就漂移，用它会能把同一机器人的历史散成多份会话
+        account = ""
+        try:
+            getter = getattr(event, "get_self_user_id", None)
+            if callable(getter):
+                account = str(getter() or "")
+        except Exception:
+            account = ""
+        if not account:
+            account = str(event.get_self_account_id() or "")
     except Exception:
         return ""
     return f"@{account}" if account else ""

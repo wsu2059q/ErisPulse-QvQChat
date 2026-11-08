@@ -1037,24 +1037,27 @@ input[type="radio"] {
   display: flex;
   min-height: 0;
 }
-/* 圣杯三栏：对话页左侧会话列表（宽屏常驻；≤1080px 隐藏，会话仍在侧栏抽屉里） */
+/* 会话面板：默认收起（会话列表位于左侧导航），聊天头按钮展开。
+   会话列表的主入口是导航内嵌列表（原生形态）；面板是浮层补充 */
 .qvq-chat-side {
-  flex: 0 0 224px;
-  min-width: 0;
-  margin-right: 18px;
+  display: none;
+  position: absolute;
+  z-index: var(--qvq-z-dropdown, 60);
+  top: 8px;
+  bottom: 8px;
+  left: 8px;
+  width: 232px;
   padding: 10px 8px;
   background: var(--qvq-surface);
+  border: 1px solid var(--qvq-bd);
   border-radius: 14px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  box-shadow: var(--qvq-shadow-hover);
 }
-.qvq-chat-side .qvq-chat-srow {
-  padding: 7px 9px;
-}
-@media (max-width: 1080px) {
-  .qvq-chat-side {
-    display: none;
-  }
+.qvq-chat-app { position: relative; }
+.qvq-chat-side.open {
+  display: block;
 }
 .qvq-chat-srow {
   display: flex;

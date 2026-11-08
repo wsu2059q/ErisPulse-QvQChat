@@ -167,15 +167,28 @@ class SessionsApiMixin:
             names = list(self.sdk.adapter.list_registered() or [])
         except Exception:
             names = []
+        display_names: dict = {}
         for name in names:
             try:
-                # 框架返回 {platform: {bot_id: {...}}}；兼容裸 dict / list 两种形态
+                # 框架返回 {platform: {bot_id: {status, ...}}}；兼容裸 dict / list 两种形态
                 raw = self.sdk.adapter.list_bots(str(name)) or {}
                 per = raw.get(name, raw) if isinstance(raw, dict) else {}
                 bots = [str(b) for b in per.keys()] if isinstance(per, dict) else [str(b) for b in per]
             except Exception:
                 bots = []
             adapters.append({"platform": str(name), "bots": bots})
+# user_id → 账户名（配置键）：会话键统一用稳定的 user_id 后缀，UI 显示可读账户名
+        try:
+            for name in names:
+                adapter = self.sdk.adapter.get(str(name))
+                accounts = getattr(adapter, "accounts", None) if adapter is not None else None
+                if isinstance(accounts, dict):
+                    for acct_name, cfg in accounts.items():
+                        bot_id = getattr(cfg, "bot_id", None)
+                        if bot_id:
+                            display_names[str(bot_id)] = str(acct_name)
+        except Exception:
+            display_names = {}
 # 每账户当前人格：绑定表的 @account / 平台:* 层级键（编排页账户卡显示+快捷绑定用）
         persona_by_key: dict[str, str] = {}
         try:
@@ -203,15 +216,17 @@ class SessionsApiMixin:
         return {
             "adapters": adapters,
             "accounts": accounts,
+            "display_names": display_names,
         }
 
     def _identity_suggestions(self, sessions: list) -> list:
         """疑似同源会话对：同 target_id 跨平台的会话（换平台场景），供迁移面板一键预填。
 
-        只做发现不做自动迁移——方向（谁是源谁是目标）与模式由用户确认。
-        已在 identity_map 中的不再建议。
+        只做发现不做自动迁移——方向（谁是源谁是目标）与模式由用户确认
+        （面板有交换方向按钮）。键保留完整形态（含 @账户 后缀），预填才能
+        选中下拉选项。已在 identity_map 中的不再建议。
         """
-        from ..conversation.service import strip_account, strip_isolation
+        from ..conversation.service import strip_isolation
 
         try:
             mapped = set(self.main.sessions.identity_map().keys())
@@ -220,8 +235,9 @@ class SessionsApiMixin:
         seen: dict[str, dict] = {}
         found: list = []
         for s in sessions:
-            key = strip_account(strip_isolation(str(s.get("chat_key") or "")))
-            parts = key.split(":", 2)
+            key = strip_isolation(str(s.get("chat_key") or ""))
+            base = key.rsplit("@", 1)[0] if "@" in key.rsplit(":", 2)[-1] else key
+            parts = base.split(":", 2)
             if len(parts) < 3:
                 continue
             platform, dtype, tid = parts[0], parts[1], parts[2]
@@ -235,6 +251,34 @@ class SessionsApiMixin:
             elif not first:
                 seen[slot] = {"platform": platform, "key": key}
         return found[:8]
+
+    async def identity_merge_account(self, request):
+        """账户级批量归并：把 @from 账户名下的全部会话迁到 @to（历史/人格/记忆合并）。
+
+        存量数据归并工具——如适配器上报的账户从数字 id 漂移成配置名（或反向）后，
+        同一机器人的会话散在两个 @后缀下，一键归并到稳定形态。
+        """
+        body = await request.json() or {}
+        platform = str(body.get("platform") or "").strip()
+        from_acct = str(body.get("from") or "").strip()
+        to_acct = str(body.get("to") or "").strip()
+        mode = str(body.get("mode") or "merge").strip().lower()
+        if not platform or not from_acct or not to_acct or from_acct == to_acct:
+            return ({"error": "platform/from/to required and from != to"}, 400)
+        if mode not in ("merge", "overwrite"):
+            return ({"error": "mode must be merge or overwrite"}, 400)
+        migrated, failed = 0, []
+        for session in self.main.sessions.list_sessions():
+            key = str(session.get("chat_key") or "")
+            if not key.startswith(f"{platform}:") or not key.endswith(f"@{from_acct}"):
+                continue
+            target = key[: -len(f"@{from_acct}")] + f"@{to_acct}"
+            summary = self.main.sessions.migrate_identity(key, target, mode)
+            if summary.get("ok"):
+                migrated += 1
+            else:
+                failed.append({"chat_key": key, "error": summary.get("error")})
+        return {"ok": not failed, "migrated": migrated, "failed": failed}
 
     async def session_messages(self, request):
         chat_key = self._query(request, "chat_key")

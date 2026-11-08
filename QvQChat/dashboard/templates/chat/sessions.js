@@ -46,6 +46,29 @@
     if (show) renderIdentityBox();
   }
 
+  // 账户归并区：按平台把 @from 后缀的会话并入 @to
+  function accountMergeHtml(sessions) {
+    var platforms = [];
+    sessions.forEach(function (s) {
+      var key = String(s.chat_key || "");
+      var at = key.lastIndexOf("@");
+      if (at < 0) return;
+      var head = key.slice(0, at).split(":")[0];
+      if (head && platforms.indexOf(head) < 0) platforms.push(head);
+    });
+    if (!platforms.length) return "";
+    var platOpts = platforms.map(function (p) { return "<option value='" + esc(p) + "'>" + esc(p) + "</option>"; }).join("");
+    return "<details style='margin-top:14px'><summary class='qvq-label' style='cursor:pointer'>" + esc(t("identity_merge_title")) + "</summary>" +
+      "<div class='qvq-tool-desc'>" + esc(t("identity_merge_hint")) + "</div>" +
+      "<div class='qvq-field-row'>" +
+      "<select class='qvq-select' id='qvm-acct-platform'>" + platOpts + "</select>" +
+      "<select class='qvq-select' id='qvm-acct-from'></select>" +
+      "<select class='qvq-select' id='qvm-acct-to'></select>" +
+      "</div>" +
+      "<div class='qvq-actions'><button class='qvq-btn small' id='qvm-acct-run'>" + esc(t("identity_merge_run")) + "</button></div>" +
+      "</details>";
+  }
+
   function renderIdentityBox() {
     api("/api/qvq/sessions").then(function (data) {
       var box = el("qvq-identity-box");
@@ -74,6 +97,9 @@
         suggHtml +
         "<label class='qvq-label'>" + esc(t("identity_source")) + "</label>" +
         "<select class='qvq-select' id='identity-source'><option value=''>" + esc(t("identity_none")) + "</option>" + opts + "</select>" +
+        "<div class='qvq-actions' style='margin:4px 0'>" +
+        "<button class='qvq-btn small ghost' id='identity-swap'>⇅ " + esc(t("identity_swap")) + "</button>" +
+        "</div>" +
         "<label class='qvq-label'>" + esc(t("identity_target")) + "</label>" +
         "<select class='qvq-select' id='identity-target'><option value=''>" + esc(t("identity_none")) + "</option>" + opts + "</select>" +
         "<label class='qvq-label'>" + esc(t("identity_mode")) + "</label>" +
@@ -83,7 +109,8 @@
         "<option value='overwrite'>" + esc(t("identity_mode_overwrite")) + "</option></select>" +
         "<div class='qvq-actions'><button class='qvq-btn' id='identity-save'>" + esc(t("identity_save")) + "</button></div>" +
         "<div class='qvq-tool-desc'>" + esc(t("identity_note")) + "</div>" +
-        (rows ? "<table class='qvq-table'><tbody>" + rows + "</tbody></table>" : "");
+        (rows ? "<table class='qvq-table'><tbody>" + rows + "</tbody></table>" : "") +
+        accountMergeHtml(sessions);
       box.querySelectorAll("[data-identity-prefill]").forEach(function (btn) {
         btn.onclick = function () {
           var sg = sugg[parseInt(btn.getAttribute("data-identity-prefill"), 10)] || {};
@@ -96,6 +123,47 @@
           }
         };
       });
+// 交换 source/target 下拉值
+      var swap = box.querySelector("#identity-swap");
+      if (swap) swap.onclick = function () {
+        var src = box.querySelector("#identity-source");
+        var tgt = box.querySelector("#identity-target");
+        if (src && tgt) {
+          var tmp = src.value;
+          src.value = tgt.value;
+          tgt.value = tmp;
+        }
+      };
+// 账户归并：批量把 @from 后缀的会话并入 @to
+      var acctBox = box.querySelector("#qvm-acct-merge");
+      if (acctBox) {
+        var accounts = [];
+        sessions.forEach(function (s) {
+          var m = String(s.chat_key || "").match(/@([^@]+)$/);
+          if (m && accounts.indexOf(m[1]) < 0) accounts.push(m[1]);
+        });
+        var acctOpts = accounts.map(function (a) { return "<option value='" + esc(a) + "'>" + esc(a) + "</option>"; }).join("");
+        acctBox.querySelector("#qvm-acct-from").innerHTML = acctOpts;
+        acctBox.querySelector("#qvm-acct-to").innerHTML = acctOpts;
+        acctBox.querySelector("#qvm-acct-run").onclick = function () {
+          var platform = acctBox.querySelector("#qvm-acct-platform").value.trim();
+          var from = acctBox.querySelector("#qvm-acct-from").value;
+          var to = acctBox.querySelector("#qvm-acct-to").value;
+          if (!platform || !from || !to || from === to) { toast(t("identity_none"), true); return; }
+          confirmDialog(t("identity_merge_confirm")).then(function (ok) {
+            if (!ok) return;
+            api("/api/qvq/identity/merge_account", "POST",
+              { platform: platform, from: from, to: to, mode: "merge" }).then(function (r) {
+              if (r && r.ok) {
+                toast(t("identity_merged").replace("{n}", r.migrated || 0));
+                renderIdentityBox();
+              } else {
+                toast((r && r.error) || "error", true);
+              }
+            });
+          });
+        };
+      }
       box.querySelector("#identity-save").onclick = function () {
         var src = box.querySelector("#identity-source").value;
         var tgt = box.querySelector("#identity-target").value;
