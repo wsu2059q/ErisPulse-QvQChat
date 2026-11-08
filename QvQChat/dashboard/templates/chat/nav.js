@@ -256,6 +256,8 @@
   var DEL_SVG = "<svg viewBox='0 0 24 24'><path d='M3 6h18M8 6V4h8v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6'/></svg>";
   var REN_SVG = "<svg viewBox='0 0 24 24'><path d='M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z'/></svg>";
   var ARC_SVG = "<svg viewBox='0 0 24 24'><path d='M3 6h18v3H3zM5 9v11h14V9M9 13h6'/></svg>";
+  // 非图片附件的文件图标（messages/nav 共用；此前未定义，渲染附件消息直接 ReferenceError）
+  var FILE_ICON_SVG = "<svg viewBox='0 0 24 24'><path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zm0 0v5h5'/></svg>";
 
   function chatSessionTitle(key) {
     if (key === "dashboard:private:web") return t("chat_default_session");
