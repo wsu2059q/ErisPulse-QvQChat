@@ -362,6 +362,7 @@
 
   function renderChatSessions() {
     var navBox = el("qvq-nav-sessions");
+    var sideBox = el("qvq-chat-side"); // 圣杯三栏：对话页左侧会话列表（宽屏显示）
     var known = {};
     chatMeta.sessions.forEach(function (s) { known[s.chat_key] = s; });
 
@@ -370,18 +371,45 @@
       items.unshift({ chat_key: chatSession, updated: Date.now() / 1000 });
     }
     var archivedCount = chatMeta.sessions.filter(function (s) { return s.archived; }).length;
-    if (navBox) {
-      var shown = chatShowArchived
-        ? items.filter(function (s) { return s.chat_key === chatSession || s.archived; })
-        : items.filter(function (s) { return !s.archived || s.chat_key === chatSession; });
-      var newBtn = '<div class="qvq-chat-srow qvq-nav-new" data-new="1"><span class="qvq-chat-sname">+ ' + esc(t("chat_new")) + "</span></div>";
-      var foot = '<div class="qvq-chat-sfoot' + (chatShowArchived ? " on" : "") + '" data-archived-toggle="1">' +
-        esc(t("chat_archived")) + (archivedCount ? " · " + archivedCount : "") + "</div>" +
-        (archivedCount && chatShowArchived
-          ? '<div class="qvq-chat-sfoot" data-purge-archived="1">' + esc(t("chat_purge_archived")) + "</div>"
-          : "");
+    var shown = chatShowArchived
+      ? items.filter(function (s) { return s.chat_key === chatSession || s.archived; })
+      : items.filter(function (s) { return !s.archived || s.chat_key === chatSession; });
+    var newBtn = '<div class="qvq-chat-srow qvq-nav-new" data-new="1"><span class="qvq-chat-sname">+ ' + esc(t("chat_new")) + "</span></div>";
+    var foot = '<div class="qvq-chat-sfoot' + (chatShowArchived ? " on" : "") + '" data-archived-toggle="1">' +
+      esc(t("chat_archived")) + (archivedCount ? " · " + archivedCount : "") + "</div>" +
+      (archivedCount && chatShowArchived
+        ? '<div class="qvq-chat-sfoot" data-purge-archived="1">' + esc(t("chat_purge_archived")) + "</div>"
+        : "");
 
-      var navHtml = '<div class="qvq-nav-srows" data-srows="1">' + newBtn + (sessionRowsHtml(shown) || "") + "</div>" + foot;
+    var listHtml = '<div class="qvq-nav-srows" data-srows="1">' + newBtn + (sessionRowsHtml(shown) || "") + "</div>" + foot;
+    if (sideBox && sideBox.getAttribute("data-html") !== listHtml) {
+      sideBox.setAttribute("data-html", listHtml);
+      sideBox.innerHTML = listHtml;
+      bindSessionRows(sideBox, false);
+      var sb = sideBox.querySelector("[data-new]");
+      if (sb) sb.onclick = function () { newChat(); };
+      var sFoot = sideBox.querySelector("[data-archived-toggle]");
+      if (sFoot) sFoot.onclick = function () {
+        chatShowArchived = !chatShowArchived;
+        renderChatSessions();
+      };
+      var sPurge = sideBox.querySelector("[data-purge-archived]");
+      if (sPurge) sPurge.onclick = function () {
+        confirmDialog(t("session_delete_confirm")).then(function (ok) {
+          if (!ok) return;
+          api("/api/qvq/sessions/delete-archived", "POST", {}).then(function (data) {
+            toast(t("session_deleted") + " × " + ((data && data.removed) || 0));
+            if (chatMeta.sessions.some(function (s3) { return s3.archived && s3.chat_key === chatSession; })) {
+              chatSession = "pending";
+              switchChatSession("dashboard:private:web");
+            }
+            loadChatMeta();
+          });
+        });
+      };
+    }
+    if (navBox) {
+      var navHtml = listHtml;
       if (navBox.getAttribute("data-html") !== navHtml) {
         navBox.setAttribute("data-html", navHtml);
         navBox.innerHTML = navHtml;

@@ -170,66 +170,163 @@
       chips.style.display = "none";
       chips.innerHTML = "";
     }
-    var chatHtmlKey = chatSession + "::" + chatWindowStart + "::" + chatHistory.map(function (m) {
-      return [m.role, m.text, m.steps ? m.steps.length : 0, (m.atts || []).length,
-        m.rounds ? m.rounds.map(function (r) { return (r.text || "").length + "." + (r.tools || []).length; }).join(",") : "-",
-        m.fresh ? 1 : 0, m.err ? 1 : 0].join("");
-    }).join("");
+    var fps = chatHistory.map(function (m, i) { return msgFingerprint(m, i); });
+    var chatHtmlKey = chatSession + "::" + chatWindowStart + "::" + fps.join("~");
     if (box.getAttribute("data-html") === chatHtmlKey) {
       bindMdCopy(box);
       return;
     }
     box.setAttribute("data-html", chatHtmlKey);
-    var build = chatHistory.map(function (m, i) {
-      var inner = "";
-      (m.atts || []).forEach(function (a) {
-        if (a.isImage) {
-          inner += '<img class="qvq-msg-img" data-idx="' + i + '" src="' + a.data + '" alt=""/>';
-        } else {
-          inner += '<span class="qvq-msg-file"><i class="qvq-file-ico">' + FILE_ICON_SVG + "</i>" + esc(a.name) + "</span>";
+    var lastBot = -1;
+    for (var bi = 0; bi < chatHistory.length; bi++) {
+      if (chatHistory[bi].role === "assistant") lastBot = bi;
+    }
+// 增量渲染：与现有 DOM 的指纹序列做 diff——
+// 前缀稳定 + 尾部新增 → 只 append 新节点；
+// 单点内容变化（编辑/流式 done 回填）→ 只替换该条节点；
+// 结构变化（删除/rewind/切会话）→ 全量重建
+    if (box.getAttribute("data-session") !== chatSession) {
+// 会话标识变化：清空 DOM 走全量重建
+      box.innerHTML = "";
+    }
+    box.setAttribute("data-session", chatSession);
+    var wraps = Array.prototype.slice.call(box.querySelectorAll(":scope > .qvq-msg-wrap"));
+    var oldFps = wraps.map(function (w) { return w.getAttribute("data-mfp") || ""; });
+    var prefix = 0;
+    while (prefix < fps.length && prefix < oldFps.length && oldFps[prefix] === fps[prefix]) prefix++;
+    var suffixSame = fps.length === oldFps.length;
+    if (suffixSame) {
+      for (var si = prefix; si < fps.length; si++) {
+        if (oldFps[si] !== fps[si]) { suffixSame = false; break; }
+      }
+    }
+    if (prefix < fps.length || prefix < oldFps.length) {
+      if (prefix === oldFps.length && prefix < fps.length) {
+// 尾部追加：只构建并挂载新消息
+        appendMsgNodes(box, prefix, lastBot);
+      } else if (suffixSame) {
+// 单点替换：第 prefix 条内容变化
+        var tmp = document.createElement("div");
+        tmp.innerHTML = msgHtml(chatHistory[prefix], prefix, lastBot);
+        var fresh = tmp.firstElementChild;
+        if (fresh && wraps[prefix]) {
+          wraps[prefix].replaceWith(fresh);
+          bindMsgScope(fresh);
+        } else if (fresh) {
+          box.appendChild(fresh);
+          bindMsgScope(fresh);
         }
-      });
-      var body;
-      if (m.role === "assistant" && m.rounds && m.rounds.length) {
-        body = '<div class="qvq-rounds">' + renderSerial(roundsToItems(m.rounds)) + "</div>";
       } else {
-        body = m.role === "user" ? esc(m.text) : (mdRender(m.text) || esc(m.text));
+// 结构变化：整树重建兜底（保持既有 scroll/suppress 语义）
+        var prevTop = fullRebuildChat(box, stick, lastBot);
+        finishRender(stick, prevTop);
+        return;
       }
-      var stepsBlock = m.role === "assistant" && !m.rounds && m.steps && m.steps.length ? stepsHtml(m.steps, false) : "";
-      var acts = m.role === "user" && m.idx != null
-        ? '<div class="qvq-msg-acts">' +
-          '<button type="button" data-copy-msg="' + i + '" title="' + esc(t("copy")) + '"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
-          '<button type="button" data-edit-msg="' + i + '" title="' + esc(t("edit")) + '"><svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>' +
-          "</div>"
-        : "";
-      var freshCls = m.fresh ? " qvq-msg-new" : "";
-      var timeAttr = m.ts ? ' title="' + esc(new Date(m.ts * 1000).toLocaleString()) + '"' : "";
-      if (m.role === "user") {
+    }
+    finishRender(stick);
+  }
 
-        return '<div class="qvq-msg-wrap"' + timeAttr + '><div class="qvq-msg me' + freshCls + '">' + inner + body + '</div>' + acts + "</div>";
-      }
-// AI 消息操作条：复制所有；重新生成仅最后一条
-      var lastBot = -1;
-      for (var bi = 0; bi < chatHistory.length; bi++) {
-        if (chatHistory[bi].role === "assistant") lastBot = bi;
-      }
-      var botActs = '<div class="qvq-msg-acts bot">' +
-        '<button type="button" data-copy-msg="' + i + '" title="' + esc(t("copy")) + '"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
-        (i === lastBot && !chatBusy ? '<button type="button" data-regen="1" title="' + esc(t("regen")) + '"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button>' : "") +
-        "</div>";
-      return '<div class="qvq-msg-wrap bot"' + timeAttr + '><div class="qvq-msg bot' + freshCls + '">' + stepsBlock + inner + body + "</div>" + botActs + "</div>";
+  function msgFingerprint(m, i) {
+    var lastBot = -1;
+    for (var bi = 0; bi < chatHistory.length; bi++) {
+      if (chatHistory[bi].role === "assistant") lastBot = bi;
+    }
+    return [m.role, m.idx, (m.text || "").length, m.steps ? m.steps.length : 0,
+      (m.atts || []).length,
+      m.rounds ? m.rounds.map(function (r) { return (r.text || "").length + "." + (r.tools || []).length; }).join(",") : "-",
+      (m.role === "assistant" && i === lastBot && !chatBusy) ? 1 : 0].join("|");
+  }
+
+  function appendMsgNodes(box, from, lastBot) {
+    var frag = "";
+    for (var j = from; j < chatHistory.length; j++) {
+      frag += msgHtml(chatHistory[j], j, lastBot);
+    }
+    var tmp = document.createElement("div");
+    tmp.innerHTML = frag;
+    Array.prototype.slice.call(tmp.children).forEach(function (node) {
+      box.appendChild(node);
+      bindMsgScope(node);
+    });
+  }
+
+  function fullRebuildChat(box, stick, lastBot) {
+    var build = chatHistory.map(function (m, i) {
+      return msgHtml(m, i, lastBot);
     });
     var prevTop = stick ? 0 : box.scrollTop;
     suppressScrollLoad = true; // 重建 DOM 前屏蔽"到底部即加载更早"的误判
     box.innerHTML = build.join("");
-    box.querySelectorAll(".qvq-msg-img").forEach(function (img) {
+    bindMsgScope(box);
+    return prevTop;
+  }
+
+  function finishRender(stick, prevTop) {
+    var box = el("qvq-chat-box");
+    var freshNow = 0;
+    chatHistory.forEach(function (m2) { if (m2.fresh) { freshNow++; m2.fresh = false; } });
+    if (freshNow > 0 && document.hidden) {
+      unreadCount += freshNow;
+      updateUnreadTitle();
+    }
+    if (chatBusy && activeLive && activeLive.session === chatSession && !box.querySelector(".qvq-msg.live")) {
+      box.appendChild(activeLive.els.root);
+    }
+    // 显式贴底 > 全量重建时恢复原位置（上翻加载不跳底） > 增量路径 scrollTop 未被重置则不动
+    if (stick) box.scrollTop = box.scrollHeight;
+    else if (prevTop != null) box.scrollTop = prevTop;
+    // 下一帧再恢复监听（挂载后浏览器可能补发一次 scroll）
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(function () { suppressScrollLoad = false; });
+    } else {
+      suppressScrollLoad = false;
+    }
+  }
+
+  function msgHtml(m, i, lastBot) {
+    var inner = "";
+    (m.atts || []).forEach(function (a) {
+      if (a.isImage) {
+        inner += '<img class="qvq-msg-img" data-idx="' + i + '" src="' + a.data + '" alt=""/>';
+      } else {
+        inner += '<span class="qvq-msg-file"><i class="qvq-file-ico">' + FILE_ICON_SVG + "</i>" + esc(a.name) + "</span>";
+      }
+    });
+    var body;
+    if (m.role === "assistant" && m.rounds && m.rounds.length) {
+      body = '<div class="qvq-rounds">' + renderSerial(roundsToItems(m.rounds)) + "</div>";
+    } else {
+      body = m.role === "user" ? esc(m.text) : (mdRender(m.text) || esc(m.text));
+    }
+    var stepsBlock = m.role === "assistant" && !m.rounds && m.steps && m.steps.length ? stepsHtml(m.steps, false) : "";
+    var acts = m.role === "user" && m.idx != null
+      ? '<div class="qvq-msg-acts">' +
+        '<button type="button" data-copy-msg="' + i + '" title="' + esc(t("copy")) + '"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
+        '<button type="button" data-edit-msg="' + i + '" title="' + esc(t("edit")) + '"><svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>' +
+        "</div>"
+      : "";
+    var freshCls = m.fresh ? " qvq-msg-new" : "";
+    var timeAttr = m.ts ? ' title="' + esc(new Date(m.ts * 1000).toLocaleString()) + '"' : "";
+    if (m.role === "user") {
+      return '<div class="qvq-msg-wrap" data-mfp="' + esc(msgFingerprint(m, i)) + '"' + timeAttr + '><div class="qvq-msg me' + freshCls + '">' + inner + body + '</div>' + acts + "</div>";
+    }
+// AI 消息操作条：复制所有；重新生成仅最后一条
+    var botActs = '<div class="qvq-msg-acts bot">' +
+      '<button type="button" data-copy-msg="' + i + '" title="' + esc(t("copy")) + '"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>' +
+      (i === lastBot && !chatBusy ? '<button type="button" data-regen="1" title="' + esc(t("regen")) + '"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button>' : "") +
+      "</div>";
+    return '<div class="qvq-msg-wrap bot" data-mfp="' + esc(msgFingerprint(m, i)) + '"' + timeAttr + '><div class="qvq-msg bot' + freshCls + '">' + stepsBlock + inner + body + "</div>" + botActs + "</div>";
+  }
+
+  function bindMsgScope(scope) {
+    scope.querySelectorAll(".qvq-msg-img").forEach(function (img) {
       img.onclick = function () {
         var m = chatHistory[parseInt(img.getAttribute("data-idx"), 10)] || {};
         var att = ((m.atts || []).filter(function (a) { return a.isImage; })[0]) || {};
         openImageViewer(att.name || "image", att.data);
       };
     });
-    var regenBtn = box.querySelector("[data-regen]");
+    var regenBtn = scope.querySelector("[data-regen]");
     if (regenBtn) {
       regenBtn.onclick = function () {
         regenBtn.disabled = true;
@@ -248,7 +345,7 @@
         }, function () { regenBtn.disabled = false; });
       };
     }
-    box.querySelectorAll("[data-copy-msg]").forEach(function (btn) {
+    scope.querySelectorAll("[data-copy-msg]").forEach(function (btn) {
       btn.onclick = function () {
         var m = chatHistory[parseInt(btn.getAttribute("data-copy-msg"), 10)] || {};
         copyText(m.text || "");
@@ -257,32 +354,12 @@
         setTimeout(function () { btn.setAttribute("title", old); }, 1200);
       };
     });
-    box.querySelectorAll("[data-edit-msg]").forEach(function (btn) {
+    scope.querySelectorAll("[data-edit-msg]").forEach(function (btn) {
       btn.onclick = function () { openMsgEditor(btn); };
     });
-    bindStepToggles(box);
-    bindMdCopy(box);
-    var freshNow = 0;
-    chatHistory.forEach(function (m2) { if (m2.fresh) { freshNow++; m2.fresh = false; } });
-    if (freshNow > 0 && document.hidden) {
-      unreadCount += freshNow;
-      updateUnreadTitle();
-    }
-
-    if (chatBusy && activeLive && activeLive.session === chatSession && !box.querySelector(".qvq-msg.live")) {
-      box.appendChild(activeLive.els.root);
-    }
-    // 只在显式要求贴底、或首屏（原本是空的）时跳底；用户向上翻阅时保留位置
-    if (stick || !prevTop) box.scrollTop = box.scrollHeight;
-    else box.scrollTop = prevTop;
-    // 下一帧再恢复监听（挂载后浏览器可能补发一次 scroll）
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(function () { suppressScrollLoad = false; });
-    } else {
-      suppressScrollLoad = false;
-    }
+    bindStepToggles(scope);
+    bindMdCopy(scope);
   }
-
 
   // 图片查看器：滚轮缩放/双击复位/旋转
   function openImageViewer(name, src) {
