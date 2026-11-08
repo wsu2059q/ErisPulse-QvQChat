@@ -2,6 +2,7 @@
 会话级只能收紧不能放宽；listen_off 隐私开关阻断 observe/replied 外发。"""
 
 import asyncio
+import inspect
 
 from QvQChat.Main import Main
 
@@ -299,3 +300,72 @@ def test_dup_gate_cleanup_never_crashes():
     ev = IdEv("MX", "hello")
     assert main._dup_delivery_gate(ev, "hello") is True
     assert main._dup_delivery_gate(ev, "hello") is False  # 6s 窗内同 id 拦截
+
+
+def test_account_suffix_prefers_self_user_id():
+    """账户后缀取 get_self_user_id()（稳定 id）优先于 get_self_account_id()（配置名）。
+
+    同一机器人换配置名（@Amer → @1325859446）不再散成两份会话。
+    """
+    import inspect
+
+    from QvQChat.chat.inbox import _account_suffix_for
+    from test_aggregate import make_main
+
+    main = make_main()
+    cfg, sdk = main.cfg, main.sdk
+    sdk.adapter.bots = {"1325859446": {"status": "running"}, "Amer": {"status": "running"}}
+
+    class Ev:
+        _platform = "onebot11"
+        _self = {"user_id": "1325859446", "account_id": "Amer"}
+
+        def get_platform(self):
+            return self._platform
+
+        def get(self, key, default=None):
+            if key == "self":
+                return self._self
+            return default
+
+        def get_self_account_id(self):
+            return "Amer"  # 配置名（漂移源）
+
+        def get_self_user_id(self):
+            return "1325859446"  # 稳定 id
+
+    suffix = _account_suffix_for(cfg, sdk, Ev())
+    assert suffix == "@1325859446"
+
+
+async def test_identity_merge_account_bulk():
+    """账户级批量归并：旧 @账户 全部会话 migrate 到新 @账户。"""
+    main = make_main()
+    s = main.sessions
+# 旧账户两个会话
+    s.append("snowluma:group:1@Amer", "user", "旧群聊一")
+    s.append("snowluma:private:u9@Amer", "user", "旧私聊")
+    s.append("onebot11:group:2@Amer", "user", "别的平台不动")
+    _Req = type("R", (), {"__init__": lambda self, b: setattr(self, "_b", b),
+                          "json": lambda self: _async_ret(self._b)})
+
+    async def _async_ret(v):
+        return v
+
+    from types import SimpleNamespace
+    from QvQChat.dashboard.api_sessions import SessionsApiMixin
+
+    api = SimpleNamespace(main=main, sdk=main.sdk)
+    attr = inspect.getattr_static(SessionsApiMixin, "identity_merge_account")
+    api.identity_merge_account = attr.__get__(api)
+
+    result = await api.identity_merge_account(_Req(
+        {"platform": "snowluma", "from": "Amer", "to": "1325859446", "mode": "merge"}))
+    assert result["migrated"] == 2 and result["ok"]
+# 目标会话有旧账户的历史
+    assert main.sessions.get_contexts("snowluma:group:1@1325859446")
+    assert main.sessions.get_contexts("snowluma:private:u9@1325859446")
+# 映射建立：旧键新消息由目标接手
+    assert main.sessions.identity_map().get("snowluma:group:1@Amer") == "snowluma:group:1@1325859446"
+# 别平台不动
+    assert main.sessions.identity_map().get("onebot11:group:2@Amer") is None

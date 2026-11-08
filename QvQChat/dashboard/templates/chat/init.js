@@ -37,6 +37,12 @@
       } catch (err) {}
     });
     el("qvq-chat-attach-btn").onclick = function () { el("qvq-chat-file").click(); };
+// 会话面板（浮层）：默认收起，按钮切换 .open
+    var sideToggle = el("qvq-chat-side-toggle");
+    if (sideToggle) sideToggle.onclick = function () {
+      var side = el("qvq-chat-side");
+      if (side) side.classList.toggle("open");
+    };
     // 快速跳转面板（Ctrl+K / Cmd+K）
     document.addEventListener("keydown", function (e) {
       if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {

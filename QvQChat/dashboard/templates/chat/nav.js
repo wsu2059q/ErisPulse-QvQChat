@@ -1,12 +1,4 @@
 /* 导航与侧栏：标签切换、会话列表、发送队列 */
-  // 圣杯三栏分工：宽屏（>1080px）对话页由 aside 会话列表接管，导航内嵌列表隐藏；
-  // 窄屏 aside 隐藏，导航内嵌列表是抽屉里的唯一入口——按宽度决定谁显示
-  function syncNavSessionsVisibility(name) {
-    var navSessions = el("qvq-nav-sessions");
-    if (!navSessions) return;
-    var wide = window.innerWidth > 1080;
-    navSessions.classList.toggle("show", name === "chat" && !wide);
-  }
   function switchTab(name) {
     el("qvq-nav").querySelectorAll(".qvq-nav-btn").forEach(function (btn) {
       btn.classList.toggle("active", btn.getAttribute("data-tab") === name);
@@ -15,20 +7,14 @@
       section.classList.toggle("active", section.getAttribute("data-section") === name);
     });
     if (loaders[name]) loaders[name]();
-    syncNavSessionsVisibility(name);
+    var navSessions = el("qvq-nav-sessions");
+    if (navSessions) navSessions.classList.toggle("show", name === "chat");
     if (name === "chat") {
       var input = el("qvq-chat-input");
       if (input) input.focus();
     }
     closeDrawer();
   }
-  window.addEventListener("resize", function () {
-    syncNavSessionsVisibility(
-      (el("qvq-app").querySelector(".qvq-tab.active") || {}).getAttribute
-        ? el("qvq-app").querySelector(".qvq-tab.active").getAttribute("data-section")
-        : ""
-    );
-  });
 
 
   // 快速跳转面板：搜会话 / 页面 / 设置项（Ctrl+K / Cmd+K）
@@ -244,11 +230,17 @@
     return s.name || s.target_id || s.chat_key;
   }
 
-  // 多账户隔离：chat_key 尾部的 @account 后缀 → 账户名（无后缀返回空）
+  // 多账户隔离：chat_key 尾部的 @account 后缀 → 账户名（无后缀返回空）。
+  // 显示时经 display_names 映射表还原可读账户名
   function accountOf(key) {
     var s = String(key || "");
     var i = s.lastIndexOf("@");
-    return i >= 0 ? s.slice(i + 1) : "";
+    var acct = i >= 0 ? s.slice(i + 1) : "";
+    try {
+      var names = (chatMeta.accounts_overview || {}).display_names || {};
+      if (names[acct]) return names[acct];
+    } catch (e) {}
+    return acct;
   }
 
   // 人格绑定的层级判定与排序（回落链：会话 → 群 → 账户 → 平台 → 全局默认）
@@ -482,6 +474,7 @@
       chatMeta.sessions = (results[0] && results[0].sessions) || [];
       chatMeta.personas = (results[1] && results[1].personas) || [];
       chatMeta.uiDefaults = (results[0] && results[0].ui_defaults) || {};
+      chatMeta.accounts_overview = (results[0] && results[0].accounts) || {};
 
       var exists = chatSession === "dashboard:private:web" ||
         /^dashboard:private:web\d+$/.test(chatSession) ||
