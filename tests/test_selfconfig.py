@@ -264,3 +264,25 @@ def test_coerce_dict_field_tolerates_empty_and_json_string():
     assert ok and coerced["api_key"] == "sk-1"
     ok, coerced, err = QvQConfig.coerce("embedding_provider", "not json")
     assert not ok
+
+
+async def test_manage_personas_full_field_coverage():
+    """AI 自管理工具覆盖全部人格字段：口头禅/禁语/头像/预填充/模型参数经工具落库。"""
+    ctx = make_ctx()
+    out = json.loads(await selfconfig.manage_personas(
+        ctx, action="save", persona_id="full",
+        name="Full", system="sys",
+        catchphrases=["喵呜~", "诶——"],
+        banned_words=["脏话"],
+        avatar="https://example.com/a.png",
+        prefill="喵呜~",
+        temperature=0.8,
+        max_tokens=2048,
+    ))
+    assert out["ok"] is True
+    saved = ctx.main.personas.get("full")
+    assert saved["catchphrases"] == ["喵呜~", "诶——"]
+    assert saved["banned_words"] == ["脏话"]
+    assert saved["avatar"] == "https://example.com/a.png"
+    assert saved["prefill"] == "喵呜~"
+    assert saved["temperature"] == 0.8 and saved["max_tokens"] == 2048
