@@ -251,6 +251,10 @@ class ParticipationManager:
         recent = [dict(m) for m in (self._window.get(chat_key) or ())]
         last_reply = float(self._last_reply.get(chat_key, 0.0) or 0.0)
         now = time.time()
+        try:
+            sibling = bool(self.main._is_sibling_bot(event, sender_id))
+        except Exception:
+            sibling = False
         return {
             "chat_key": str(chat_key or ""),
             "platform": platform,
@@ -262,6 +266,8 @@ class ParticipationManager:
             "sender_name": self._sender_name(event),
 # 确定性触发（@/前缀）永远短路插件决策，到达这里的 at_bot 恒 False
             "at_bot": False,
+# 发话者是否同后端其它 bot（bot 互逗生态的结构化信号，Stalker 决策分支用）
+            "sender_is_bot": sibling,
             "recent_messages": recent,
             "heat_hint": None,
             "replied_recently": bool(last_reply and now - last_reply < REPLIED_WINDOW),

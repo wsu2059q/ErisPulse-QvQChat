@@ -375,8 +375,10 @@ class AgentRunner:
         on_reasoning=None,
         model: str | None = None,
         temperature: float | None = None,
+        max_tokens: int | None = None,
         task_kind: str = "chat",
         priority: int = 0,
+        prefill: str = "",
     ) -> AgentResult:
         contexts = self._sanitize_contexts(list(messages))
         session_block = self._session_block(ctx)
@@ -406,8 +408,10 @@ class AgentRunner:
             on_reasoning=on_reasoning,
             model=model,
             temperature=temperature,
+            max_tokens=max_tokens,
             usage_total=usage_total,
             priority=priority,
+            prefill=prefill,
         )
         if str(task_kind) != "deep":
             return result
@@ -437,8 +441,10 @@ class AgentRunner:
         on_reasoning=None,
         model: str | None = None,
         temperature: float | None = None,
+        max_tokens: int | None = None,
         usage_total: dict | None = None,
         priority: int = 0,
+        prefill: str = "",
     ) -> AgentResult:
         trace: list = []
         pending_images: list = []
@@ -474,17 +480,64 @@ class AgentRunner:
 # tool_call 能力闭环（schemas 非空且未显式指定模型时）
         schemas, system, chat_needs = self._apply_tools_fallback(schemas, system, model)
         delivery_hint: bool | None = None
+# 预填充（人格级口语开场白）：只在首轮请求以 assistant 结尾消息注入，模型从这里续写。
+# 不写进 contexts——工具轮的后续请求与累积对话都不受污染。
+        prefill = str(prefill or "").strip()
+        prefill_state = {"pending": bool(prefill), "active": False}
+        if prefill and on_delta is not None:
+# 流式起步：先发开场白再发增量；failover on_reset 清段后由 pending 标志自动补发
+            base_on_delta, base_on_reset = on_delta, on_reset
+
+            async def on_delta(piece):  # noqa: F811 — 局部包装
+                if prefill_state["pending"]:
+                    prefill_state["pending"] = False
+                    result = base_on_delta(prefill)
+                    if asyncio.iscoroutine(result):
+                        await result
+                result = base_on_delta(piece)
+                if asyncio.iscoroutine(result):
+                    await result
+
+            def on_reset():  # noqa: F811 — 局部包装
+                prefill_state["pending"] = True
+                return base_on_reset()
+
         for loop_index in range(max_rounds):
+            messages = [{"role": "system", "content": system}] + contexts
+            use_prefill = bool(prefill) and loop_index == 0 and not self._prefill_blocked(model)
+            if use_prefill:
+                messages.append({"role": "assistant", "content": prefill})
             request = ChatRequest(
-                messages=[{"role": "system", "content": system}] + contexts,
+                messages=messages,
                 tools=schemas or None,
                 model=model,
                 temperature=temperature,
+                max_tokens=max_tokens,
                 needs=chat_needs,
             )
-            response = await self._dispatch("chat", request, needs=chat_needs, model=model,
-                                            on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
-             chat_key=ctx.chat_key, priority=priority)
+            if use_prefill:
+                try:
+                    response = await self._dispatch("chat", request, needs=chat_needs, model=model,
+                                                    on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
+                                                    chat_key=ctx.chat_key, priority=priority)
+                except Exception:
+# 模型可能不支持 assistant 结尾续写（400 类）：立即去 prefill 重跑一次并记住
+                    self._mark_prefill_blocked(model)
+                    request = ChatRequest(
+                        messages=[{"role": "system", "content": system}] + contexts,
+                        tools=schemas or None,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        needs=chat_needs,
+                    )
+                    response = await self._dispatch("chat", request, needs=chat_needs, model=model,
+                                                    on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
+                                                    chat_key=ctx.chat_key, priority=priority)
+            else:
+                response = await self._dispatch("chat", request, needs=chat_needs, model=model,
+                                                on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
+                                                chat_key=ctx.chat_key, priority=priority)
 # 引擎剥图重试过 → 模型本轮没看见图：补一份视觉描述，避免它装作看过
             if getattr(response, "images_stripped", False):
                 urls = list(getattr(response, "stripped_image_urls", []) or [])
@@ -512,6 +565,7 @@ class AgentRunner:
 # 最终回复自身的标签优先级最高（覆盖过程中声明的意图）
                 if tag_hint is not None:
                     delivery_hint = tag_hint
+                final_text = self._with_prefill(final_text, prefill)
                 rounds.append({"text": final_text, "tools": []})
                 return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds,
                                    model=used_model, delivery_hint=delivery_hint)
@@ -633,9 +687,33 @@ class AgentRunner:
 # 最终回复自身的标签优先级最高
         if tag_hint is not None:
             delivery_hint = tag_hint
+        final_text = self._with_prefill(final_text, prefill)
         rounds.append({"text": final_text, "tools": []})
         return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds,
                            model=used_model or final.model, delivery_hint=delivery_hint)
+
+    @staticmethod
+    def _with_prefill(text: str, prefill: str) -> str:
+        """开场白 + 续写拼合：模型若把开场白原样复读（部分后端行为），以续写为准去重。"""
+        text = str(text or "")
+        prefill = str(prefill or "").strip()
+        if not prefill or not text:
+            return text
+        if text.startswith(prefill):
+            return text
+        return prefill + text
+
+    def _prefill_blocked(self, model: str | None) -> bool:
+        """auto 探测记忆：该模型此前 prefill 请求失败（本进程内不再重试）。"""
+        return bool(model) and model in getattr(self, "_prefill_failures", set())
+
+    def _mark_prefill_blocked(self, model: str | None) -> None:
+        if model:
+            failures = getattr(self, "_prefill_failures", None)
+            if failures is None:
+                failures = set()
+                self._prefill_failures = failures
+            failures.add(model)
 
     def _pool_has_vision(self) -> bool:
 # 修近似探测——优先 pool.has_model(["vision"])（老式池对象退回旧近似逻辑）

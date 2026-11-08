@@ -183,6 +183,7 @@ class QvQConfig(BaseConfig):
     chat_output_rules: bool = field(default=True, metadata=_desc("chat_output_rules", "闲聊输出规则：禁复述对方上条、禁结尾硬造反问、没把握可只回「？」、群聊短段输出（任务/工具场景不受限）", "chat", 54, "switch"))
     identity_note_other_agents: bool = field(default=True, metadata=_desc("identity_note_other_agents", "系统提示注入「群内其他智能体不是你」认知条款，防止认领别人的发言", "chat", 55, "switch"))
     bot_cross_talk: bool = field(default=True, metadata=_desc("bot_cross_talk", "bot 互聊（拟人化）：同后端其它 bot 账户在群里发言/点名时允许参与对话；连续超过 3 轮自动收口等真人发言。关闭则兄弟 bot 的消息只旁听不响应", "chat", 72, "switch"))
+    external_bots: list[str] = field(default_factory=list, metadata=_desc("external_bots", "外部 bot 名单：别的后端/框架的机器人 user id（可带平台前缀如 snowluma:123456）。框架无法自动识别别家 bot，登记后它们按 bot 信号参与生态（互聊/互逗判定）", "chat", 73, "list"))
     scene_platform_prefix: bool = field(default=True, metadata=_desc("scene_platform_prefix", "会话场景说明附带平台名（如 平台：onebot11）", "chat", 56, "switch"))
     forward_external_reply: bool = field(default=True, metadata=_desc("forward_external_reply", "转发卡外直发结论：合并转发只装执行过程与中间发言，最终结论性回复以普通消息直发到卡外（结论不进卡，避免重复）；关闭则回到旧行为（结论只在卡内）", "chat", 57, "switch"))
     forward_args_chars: int = field(default=140, metadata=_desc("forward_args_chars", "转发卡「执行过程」节点参数摘要的截断字符数（0 恢复默认 140；调大可减少显示不全）", "chat", 58, "number"))

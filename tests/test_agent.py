@@ -509,3 +509,106 @@ async def test_runner_nudge_only_once():
     result = await runner.run(system="s", messages=[{"role": "user", "content": "任务"}], ctx=ctx)
     assert result.text == ""
     assert not responses  # 三轮全部用掉，没有无限重问
+
+
+async def test_runner_prefill_injected_first_round_only():
+    """预填充只在首轮以 assistant 结尾注入；后续轮与 contexts 不受污染；最终文本拼合。"""
+    main = FakeMain()
+    registry = ToolRegistry()
+    registry.register(make_tool())
+    requests = []
+
+    class ScriptedPool:
+        async def chat(self, request, **kwargs):
+            requests.append(request)
+            if len(requests) == 1:
+                return ChatResponse(
+                    content="", tool_calls=[ToolCall(call_id="c1", name="echo", arguments={})], usage={},
+                )
+            return ChatResponse(content="喵呜~ 今天也在", usage={})
+
+    runner = AgentRunner(ScriptedPool(), registry, main.cfg)
+    ctx = make_ctx(main, admins=["1"])
+    result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx, prefill="喵呜~")
+    assert requests[0].messages[-1] == {"role": "assistant", "content": "喵呜~"}
+    assert requests[0].messages[-2]["role"] == "user"
+# 后续轮不再带 prefill（工具回填的消息在末尾）
+    assert requests[1].messages[-1]["role"] != "assistant" or requests[1].messages[-1].get("tool_call_id")
+    assert not any(m.get("content") == "喵呜~" and m["role"] == "assistant" for m in requests[1].messages)
+# 最终文本拼合：续写以开场白开头 → 去重取原文
+    assert result.text == "喵呜~ 今天也在"
+
+
+async def test_runner_prefill_dedup_when_model_echoes():
+    """模型把开场白原样复读：以续写为准去重，不双份。"""
+    main = FakeMain()
+
+    class Pool:
+        async def chat(self, request, **kwargs):
+            return ChatResponse(content="喵呜~ 拼接去重", usage={})
+
+    runner = AgentRunner(Pool(), ToolRegistry(), main.cfg)
+    ctx = make_ctx(main)
+    result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx, prefill="喵呜~")
+    assert result.text == "喵呜~ 拼接去重"
+
+
+async def test_runner_prefill_fallback_on_error():
+    """不支持 prefill 的模型（请求异常）：去 prefill 重跑一次并记住，结果正常。"""
+    main = FakeMain()
+    calls = []
+
+    class Pool:
+        async def chat(self, request, **kwargs):
+            calls.append(request)
+            if any(m.get("role") == "assistant" for m in request.messages[1:]):
+                raise RuntimeError("400 bad request: assistant prefill unsupported")
+            return ChatResponse(content="纯续写", usage={})
+
+    runner = AgentRunner(Pool(), ToolRegistry(), main.cfg)
+    ctx = make_ctx(main)
+    result = await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx,
+                              prefill="开场", model="prov:m1")
+    assert result.text == "开场纯续写"
+    assert len(calls) == 2
+# 记忆生效：同模型后续请求不再尝试 prefill
+    assert runner._prefill_blocked("prov:m1")
+
+
+def test_persona_prefill_and_model_params_save_merge():
+    """人格 prefill/temperature/max_tokens 保存；未提供的扩展字段沿用存量（merge）。"""
+    from QvQChat.agent.persona import PersonaManager
+
+    sdk = FakeMain().sdk
+    pm = PersonaManager(sdk)
+    saved = pm.save({"id": "amer", "name": "Amer", "system": "sys",
+                     "prefill": "喵呜~", "temperature": 0.9, "max_tokens": 1024})
+    assert saved["prefill"] == "喵呜~" and saved["temperature"] == 0.9 and saved["max_tokens"] == 1024
+    loaded = pm.get("amer")
+    assert loaded["prefill"] == "喵呜~"
+# 只更新 name：prefill/参数不清空（merge）
+    updated = pm.save({"id": "amer", "name": "Amer2"})
+    assert updated["prefill"] == "喵呜~" and updated["temperature"] == 0.9
+# 显式传空串清除 prefill；非法温度清除
+    cleared = pm.save({"id": "amer", "prefill": "", "temperature": "bogus"})
+    assert cleared["prefill"] == "" and cleared["temperature"] is None
+
+
+async def test_runner_persona_temp_override_reaches_request():
+    """人格级 temperature/max_tokens 经调用链落到 ChatRequest。"""
+    from QvQChat.agent.persona import PersonaManager
+
+    main = FakeMain()
+    PersonaManager(main.sdk).save({"id": "p1", "name": "P", "system": "s", "temperature": 0.85, "max_tokens": 512})
+    seen = []
+
+    class Pool:
+        async def chat(self, request, **kwargs):
+            seen.append(request)
+            return ChatResponse(content="ok", usage={})
+
+    runner = AgentRunner(Pool(), ToolRegistry(), main.cfg)
+    ctx = make_ctx(main)
+    await runner.run(system="s", messages=[{"role": "user", "content": "hi"}], ctx=ctx,
+                     temperature=0.85, max_tokens=512)
+    assert seen[0].temperature == 0.85 and seen[0].max_tokens == 512

@@ -605,6 +605,14 @@
         "<label class='qvq-label'>" + esc(t("model_price")) + "</label>" +
         "<div class='qvq-field-row'><input class='qvq-input' id='qvq-me-price-in' type='number' step='0.0001' min='0' value='" + numAttr(m.cost && m.cost.input) + "' placeholder='" + esc(t("model_price_in")) + "'/>" +
         "<input class='qvq-input' id='qvq-me-price-out' type='number' step='0.0001' min='0' value='" + numAttr(m.cost && m.cost.output) + "' placeholder='" + esc(t("model_price_out")) + "'/></div>" +
+        "<label class='qvq-label'>" + esc(t("model_prefill_ok")) + "</label>" +
+        "<select class='qvq-select' id='qvq-me-prefill'>" +
+        "<option value=''" + (m.prefill_ok == null ? " selected" : "") + ">" + esc(t("model_prefill_auto")) + "</option>" +
+        "<option value='yes'" + (m.prefill_ok === true ? " selected" : "") + ">" + esc(t("model_prefill_yes")) + "</option>" +
+        "<option value='no'" + (m.prefill_ok === false ? " selected" : "") + ">" + esc(t("model_prefill_no")) + "</option></select>" +
+        "<div class='qvq-tool-desc'>" + esc(t("model_prefill_hint")) + "</div>" +
+        "<label class='qvq-label'>" + esc(t("model_notes")) + "</label>" +
+        "<textarea class='qvq-textarea' id='qvq-me-notes' rows='3' placeholder='" + esc(t("model_notes_ph")) + "'>" + esc(m.notes || "") + "</textarea>" +
         "<label class='qvq-check-row' style='margin-top:14px'><input type='checkbox' id='qvq-me-enabled'" + (m.enabled !== false ? " checked" : "") + "/><span>" + esc(t("model_enabled")) + "</span></label>" +
       "</details>";
     openForm(editing ? t("model_edit_title") : t("model_add_title"), fields, function (body) {
@@ -630,6 +638,9 @@
       var pin = fv(body, "qvq-me-price-in");
       var pout = fv(body, "qvq-me-price-out");
       next.cost = (pin === "" && pout === "") ? null : { input: Number(pin || 0), output: Number(pout || 0) };
+      var pfill = fv(body, "qvq-me-prefill");
+      next.prefill_ok = pfill === "yes" ? true : (pfill === "no" ? false : null);
+      next.notes = fv(body, "qvq-me-notes");
       var models = (provider.models || []).slice();
       var idx = -1;
       if (model) {
@@ -950,8 +961,34 @@
     });
   }
 
+  function _examplesEncode(examples) {
+    // [{user, assistant}] → 「用户: …\n助手: …\n\n」段式文本（编辑器往返用）
+    return (examples || []).map(function (ex) {
+      return "用户: " + (ex.user || "") + "\n助手: " + (ex.assistant || "");
+    }).join("\n\n");
+  }
+
+  function _examplesDecode(text) {
+    // 段式文本 → [{user, assistant}]；段内按 行首 用户:/user: 与 助手:/assistant: 归类
+    var out = [];
+    String(text || "").split(/\n\s*\n/).forEach(function (block) {
+      var user = "", assistant = "";
+      block.split("\n").forEach(function (line) {
+        var t = line.trim();
+        if (!t) return;
+        if (/^(用户|user)\s*[:：]/i.test(t)) user += (user ? "\n" : "") + t.replace(/^(用户|user)\s*[:：]\s*/i, "");
+        else if (/^(助手|assistant|ai)\s*[:：]/i.test(t)) assistant += (assistant ? "\n" : "") + t.replace(/^(助手|assistant|ai)\s*[:：]\s*/i, "");
+        else if (!user) user += (user ? "\n" : "") + t;
+        else assistant += (assistant ? "\n" : "") + t;
+      });
+      if (user || assistant) out.push({ user: user, assistant: assistant });
+    });
+    return out;
+  }
+
   function openPersonaModal(persona) {
     var isEdit = !!persona;
+    var p = persona || {};
     var fields =
       "<label class='qvq-label'>" + esc(t("personas_pid")) + "</label>" +
       "<input class='qvq-input' id='qvq-pf-id' placeholder='my_persona'" + (isEdit ? " readonly" : "") + " />" +
@@ -960,14 +997,61 @@
       "<label class='qvq-label'>" + esc(t("personas_system")) + "</label>" +
       "<textarea class='qvq-textarea' id='qvq-pf-system'></textarea>" +
       "<label class='qvq-label'>" + esc(t("personas_tools")) + "</label>" +
-      "<input class='qvq-input' id='qvq-pf-tools' placeholder='send_message, eco_*, remember' />";
+      "<input class='qvq-input' id='qvq-pf-tools' placeholder='send_message, eco_*, remember' />" +
+      "<details style='margin-top:14px'><summary class='qvq-label' style='cursor:pointer'>" + esc(t("personas_behavior")) + "</summary>" +
+        "<label class='qvq-label'>" + esc(t("personas_nickname")) + "</label>" +
+        "<input class='qvq-input' id='qvq-pf-nickname' placeholder='小IQ' />" +
+        "<label class='qvq-label'>" + esc(t("personas_avatar")) + "</label>" +
+        "<input class='qvq-input' id='qvq-pf-avatar' placeholder='https://…/avatar.png' />" +
+        "<label class='qvq-label'>" + esc(t("personas_owner_title")) + "</label>" +
+        "<input class='qvq-input' id='qvq-pf-owner' placeholder='" + esc(t("personas_owner_ph")) + "' />" +
+        "<label class='qvq-label'>" + esc(t("personas_prefill")) + "</label>" +
+        "<input class='qvq-input' id='qvq-pf-prefill' placeholder='喵呜~ / 诶—— / 嗯哼？' />" +
+        "<div class='qvq-tool-desc'>" + esc(t("personas_prefill_hint")) + "</div>" +
+        "<label class='qvq-label'>" + esc(t("personas_catchphrases")) + "</label>" +
+        "<textarea class='qvq-textarea' id='qvq-pf-catch' rows='2' placeholder='口头禅1&#10;口头禅2'></textarea>" +
+        "<label class='qvq-label'>" + esc(t("personas_banned")) + "</label>" +
+        "<textarea class='qvq-textarea' id='qvq-pf-banned' rows='2' placeholder='禁语1&#10;禁语2'></textarea>" +
+        "<label class='qvq-label'>" + esc(t("personas_style")) + "</label>" +
+        "<div class='qvq-field-row'>" +
+          "<input class='qvq-input' id='qvq-pf-style-emoji' placeholder='emoji 密度 low/mid/high' value='" + esc((p.style || {}).emoji_density || "") + "'/>" +
+          "<input class='qvq-input' id='qvq-pf-style-verb' placeholder='话多 short/normal/long' value='" + esc((p.style || {}).verbosity || "") + "'/>" +
+          "<input class='qvq-input' id='qvq-pf-style-form' placeholder='语气 casual/formal' value='" + esc((p.style || {}).formality || "") + "'/>" +
+        "</div>" +
+        "<label class='qvq-label'>" + esc(t("personas_examples")) + "</label>" +
+        "<textarea class='qvq-textarea' id='qvq-pf-examples' rows='5' placeholder='用户: …&#10;助手: …&#10;&#10;用户: …&#10;助手: …'></textarea>" +
+        "<div class='qvq-tool-desc'>" + esc(t("personas_examples_hint")) + "</div>" +
+      "</details>" +
+      "<details style='margin-top:10px'><summary class='qvq-label' style='cursor:pointer'>" + esc(t("personas_model_params")) + "</summary>" +
+        "<div class='qvq-tool-desc' style='margin-bottom:6px'>" + esc(t("personas_model_hint")) + "</div>" +
+        "<label class='qvq-label'>" + esc(t("models_temp")) + "</label>" +
+        "<input class='qvq-input' id='qvq-pf-temp' type='number' step='0.1' min='0' max='2' placeholder='" + esc(t("personas_follow_model")) + "'/>" +
+        "<label class='qvq-label'>" + esc(t("model_max_tokens")) + "</label>" +
+        "<input class='qvq-input' id='qvq-pf-maxtok' type='number' step='1' min='1' placeholder='" + esc(t("personas_follow_model")) + "'/>" +
+      "</details>";
     openForm(isEdit ? (persona.name || persona.id) : t("personas_new"), fields, function (body) {
       var payload = {
         id: fv(body, "qvq-pf-id"),
         name: fv(body, "qvq-pf-name"),
         system: body.querySelector("#qvq-pf-system").value,
-        tools: fv(body, "qvq-pf-tools").split(",").map(function (x) { return x.trim(); }).filter(Boolean)
+        tools: fv(body, "qvq-pf-tools").split(",").map(function (x) { return x.trim(); }).filter(Boolean),
+        nickname: fv(body, "qvq-pf-nickname"),
+        avatar: fv(body, "qvq-pf-avatar"),
+        owner_title: fv(body, "qvq-pf-owner"),
+        prefill: fv(body, "qvq-pf-prefill"),
+        catchphrases: fv(body, "qvq-pf-catch").split("\n").map(function (x) { return x.trim(); }).filter(Boolean),
+        banned_words: fv(body, "qvq-pf-banned").split("\n").map(function (x) { return x.trim(); }).filter(Boolean),
+        examples: _examplesDecode(body.querySelector("#qvq-pf-examples").value),
+        temperature: fv(body, "qvq-pf-temp") === "" ? null : Number(fv(body, "qvq-pf-temp")),
+        max_tokens: fv(body, "qvq-pf-maxtok") === "" ? null : Number(fv(body, "qvq-pf-maxtok")),
       };
+      var style = {};
+      ["emoji_density|qvq-pf-style-emoji", "verbosity|qvq-pf-style-verb", "formality|qvq-pf-style-form"].forEach(function (pair) {
+        var kv = pair.split("|");
+        var v = fv(body, kv[1]);
+        if (v) style[kv[0]] = v;
+      });
+      payload.style = style;
       if (!payload.id) {
         toast(t("personas_pid"), true);
         return;
@@ -988,6 +1072,15 @@
       body.querySelector("#qvq-pf-name").value = persona.name || "";
       body.querySelector("#qvq-pf-system").value = persona.system || "";
       body.querySelector("#qvq-pf-tools").value = (persona.tools || []).join(", ");
+      body.querySelector("#qvq-pf-nickname").value = persona.nickname || "";
+      body.querySelector("#qvq-pf-avatar").value = persona.avatar || "";
+      body.querySelector("#qvq-pf-owner").value = persona.owner_title || "";
+      body.querySelector("#qvq-pf-prefill").value = persona.prefill || "";
+      body.querySelector("#qvq-pf-catch").value = (persona.catchphrases || []).join("\n");
+      body.querySelector("#qvq-pf-banned").value = (persona.banned_words || []).join("\n");
+      body.querySelector("#qvq-pf-examples").value = _examplesEncode(persona.examples);
+      if (persona.temperature != null) body.querySelector("#qvq-pf-temp").value = persona.temperature;
+      if (persona.max_tokens != null) body.querySelector("#qvq-pf-maxtok").value = persona.max_tokens;
     }
   }
 

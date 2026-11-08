@@ -131,7 +131,9 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
                           persona: str | None = None, opening: list | None = None,
                           tools: list | None = None, owner_title: str = "",
                           style: dict | None = None, examples: list | None = None,
-                          nickname: str = "") -> str:
+                          nickname: str = "", prefill: str = "",
+                          temperature: float | None = None,
+                          max_tokens: float | None = None) -> str:
     personas = ctx.main.personas
     action = str(action or "list").lower()
     if action == "list":
@@ -154,8 +156,8 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
             "current_group_key": strip_isolation(current) if current else "",
         })
     if action == "save":
-        if not name and not system and not opening and not owner_title and not style and not examples and not nickname:
-            return "save needs at least one of name / system / opening / owner_title / style / examples / nickname"
+        if not name and not system and not opening and not owner_title and not style and not examples and not nickname and not prefill and temperature is None and max_tokens is None:
+            return "save needs at least one of name / system / opening / owner_title / style / examples / nickname / prefill / temperature / max_tokens"
         payload: dict = {"id": str(persona_id or "") or None, "name": name, "system": system}
 # 仅透传显式提供的扩展字段（未提供沿用存量，merge 语义防误清空）
         if opening is not None:
@@ -170,6 +172,12 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
             payload["examples"] = examples
         if nickname:
             payload["nickname"] = nickname
+        if prefill:
+            payload["prefill"] = prefill
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         saved = personas.save(payload)
         return utils.to_text({"ok": True, "persona": saved})
     if action == "delete":
