@@ -760,7 +760,7 @@
   transform: translateY(-1px);
 }
 .qvq-composer-send.stopping {
-  background: #e5484d;
+  background: var(--qvq-er-c);
 }
 .qvq-composer-send.stopping:hover {
   background: #d93a3f;
@@ -1020,6 +1020,28 @@
   border-color: var(--qvq-er-bd);
   color: var(--qvq-er-c);
 }
+/* 撤销型 toast（storage 清理等可回滚操作）：文案与撤销按钮并排 */
+.qvq-toast.undo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.qvq-toast-undo-btn {
+  font: inherit;
+  font-weight: 600;
+  color: var(--qvq-accent);
+  background: none;
+  border: 1px solid var(--qvq-bd-h);
+  border-radius: 999px;
+  padding: 3px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--qvq-dur) var(--qvq-ease), background var(--qvq-dur) var(--qvq-ease);
+}
+.qvq-toast-undo-btn:hover {
+  border-color: var(--qvq-accent);
+  background: var(--qvq-accent-soft);
+}
 
 /* ===== 触屏适配（无 hover / 粗指针）：消息操作常显 + 40×40 点击区域 ===== */
 @media (hover: none), (pointer: coarse) {
@@ -1166,5 +1188,5 @@
   white-space: nowrap;
 }
 .qvq-icon-btn.danger {
-  color: #e5484d;
+  color: var(--qvq-er-c);
 }

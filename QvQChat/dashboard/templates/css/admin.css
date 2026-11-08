@@ -414,14 +414,38 @@
   transform: translateY(0);
   box-shadow: none;
 }
+/* 统一焦点环：全部可交互元素（含此前缺席的图标按钮/选项卡/会话行/下拉项/模态关闭） */
 .qvq-btn:focus-visible,
 .qvq-input:focus-visible,
 .qvq-textarea:focus-visible,
 .qvq-select:focus-visible,
 .qvq-nav-btn:focus-visible,
-.qvq-cat-btn:focus-visible {
+.qvq-cat-btn:focus-visible,
+.qvq-icon-btn:focus-visible,
+.qvq-chip-btn:focus-visible,
+.qvq-chat-chip:focus-visible,
+.qvq-dd-btn:focus-visible,
+.qvq-dd-opt:focus-visible,
+.qvq-modal-close:focus-visible,
+.qvq-msg-acts button:focus-visible,
+.qvq-chat-sacts button:focus-visible,
+.qvq-chat-srow:focus-visible,
+.qvq-cap-chip:focus-visible,
+.qvq-composer-send:focus-visible,
+.qvq-mm-btn:focus-visible,
+.qvq-burger:focus-visible,
+.qvq-toast-undo-btn:focus-visible {
   outline: 2px solid var(--qvq-accent);
   outline-offset: 2px;
+}
+/* 会话行按钮：重置浏览器默认按钮样式 */
+button.qvq-chat-srow {
+  font: inherit;
+  color: inherit;
+  background: var(--qvq-surface);
+  border: none;
+  text-align: left;
+  width: 100%;
 }
 .qvq-btn.ghost {
   background: var(--qvq-surface);
@@ -918,6 +942,10 @@ input[type="radio"] {
 }
 .qvq-table tbody tr {
   transition: background-color 0.15s ease;
+}
+/* 斑马纹：偶数行浅底 */
+.qvq-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--qvq-bg-s) 55%, transparent);
 }
 .qvq-table tbody tr:hover td {
   background: var(--qvq-bg-s);

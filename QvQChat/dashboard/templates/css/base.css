@@ -1,5 +1,27 @@
 /* 变量、明暗主题与全局基础 */
 :root {
+  /* ---- 主题无关刻度：间距（4px 基数）/ 圆角 / 动效时长 / 层级 ---- */
+  --qvq-sp-1: 4px;
+  --qvq-sp-2: 8px;
+  --qvq-sp-3: 12px;
+  --qvq-sp-4: 16px;
+  --qvq-sp-5: 20px;
+  --qvq-sp-6: 24px;
+  --qvq-sp-8: 32px;
+  --qvq-r-sm: 6px;
+  --qvq-r-md: 9px;
+  --qvq-r-lg: 13px;
+  --qvq-r-full: 999px;
+  --qvq-dur: 0.18s;
+  --qvq-dur-fast: 0.12s;
+  --qvq-ease: cubic-bezier(0.3, 0.7, 0.4, 1);
+  --qvq-z-nav: 40;
+  --qvq-z-dropdown: 60;
+  --qvq-z-toast: 200;
+  --qvq-z-modal: 1000;
+  /* 统一焦点环：任何可交互元素 :focus-visible 都用它（2px 外描边 + 2px 偏移） */
+  --qvq-ring: 0 0 0 2px var(--qvq-bg), 0 0 0 4px var(--qvq-accent);
+
   --qvq-bg: #f6f7f9;
   --qvq-bg-s: #eef0f3;
   --qvq-surface: #ffffff;

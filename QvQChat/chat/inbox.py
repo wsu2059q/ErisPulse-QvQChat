@@ -521,10 +521,10 @@ class InboxMixin(RecoveryMixin):
         return False
 
     def _is_sibling_bot(self, event, sender_id: str) -> bool:
-        """发话者是否机器人：同后端在册其它 bot 账户，或 external_bots 名单登记的外部 bot。
+        """发话者是否同后端的其它 bot 账户（平台在册账户且不是本事件自己的账户）。
 
-        框架只能看到本后端的账户表——别家后端的 bot（名单登记的 user id，
-        可带 platform: 前缀）按配置认定；两者都要求不是本事件自己的账户。
+        别家后端的 bot 框架层面不可见——不做名单登记，是否 bot 由 AI 从行为
+        自行判断（提示词认知条款，见 identity_other_agents / judge prompt）。
         """
         sender = str(sender_id or "")
         if not sender:
@@ -536,16 +536,7 @@ class InboxMixin(RecoveryMixin):
             platform = str(event.get_platform() or "")
             bots = self.sdk.adapter.list_bots(platform) or {}
             per = bots.get(platform, bots) if isinstance(bots, dict) else {}
-            if isinstance(per, dict) and sender in {str(k) for k in per}:
-                return True
-# 外部 bot 名单：纯 id 或 platform:id 两种登记格式
-            for entry in getattr(self.cfg, "external_bots", []) or []:
-                item = str(entry or "").strip()
-                if not item:
-                    continue
-                if item == sender or item == f"{platform}:{sender}":
-                    return True
-            return False
+            return isinstance(per, dict) and sender in {str(k) for k in per}
         except Exception:
             return False
 

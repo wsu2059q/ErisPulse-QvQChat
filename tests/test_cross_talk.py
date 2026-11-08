@@ -96,19 +96,3 @@ async def test_two_accounts_each_reply():
     await _send(main, "amer", "user1", "都来查这个角色", at=True)
     await _send(main, "iris", "user1", "都来查这个角色", at=True)
     assert len(main.captured) == 2, main.logger.records[-6:]
-
-
-async def test_external_bots_list_recognized_as_sibling():
-    """外部 bot 名单：别家后端的 bot id（纯 id / platform:id）按 bot 信号认定。"""
-    main = make_main()
-    main.cfg.external_bots = ["999888", "snowluma:777666"]
-    ev_out = FakeChatEvent(text="签到出凶了", user_id="999888", at=False)
-    assert main._is_sibling_bot(ev_out, "999888") is True
-    ev_prefixed = FakeChatEvent(text="骰子", user_id="777666", at=False, platform="snowluma")
-    assert main._is_sibling_bot(ev_prefixed, "777666") is True
-# 平台不匹配的带前缀条目不算
-    ev_wrong = FakeChatEvent(text="hi", user_id="777666", at=False, platform="qqbot")
-    assert main._is_sibling_bot(ev_wrong, "777666") is False
-# 名单外的普通用户
-    ev_human = FakeChatEvent(text="今天好累", user_id="human1", at=False)
-    assert main._is_sibling_bot(ev_human, "human1") is False

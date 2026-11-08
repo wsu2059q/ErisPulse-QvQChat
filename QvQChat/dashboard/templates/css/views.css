@@ -731,17 +731,17 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #30a46c;
+  background: var(--qvq-ok-c);
 }
 .qvq-health-badge.ok {
-  color: #30a46c;
+  color: var(--qvq-ok-c);
 }
 .qvq-health-badge.bad {
-  color: #e5484d;
+  color: var(--qvq-er-c);
   border-color: rgba(229, 72, 77, 0.5);
 }
 .qvq-health-badge.bad i {
-  background: #e5484d;
+  background: var(--qvq-er-c);
   animation: qvq-health-pulse 1.2s ease-in-out infinite;
 }
 @keyframes qvq-health-pulse {
@@ -861,6 +861,11 @@
   cursor: pointer;
   user-select: none;
   max-width: 100%;
+  transition: border-color var(--qvq-dur) var(--qvq-ease), background var(--qvq-dur) var(--qvq-ease);
+}
+.qvq-cap-chip:hover {
+  border-color: var(--qvq-accent);
+  background: var(--qvq-accent-soft);
 }
 .qvq-cap-chip span {
   overflow: hidden;
@@ -913,17 +918,17 @@
   margin-left: -17px;
 }
 .qvq-tl-dot.ok {
-  background: #30a46c;
+  background: var(--qvq-ok-c);
 }
 .qvq-tl-dot.err {
-  background: #e5484d;
+  background: var(--qvq-er-c);
 }
 .qvq-tl-main {
   flex: 1;
   min-width: 0;
 }
 .qvq-tl-err {
-  color: #e5484d;
+  color: var(--qvq-er-c);
   font-weight: 600;
 }
 .qvq-cap-group {
@@ -1569,10 +1574,10 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
 
 /* 用量超限预警：hero 进度条 80% 橙 / 100% 红 */
 .qvq-hero-bar.warn i {
-  background: linear-gradient(90deg, #f5a623, #f7b95c);
+  background: linear-gradient(90deg, var(--qvq-wr-c), color-mix(in srgb, var(--qvq-wr-c) 70%, #ffffff));
 }
 .qvq-hero-bar.crit i {
-  background: linear-gradient(90deg, #e5484d, #f26d6d);
+  background: linear-gradient(90deg, var(--qvq-er-c), color-mix(in srgb, var(--qvq-er-c) 70%, #ffffff));
 }
 
 /* 快速跳转面板（Ctrl+K） */
