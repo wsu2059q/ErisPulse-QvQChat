@@ -133,7 +133,10 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
                           style: dict | None = None, examples: list | None = None,
                           nickname: str = "", prefill: str = "",
                           temperature: float | None = None,
-                          max_tokens: float | None = None) -> str:
+                          max_tokens: float | None = None,
+                          catchphrases: list | None = None,
+                          banned_words: list | None = None,
+                          avatar: str = "") -> str:
     personas = ctx.main.personas
     action = str(action or "list").lower()
     if action == "list":
@@ -156,8 +159,8 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
             "current_group_key": strip_isolation(current) if current else "",
         })
     if action == "save":
-        if not name and not system and not opening and not owner_title and not style and not examples and not nickname and not prefill and temperature is None and max_tokens is None:
-            return "save needs at least one of name / system / opening / owner_title / style / examples / nickname / prefill / temperature / max_tokens"
+        if not name and not system and not opening and not owner_title and not style and not examples and not nickname and not prefill and temperature is None and max_tokens is None and not catchphrases and not banned_words and not avatar:
+            return "save needs at least one of name / system / opening / owner_title / style / examples / nickname / prefill / temperature / max_tokens / catchphrases / banned_words / avatar"
         payload: dict = {"id": str(persona_id or "") or None, "name": name, "system": system}
 # 仅透传显式提供的扩展字段（未提供沿用存量，merge 语义防误清空）
         if opening is not None:
@@ -178,6 +181,12 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
             payload["temperature"] = temperature
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if catchphrases is not None:
+            payload["catchphrases"] = catchphrases
+        if banned_words is not None:
+            payload["banned_words"] = banned_words
+        if avatar:
+            payload["avatar"] = avatar
         saved = personas.save(payload)
         return utils.to_text({"ok": True, "persona": saved})
     if action == "delete":
@@ -289,12 +298,15 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="manage_personas",
         description=(
-            "Self-manage personas: list, create or update, delete, bind a persona to the current or any chat, "
-            "unbind, and set/clear the global default persona. Admin only. "
+            "Self-manage personas: list, create or update (full field coverage: name/system/opening/tools/"
+            "owner_title/style/examples/nickname/avatar/prefill/catchphrases/banned_words/temperature/"
+            "max_tokens), delete, bind a persona to the current or any chat, unbind, and set/clear the "
+            "global default persona. Admin only. "
             "Binding tiers (most specific first, first match wins): exact chat_key → group (platform:group:ID) → "
             "@account (e.g. \"@643319481\", all chats served by that bot account) → platform (e.g. \"onebot11:*\") "
             "→ global default. So to give ONE bot account a persona, bind with chat_key=\"@<account id>\"; "
-            "to apply platform-wide use \"<platform>:*\". Use list first to see existing ids and bindings."
+            "to apply platform-wide use \"<platform>:*\". Use list first to see existing ids and bindings. "
+            "Fields not provided on save keep their stored values (merge semantics)."
         ),
         parameters=_schema(
             {
@@ -308,6 +320,12 @@ def register(registry: ToolRegistry, main) -> None:
                 "style": _s(type="object", description="save: style dict {emoji_density, verbosity, formality}"),
                 "examples": _s(type="array", description="save: few-shot examples [{user, assistant}]"),
                 "nickname": _s(type="string", description="save: display name on merged-forward cards"),
+                "avatar": _s(type="string", description="save: avatar image URL for forward cards"),
+                "prefill": _s(type="string", description="save: prefilled opener - replies always start from this colloquial phrase (empty string clears it)"),
+                "catchphrases": _s(type="array", description="save: catchphrases (signature lines, one per entry)"),
+                "banned_words": _s(type="array", description="save: banned words this persona must never say"),
+                "temperature": _s(type="number", description="save: model temperature override for this persona (omit/null to follow the model pool)"),
+                "max_tokens": _s(type="number", description="save: max output tokens override for this persona (omit/null to follow the model pool)"),
                 "persona": _s(type="string", description="bind: existing persona id to bind"),
                 "chat_key": _s(type="string", description=(
                     "bind/unbind target; omit for the current chat. Tiered forms: "
