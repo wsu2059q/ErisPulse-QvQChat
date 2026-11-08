@@ -52,6 +52,7 @@
       if (!box) return;
       var sessions = (data && data.sessions) || [];
       var imap = (data && data.identity_map) || {};
+      var sugg = (data && data.identity_suggestions) || [];
       var opts = sessions.map(function (s) {
         return '<option value="' + esc(s.chat_key) + '">' + esc((s.name || s.chat_key) + " · " + s.chat_key) + "</option>";
       }).join("");
@@ -59,7 +60,18 @@
         return "<tr><td>" + esc(src) + "</td><td>→</td><td>" + esc(imap[src]) +
           "</td><td><button class='qvq-btn small danger' data-identity-remove='" + esc(src) + "'>" + esc(t("del")) + "</button></td></tr>";
       }).join("");
+// 疑似同源会话对（同 id 跨平台）：一键预填 source/target 与 merge 模式
+      var suggHtml = "";
+      if (sugg.length) {
+        suggHtml = "<label class='qvq-label'>" + esc(t("identity_suggest_title")) + "</label>" +
+          "<table class='qvq-table'><tbody>" + sugg.map(function (sg, i) {
+            return "<tr><td>" + esc(sg.source) + "</td><td>↔</td><td>" + esc(sg.target) +
+              "</td><td><button class='qvq-btn small' data-identity-prefill='" + i + "'>" + esc(t("identity_suggest_apply")) + "</button></td></tr>";
+          }).join("") + "</tbody></table>" +
+          "<div class='qvq-tool-desc'>" + esc(t("identity_suggest_hint")) + "</div>";
+      }
       box.innerHTML =
+        suggHtml +
         "<label class='qvq-label'>" + esc(t("identity_source")) + "</label>" +
         "<select class='qvq-select' id='identity-source'><option value=''>" + esc(t("identity_none")) + "</option>" + opts + "</select>" +
         "<label class='qvq-label'>" + esc(t("identity_target")) + "</label>" +
@@ -72,6 +84,18 @@
         "<div class='qvq-actions'><button class='qvq-btn' id='identity-save'>" + esc(t("identity_save")) + "</button></div>" +
         "<div class='qvq-tool-desc'>" + esc(t("identity_note")) + "</div>" +
         (rows ? "<table class='qvq-table'><tbody>" + rows + "</tbody></table>" : "");
+      box.querySelectorAll("[data-identity-prefill]").forEach(function (btn) {
+        btn.onclick = function () {
+          var sg = sugg[parseInt(btn.getAttribute("data-identity-prefill"), 10)] || {};
+          var src = box.querySelector("#identity-source");
+          var tgt = box.querySelector("#identity-target");
+          if (src && tgt) {
+            src.value = sg.source || "";
+            tgt.value = sg.target || "";
+            box.querySelector("#identity-mode").value = "merge";
+          }
+        };
+      });
       box.querySelector("#identity-save").onclick = function () {
         var src = box.querySelector("#identity-source").value;
         var tgt = box.querySelector("#identity-target").value;

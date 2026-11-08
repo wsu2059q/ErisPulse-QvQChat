@@ -256,11 +256,14 @@
     var s = String(key || "");
     if (s.indexOf(":*") >= 0) return "platform";
     if (s.charAt(0) === "@") return "account";
+// 群级键：platform:group:gid，且不含 ":u" 隔离后缀
+    var parts = s.split(":");
+    if (parts.length >= 3 && parts[1] === "group" && s.indexOf(":u") < 0) return "group";
     return "session";
   }
 
   function bindTierRank(key) {
-    var order = { session: 0, account: 1, platform: 2 };
+    var order = { session: 0, group: 1, account: 2, platform: 3 };
     return order[bindTierOf(key)];
   }
 

@@ -96,6 +96,8 @@ class Scheduler:
             "prompt": str(spec.get("prompt") or ""),
             "persona": str(spec.get("persona") or ""),
             "chat_key": str(spec.get("chat_key") or ""),
+# 触发账户身份（run_task 据此给 chat_key 加 @后缀，发送绑对 bot）
+            "account": str(spec.get("account") or ""),
 # 任务分派字段透传（task_models[kind] / 显式模型）
             "task_kind": str(spec.get("task_kind") or "chat"),
             "model": str(spec.get("model") or ""),

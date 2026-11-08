@@ -43,7 +43,7 @@ async def manage_models(ctx: ToolContext, action: str = "list", provider: dict |
         return utils.to_text(pool.presets())
     if action == "save":
         if not isinstance(provider, dict):
-            return "save needs a provider object: {id?, name, base_url, api_key, models:[{id, enabled, temperature?, max_tokens?}]}"
+            return "save needs a provider object: {id?, name, base_url, api_key, models:[{id, enabled, temperature?, max_tokens?, notes?, prefill_ok?(true/false/null=auto), context_length?, max_output_tokens?, vision?, reasoning?, tool_call?, cost?{input,output}}]}"
         try:
             entry = pool.save_provider(provider)
         except EngineError as e:
@@ -255,6 +255,56 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
     return f"unknown action: {action} (get / set)"
 
 
+async def manage_identity(ctx: ToolContext, action: str = "list", source: str = "",
+                          target: str = "", mode: str = "alias") -> str:
+    """身份迁移自管理：换平台/换号后把旧会话身份映射到新身份，历史/人格/记忆跟随。"""
+    sessions = ctx.main.sessions
+    action = str(action or "list").strip().lower()
+    if action == "list":
+        return utils.to_text({
+            "identity_map": sessions.identity_map(),
+            "hint": "source → target: 新消息按 target 会话处理；映射可 remove 回退",
+        })
+    if action == "migrate":
+        summary = sessions.migrate_identity(str(source or ""), str(target or ""), str(mode or "alias"))
+        if not summary.get("ok"):
+            return utils.to_text({"ok": False, "error": summary.get("error")})
+        return utils.to_text(summary)
+    if action == "remove":
+        return utils.to_text({"ok": sessions.remove_identity(str(source or ""))})
+    return f"unknown action: {action} (list / migrate / remove)"
+
+
+async def session_settings(ctx: ToolContext, action: str = "get", chat_key: str = "",
+                           settings: dict | None = None) -> str:
+    """会话级覆盖自管理：触发规则/模型/思考强度/密度/隐私开关（只作用于单个会话）。"""
+    main = ctx.main
+    key = str(chat_key or "").strip() or str(ctx.chat_key or "")
+    action = str(action or "get").strip().lower()
+    if action == "get":
+        return utils.to_text({
+            "chat_key": key,
+            "trigger_mode": main.sessions.trigger_mode_of(key),
+            "listen_off": bool(main.sessions.get_flag(key, "listen_off")),
+            "ui": (main.sessions._state(key).get("ui") or {}),
+        })
+    if action == "set":
+        if not isinstance(settings, dict) or not settings:
+            return "set needs a settings object"
+        applied = []
+# 与 dashboard session_settings 同链路：set_ui（density/model/effort/trigger_mode）
+        ui_patch = {k: str(settings[k]) for k in ("density", "model", "effort", "trigger_mode")
+                    if settings.get(k) is not None}
+        if ui_patch:
+            main.sessions.set_ui(key, ui_patch)
+            applied.extend(sorted(ui_patch))
+        if "listen_off" in settings:
+            main.sessions.set_flags(key, {"listen_off": bool(settings["listen_off"])})
+            applied.append("listen_off")
+        return utils.to_text({"ok": True, "applied": applied, "chat_key": key})
+    return f"unknown action: {action} (get / set)"
+
+
 def register(registry: ToolRegistry, main) -> None:
     if not bool(getattr(main.cfg, "self_config", True)):
         return
@@ -265,7 +315,7 @@ def register(registry: ToolRegistry, main) -> None:
         parameters=_schema(
             {
                 "action": _s(type="string", description="list / presets / save / delete / fetch_models / set_default"),
-                "provider": _s(type="object", description="Provider object for save / fetch_models: {id?, name, base_url, api_key, models:[{id, enabled, temperature?, max_tokens?}]}"),
+                "provider": _s(type="object", description="Provider object for save / fetch_models: {id?, name, base_url, api_key, models:[{id, enabled, temperature?, max_tokens?, notes?, prefill_ok?(true/false/null=auto), context_length?, max_output_tokens?, vision?, reasoning?, tool_call?, cost?{input,output}}]}"),
                 "provider_id": _s(type="string", description="Provider id for delete, or to reuse stored credentials in fetch_models"),
                 "model_id": _s(type="string", description="Model pool id (provider:model) for set_default; empty clears to pool order"),
             },
@@ -351,5 +401,49 @@ def register(registry: ToolRegistry, main) -> None:
             [],
         ),
         handler=manage_config,
+        danger=True,
+    ))
+    registry.register(Tool(
+        name="manage_identity",
+        access="admin",
+        description=(
+            "Identity migration self-management: after a platform switch or account change, map an old "
+            "chat identity onto a new one so history/persona/memory follow. Platform equivalence hint: "
+            "snowluma and onebot11 are the SAME protocol family (one is a fork of the other) - migrating "
+            "between them is a safe like-for-like swap when the user id matches. For OTHER platform pairs, "
+            "judge yourself: matching user ids across different protocol families MAY be the same person "
+            "but verify with the user before migrating. Modes: alias (map only, histories untouched) / "
+            "merge (merge old history/facts/memory into target, deduped by time) / overwrite (replace "
+            "target history with source, target backed up to recycle bin first). Admin only."
+        ),
+        parameters=_schema(
+            {
+                "action": _s(type="string", description="list / migrate / remove"),
+                "source": _s(type="string", description="Old chat key (platform:detail_type:id), e.g. onebot11:private:12345"),
+                "target": _s(type="string", description="migrate: new chat key to take over"),
+                "mode": _s(type="string", description="migrate: alias / merge / overwrite (default alias)"),
+            },
+            [],
+        ),
+        handler=manage_identity,
+        danger=True,
+    ))
+    registry.register(Tool(
+        name="session_settings",
+        access="admin",
+        description=(
+            "Per-session overrides (single chat only, unlike manage_config which is global): read or set "
+            "trigger_mode (all/at_only/lurk/off), listen_off privacy flag, model, effort level, density "
+            "for ONE chat. Falls back to the current chat when chat_key is omitted."
+        ),
+        parameters=_schema(
+            {
+                "action": _s(type="string", description="get / set"),
+                "chat_key": _s(type="string", description="Target chat key; omit for the current chat"),
+                "settings": _s(type="object", description="set: {trigger_mode?, listen_off?, model?, effort?, density?}"),
+            },
+            [],
+        ),
+        handler=session_settings,
         danger=True,
     ))

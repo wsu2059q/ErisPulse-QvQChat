@@ -19,7 +19,7 @@ from .chat.inbox import InboxMixin, _int_or_none, _num_or_none
 from .chat.usage import UsageMixin
 from .conversation.delivery import Delivery
 from .conversation.memory import MemoryStore
-from .conversation.service import ConversationService, make_chat_key, parse_chat_key, strip_isolation
+from .conversation.service import ConversationService, account_of as _account_of, make_chat_key, parse_chat_key, strip_isolation
 from .dashboard.live import bind as live_bind# noqa: F401 — 兼容引用（本体在 chat/inbox 使用）
 from .prompts import CAPABILITY_PROMPT# 本体已迁 prompts.py；导入即保持 QvQChat.Main.CAPABILITY_PROMPT 兼容引用
 from .Config import QvQConfig
@@ -576,6 +576,8 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                         target_id,
                         [(0.0, reply)],
                         from_tools=bool(result.tool_trace),
+# 带会话键：delivery 层据此还原 @账户 绑定发送账户（缺省静默落默认账户=张冠李戴）
+                        chat_key=chat_key,
                     )
         return reply
 
@@ -647,6 +649,12 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         target_type = str(task.get("target_type") or "user")
         detail_type = "group" if target_type == "group" else "private"
         chat_key = make_chat_key(str(task.get("platform") or ""), detail_type, str(task.get("target_id") or ""))
+# 多账户身份：任务必须以创建它时所在的 bot 账户执行——account 字段优先，
+# 兼容存量任务回退创建时的 chat_key 后缀。不加后缀发送会静默落到适配器默认账户
+# （"配了 Amer 的定时任务由另一个账号发出"的根因）。
+        account = str(task.get("account") or "") or _account_of(str(task.get("chat_key") or ""))
+        if account and f"@{account}" not in chat_key:
+            chat_key = f"{chat_key}@{account}"
         origin = str(task.get("origin") or "dashboard")
         if origin in ("task", ""):
             origin = "dashboard"

@@ -23,7 +23,8 @@ SCHEDULE_HELP = (
 
 async def create_scheduled_task(ctx: ToolContext, name: str, schedule: str, platform: str,
                                 target_type: str, target_id: str, prompt: str, persona: str = "",
-                                jitter_minutes: float = 0) -> str:
+                                jitter_minutes: float = 0, account: str = "",
+                                model: str = "", task_kind: str = "") -> str:
     try:
         parsed = parse_schedule(schedule)
     except ValueError as e:
@@ -39,10 +40,14 @@ async def create_scheduled_task(ctx: ToolContext, name: str, schedule: str, plat
             "target_id": target_id,
             "prompt": prompt,
             "persona": persona or "",
+# 触发账户身份：缺省取创建者会话的 @账户（多账户下不发就会落到适配器默认账户）
+            "account": str(account or "") or str(getattr(ctx, "self_id", "") or ""),
             "chat_key": ctx.chat_key,
             "created_by": ctx.user_id,
             "origin": ctx.origin,
             "jitter_minutes": max(0.0, float(jitter_minutes or 0)),
+            "model": str(model or ""),
+            "task_kind": str(task_kind or ""),
         }
     )
     return texts.t("task_created", id=task["id"], next=format_ts(task["next_run"]))
@@ -96,6 +101,9 @@ def register(registry: ToolRegistry, main) -> None:
                 "target_id": _s(type="string", description="Target id"),
                 "prompt": _s(type="string", description="What the agent should do at trigger time"),
                 "persona": _s(type="string", description="Optional persona id"),
+                "account": _s(type="string", description="Bot account id to send with (multi-account backends). Omit = the account of the chat where you create this task. Wrong account = message goes out as the WRONG bot"),
+                "model": _s(type="string", description="Optional model id (provider:model) for this task"),
+                "task_kind": _s(type="string", description="Optional task kind for model routing (e.g. chat/deep/summary)"),
                 "jitter_minutes": _s(type="number", description="Randomized trigger window in minutes (0 = exact; fires at a random time within N minutes after schedule)"),
             },
             ["name", "schedule", "platform", "target_type", "target_id", "prompt"],

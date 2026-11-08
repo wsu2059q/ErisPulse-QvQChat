@@ -156,7 +156,7 @@ async def test_run_prompt_skips_final_send_when_ai_delivered():
     main.runner = Runner()
     sends = []
 
-    async def fake_send(platform, detail_type, target_id, segments, from_tools=False):
+    async def fake_send(platform, detail_type, target_id, segments, from_tools=False, chat_key=""):
         sends.append((platform, detail_type, target_id))
 
     main.delivery = type('D', (), {'send_segments': staticmethod(fake_send)})()
@@ -170,7 +170,7 @@ async def test_run_prompt_tool_run_delivers_as_forward():
     main = make_main()
     sends = []
 
-    async def fake_send(platform, detail_type, target_id, segments, from_tools=False):
+    async def fake_send(platform, detail_type, target_id, segments, from_tools=False, chat_key=""):
         sends.append((platform, detail_type, target_id, from_tools))
 
     main.delivery = type('D', (), {'send_segments': staticmethod(fake_send)})()
@@ -286,3 +286,47 @@ async def test_manage_personas_full_field_coverage():
     assert saved["avatar"] == "https://example.com/a.png"
     assert saved["prefill"] == "喵呜~"
     assert saved["temperature"] == 0.8 and saved["max_tokens"] == 2048
+
+
+async def test_run_task_binds_account_identity():
+    """定时任务账户身份：account 字段/存量 chat_key 后缀都能给会话键加上 @账户。"""
+    from test_aggregate import make_main
+
+    main = make_main()
+    captured = []
+
+    async def fake_run_prompt(chat_key, prompt, **kw):
+        captured.append(chat_key)
+
+    main.run_prompt = fake_run_prompt
+# 新任务：account 字段
+    await Main.run_task(main, {"platform": "onebot11", "target_type": "group",
+                               "target_id": "42", "prompt": "p", "account": "Amer"})
+    assert captured[0] == "onebot11:group:42@Amer"
+# 存量任务：无 account 字段，回退创建时 chat_key 的 @后缀
+    await Main.run_task(main, {"platform": "onebot11", "target_type": "group",
+                               "target_id": "42", "prompt": "p",
+                               "chat_key": "onebot11:group:42@Eris"})
+    assert captured[1] == "onebot11:group:42@Eris"
+# 无账户信息：不加后缀（单账户部署不受影响）
+    await Main.run_task(main, {"platform": "onebot11", "target_type": "group",
+                               "target_id": "42", "prompt": "p"})
+    assert captured[2] == "onebot11:group:42"
+
+
+def test_schedule_tool_defaults_account_from_ctx():
+    """创建任务工具：缺省 account 取当前会话的 self_id（多账户不再错身份）。"""
+    import asyncio
+
+    from QvQChat.tools_builtin import schedule as sched
+    from test_aggregate import make_main
+    from tests.fakes import make_ctx
+
+    main = make_main()
+    ctx = make_ctx(main)
+    ctx.self_id = "Amer"
+    asyncio.run(sched.create_scheduled_task(
+        ctx, name="日报", schedule="cron:0 9 * * *", platform="onebot11",
+        target_type="group", target_id="42", prompt="写日报"))
+    task = next(t for t in main.scheduler.list() if t.get("name") == "日报")
+    assert task.get("account") == "Amer"

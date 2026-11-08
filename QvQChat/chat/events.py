@@ -315,6 +315,7 @@ class EventsMixin:
         if not reply:
             return
         try:
-            await self.delivery.send_segments(platform, "private", admin_id, [(0.0, reply)], from_tools=False)
+            await self.delivery.send_segments(platform, "private", admin_id, [(0.0, reply)],
+                                              from_tools=False, chat_key=admin_chat)
         except Exception as e:
             self.logger.debug(f"request report send failed: {e}")
