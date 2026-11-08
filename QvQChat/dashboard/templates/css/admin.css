@@ -1037,6 +1037,25 @@ input[type="radio"] {
   display: flex;
   min-height: 0;
 }
+/* 圣杯三栏：对话页左侧会话列表（宽屏常驻；≤1080px 隐藏，会话仍在侧栏抽屉里） */
+.qvq-chat-side {
+  flex: 0 0 224px;
+  min-width: 0;
+  margin-right: 18px;
+  padding: 10px 8px;
+  background: var(--qvq-surface);
+  border-radius: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.qvq-chat-side .qvq-chat-srow {
+  padding: 7px 9px;
+}
+@media (max-width: 1080px) {
+  .qvq-chat-side {
+    display: none;
+  }
+}
 .qvq-chat-srow {
   display: flex;
   align-items: center;
