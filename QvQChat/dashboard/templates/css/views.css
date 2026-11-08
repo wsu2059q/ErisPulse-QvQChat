@@ -1619,3 +1619,8 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
 .qvq-quick-item.on {
   background: var(--qvq-accent-soft, rgba(59, 130, 246, 0.12));
 }
+
+.qvq-acct-persona {
+  flex: 0 0 auto;
+  min-width: 120px;
+}

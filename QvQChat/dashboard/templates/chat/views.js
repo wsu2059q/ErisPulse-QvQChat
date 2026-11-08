@@ -41,12 +41,15 @@
       renderOrchCaps(results[0] || {}, results[1] || {}, results[2] || {});
     });
     api("/api/qvq/sessions").then(function (data) {
-      renderOrchAccounts((data && data.accounts) || {});
+      // 并行取人格列表：账户卡显示/换绑该账户当前人格
+      api("/api/qvq/personas").then(function (pdata) {
+        renderOrchAccounts((data && data.accounts) || {}, (pdata && pdata.personas) || []);
+      });
     });
   }
 
-  // 适配器账户卡：各平台在线 bot + 已隔离账户的会话数（多账户隔离一览）
-  function renderOrchAccounts(accounts) {
+  // 适配器账户卡：各平台在线 bot + 已隔离账户的会话数 + 该账户当前人格（可内联换绑）
+  function renderOrchAccounts(accounts, personas) {
     var box = el("qvq-orch-accounts");
     if (!box) return;
     var adapters = accounts.adapters || [];
@@ -55,13 +58,37 @@
       box.innerHTML = '<div class="qvq-empty">' + esc(t("orch_accounts_empty")) + "</div>";
       return;
     }
+    var popts = (personas || []).map(function (p) {
+      return '<option value="' + esc(p.id) + '">' + esc(p.name || p.id) + "</option>";
+    }).join("");
+
+    function personaSelect(acct, current) {
+      // 内联换绑：select 直改 POST personas/bind @account；空值=清除账户级绑定
+      return '<select class="qvq-select qvq-input-sm" data-persona-acct="' + esc(acct) + '" data-current="' + esc(current || "") + '" title="' + esc(t("chat_persona_binding")) + '">' +
+        '<option value="">' + esc(t("personas_follow_model")) + "</option>" + popts + "</select>";
+    }
+
+    function bindPersonaSelects(root) {
+      root.querySelectorAll("select[data-persona-acct]").forEach(function (sel) {
+        sel.value = sel.getAttribute("data-current") || "";
+        sel.onchange = function () {
+          api("/api/qvq/personas/bind", "POST", { chat_key: "@" + sel.getAttribute("data-persona-acct"), persona: sel.value }).then(function (r) {
+            toast(r && r.ok ? t("saved") : ((r && r.error) || "error"), !(r && r.ok));
+          });
+        };
+      });
+    }
+
     var html = adapters.map(function (ad) {
       var bots = ad.bots || [];
       var botChips = bots.length
         ? bots.map(function (b) {
-            var cnt = accts.filter(function (a) { return a.account === b; })[0];
-            return '<span class="qvq-acct-badge' + (cnt ? " iso" : "") + '" title="' + esc(ad.platform) + (cnt ? " · " + cnt.sessions + " " + esc(t("acct_sessions_unit")) : "") + '">' + esc(b) +
-              (cnt ? " · " + cnt.sessions : "") + "</span>";
+            var info = accts.filter(function (a) { return a.account === b; })[0];
+            var persona = info ? (info.persona || "") : "";
+            var cnt = info ? info.sessions : 0;
+            return '<span class="qvq-acct-badge' + (info ? " iso" : "") + '" title="' + esc(ad.platform) + (cnt ? " · " + cnt + " " + esc(t("acct_sessions_unit")) : "") + '">' + esc(b) +
+              (cnt ? " · " + cnt : "") + "</span>" +
+              '<span class="qvq-acct-persona">' + personaSelect(b, persona) + "</span>";
           }).join("")
         : '<span class="qvq-tool-desc">-</span>';
       return '<div class="qvq-acct-row"><span class="qvq-acct-platform">' + esc(ad.platform) + "</span>" +
@@ -75,10 +102,12 @@
     if (stale.length) {
       html += '<div class="qvq-acct-row stale"><span class="qvq-acct-platform">' + esc(t("acct_offline")) + '</span><span class="qvq-acct-bots">' +
         stale.map(function (a) {
-          return '<span class="qvq-acct-badge iso" title="' + esc(a.platforms.join(", ")) + '">@' + esc(a.account) + " · " + a.sessions + "</span>";
+          return '<span class="qvq-acct-badge iso" title="' + esc(a.platforms.join(", ")) + '">@' + esc(a.account) + " · " + a.sessions + "</span>" +
+            '<span class="qvq-acct-persona">' + personaSelect(a.account, a.persona || "") + "</span>";
         }).join("") + "</span></div>";
     }
     box.innerHTML = html;
+    bindPersonaSelects(box);
   }
 
   // 链序是跨 provider 的全局顺序：取后端 chain，无则按 provider 展平

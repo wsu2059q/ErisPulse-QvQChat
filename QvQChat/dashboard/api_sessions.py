@@ -44,6 +44,7 @@ class SessionsApiMixin:
             "ui_defaults": self._ui_defaults(),
             "accounts": self._accounts_overview(sessions),
             "identity_map": self.main.sessions.identity_map(),
+            "identity_suggestions": self._identity_suggestions(sessions),
         }
 
     async def identity_set(self, request):
@@ -175,13 +176,65 @@ class SessionsApiMixin:
             except Exception:
                 bots = []
             adapters.append({"platform": str(name), "bots": bots})
+# 每账户当前人格：绑定表的 @account / 平台:* 层级键（编排页账户卡显示+快捷绑定用）
+        persona_by_key: dict[str, str] = {}
+        try:
+            for bind_key, persona_id in (self.main.personas.bindings() or {}).items():
+                persona_by_key[str(bind_key)] = str(persona_id)
+        except Exception:
+            persona_by_key = {}
+        accounts = []
+        for entry in sorted(counts.values(), key=lambda x: (-x["sessions"], x["account"])):
+            acct = entry["account"]
+            platforms = sorted(entry["platforms"])
+# 生效人格：精确 @账户 键优先，其次该账户任一平台的 platform:* 键
+            persona = persona_by_key.get("@" + acct, "")
+            if not persona:
+                for platform in platforms:
+                    persona = persona_by_key.get(f"{platform}:*", "")
+                    if persona:
+                        break
+            accounts.append({
+                "account": acct,
+                "platforms": platforms,
+                "sessions": entry["sessions"],
+                "persona": persona,
+            })
         return {
             "adapters": adapters,
-            "accounts": [
-                {**entry, "platforms": sorted(entry["platforms"])}
-                for entry in sorted(counts.values(), key=lambda x: (-x["sessions"], x["account"]))
-            ],
+            "accounts": accounts,
         }
+
+    def _identity_suggestions(self, sessions: list) -> list:
+        """疑似同源会话对：同 target_id 跨平台的会话（换平台场景），供迁移面板一键预填。
+
+        只做发现不做自动迁移——方向（谁是源谁是目标）与模式由用户确认。
+        已在 identity_map 中的不再建议。
+        """
+        from ..conversation.service import strip_account, strip_isolation
+
+        try:
+            mapped = set(self.main.sessions.identity_map().keys())
+        except Exception:
+            mapped = set()
+        seen: dict[str, dict] = {}
+        found: list = []
+        for s in sessions:
+            key = strip_account(strip_isolation(str(s.get("chat_key") or "")))
+            parts = key.split(":", 2)
+            if len(parts) < 3:
+                continue
+            platform, dtype, tid = parts[0], parts[1], parts[2]
+            if dtype not in ("private", "group") or not tid:
+                continue
+            slot = f"{dtype}:{tid}"
+            first = seen.get(slot)
+            if first and first["platform"] != platform and first["key"] != key \
+                    and first["key"] not in mapped and key not in mapped:
+                found.append({"source": first["key"], "target": key, "detail": slot})
+            elif not first:
+                seen[slot] = {"platform": platform, "key": key}
+        return found[:8]
 
     async def session_messages(self, request):
         chat_key = self._query(request, "chat_key")

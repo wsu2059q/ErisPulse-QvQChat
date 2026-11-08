@@ -33,7 +33,9 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
     sub_cfg = SimpleNamespace(**data)
 # 权限与发送能力完整跟随发起用户的上下文：继承 platform/detail_type/target_id/event，
 # admin 判定（平台主人/名单）与 send_message 缺省目标都与主智能体一致——
-# 仅 chat_key/session_key 用 sub: 前缀隔离上下文与记忆
+# 仅 chat_key/session_key 用 sub: 前缀隔离上下文与记忆。
+# self_id 必须显式继承：sub: 键把 @账户 藏在中段，后缀解析取不到，
+# 不传的话子智能体发送会静默落到适配器默认账户（错身份）
     sub_ctx = ToolContext(
         main=main,
         sdk=ctx.sdk,
@@ -49,6 +51,7 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
         confirmer=ctx.confirmer,
         scene_note=str(getattr(ctx, "scene_note", "") or ""),
         parent_chat_key=str(ctx.chat_key or ""),
+        self_id=str(getattr(ctx, "self_id", "") or ""),
     )
 # 场景与最近对话注入：让子智能体知道在为谁、在哪个群、最近聊了什么
     context_block = _context_block(main, ctx)
