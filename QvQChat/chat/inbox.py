@@ -28,6 +28,20 @@ CONFIRM_WORDS = {"确认", "確認", "确定", "確定", "是", "confirm", "yes"
 # 触发规则严格度排序（数值越大越严）：会话级只能收紧不能放宽——全局 at_only 时会话最多 at_only
 TRIGGER_RANK = {"all": 0, "at_only": 1, "lurk": 2, "off": 3}
 
+
+def _num_or_none(value) -> float | None:
+    """人格级模型参数覆盖解析：合法正值返回，其余（空/非法/非正）一律 None=不覆盖。"""
+    try:
+        parsed = float(value)
+        return parsed if parsed > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _int_or_none(value) -> int | None:
+    parsed = _num_or_none(value)
+    return int(parsed) if parsed else None
+
 # 同账户重复投递去重窗口（秒）：适配器重试/回声会把同一消息再投一次
 DUP_DELIVERY_WINDOW = 6.0
 
@@ -507,7 +521,11 @@ class InboxMixin(RecoveryMixin):
         return False
 
     def _is_sibling_bot(self, event, sender_id: str) -> bool:
-        """发话者是否同后端的其它 bot 账户（平台在册账户且不是本事件自己的账户）。"""
+        """发话者是否机器人：同后端在册其它 bot 账户，或 external_bots 名单登记的外部 bot。
+
+        框架只能看到本后端的账户表——别家后端的 bot（名单登记的 user id，
+        可带 platform: 前缀）按配置认定；两者都要求不是本事件自己的账户。
+        """
         sender = str(sender_id or "")
         if not sender:
             return False
@@ -518,7 +536,16 @@ class InboxMixin(RecoveryMixin):
             platform = str(event.get_platform() or "")
             bots = self.sdk.adapter.list_bots(platform) or {}
             per = bots.get(platform, bots) if isinstance(bots, dict) else {}
-            return isinstance(per, dict) and sender in {str(k) for k in per}
+            if isinstance(per, dict) and sender in {str(k) for k in per}:
+                return True
+# 外部 bot 名单：纯 id 或 platform:id 两种登记格式
+            for entry in getattr(self.cfg, "external_bots", []) or []:
+                item = str(entry or "").strip()
+                if not item:
+                    continue
+                if item == sender or item == f"{platform}:{sender}":
+                    return True
+            return False
         except Exception:
             return False
 
@@ -1202,6 +1229,9 @@ class InboxMixin(RecoveryMixin):
             contexts = prepared["contexts"]
             user_msg = prepared["user_msg"]
             persona = prepared["persona"]
+# 人格级模型参数覆盖（留空=跟模型/全局默认）
+            p_temp = _num_or_none(persona.get("temperature"))
+            p_maxtok = _num_or_none(persona.get("max_tokens"))
 # 首次接触且未发过开场白 → await 先发开场白再进 runner（时序保证）
             await self._maybe_send_opening(event, chat_key, prepared, persona)
             if interrupted_note:
@@ -1249,6 +1279,7 @@ class InboxMixin(RecoveryMixin):
             try:
                 try:
 # 并发闸门优先级：插话让位于用户直接提问（0=直答 / 6=插话）
+# 人格级覆盖：prefill 开场白 + temperature/max_tokens（聊天链路无显式参数，人格即覆盖层）
                     result = await self.runner.run(
                         system=system,
                         messages=contexts + [user_msg],
@@ -1261,6 +1292,9 @@ class InboxMixin(RecoveryMixin):
                         on_tool_event=on_tool_event,
                         on_reasoning=on_reasoning,
                         priority=6 if origin == "plugin" else 0,
+                        prefill=str(persona.get("prefill") or ""),
+                        temperature=p_temp,
+                        max_tokens=int(p_maxtok) if p_maxtok else None,
                     )
                 except asyncio.CancelledError:
                     if live is not None:

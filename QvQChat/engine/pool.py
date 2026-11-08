@@ -552,6 +552,9 @@ class ModelPool:
                     "context_length": model.get("context_length"),
                     "max_output_tokens": model.get("max_output_tokens"),
                     "cost": model.get("cost") if isinstance(model.get("cost"), dict) else None,
+# 自定义说明与预填充支持（编辑器维护；models.dev enrich 不碰这两个字段）
+                    "notes": str(model.get("notes") or ""),
+                    "prefill_ok": model.get("prefill_ok"),
                 }
             )
         return models

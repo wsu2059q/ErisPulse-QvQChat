@@ -15,7 +15,7 @@ except ImportError:
 from . import texts, utils
 from .chat.cli import CliMixin
 from .chat.events import EventsMixin
-from .chat.inbox import InboxMixin
+from .chat.inbox import InboxMixin, _int_or_none, _num_or_none
 from .chat.usage import UsageMixin
 from .conversation.delivery import Delivery
 from .conversation.memory import MemoryStore
@@ -507,7 +507,8 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 
     async def run_prompt(self, chat_key: str, prompt: str, persona_id: str = "",
                          origin: str = "task", send: bool = True, user_id: str = "",
-                         model: str = "", task_kind: str = "chat", scene: str = "") -> str:
+                         model: str = "", task_kind: str = "chat", scene: str = "",
+                         temperature: float | None = None) -> str:
         from .conversation.service import strip_account as _strip_account
 
         platform, detail_type, target_id = parse_chat_key(_strip_account(strip_isolation(chat_key)))
@@ -544,16 +545,23 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             if send and platform:
                 messages.append({"role": "system", "content": texts.t("task_run_note")})
             messages.extend(prepared["contexts"] + [prepared["user_msg"]])
+# 人格级覆盖（温度优先级：显式调用参数 > 人格 > 模型 > 全局）
+            persona = prepared["persona"]
+            p_temp = _num_or_none(persona.get("temperature")) if temperature is None else temperature
+            p_maxtok = _int_or_none(persona.get("max_tokens"))
             result = await self.runner.run(
                 system=prepared["system"],
                 messages=messages,
                 ctx=ctx,
-                persona_tools=prepared["persona"].get("tools"),
+                persona_tools=persona.get("tools"),
                 model=(resolved_model or prepared.get("model") or "") or None,
+                temperature=p_temp,
+                max_tokens=p_maxtok,
                 task_kind=task_kind,
 # 并发闸门让步：用户直答(0) > 插话(6) > 定时/后台任务(8)——
 # 任务永远排队不丢失，但饱和时绝不和用户的直接提问抢槽位
                 priority=(6 if origin in ("plugin", "proactive") else (8 if origin in ("task", "dashboard", "rpc") else 0)),
+                prefill=str(persona.get("prefill") or ""),
             )
             reply = utils.strip_stray_tags(result.text.strip()) or texts.t("no_reply_content")
             if send and platform:
@@ -622,11 +630,14 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 ctx=ctx,
                 persona_tools=prepared["persona"].get("tools"),
                 model=model or None,
-                temperature=temperature,
+# 人格级覆盖（显式面板指定优先于人格）
+                temperature=temperature if temperature is not None else _num_or_none(prepared["persona"].get("temperature")),
+                max_tokens=_int_or_none(prepared["persona"].get("max_tokens")),
                 on_delta=on_delta,
                 on_reset=on_reset,
                 on_tool_event=on_tool_event,
                 on_reasoning=on_reasoning,
+                prefill=str(prepared["persona"].get("prefill") or ""),
             )
             reply = utils.strip_stray_tags(result.text.strip()) or texts.t("no_reply_content")
             self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), title_from=text)

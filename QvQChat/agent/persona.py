@@ -104,9 +104,13 @@ def _normalize(entry: dict) -> dict:
         data["banned_words"] = []
     if not isinstance(data.get("catchphrases"), list):
         data["catchphrases"] = []
-    for key in ("owner_title", "nickname", "avatar"):
+    for key in ("owner_title", "nickname", "avatar", "prefill"):
         if not isinstance(data.get(key), str):
             data[key] = ""
+    for key in ("temperature", "max_tokens"):
+        value = data.get(key)
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            data[key] = None
     return data
 
 
@@ -185,6 +189,22 @@ class PersonaManager:
                 return _clean_str(data[key])
             return _clean_str(existing.get(key))
 
+        def _merged_num(key: str):
+            """人格级模型参数覆盖：显式提供合法正值优先；显式非法/非正=清除；未提供沿用存量。"""
+            if key in data:
+                try:
+                    value = float(data[key])
+                    if value > 0:
+                        return value
+                except (TypeError, ValueError):
+                    pass
+                return None
+            try:
+                value = float(existing.get(key))
+                return value if value > 0 else None
+            except (TypeError, ValueError):
+                return None
+
         stored[persona_id] = {
             "name": str(data.get("name") or existing.get("name") or (texts.t("persona_default_name") if persona_id == ASSISTANT_ID else persona_id)),
             "system": str(data.get("system") or existing.get("system") or texts.t("persona_default_system")),
@@ -197,6 +217,9 @@ class PersonaManager:
             "catchphrases": catchphrases,
             "nickname": _merged_str("nickname"),
             "avatar": _merged_str("avatar"),
+            "prefill": _merged_str("prefill"),
+            "temperature": _merged_num("temperature"),
+            "max_tokens": _merged_num("max_tokens"),
         }
         self.sdk.storage.set(PERSONAS_KEY, stored)
         result = dict(stored[persona_id])

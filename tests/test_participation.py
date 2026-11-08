@@ -599,3 +599,20 @@ def test_participation_config_group_and_defaults():
     assert QvQConfig.coerce("participation_enabled", "true")[0] is False
     ok, v, _ = QvQConfig.coerce("participation_hourly_limit", "5")
     assert ok and v == 5
+
+
+async def test_decide_ctx_carries_sender_is_bot():
+    """决策 ctx 带结构化 bot 标记（兄弟 bot 判定），生态互逗分支的信号来源。"""
+    main = make_part_main()
+    capture = {}
+    add_provider(main, capture=capture)
+    await main.participation.discover()
+    main.sdk.adapter.bots = {"bot": {"status": "running"}, "sib": {"status": "running"}}
+# 兄弟 bot 发言
+    ev = FakeChatEvent(text="签到完成！", user_id="sib", at=False)
+    await main.participation.decide(GROUP_KEY, ev, "签到完成！")
+    assert capture["ctx"]["sender_is_bot"] is True
+# 普通用户发言
+    ev2 = FakeChatEvent(text="今天好累", user_id="human1", at=False)
+    await main.participation.decide(GROUP_KEY, ev2, "今天好累")
+    assert capture["ctx"]["sender_is_bot"] is False
