@@ -783,6 +783,31 @@
 .qvq-composer-send.stopping:hover {
   background: #c9416a;
 }
+/* 停止按钮：任务运行时紧挨发送键出现 */
+.qvq-composer-stop {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--qvq-er-bd, rgba(230, 80, 100, 0.5));
+  background: var(--qvq-er-bg, rgba(230, 80, 100, 0.12));
+  color: var(--qvq-er-c, #e65064);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.qvq-composer-stop:hover {
+  background: var(--qvq-er-c, #e65064);
+  color: #fff;
+}
+.qvq-composer-stop svg {
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+  stroke: none;
+}
 .qvq-live-wait {
   display: inline-flex;
   align-items: center;

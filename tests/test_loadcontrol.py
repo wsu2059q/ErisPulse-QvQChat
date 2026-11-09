@@ -24,6 +24,8 @@ def _inbox_main(**cfg):
     from QvQChat.chat.inbox import InboxMixin
 
     main._sender_name = lambda event: InboxMixin._sender_name(event)
+    # 锁外长任务冲突判定（无 live 时直接放行）
+    main._live_conflict = Main._live_conflict.__get__(main)
     # 防抖定时器不真跑（测试同步 flush）；绑定为空协程避免 spawn 报缺方法
     main._flush_later = lambda chat_key, window: _noop()
     main._lock_for = lambda chat_key: main._chat_locks.setdefault(chat_key, __import__("asyncio").Lock())

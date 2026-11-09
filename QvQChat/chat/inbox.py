@@ -10,6 +10,7 @@ import asyncio
 import base64
 import mimetypes
 import random
+import re
 import time
 import traceback
 from pathlib import Path
@@ -129,7 +130,7 @@ def debounce_window(cfg, is_group: bool, is_at: bool) -> float:
 _RECENT_MSGS: dict[str, list] = {}
 
 
-def _dup_recent(chat_key: str, sender_id: str, text: str, window: float = 6.0) -> bool:
+def _dup_recent(chat_key: str, sender_id: str, text: str, window: float = 2.0) -> bool:
     """短窗去重：同一会话内同发送者+相同文本在 window 秒内重复到达 → 丢弃。
 
     针对适配器对多账户同群消息的双投递/重放（毫秒级连发），不影响人类正常复读。
@@ -188,6 +189,19 @@ def _account_suffix_for(cfg, sdk, event) -> str:
 
 
 
+def _seed_text_fingerprint(text: str) -> str:
+    """seed 去重指纹：剥掉发言者标注前缀（"昵称(uid): " / "[未记录] "）后取尾部。
+
+    存储里的上下文是标注后的文本、transcript 行是裸文本——不剥标签前缀，
+    "裸文本 vs 标注文本" 会被当成两条不同的消息，去重失效。
+    """
+    s = str(text or "").strip()
+    s = re.sub(r"^\[[^\]]*\]\s*", "", s)  # [未记录] 等方括号标注
+    s = re.sub(r"^[^\[\n]{1,40}\(\d{5,}\):\s*", "", s)  # 昵称(uid): 
+    s = re.sub(r"^\(\d{5,}\):\s*", "", s)  # (uid): 
+    return s[-200:]
+
+
 def _seed_dedupe(rows, contexts) -> list:
     """冷启动回填去重：跳过当前上下文里已存在的相同文本（防止同一条消息既在
     历史又在本次输入中出现两次）。"""
@@ -203,13 +217,13 @@ def _seed_dedupe(rows, contexts) -> list:
                 )
             text = str(content or "").strip()
             if text:
-                known.add(text[-200:])
+                known.add(_seed_text_fingerprint(text))
     out = []
     for row in rows:
         text = str((row or {}).get("text") or "").strip()
-        if text and text[-200:] in known:
+        if text and _seed_text_fingerprint(text) in known:
             continue
-        known.add(text[-200:])
+        known.add(_seed_text_fingerprint(text))
         out.append(row)
     return out
 
@@ -238,9 +252,14 @@ class InboxMixin(RecoveryMixin):
             return ""
 
     async def _quote_content(self, event, limit: int = 300) -> str:
-        """提取被引用消息原文：先读 reply 段内联 text/content（部分适配器带），
-        拿不到（多数适配器 reply 段只有 id）再按 message_id 走适配器 get_msg 拉取。"""
+        """提取被引用消息原文：内联 text → 本地 transcript 按 message_id 查 → 适配器 get_msg。
+
+        本地优先的原因：QQ 系 get_msg 对旧消息/跨账户经常失败，而框架 transcript
+        （分发前落库）里每条都带 event_id，引用自己刚说过的话一定能查到。
+        查到的若是我方消息会标注，模型才能理解"主人是在回复我上一句"。
+        """
         platform = str(event.get_platform() or "")
+        mid = ""
         try:
             for segment in event.get_message() or []:
                 if not isinstance(segment, dict) or segment.get("type") != "reply":
@@ -258,35 +277,70 @@ class InboxMixin(RecoveryMixin):
                         raw = str(content).strip()
                 if raw:
                     return raw[:limit]
-# 内联没有原文：按 message_id 向适配器拉取（OneBot 系 get_msg 标准接口）
                 mid = str(data.get("id") or data.get("message_id") or "")
-                if mid and platform:
-                    try:
-                        adapter = self.sdk.adapter.get(platform)
-                        result = None
-                        if adapter is not None and hasattr(adapter, "call_api"):
-                            result = await adapter.call_api("get_msg", message_id=mid)
-                        payload = result if isinstance(result, dict) else {}
-                        msg = payload.get("message")
-                        sender = payload.get("sender") or {}
-                        nick = ""
-                        if isinstance(sender, dict):
-                            nick = str(sender.get("nickname") or sender.get("card") or "")
-                        if isinstance(msg, list):
-                            text = "".join(
-                                str(s.get("data", {}).get("text") or "") if isinstance(s, dict) else str(s)
-                                for s in msg
-                            ).strip()
-                        else:
-                            text = str(msg or "").strip()
-                        if not text:
-                            text = str(payload.get("raw_message") or "").strip()
-                        if text:
-                            return (f"{nick}：{text}" if nick else text)[:limit]
-                    except Exception as e:
-                        self.logger.debug(f"quote fetch failed: {e}")
+                break
         except Exception:
             return ""
+        if not mid:
+            return ""
+# 本地 transcript：按 event_id 精确命中（先查本会话，再全量兜底）
+        try:
+            transcript = getattr(self.sdk, "transcript", None)
+            if transcript is not None and hasattr(transcript, "get"):
+                rows = []
+                key_fn = getattr(transcript, "session_key_from_event", None)
+                if callable(key_fn):
+                    try:
+                        rows = transcript.get(key_fn(event), 200) or []
+                    except Exception:
+                        rows = []
+                for row in reversed(rows):  # get 按时间升序，从新往旧找
+                    if not isinstance(row, dict):
+                        continue
+                    if str(row.get("event_id") or "") != mid:
+                        continue
+                    text = str(row.get("text") or "").strip()
+                    if not text:
+                        break
+                    role = str(row.get("role") or "")
+                    if role in ("bot", "assistant"):
+                        return texts.t("quote_is_own_prev", content=utils.truncate(text, limit))
+                    return text[:limit]
+        except Exception as e:
+            self.logger.debug(f"quote local lookup failed: {e}")
+# 兜底：适配器 get_msg（带账户——多账户下不带会落到默认账户查不到）
+        if platform:
+            try:
+                adapter = self.sdk.adapter.get(platform)
+                result = None
+                if adapter is not None and hasattr(adapter, "call_api"):
+                    kwargs = {"message_id": mid}
+                    try:
+                        account = str(event.get_self_account_id() or "")
+                    except Exception:
+                        account = ""
+                    if account:
+                        kwargs["_account_id"] = account
+                    result = await adapter.call_api("get_msg", **kwargs)
+                payload = result if isinstance(result, dict) else {}
+                msg = payload.get("message")
+                sender = payload.get("sender") or {}
+                nick = ""
+                if isinstance(sender, dict):
+                    nick = str(sender.get("nickname") or sender.get("card") or "")
+                if isinstance(msg, list):
+                    text = "".join(
+                        str(s.get("data", {}).get("text") or "") if isinstance(s, dict) else str(s)
+                        for s in msg
+                    ).strip()
+                else:
+                    text = str(msg or "").strip()
+                if not text:
+                    text = str(payload.get("raw_message") or "").strip()
+                if text:
+                    return (f"{nick}：{text}" if nick else text)[:limit]
+            except Exception as e:
+                self.logger.debug(f"quote fetch failed: {e}")
         return ""
 
     @staticmethod
@@ -866,8 +920,34 @@ class InboxMixin(RecoveryMixin):
                 self.logger.debug("background skip: interrupt-decide (saturated) -> queue")
             return "queue", "saturated-skip"
         try:
-            current = utils.truncate(str(old_live.text or "").strip(), 300) or "（工具执行中，暂无输出）"
-            incoming = utils.truncate(str(new_text or "").strip(), 300)
+            current = utils.truncate(str(old_live.text or "").strip(), 500) or "（工具执行中，暂无输出）"
+            incoming = utils.truncate(str(new_text or "").strip(), 400)
+# 最近对话上下文：判定必须知道"这条新消息在回应什么/是否在纠正刚才的话"，
+# 只看当前任务输出+新消息会把"同意/停/不是这个"之类短回复判错
+            recent_lines: list[str] = []
+            try:
+                for msg in list(self.sessions.get_contexts(chat_key) or [])[-8:]:
+                    if not isinstance(msg, dict):
+                        continue
+                    role = str(msg.get("role") or "")
+                    content = msg.get("content")
+                    if isinstance(content, list):
+                        content = " ".join(
+                            str(p.get("text") or "") for p in content if isinstance(p, dict)
+                        )
+                    text = utils.truncate(str(content or "").strip(), 200)
+                    if not text:
+                        continue
+                    if role in ("bot", "assistant"):
+                        recent_lines.append("[bot] " + text)
+                    else:
+                        sender = str(msg.get("sender_name") or msg.get("sender") or "")
+                        recent_lines.append((sender + ": " if sender else "") + text)
+            except Exception:
+                recent_lines = []
+            recent_block = ""
+            if recent_lines:
+                recent_block = "<recent-chat>\n" + "\n".join(recent_lines) + "\n</recent-chat>\n\n"
             from ..engine.base import ChatRequest, TaskSpec
 
             request = ChatRequest(
@@ -877,17 +957,20 @@ class InboxMixin(RecoveryMixin):
                         "content": (
                             "A bot is mid-task when a NEW user message arrives. Decide: interrupt the "
                             "running task and handle the new message now, or queue it? "
-                            "Interrupt when the new message is clearly urgent, a correction/cancellation "
-                            "of the current task, or a direct question to the bot. Queue when it is casual "
-                            "chat or related to the running task. "
+                            "Interrupt when the new message is clearly urgent, corrects/cancels the "
+                            "running task, asks the bot to stop, answers a question the bot asked (e.g. "
+                            "agreeing to a pending confirmation), or is a direct question that the running "
+                            "task cannot answer. Queue when it is casual chat or belongs to the running "
+                            "task. Use <recent-chat> to tell what the new message is replying to. "
                             'Reply ONLY with JSON: {"decision":"interrupt"|"queue","reason":"one short line"}'
                         ),
                     },
                     {
                         "role": "user",
                         "content": (
-                            "<current-task>\n" + current + "\n</current-task>\n\n"
-                            "<new-message>\n" + incoming + "\n</new-message>"
+                            recent_block
+                            + "<current-task>\n" + current + "\n</current-task>\n\n"
+                            + "<new-message>\n" + incoming + "\n</new-message>"
                         ),
                     },
                 ],
@@ -950,11 +1033,21 @@ class InboxMixin(RecoveryMixin):
             self.logger.warning(f"queue announce reply failed: {e}")
 
     def _drain_waiting(self, chat_key: str) -> None:
+        self._merge_timers.pop(chat_key, None)
         queue = self._waiting.pop(chat_key, None)
         if not queue:
             return
+# 队列整体合并为一个回合：条目预构建带各自发言人归属（此前逐条 _batch_message
+# 会开 N 个连续回合逐条作答——正是"短时多条每条都回"的来源之一）
+        merged_items: list = []
+        last_event = queue[-1][0]
         for event, items in queue:
-            self._batch_message(event, chat_key, items)
+            for item in (items or []):
+                if isinstance(item, dict):
+                    merged_items.append(item)
+        if not merged_items:
+            return
+        self._batch_message(last_event, chat_key, "", [], items=merged_items)
 
     def _lock_for(self, chat_key: str) -> asyncio.Lock:
         lock = self._chat_locks.get(chat_key)
@@ -1011,28 +1104,36 @@ class InboxMixin(RecoveryMixin):
         return group
 
     def _batch_message(self, event, chat_key: str, text: str, images: list,
-                       origin: str = "chat") -> None:
+                       origin: str = "chat", items: list | None = None) -> None:
         entry = self._pending.setdefault(chat_key, {"items": [], "event": event, "timer": None})
 # origin（chat/plugin）随聚合条目传递，进 ToolContext 记账可观测
         entry.setdefault("origin", origin)
 # 入队时间戳：陈旧插话丢弃的依据（首个到达时间，聚合不刷新）
         entry.setdefault("ts", time.time())
+        if items is not None:
+# 预构建条目（等待队列合并回灌）：各自保留发言人归属，整批进同一回合，
+# 已在首次入箱时做过短窗去重，不再重复检查
+            entry["items"].extend(dict(i) for i in items if isinstance(i, dict))
+            entry["event"] = event
+        else:
 # 短窗去重：多账户同群双投递/适配器重放会在同一会话插入重复文本（用户看到多条重复）。
 # 仅在多账户生效（与 @账户 后缀同条件）——单账户场景不做去重，不误伤人类复读
-        sender_id = str(event.get_user_id() or "")
-        multi_account = bool(_account_suffix_for(self.cfg, self.sdk, event))
-        if multi_account and str(text or "").strip() and _dup_recent(chat_key, sender_id, str(text)):
-            self.logger.debug(f"duplicate incoming dropped ({chat_key})")
-            return
-        entry["items"].append(
-            {
-                "text": text,
-                "images": images,
-                "sender_id": sender_id,
-                "sender_name": self._sender_name(event),
-            }
-        )
-        entry["event"] = event
+            sender_id = str(event.get_user_id() or "")
+# 短窗去重只用于群消息：双投递（同后端多账户各收一条同群消息）只发生在群聊，
+# 私聊是点对点无此面；恒开会误吞单账户用户的正常复读
+            multi_account = bool(getattr(self.cfg, "account_isolation", True)) or                 bool(_account_suffix_for(self.cfg, self.sdk, event))
+            if event.is_group_message() and multi_account and str(text or "").strip()                 and _dup_recent(chat_key, sender_id, str(text)):
+                self.logger.debug(f"duplicate incoming dropped ({chat_key})")
+                return
+            entry["items"].append(
+                {
+                    "text": text,
+                    "images": images,
+                    "sender_id": sender_id,
+                    "sender_name": self._sender_name(event),
+                }
+            )
+            entry["event"] = event
         if entry["timer"] is None:
             try:
                 is_group = event.is_group_message()
@@ -1064,9 +1165,76 @@ class InboxMixin(RecoveryMixin):
             if stale_after > 0 and time.time() - float(entry.get("ts") or 0) > stale_after:
                 self.logger.debug(f"stale interject dropped ({chat_key})")
                 return
+# 回复合并窗口：刚回复过的会话先不开新回合——窗口内陆续到达的消息挂入等待队列，
+# 窗口走完后合并为一次后续回复（短时多条不逐条应答，防止刷屏式复读轰炸）
+        merge_window = float(getattr(self.cfg, "reply_merge_window", 0) or 0)
+        if merge_window > 0:
+            last = float(self._last_reply_ts.get(chat_key, 0.0) or 0.0)
+            remain = merge_window - (time.time() - last)
+            if remain > 0:
+                queue = self._waiting.setdefault(chat_key, [])
+                queue.append((entry["event"], entry["items"]))
+                self._arm_merge_timer(chat_key, remain)
+                self.logger.info(f"reply merge window holding ({chat_key}, {len(queue)} waiting, {remain:.1f}s left)")
+                return
+# 长任务冲突判定必须在锁外：per-chat 锁被运行中的任务整轮持有，
+# 锁内再看 live 已经等任务跑完了（此前 auto 判定等于失效）
+        if not await self._live_conflict(chat_key, entry["event"], entry["items"]):
+            return
 # per-chat 锁真正生效——聚合触发与定时任务/面板并发互斥，防止交错写上下文
         async with self._lock_for(chat_key):
             await self._process_locked(entry["event"], entry["items"], chat_key, origin)
+
+    async def _live_conflict(self, chat_key: str, event, items: list) -> bool:
+        """任务运行中收到新消息：按 interrupt_mode 决定排队还是中断插入。
+
+        返回 True = 现在就该处理这条消息（无任务或已中断旧任务）；
+        返回 False = 已排入等待队列，等当前任务结束后合并处理。
+        """
+        registry = getattr(self, "live_registry", None)
+        live = registry.get(chat_key) if registry is not None else None
+        if live is None or live.status != "running":
+            return True
+        mode = str(getattr(self.cfg, "interrupt_mode", "auto") or "auto")
+        if mode == "queue":
+            self._enqueue_waiting(chat_key, event, items)
+            return False
+        if mode == "auto":
+            incoming = " ".join(str(i.get("text") or "") for i in items if isinstance(i, dict) and i.get("text"))
+            decision, _why = await self._auto_interrupt_decide(chat_key, live, incoming)
+            if decision != "interrupt":
+                self._enqueue_waiting(chat_key, event, items)
+                try:
+                    await event.reply(texts.t("interrupt_auto_queue"))
+                except Exception:
+                    pass
+                return False
+            try:
+                await event.reply(texts.t("interrupt_auto_stop"))
+            except Exception:
+                pass
+# 中断上下文留给即将开始的新回合（模型知道上一轮做到哪被叫停了）
+        current = str(getattr(live, "text", "") or "").strip()
+        if current:
+            if not hasattr(self, "_interrupted_notes"):
+                self._interrupted_notes = {}
+            self._interrupted_notes[chat_key] = texts.t(
+                "interrupted_note", content=utils.truncate(current, 500)
+            )
+        live.cancel()
+        self.logger.info(f"live task interrupted for new message ({chat_key}): mode={mode}")
+        return True
+
+    def _arm_merge_timer(self, chat_key: str, delay: float) -> None:
+        """合并窗定时器：到点把等待队列回灌为一个聚合回合。已有定时器则续用（消息继续挂队）。"""
+        if chat_key in self._merge_timers:
+            return
+
+        async def _merge_fire() -> None:
+            self._merge_timers.pop(chat_key, None)
+            self._drain_waiting(chat_key)
+
+        self._merge_timers[chat_key] = self.spawn(_merge_fire())
 
     async def _process_locked(self, event, items: list, chat_key: str, origin: str = "chat") -> None:
         try:
@@ -1131,6 +1299,19 @@ class InboxMixin(RecoveryMixin):
             if ev_type and ev_type != "message":
                 scene += texts.t("scene_notice_trigger", summary=self._event_summary(event, ev_type))
                 ctx.scene_note = scene
+# 本账户身份认知：多账户部署下让 AI 明确"现在说话的这个账户是谁"，
+# @ 的 id 与自己 user_id 不同时知道是在喊别人（防代替回应/认错历史）。
+# 放在 scene 全部组装完之后、统一写回 ctx（群聊分支的赋值在更早处）
+            try:
+                getter = getattr(event, "get_self_user_id", None)
+                self_uid = str(getter() or "") if callable(getter) else ""
+                self_acct = str(event.get_self_account_id() or "")
+                self_nick = str(event.get_user_nickname() or "")
+                if self_uid or self_acct:
+                    scene += texts.t("scene_self_identity", user_id=self_uid or "-", nickname=self_nick or "-", account=self_acct or "-")
+            except Exception:
+                pass
+            ctx.scene_note = scene
             combined_text = "\n".join(str(i.get("text") or "") for i in items if i.get("text"))
             try:
                 await self.sdk.lifecycle.emit(
@@ -1175,7 +1356,10 @@ class InboxMixin(RecoveryMixin):
                 if used_today >= limit and not self.is_admin(sender_id, "chat", event.get_platform() or ""):
                     await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
                     return
+# 锁外中断判定留下的上下文（旧任务被叫停时做到哪）
             interrupted_note = ""
+            if getattr(self, "_interrupted_notes", None) is not None:
+                interrupted_note = self._interrupted_notes.pop(chat_key, "") or ""
             live = None
             registry = getattr(self, "live_registry", None)
             if registry is not None:
@@ -1342,7 +1526,9 @@ class InboxMixin(RecoveryMixin):
                                 ctx=ctx,
                                 persona_tools=persona.get("tools"),
                             )
+# 重 roll 输出同样要清扫残留标签（此前漏了，[[直发]]/单括号形态原样发出去）
                             retry_reply, _ = strip_output_tag(retry.text.strip())
+                            retry_reply = utils.strip_stray_tags(retry_reply)
                             retry_reply, _2 = filter_reply(
                                 retry_reply, "", int(getattr(self.cfg, "humanize_filter_max_sentences", 3) or 3)
                             )
@@ -1351,6 +1537,12 @@ class InboxMixin(RecoveryMixin):
                                 result = retry
                     except Exception as e:
                         self.logger.debug(f"reply filter failed: {e}")
+# 元文本剥离：模型把思考/策略写进正文首段时自动剥掉（默认开，独立于 humanize filter）
+                if bool(getattr(self.cfg, "meta_strip", True)):
+                    try:
+                        reply = utils.strip_meta_section(reply)
+                    except Exception as e:
+                        self.logger.debug(f"meta strip failed: {e}")
                 reply = reply or texts.t("no_reply_content")
                 self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""))
                 try:
@@ -1363,6 +1555,8 @@ class InboxMixin(RecoveryMixin):
                 except Exception as e:
                     self.logger.debug(f"emit qvq.replied failed: {e}")
                 await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None), origin=origin)
+# 记录回复时间：回复合并窗口的起点（窗口内后续消息合并为一次后续回复）
+                self._last_reply_ts[chat_key] = time.time()
                 self._drain_waiting(chat_key)
             finally:
 # 删除失败必须当场暴露并重试：残留标记会在下次重启被恢复例程重放成"自动重发"
@@ -1417,7 +1611,12 @@ class InboxMixin(RecoveryMixin):
             self.logger.debug(f"opening send failed: {e}")
 
     async def _seed_history(self, event, chat_key: str = "") -> list:
-        """冷启动回填：优先取带 sender 的收件箱记录并逐条标注发言者，避免历史对话者被误认成当前发言者。"""
+        """冷启动回填：优先取带 sender 的收件箱记录并逐条标注发言者，避免历史对话者被误认成当前发言者。
+
+        关键剔除：框架 transcript 在消息分发**之前**就落库——当前这条触发消息
+        必然也在 rows 里；不剔掉它，seed 写入后实时链路再 append 一次，
+        同一条消息就在会话里出现两份（webui 可见的重复注入根因）。
+        """
         limit = int(getattr(self.cfg, "history_seed", 20) or 0)
         if limit <= 0:
             return []
@@ -1426,6 +1625,29 @@ class InboxMixin(RecoveryMixin):
         except Exception as e:
             self.logger.debug(f"transcript rows fetch failed: {e}")
             rows = []
+        current_mid = ""
+        current_text = ""
+        try:
+            current_mid = str(event.get("message_id") or "") if hasattr(event, "get") else ""
+        except Exception:
+            current_mid = ""
+        try:
+            current_text = str(event.get_alt_message() or "").strip()
+        except Exception:
+            current_text = ""
+        if current_mid or current_text:
+            filtered = []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
+                if current_mid and str(meta.get("message_id") or "") == current_mid:
+                    continue
+# 兜底：transcript 行可能缺 message_id——文本精确一致也视为当前消息
+                if current_text and str(row.get("text") or "").strip() == current_text:
+                    continue
+                filtered.append(row)
+            rows = filtered
         rows = _seed_dedupe(rows, self.sessions.get_contexts(chat_key)) if chat_key else rows
         if not rows:
 # 降级：框架收件箱不可用时走 event.history（无 sender，统一标注为未记录）
@@ -1437,11 +1659,17 @@ class InboxMixin(RecoveryMixin):
                 {"role": str(e.get("role") or ""), "text": str(e.get("text") or ""), "sender": ""}
                 for e in (history or [])
                 if isinstance(e, dict)
+# 降级路径同样剔除当前消息（文本一致即剔）
+                if str(e.get("text") or "").strip() != current_text
             ]
         return await self._label_seed_rows(event, rows)
 
     def _transcript_rows(self, event, limit: int) -> list:
-        """按框架收件箱会话键（群聊=群级）过滤近期记录，保留 sender 字段。"""
+        """按框架收件箱会话键（群聊=群级）过滤近期记录，保留 sender 字段。
+
+        群级键无账户维度——多账户部署下账户 B 收到的消息也会出现在
+        账户 A 的回填里，按 meta.self_id 过滤只保留本账户收到的。
+        """
         transcript = getattr(self.sdk, "transcript", None)
         recent = getattr(transcript, "recent", None)
         if not callable(recent):
@@ -1460,6 +1688,20 @@ class InboxMixin(RecoveryMixin):
         except Exception:
             return []
         picked = [r for r in (rows or []) if isinstance(r, dict) and r.get("session_key") == base_key]
+        try:
+            self_id = str(event.get_self_user_id() or event.get_self_account_id() or "")
+        except Exception:
+            self_id = ""
+        if self_id:
+            filtered = []
+            for row in picked:
+                meta = row.get("meta") if isinstance(row.get("meta"), dict) else {}
+                row_self = str(meta.get("self_id") or "")
+# 仅当行带 self_id 且与当前账户不同才剔除（旧数据无该字段时保守保留）
+                if row_self and row_self != self_id:
+                    continue
+                filtered.append(row)
+            picked = filtered
         return picked[-limit:] if len(picked) > limit else picked
 
     async def _label_seed_rows(self, event, rows: list) -> list:

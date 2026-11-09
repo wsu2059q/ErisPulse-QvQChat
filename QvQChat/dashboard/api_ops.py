@@ -616,9 +616,16 @@ class StorageApiMixin:
         return count
 
     async def storage_slim(self, request):
-        """瘦身：历史消息里 rounds 与 trace 双写的旧数据去重（新写入已不双写）。"""
+        """瘦身：压缩历史消息体积，但保留对话正文。
+
+        1) rounds 与 trace 双写的旧数据去重（新写入已不双写）
+        2) 近期以外的历史消息：丢弃工具明细（rounds）与 think 块，只留正文
+        3) 超长正文截断到 2000 字（保留首尾，标注截断）
+        最近 keep 条保持原样（模型仍需要当前上下文细节）。
+        """
         from ..conversation.service import CONV_PREFIX
 
+        keep = max(6, int(getattr(self.main.cfg, "context_limit", 30) or 30))
         freed = changed = 0
         for key in self._kv_keys():
             if not key.startswith(CONV_PREFIX):
@@ -626,12 +633,28 @@ class StorageApiMixin:
             state = self.sdk.storage.get(key, None)
             if not isinstance(state, dict) or not isinstance(state.get("contexts"), list):
                 continue
+            contexts = state["contexts"]
             dirty = False
-            for entry in state["contexts"]:
-                if isinstance(entry, dict) and entry.get("rounds") and entry.get("trace"):
+            for idx, entry in enumerate(contexts):
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("rounds") and entry.get("trace"):
                     freed += _kv_size(entry["trace"])
                     del entry["trace"]
                     dirty = True
+                if idx < len(contexts) - keep:
+                    if entry.get("rounds"):
+                        freed += _kv_size(entry["rounds"])
+                        del entry["rounds"]
+                        dirty = True
+                    if entry.get("trace"):
+                        freed += _kv_size(entry["trace"])
+                        del entry["trace"]
+                        dirty = True
+                    content = entry.get("content")
+                    if isinstance(content, str) and len(content) > 2000:
+                        entry["content"] = content[:1200] + "…[瘦身截断]…" + content[-600:]
+                        dirty = True
             if dirty:
                 self.sdk.storage.set(key, state)
                 changed += 1

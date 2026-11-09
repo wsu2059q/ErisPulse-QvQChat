@@ -25,6 +25,8 @@ PRIORITY: dict[str, float] = {
     "permission": 2.7,
     "summary": 3,
     "facts": 4,
+    # TODO 清单紧随 facts：长任务进度属于会话状态面，预算紧张时不早于画像被裁
+    "todo": 4.2,
     "profile": 4.5,
     "memory": 5,
     "recall_hint": 5.2,

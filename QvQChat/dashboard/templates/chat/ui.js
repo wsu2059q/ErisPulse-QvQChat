@@ -109,11 +109,12 @@
     (root || document).querySelectorAll("table.qvq-table").forEach(function (table) {
       var ths = table.querySelectorAll("thead th");
       if (!ths.length) return;
-      table.setAttribute("data-cards", "1");
+      if (!table.hasAttribute("data-cards")) table.setAttribute("data-cards", "1");
       table.querySelectorAll("tbody tr").forEach(function (tr) {
         var tds = tr.querySelectorAll("td");
         for (var i = 0; i < tds.length && i < ths.length; i++) {
-          tds[i].setAttribute("data-col", ths[i].textContent.trim());
+          // 已有 data-col 的 td 不重复写
+          if (!tds[i].hasAttribute("data-col")) tds[i].setAttribute("data-col", ths[i].textContent.trim());
         }
       });
     });

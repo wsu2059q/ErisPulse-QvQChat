@@ -305,31 +305,108 @@ async def list_services(ctx, module: str = "") -> str:
     return "\n".join(lines) or texts.t("services_none")
 
 
-async def call_adapter_api(ctx: ToolContext, platform: str, endpoint: str, params: dict | None = None) -> str:
+def _account_kwarg_of(adapter) -> str:
+    """账户参数的传参名：适配器生态与框架文档不一致，按签名探测。
+
+    框架标准（developer-guide/adapters/core-concepts.md）是公开的 ``account_id``
+    （由 ApiDSL._merge_context 注入、适配器 params.pop 掉）；但现行适配器普遍把
+    ``_account_id`` 写成具名参数。写错名字的后果很隐蔽——账户不解析（静默落到
+    默认账户），且 ``account_id`` 会被当成平台参数泄漏出去。
+    """
+    try:
+        params = inspect.signature(adapter.call_api).parameters
+    except (TypeError, ValueError):
+        return "account_id"
+    if "_account_id" in params:
+        return "_account_id"
+    return "account_id"  # 含显式 account_id 或仅 **params（按标准传）
+
+
+async def call_adapter_api(ctx: ToolContext, platform: str, endpoint: str, params: dict | None = None,
+                           account: str = "") -> str:
     adapter = ctx.sdk.adapter.get(platform)
     if adapter is None:
         return texts.t("adapter_not_found", platform=platform)
-    result = await adapter.call_api(endpoint, **(params or {}))
+    kwargs = dict(params or {})
+# 默认绑会话所在账户：空间动态/个人信息这类接口是"哪个 bot 的视角"，
+# 不带账户会落到适配器默认账户（多账户下看到/操作到别人身上）
+    acct = str(account or getattr(ctx, "self_id", "") or "")
+    if acct:
+        kwarg = _account_kwarg_of(adapter)
+        try:
+            result = await adapter.call_api(endpoint, **{kwarg: acct}, **kwargs)
+        except (TypeError, ValueError) as e:
+# 账户名不可解析：回退默认账户，不因绑定失败丢能力
+            ctx.main.logger.debug(f"adapter api account bind failed ({platform}.{acct}): {e}")
+            result = await adapter.call_api(endpoint, **kwargs)
+    else:
+        result = await adapter.call_api(endpoint, **kwargs)
     return utils.to_text(result)
 
 
 async def handle_request(ctx: ToolContext, platform: str, request_id: str,
-                         action: str = "accept", account: str = "") -> str:
+                         action: str = "accept", account: str = "",
+                         sub_type: str = "", group_id: str = "") -> str:
     adapter = ctx.sdk.adapter.get(platform)
     if adapter is None:
         return texts.t("adapter_not_found", platform=platform)
     action = str(action).lower()
     try:
-        request = adapter.Request(request_id)
+# 多账户默认绑发起会话的账户：不绑会落到适配器默认账户（张冠李戴受理）
+        account = str(account or getattr(ctx, "self_id", "") or "")
+        request = adapter.Request(str(request_id))
+        if account:
+            request = request.Using(account)
+# 请求类型路由：群邀请/加群申请必须走 set_group_add_request（带 sub_type/group_id），
+# 落到 set_friend_add_request 会把 flag 当 uid → 平台报 OIDB uid/openid invalid。
+# 类型信息缺省从收件箱原始请求条目还原（AI 无需感知平台差异），显式传参可覆盖
+        extra = _request_route_kwargs(ctx, account, str(request_id), sub_type, group_id)
         operation = getattr(request, action, None)
         if not callable(operation):
             return texts.t("request_action_invalid", action=action)
-        result = operation()
+        result = operation(**extra)
         if inspect.isawaitable(result):
             result = await result
     except Exception as e:
         return texts.t("request_failed", error=str(e))
     return utils.to_text(result)
+
+
+def _request_route_kwargs(ctx: ToolContext, account: str, request_id: str,
+                          sub_type: str = "", group_id: str = "") -> dict:
+    """组装请求处理的平台扩展参数：群请求带 _request_type/sub_type/group_id，好友请求为空。
+
+    sub_type/group_id 优先用 AI 显式传参，缺省从收件箱同 request_id 的条目还原。
+    """
+    forced_group = False
+    if not sub_type or not group_id:
+        try:
+            main = getattr(ctx, "main", None)
+            loader = getattr(main, "_inbox_load", None)
+            candidates: list = []
+            if callable(loader):
+                for acct in (account, "default"):
+                    if not acct or acct in (c.get("account") for c in candidates):
+                        continue
+                    candidates.extend(loader(acct))
+            for entry in candidates:
+                if (str(entry.get("kind") or "") == "request"
+                        and str(entry.get("request_id") or "") == request_id):
+                    sub_type = sub_type or str(entry.get("sub_type") or "")
+                    group_id = group_id or str(entry.get("group_id") or "")
+                    forced_group = forced_group or str(entry.get("detail_type") or "") == "group"
+                    break
+        except Exception:
+            pass
+    sub_type = str(sub_type or "").lower()
+    if not group_id and not forced_group and sub_type not in ("invite", "add"):
+        return {}  # 好友请求：无需类型参数
+    extra: dict = {"_request_type": "group"}
+    if sub_type:
+        extra["sub_type"] = sub_type
+    if group_id:
+        extra["group_id"] = group_id
+    return extra
 
 
 async def call_module(ctx: ToolContext, module: str, service: str, args: dict | None = None) -> str:
@@ -540,12 +617,19 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="call_adapter_api",
         access="admin",
-        description="Call a platform adapter's native API directly (management endpoints not covered by Send DSL).",
+        description=(
+            "Call a platform adapter's native API directly — this is how platform-specific abilities are reached "
+            "(e.g. QQ Zone feeds via snowluma: get_qzone_feeds / get_qzone_msg_list / send_qzone_msg / like_qzone / "
+            "comment_qzone; Bilibili content via get_user_dynamics / search_video / get_popular). "
+            "Endpoint names and params are whatever the installed adapter exposes; the call is bound to this "
+            "session's bot account by default."
+        ),
         parameters=_schema(
             {
                 "platform": _s(type="string", description="Platform name"),
                 "endpoint": _s(type="string", description="API endpoint name"),
                 "params": _s(type="object", description="API parameters"),
+                "account": _s(type="string", description="Bot account to act as (default: this session's account)"),
             },
             ["platform", "endpoint"],
         ),

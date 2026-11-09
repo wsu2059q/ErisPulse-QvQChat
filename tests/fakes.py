@@ -556,6 +556,16 @@ class FakeMain:
         self.audits = []
         self.tasks_fired = []
         self.prompts = []
+        self.spawned = []
+        self._merge_timers = {}
+        self._last_reply_ts = {}
+        self._proactive_recent = {}
+
+    def spawn(self, coro):
+# 与框架 Module.spawn 对齐：后台任务立即调度（测试可 await main.spawned 收敛）
+        task = asyncio.ensure_future(coro)
+        self.spawned.append(task)
+        return task
 
     def is_admin(self, user_id, origin="chat", platform=""):
         from QvQChat.Main import is_admin_user

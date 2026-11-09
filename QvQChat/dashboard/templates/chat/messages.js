@@ -612,13 +612,17 @@
   }
 
   function setSendStopping(stopping) {
+    // 发送键恒为发送；停止是独立按钮，仅在任务运行时出现
+    var stop = el("qvq-chat-stop");
+    if (stop) {
+      stop.style.display = stopping ? "inline-flex" : "none";
+      stop.title = t("chat_stop");
+    }
     var btn = el("qvq-chat-send");
-    if (!btn) return;
-    btn.classList.toggle("stopping", stopping);
-    btn.title = t(stopping ? "chat_stop" : "chat_send");
-    btn.innerHTML = stopping
-      ? '<svg class="ico-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
-      : '<svg class="ico-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+    if (btn) {
+      btn.classList.toggle("stopping", false);
+      btn.title = t("chat_send");
+    }
   }
 
   // 有可见内容（正文/思考/工具段）时返回 true，不显示等待行

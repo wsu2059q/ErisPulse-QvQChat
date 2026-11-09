@@ -22,8 +22,9 @@ _WEEKDAY_ZH = ("周一", "周二", "周三", "周四", "周五", "周六", "周�
 # 可出现在任意一段 AI 发言开头（首个命中对整轮生效，见 AgentRunner.delivery_hint）
 OUTPUT_TAG_RE = re.compile(r"^\[\[(转发|直发)\]\]\s*")
 # 模型经常把标签写进正文中间、漏写成单括号，甚至塞进 send_message 内容里——
-# 统一清扫：双括号任意位置 + 单括号独占一行/首尾的变体
-STRAY_TAG_RE = re.compile(r"^\s*\[\[?(转发|直发)\]\]?\s*$", re.MULTILINE)
+# 统一清扫：双括号任意位置 + 单括号行首（独占一行或同行带正文，如 "[直发] xxx"）
+# 同行带正文是线上实测泄露形态：单/双括号判断都命中不了就原样发出去了
+STRAY_TAG_RE = re.compile(r"^\s*\[\[?(转发|直发)\]\]?\s*", re.MULTILINE)
 STRAY_TAG_INLINE_RE = re.compile(r"\[\[(转发|直发)\]\]")
 
 
@@ -46,6 +47,28 @@ def strip_stray_tags(text: str) -> str:
     text = STRAY_TAG_INLINE_RE.sub("", str(text or ""))
     text = STRAY_TAG_RE.sub("", text)
     return text.strip()
+
+
+# 元叙述开头：模型把"回复策略/分析过程"写进正文首段（随后才是正式回复）
+META_SECTION_RE = re.compile(
+    r"^\s*(回复策略|回复思路|回复方案|分析[：:或]|思考[：:过]|策略[：:]|"
+    r"让我(看看|想想|分析)|我(应该|打算|准备|需要)(先|再)?|本喵(先|再)?(看|想|分析))[^\n]{0,40}[：:、]"
+)
+
+def strip_meta_section(reply: str) -> str:
+    """段级元文本剥离：首段是思考/策略/分析过程而后面还有正文时剥掉首段。
+
+    线上实测形态：首段「回复策略：本喵看不到图……保持简短口语化……就这么回。」
+    空行后才是正式回复——分段器把分析段切第一条发出去了。只剥首段、要求
+    后面还有内容（防止整条唯一段落被误删）；保守词表锚定，不做泛化判断。
+    """
+    text = str(reply or "").strip()
+    if not text or "\n\n" not in text:
+        return text
+    parts = text.split("\n\n", 1)
+    if META_SECTION_RE.match(parts[0]) and parts[1].strip():
+        return parts[1].strip()
+    return text
 
 
 def now_ts() -> float:

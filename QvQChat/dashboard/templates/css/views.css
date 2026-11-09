@@ -158,6 +158,17 @@
   color: var(--qvq-tx-t);
   margin-top: 6px;
 }
+/* 可点击设置每日上限 */
+.qvq-hero-limit.editable {
+  cursor: pointer;
+  display: inline-block;
+  border-bottom: 1px dashed currentColor;
+  opacity: 0.85;
+}
+.qvq-hero-limit.editable:hover {
+  color: var(--qvq-accent);
+  opacity: 1;
+}
 @media (max-width: 720px) {
   .qvq-hero {
     flex-wrap: wrap;
@@ -1196,6 +1207,80 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
   flex: none;
   margin-right: 10px;
 }
+/* 知识库行：标题+标签一行、内容摘要一行、按钮独立右列 */
+.qvq-kb-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--qvq-bd);
+  border-radius: 10px;
+}
+.qvq-kb-row:last-child {
+  border-bottom: none;
+}
+.qvq-kb-row:hover {
+  background: var(--qvq-bg-s);
+}
+.qvq-kb-row .qvq-kb-check {
+  flex: none;
+  margin-top: 3px;
+}
+.qvq-kb-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.qvq-kb-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.qvq-kb-title {
+  font-weight: 600;
+  color: var(--qvq-tx);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qvq-kb-chip {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.qvq-kb-desc {
+  margin-top: 3px;
+  color: var(--qvq-tx-s);
+  font-size: 12px;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.qvq-kb-acts {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.qvq-kb-acts .qvq-btn {
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .qvq-kb-chip {
+    max-width: 100%;
+  }
+  .qvq-kb-acts {
+    flex-direction: column;
+  }
+}
 .qvq-provider-list {
   display: flex;
   flex-direction: column;
@@ -1402,7 +1487,39 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
 .qvq-acct-bots {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px 14px;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+/* 每个 bot 一组（徽标+人格下拉），组内不换行、组间可换行 */
+.qvq-acct-bot {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.qvq-acct-bot .qvq-select {
+  max-width: 190px;
+}
+@media (max-width: 640px) {
+  .qvq-acct-row {
+    align-items: flex-start;
+  }
+  .qvq-acct-platform {
+    min-width: 0;
+    flex: 0 0 100%;
+  }
+  .qvq-acct-bots {
+    flex: 1 1 100%;
+  }
+  .qvq-acct-bot {
+    flex: 1 1 100%;
+  }
+  .qvq-acct-bot .qvq-select {
+    flex: 1;
+    max-width: none;
+  }
 }
 
 /* ===== 存储管理页 ===== */

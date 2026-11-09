@@ -257,6 +257,16 @@ async def web_fetch(ctx: ToolContext, url: str) -> str:
         return texts.t("web_url_required")
     timeout = float(_setting(ctx, "web_timeout", 20) or 20)
     limit = max(500, int(_setting(ctx, "web_fetch_chars", 6000) or 6000))
+# JSON API 直连优先（GitHub REST 等）：结构完整、字段不被阅读器改写
+    if _looks_like_json_api(url):
+        try:
+            status, raw = await _get(url, timeout)
+            if status == 200 and raw.strip():
+                formatted = _format_json_payload(raw, limit)
+                if formatted:
+                    return formatted
+        except Exception:
+            pass
 # 第一优先：r.jina.ai 渲染（对 JS 站点/正文提取更好）；失败回退原始 HTML 去标签
     try:
         status, text = await _get(JINA_READER.format(url=url), timeout)
@@ -270,7 +280,30 @@ async def web_fetch(ctx: ToolContext, url: str) -> str:
         return texts.t("web_fetch_failed", error=e)
     if status != 200 or not page:
         return texts.t("web_fetch_failed", error=f"HTTP {status}")
+    formatted = _format_json_payload(page, limit)
+    if formatted:
+        return formatted
     return html_to_text(page, limit=limit)
+
+
+def _looks_like_json_api(url: str) -> bool:
+    """明显的 JSON API（GitHub REST 等）：jina 渲染会把 JSON 包成散文，必须直连。"""
+    base = url.split("?")[0].split("#")[0].lower()
+    return base.endswith(".json") or "api.github.com" in base or "/api/" in base
+
+
+def _format_json_payload(text: str, limit: int) -> str:
+    """JSON 载荷格式化：能解析就缩进输出（保留结构可读），否则返回空串走原路径。"""
+    import json
+
+    stripped = text.strip()
+    if stripped[:1] not in ("{", "["):
+        return ""
+    try:
+        data = json.loads(stripped)
+    except Exception:
+        return ""
+    return utils.truncate(json.dumps(data, ensure_ascii=False, indent=2), limit)
 
 
 def _schema(properties: dict, required: list[str]) -> dict:
