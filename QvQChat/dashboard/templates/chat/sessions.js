@@ -318,6 +318,13 @@
         "<select class='qvq-select' id='qs-persona'>" + pOpts + "</select>" +
         "<label class='qvq-label'>" + esc(t("chat_trigger")) + "</label>" +
         "<select class='qvq-select' id='qs-trigger'>" + triggerOptions() + "</select>" +
+        "<label class='qvq-label'>" + esc(t("chat_interrupt_mode")) + "</label>" +
+        "<select class='qvq-select' id='qs-interrupt'>" +
+        ['<option value="auto">' + esc(t("interrupt_mode_auto")) + "</option>",
+         '<option value="queue">' + esc(t("interrupt_mode_queue")) + "</option>",
+         '<option value="interrupt">' + esc(t("interrupt_mode_interrupt")) + "</option>"].join("") +
+        "</select>" +
+        "<div class='qvq-tool-desc'>" + esc(t("chat_interrupt_mode_hint")) + "</div>" +
         "<label class='qvq-labelqvq-checkbox'><input type='checkbox' id='qs-listen-off'> " + esc(t("listen_off_toggle")) + "</label>" +
         "<div class='qvq-actions'><button class='qvq-btn' data-qs-save>" + esc(t("settings_save_session")) + "</button>" +
         "<button class='qvq-btn ghost' data-qs-all>" + esc(t("settings_apply_all")) + "</button></div>" +
@@ -329,6 +336,21 @@
       body.querySelector("#qs-model").value = chatModel;
       if (body.querySelector("#qs-model").value !== chatModel) body.querySelector("#qs-model").value = "";
       body.querySelector("#qs-effort").value = chatEffort;
+      // 任务运行中新消息策略（全局配置 auto=AI判断 / queue=排队 / interrupt=中断插入）
+      api("/api/qvq/config").then(function (cfg) {
+        var cur = "auto";
+        ((cfg && cfg.fields) || []).forEach(function (f) {
+          if (f.key === "interrupt_mode") cur = String(f.value || "auto");
+        });
+        var sel = body.querySelector("#qs-interrupt");
+        if (!sel) return;
+        sel.value = cur;
+        sel.onchange = function () {
+          api("/api/qvq/config", "POST", { interrupt_mode: sel.value }).then(function (r) {
+            toast(r && r.ok ? t("saved") : ((r && r.error) || "error"), !(r && r.ok));
+          });
+        };
+      });
       body.querySelector("#qs-persona").value = chatPersona;
       body.querySelector("#qs-trigger").value = (chatMeta && chatMeta.ui && chatMeta.ui.trigger_mode) || "";
       body.querySelector("#qs-listen-off").checked = !!(chatMeta && chatMeta.listen_off);

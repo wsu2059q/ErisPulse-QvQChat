@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from types import SimpleNamespace
 import uuid
@@ -7,6 +8,12 @@ import uuid
 from .. import texts, utils
 from ..agent.runner import AgentRunner
 from ..agent.tools import Tool, ToolContext, ToolRegistry
+
+# 后台子智能体探针（崩溃恢复用）：status running → done/error/interrupted
+SUBJOB_PREFIX = "QvQChat:subjob:"
+SUBJOB_INDEX_KEY = "QvQChat:subjob_index"
+# 后台并发闸门：同时跑的后台子智能体上限（超出排队等槽）
+_SUBJOB_SEMAPHORE = asyncio.Semaphore(2)
 
 
 def _s(**simple) -> dict:
@@ -17,7 +24,8 @@ def _schema(properties: dict, required: list[str]) -> dict:
     return {"type": "object", "properties": properties, "required": required}
 
 
-async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = None, max_rounds: int = 8) -> str:
+async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = None,
+                      max_rounds: int = 8, background: bool = False) -> str:
 
     if str(ctx.chat_key or "").startswith("sub:"):
         return texts.t("subagent_no_nest")
@@ -48,7 +56,7 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
         user_id=ctx.user_id,
         event=ctx.event,
         origin=ctx.origin,
-        confirmer=ctx.confirmer,
+        confirmer=None if background else ctx.confirmer,
         scene_note=str(getattr(ctx, "scene_note", "") or ""),
         parent_chat_key=str(ctx.chat_key or ""),
         self_id=str(getattr(ctx, "self_id", "") or ""),
@@ -72,6 +80,18 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
         payload["step_id"] = "sub:" + str(evt.get("step_id") or "")
         return outer_hook(payload)
 
+    if background:
+# 后台模式：立即返回，跑完经 qvq.subagent_done 事件插回主会话（Main 监听消化）
+        _subjob_probe(main, sub_key, {
+            "sub_key": sub_key,
+            "parent_chat_key": str(ctx.chat_key or ""),
+            "task": utils.truncate(task, 500),
+            "status": "running",
+            "started": time.time(),
+        })
+        main.spawn(_run_background(main, sub_key, sub_ctx, system, [str(t) for t in (tools or [])], task))
+        return texts.t("subagent_background_started", session=sub_key)
+
     started = time.monotonic()
     try:
         result = await runner.run(
@@ -89,6 +109,71 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
     ms = int((time.monotonic() - started) * 1000)
     meta = texts.t("subagent_meta", session=sub_key, tools=len(result.tool_trace), ms=ms)
     return answer + "\n\n" + meta
+
+
+async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[str], task: str) -> None:
+    """后台执行体：跑完落探针 + emit qvq.subagent_done（Main 监听后插回主会话消化）。"""
+    started = time.monotonic()
+    try:
+        async with _SUBJOB_SEMAPHORE:
+            result = await AgentRunner(main.pool, main.registry, sub_ctx.config).run(
+                system=system,
+                messages=[],
+                ctx=sub_ctx,
+                persona_tools=tools or None,
+                priority=6,
+            )
+        answer = (result.text or "").strip() or "-"
+        main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
+        status = "done"
+    except Exception as e:
+        answer = ""
+        status = "error"
+        main.sessions.append(sub_key, "assistant", f"[error] {type(e).__name__}: {e}")
+        main.logger.warning(f"background subagent failed: {type(e).__name__}: {e}")
+    ms = int((time.monotonic() - started) * 1000)
+    probe = main.sdk.storage.get(SUBJOB_PREFIX + sub_key, None)
+    if isinstance(probe, dict):
+        probe.update({"status": status, "finished": time.time(), "ms": ms})
+        main.sdk.storage.set(SUBJOB_PREFIX + sub_key, probe)
+    parent = str(getattr(sub_ctx, "parent_chat_key", "") or "")
+    if not parent or status != "done":
+        return
+    try:
+        await main.sdk.lifecycle.emit("qvq.subagent_done", {
+            "sub_key": sub_key,
+            "parent_chat_key": parent,
+            "task": utils.truncate(task, 500),
+            "answer": answer[:4000],
+            "ms": ms,
+        })
+    except Exception as e:
+        main.logger.warning(f"subagent_done emit failed: {type(e).__name__}: {e}")
+
+
+def _subjob_probe(main, sub_key: str, payload: dict) -> None:
+    """写探针 + 维护索引（崩溃恢复免全库扫描）。"""
+    try:
+        main.sdk.storage.set(SUBJOB_PREFIX + sub_key, payload)
+        index = main.sdk.storage.get(SUBJOB_INDEX_KEY, [])
+        index = [k for k in (index if isinstance(index, list) else []) if k != sub_key]
+        main.sdk.storage.set(SUBJOB_INDEX_KEY, (index + [sub_key])[-100:])
+    except Exception as e:
+        main.logger.debug(f"subjob probe write failed: {type(e).__name__}: {e}")
+
+
+def recover_subjobs(main) -> None:
+    """启动恢复：上次进程遗留 running 的后台子智能体标记 interrupted（结果已丢失）。"""
+    try:
+        index = main.sdk.storage.get(SUBJOB_INDEX_KEY, [])
+    except Exception:
+        return
+    for sub_key in (index if isinstance(index, list) else []):
+        probe = main.sdk.storage.get(SUBJOB_PREFIX + str(sub_key), None)
+        if isinstance(probe, dict) and probe.get("status") == "running":
+            probe["status"] = "interrupted"
+            probe["finished"] = time.time()
+            main.sdk.storage.set(SUBJOB_PREFIX + str(sub_key), probe)
 
 
 def _context_block(main, ctx) -> str:
@@ -133,15 +218,17 @@ def _context_block(main, ctx) -> str:
 def register(registry: ToolRegistry, main) -> None:
     if not bool(getattr(main.cfg, "multi_agent", True)):
         return
+    recover_subjobs(main)
     registry.register(Tool(
         name="spawn_agent",
         access="admin",
-        description="Spawn a sub-agent with an isolated session/context to explore a task independently and report back its conclusion. Best for long fetch/scrape/research subtasks. Before spawning, send the user a short progress line (what you delegated, what happens next). The sub-agent's full process history is kept as its own session (prefix 'sub:') for review.",
+        description="Spawn a sub-agent with an isolated session/context to explore a task independently and report back its conclusion. Best for long fetch/scrape/research subtasks. Use background=true for slow tasks: it runs unsupervised and its report is automatically delivered back into this chat when done (you keep the conversation free). Before spawning, send the user a short progress line (what you delegated, what happens next). The sub-agent's full process history is kept as its own session (prefix 'sub:') for review.",
         parameters=_schema(
             {
                 "task": _s(type="string", description="Self-contained task description for the sub-agent"),
                 "tools": _s(type="array", items=_s(type="string"), description="Optional tool-name whitelist for the sub-agent"),
                 "max_rounds": _s(type="integer", description="Max tool rounds for the sub-agent (1-15, default 8)"),
+                "background": _s(type="boolean", description="true = run unsupervised in background and auto-report into this chat when done (max 2 concurrent); false = wait for the result now"),
             },
             ["task"],
         ),

@@ -162,6 +162,26 @@
         lim.textContent = limit
           ? t("usage_limit") + " " + limit + " · " + Math.min(100, Math.round((tokens / limit) * 100)) + "%"
           : t("hero_no_limit");
+        // 点击设置每日上限（0 = 不限制）
+        lim.classList.add("editable");
+        lim.title = t("limit_edit_hint");
+        lim.onclick = function () {
+          openForm(t("limit_edit_title"), "<label class='qvq-label'>" + esc(t("limit_edit_label")) + "</label>" +
+            "<input class='qvq-input' id='qvq-limit-input' type='number' min='0' step='10000' value='" + (limit || 0) + "' placeholder='0' />" +
+            "<div class='qvq-tool-desc'>" + esc(t("limit_edit_hint")) + "</div>", function (body) {
+            var raw = fv(body, "qvq-limit-input");
+            var value = Math.max(0, parseInt(raw, 10) || 0);
+            api("/api/qvq/config", "POST", { daily_token_limit: value }).then(function (r) {
+              if (r && (r.ok || r.__http === 200) && !(r.errors && Object.keys(r.errors).length)) {
+                toast(t("saved"));
+                closeModal();
+                loadOverview();
+              } else {
+                toast((r && r.error) || "error", true);
+              }
+            });
+          });
+        };
       }
     });
     api("/api/qvq/usage").then(function (data) {
@@ -391,10 +411,20 @@
         : "");
 
     var listHtml = '<div class="qvq-nav-srows" data-srows="1">' + newBtn + (sessionRowsHtml(shown) || "") + "</div>" + foot;
-    if (sideBox && sideBox.getAttribute("data-html") !== listHtml) {
-      sideBox.setAttribute("data-html", listHtml);
-      sideBox.innerHTML = listHtml;
+// 浮层头部带关闭按钮（仅侧面板）
+    var sideHtml = '<div class="qvq-chat-shead"><span class="qvq-chat-shead-t">' + esc(t("chat_sessions_panel")) +
+      '</span><button class="qvq-icon-btn" data-side-close="1" title="' + esc(t("cancel")) + '">' +
+      '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' + listHtml;
+    if (sideBox && sideBox.getAttribute("data-html") !== sideHtml) {
+      sideBox.setAttribute("data-html", sideHtml);
+      sideBox.innerHTML = sideHtml;
       bindSessionRows(sideBox, false);
+      var sCloseBtn = sideBox.querySelector("[data-side-close]");
+      if (sCloseBtn) sCloseBtn.onclick = function () { sideBox.classList.remove("open"); };
+// 选中会话 / 新建后收起浮层
+      sideBox.querySelectorAll(".qvq-chat-srow").forEach(function (row) {
+        row.addEventListener("click", function () { sideBox.classList.remove("open"); });
+      });
       var sb = sideBox.querySelector("[data-new]");
       if (sb) sb.onclick = function () { newChat(); };
       var sFoot = sideBox.querySelector("[data-archived-toggle]");

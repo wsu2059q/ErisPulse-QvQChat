@@ -103,6 +103,15 @@ class ConversationService:
             self._profile = ProfileStore(self.main)
         return self._profile
 
+    @property
+    def todos(self):
+        """会话级 TODO 清单（TodoStore，懒构造；实现在 conversation/todo.py）。"""
+        if getattr(self, "_todos", None) is None:
+            from .todo import TodoStore
+
+            self._todos = TodoStore(self.sdk, self.config)
+        return self._todos
+
 
     def _state(self, chat_key: str) -> dict:
         return self._normalize_state(self.sdk.storage.get(CONV_PREFIX + chat_key, None))
@@ -816,6 +825,7 @@ class ConversationService:
         self.sdk.storage.delete(CONV_PREFIX + chat_key)
         self._index_remove(chat_key)
         self.main.memory.clear(chat_key)
+        self.todos.clear(chat_key)
         personas = getattr(self.main, "personas", None)
         if personas is not None:
             personas.bind(chat_key, None)
@@ -956,6 +966,14 @@ class ConversationService:
                         lines.append(f"[来自 {item['label']}]")
                         lines.append(item["content"])
                     seeded = [{"role": "user", "content": texts.t("cross_session_header") + "\n" + "\n".join(lines)}]
+            if seeded:
+# 纵深防御：seed 里混入"本次输入同文本"的行时剔除——否则实时链路随后
+# 再 append 一次，同一消息在会话里出现两份（webui 可见的重复注入）
+                current_fp = self._seed_fp_of(text)
+                seeded = [
+                    row for row in seeded
+                    if self._seed_fp_of(str(row.get("content") or "")) != current_fp
+                ]
             if seeded:
                 contexts = self.seed_contexts(chat_key, seeded)
                 seeded_done = bool(contexts)
@@ -1279,6 +1297,10 @@ class ConversationService:
             facts = self.facts_of(chat_key)
             if facts:
                 parts.append(SystemPart("facts", texts.t("facts_header") + "\n" + "\n".join(f"- {f}" for f in facts)))
+# TODO 清单注入（facts 之后）：长任务进度对 AI 持续可见，推进即勾选
+            todo_text = self.todos.render(chat_key)
+            if todo_text:
+                parts.append(SystemPart("todo", texts.t("todo_system_note") + "\n" + todo_text))
 # 跨会话用户画像注入（profile_user = platform:uid；PRIORITY 位于 facts 与 memory 之间）
         if profile_user and getattr(self.config, "profile_enabled", True):
             lines = self.profile.digest(profile_user)
@@ -1495,6 +1517,17 @@ class ConversationService:
             return parts[0]["text"]
         return parts
 
+
+    @staticmethod
+    def _seed_fp_of(text: str) -> str:
+        """seed 去重指纹：剥掉 label_incoming 的发言者标注后取尾部（与裸文本可比）。"""
+        import re as _re
+
+        s = str(text or "").strip()
+        s = _re.sub(r"^\[[^\]]*\]\s*", "", s)
+        s = _re.sub(r"^[^\[\n]{1,40}\(\d{5,}\):\s*", "", s)
+        s = _re.sub(r"^\(\d{5,}\):\s*", "", s)
+        return s[-200:]
 
     @staticmethod
     def _text_of(content) -> str:

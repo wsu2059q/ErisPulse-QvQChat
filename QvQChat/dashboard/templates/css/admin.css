@@ -1038,26 +1038,84 @@ input[type="radio"] {
   min-height: 0;
 }
 /* 会话面板：默认收起（会话列表位于左侧导航），聊天头按钮展开。
-   会话列表的主入口是导航内嵌列表（原生形态）；面板是浮层补充 */
+   模态窗形态：居中 + 背板遮罩（点背板/Esc/×/选中会话均关闭），宽度 min(60vw, 920px) */
 .qvq-chat-side {
   display: none;
   position: absolute;
-  z-index: var(--qvq-z-dropdown, 60);
-  top: 8px;
-  bottom: 8px;
-  left: 8px;
-  width: 232px;
-  padding: 10px 8px;
+  z-index: calc(var(--qvq-z-dropdown, 60) + 2);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(60vw, 920px);
+  max-height: min(82vh, 760px);
+  max-height: min(82dvh, 760px);
+  padding: 14px 12px;
   background: var(--qvq-surface);
   border: 1px solid var(--qvq-bd);
-  border-radius: 14px;
+  border-radius: 16px;
   overflow-y: auto;
   overscroll-behavior: contain;
   box-shadow: var(--qvq-shadow-hover);
 }
+.qvq-chat-side-backdrop {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--qvq-z-dropdown, 60) + 1);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
 .qvq-chat-app { position: relative; }
 .qvq-chat-side.open {
   display: block;
+}
+.qvq-chat-side.open + .qvq-chat-side-backdrop {
+  display: block;
+}
+/* 浮层头部：标题 + 关闭按钮 */
+.qvq-chat-shead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--qvq-bd);
+}
+.qvq-chat-shead-t {
+  font-weight: 600;
+  font-size: 14px;
+}
+/* 手机端：模态近全屏 sheet，操作按钮缩小一档 */
+@media (max-width: 640px) {
+  .qvq-chat-side {
+    width: 94%;
+    max-height: 86vh;
+    max-height: 86dvh;
+    padding: 12px 8px;
+    border-radius: 14px;
+  }
+  .qvq-chat-sacts {
+    gap: 0;
+    padding: 1px;
+    right: 4px;
+  }
+  .qvq-chat-sacts button {
+    width: 32px;
+    height: 32px;
+  }
+  .qvq-chat-sacts button svg {
+    width: 15px;
+    height: 15px;
+  }
+  .qvq-chat-srow {
+    padding: 9px 6px;
+  }
+  .qvq-chat-stime {
+    display: none;
+  }
+  .qvq-chat-shead-t {
+    font-size: 13.5px;
+  }
 }
 .qvq-chat-srow {
   display: flex;

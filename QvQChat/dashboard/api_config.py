@@ -5,11 +5,38 @@ mixin 由 DashboardManager 组合，HTTP 路由路径不变（路由表仍在 ma
 from __future__ import annotations
 
 import asyncio
+import io
+import json
+import re
+import zipfile
 from dataclasses import fields as dc_fields
+from pathlib import Path
 
 from .. import texts, utils
 from ..Config import QvQConfig
 from ..engine.base import ChatRequest
+
+# 去隐私：键名命中即掩码（providers api_key / mcp headers / config 敏感字段 / KV 内嵌密钥）
+_SENSITIVE_KEY_RE = re.compile(r"api[_-]?key|apikey|secret|token|password|authorization", re.I)
+_SENSITIVE_MARK = "«removed»"
+
+
+def _sanitize_value(value):
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if isinstance(k, str) and _SENSITIVE_KEY_RE.search(k) and v not in (None, "", [], {}):
+                out[k] = _SENSITIVE_MARK
+            else:
+                out[k] = _sanitize_value(v)
+        return out
+    if isinstance(value, list):
+        return [_sanitize_value(v) for v in value]
+    return value
+
+
+def _sanitize_payload(payload: dict) -> dict:
+    return _sanitize_value(payload)
 
 
 class ConfigApiMixin:
@@ -289,91 +316,259 @@ class ConfigApiMixin:
         }
 
     async def export_data(self, request):
+        """全量导出。
+
+        format=json（默认，向后兼容：结构化段落，供 import_data 回导）
+        format=zip：data.json（同 json 载荷 + 全量 KV/会话）+ 工作目录/上传/文档缓存文件。
+        sanitize=1：去隐私——providers 密钥、config/mcp/storage 中敏感键名值置 «removed»。
+        domains=a,b,c：内容选择（结构化段 config/models/personas/tasks/memory/skills/mcp +
+        存储域 sessions/memories/profiles/knowledge/audit/usage/participation/shares/recall/
+        pending/trash/docs/settings/other + 文件域 uploads/work/docs_cache），空 = 全部。
+        """
         from ..conversation.memory import MEM_PREFIX
+        from .api_ops import PROTECTED_KEYS, STORAGE_FILE_DOMAINS, _storage_domain_of
+
+# query_params 缺失（旧测试桩直调）时按无参数处理
+        qp = getattr(request, "query_params", None)
+        qp_get = qp.get if hasattr(qp, "get") else (lambda name, default="": default)
+        sanitize = str(qp_get("sanitize", "") or "") in ("1", "true", "yes")
+        domains_raw = str(qp_get("domains", "") or "")
+        domains = {d.strip() for d in domains_raw.split(",") if d.strip()}
+        want = (lambda section: True) if not domains else (lambda section: section in domains)
 
         memory = {}
+        storage_dump: dict = {}
         for key in self.sdk.storage.keys():
-            if isinstance(key, str) and key.startswith(MEM_PREFIX):
+            if not isinstance(key, str) or key in PROTECTED_KEYS:
+                continue
+            bucket = _storage_domain_of(key)
+            if not want(bucket):
+                continue
+            if key.startswith(MEM_PREFIX):
                 entries = self.sdk.storage.get(key, [])
                 if entries:
                     memory[key[len(MEM_PREFIX):]] = entries
-        return {
-            "version": 3,
+# 全量 KV 落盘（会话/事实/画像/知识库/identity/routes/todo… 一个不漏）
+            if key.startswith("QvQChat:"):
+                try:
+                    storage_dump[key] = self.sdk.storage.get(key, None)
+                except Exception:
+                    continue
+        payload = {
+            "version": 4,
             "exported_at": utils.now_ts(),
-            "providers": self.main.pool.list_providers(),
-            "chain": self.main.pool.model_chain(),
+            "sanitize": sanitize,
+            "providers": self.main.pool.list_providers() if want("models") else [],
+            "chain": self.main.pool.model_chain() if want("models") else [],
             "personas": {
                 pid: data
                 for pid, data in (self.sdk.storage.get("QvQChat:personas", {}) or {}).items()
-            },
-            "tasks": self.main.scheduler.list(),
-            "memory": memory,
-            "mcp": self.main.mcp.list_servers(),
-            "skills": self.main.skills.list_skills(),
-            "config": self._config_snapshot(),
+            } if want("personas") else {},
+            "tasks": self.main.scheduler.list() if want("tasks") else [],
+            "memory": memory if want("memory") else {},
+            "mcp": self.main.mcp.list_servers() if want("mcp") else [],
+            "skills": self.main.skills.list_skills() if want("skills") else [],
+            "config": self._config_snapshot() if want("config") else {},
+            "storage": storage_dump,
         }
+        if domains:
+            payload["domains"] = sorted(domains)
+        if sanitize:
+            payload = _sanitize_payload(payload)
+
+        if str(qp_get("format", "") or "") != "zip":
+            return payload
+        return self._export_zip(payload, sanitize, [d for d in STORAGE_FILE_DOMAINS if want(d[0])])
+
+    def _export_zip(self, payload: dict, sanitize: bool, file_domains=None):
+        """zip 包：data.json + 工作目录/上传/文档缓存全部文件（AI 生成内容随包带走）。"""
+        from .api_ops import STORAGE_FILE_DOMAINS
+
+        buf = io.BytesIO()
+        files_included = 0
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            import json
+
+            zf.writestr("data.json", json.dumps(payload, ensure_ascii=False, default=str))
+            for domain, path in (file_domains if file_domains is not None else STORAGE_FILE_DOMAINS):
+                root = Path(path)
+                if not root.exists():
+                    continue
+                for item in root.rglob("*"):
+                    if not item.is_file():
+                        continue
+                    try:
+                        arc = f"{domain}/{item.relative_to(root).as_posix()}"
+                        zf.write(item, arc)
+                        files_included += 1
+                    except OSError:
+                        continue
+            zf.writestr("manifest.json", json.dumps({
+                "module": "ErisPulse-QvQChat",
+                "version": utils.module_version(),
+                "exported_at": utils.now_ts(),
+                "sanitize": sanitize,
+                "files_included": files_included,
+            }, ensure_ascii=False))
+        from datetime import datetime as _dt
+
+        stamp = _dt.now().strftime("%Y%m%d-%H%M%S")
+        name = f"qvqchat-export-{stamp}{'-sanitized' if sanitize else ''}.zip"
+        from starlette.responses import Response
+
+        return Response(
+            buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={name}"},
+        )
 
     async def import_data(self, request):
         body = await request.json()
         data = (body or {}).get("data") if isinstance(body, dict) else None
         if not isinstance(data, dict):
             return ({"error": "data object required"}, 400)
+        sections = (body or {}).get("sections")
+        strategies = (body or {}).get("strategies") or {}
+        applied, errors = self._apply_import(data, sections, strategies)
+        result = {"ok": True, "applied": applied}
+        if errors:
+            result["errors"] = errors
+        return result
+
+    def _mode_of(self, strategies, section: str) -> str:
+        """合并策略：overwrite 覆盖 / append 追加（只补缺失）/ skip 跳过。"""
+        mode = ""
+        if isinstance(strategies, dict):
+            mode = str(strategies.get(section) or "").strip().lower()
+        return mode if mode in ("overwrite", "append", "skip") else "overwrite"
+
+    def _apply_import(self, data: dict, sections, strategies) -> tuple[list, dict]:
+        """按 sections 选择 + per-section 策略回导；返回 (applied, errors)。sections 空 = 全部。"""
         applied = []
         errors: dict = {}
-        if isinstance(data.get("providers"), list):
-            for provider in data["providers"]:
-                try:
-                    self.main.pool.save_provider(provider)
-                except Exception as e:
-                    errors.setdefault("providers", []).append(str(e))
-            applied.append("providers")
-        elif isinstance(data.get("models"), list):
-            for model in data["models"]:
-                try:
-                    self.main.pool.save_provider({
-                        "id": "imported",
-                        "name": "Imported",
-                        "base_url": model.get("base_url", ""),
-                        "api_key": model.get("api_key", ""),
-                        "models": [{"id": model.get("model", ""), "enabled": True}],
-                    })
-                except Exception as e:
-                    errors.setdefault("models", []).append(str(e))
-            applied.append("models")
-        if isinstance(data.get("chain"), list):
-            self.main.pool.save_chain(data["chain"])
-            applied.append("chain")
-        if isinstance(data.get("personas"), dict):
-            stored = self.sdk.storage.get("QvQChat:personas", {})
-            if not isinstance(stored, dict):
-                stored = {}
-            stored.update(data["personas"])
-            self.sdk.storage.set("QvQChat:personas", stored)
-            applied.append("personas")
-        if isinstance(data.get("tasks"), list):
-            existing = self.main.scheduler.list()
-            known = {t.get("id") for t in existing}
-            for task in data["tasks"]:
-                if isinstance(task, dict) and task.get("id") not in known:
-                    task.setdefault("managed_by", "")
-                    task.setdefault("cron_ref", "")
-                    existing.append(task)
-            if data["tasks"]:
-                self.main.scheduler._save(existing)
-            applied.append("tasks")
-        if isinstance(data.get("memory"), dict):
-            from ..conversation.memory import MEM_PREFIX
 
-            for chat_key, entries in data["memory"].items():
-                if isinstance(entries, list):
-                    self.sdk.storage.set(MEM_PREFIX + str(chat_key), entries)
-            applied.append("memory")
-        if isinstance(data.get("mcp"), list):
-            self.main.mcp.replace_servers([s for s in data["mcp"] if isinstance(s, dict)])
-            applied.append("mcp")
-        if isinstance(data.get("skills"), list):
-            for s in data["skills"]:
-                if isinstance(s, dict) and s.get("name"):
+        def want(section: str) -> bool:
+            return not isinstance(sections, (list, set)) or section in sections
+
+# ---- models（providers + 链）----
+        if want("models"):
+            mode = self._mode_of(strategies, "models")
+            if mode != "skip":
+                known_ids = {p.get("id") for p in self.main.pool.list_providers()}
+                if isinstance(data.get("providers"), list):
+                    for provider in data["providers"]:
+                        if not isinstance(provider, dict):
+                            continue
+                        if mode == "append" and provider.get("id") in known_ids:
+                            continue  # 追加：已存在的不动
+                        try:
+                            self.main.pool.save_provider(provider)
+                        except Exception as e:
+                            errors.setdefault("providers", []).append(str(e))
+                    applied.append("providers")
+                elif isinstance(data.get("models"), list):
+                    for model in data["models"]:
+                        try:
+                            self.main.pool.save_provider({
+                                "id": "imported",
+                                "name": "Imported",
+                                "base_url": model.get("base_url", ""),
+                                "api_key": model.get("api_key", ""),
+                                "models": [{"id": model.get("model", ""), "enabled": True}],
+                            })
+                        except Exception as e:
+                            errors.setdefault("models", []).append(str(e))
+                    applied.append("models")
+                if isinstance(data.get("chain"), list) and mode == "overwrite":
+                    self.main.pool.save_chain(data["chain"])
+                    applied.append("chain")
+
+# ---- personas ----
+        if want("personas") and isinstance(data.get("personas"), dict):
+            mode = self._mode_of(strategies, "personas")
+            if mode != "skip":
+                stored = self.sdk.storage.get("QvQChat:personas", {})
+                if not isinstance(stored, dict):
+                    stored = {}
+                for pid, persona in data["personas"].items():
+                    if mode == "append" and pid in stored:
+                        continue  # 追加：已有人格不动
+                    stored[pid] = persona
+                self.sdk.storage.set("QvQChat:personas", stored)
+                applied.append("personas")
+
+# ---- tasks ----
+        if want("tasks") and isinstance(data.get("tasks"), list):
+            mode = self._mode_of(strategies, "tasks")
+            if mode != "skip":
+                existing = self.main.scheduler.list()
+                if mode == "overwrite":
+                    replaced = []
+                    for task in data["tasks"]:
+                        if isinstance(task, dict):
+                            task.setdefault("managed_by", "")
+                            task.setdefault("cron_ref", "")
+                            replaced.append(task)
+                    existing = replaced  # 覆盖：导入列表整体替换
+                else:  # append：只补缺失 id
+                    known = {t.get("id") for t in existing}
+                    for task in data["tasks"]:
+                        if isinstance(task, dict) and task.get("id") not in known:
+                            task.setdefault("managed_by", "")
+                            task.setdefault("cron_ref", "")
+                            existing.append(task)
+                if data["tasks"]:
+                    self.main.scheduler._save(existing)
+                applied.append("tasks")
+
+# ---- memory ----
+        if want("memory") and isinstance(data.get("memory"), dict):
+            mode = self._mode_of(strategies, "memory")
+            if mode != "skip":
+                from ..conversation.memory import MEM_PREFIX
+
+                for chat_key, entries in data["memory"].items():
+                    if not isinstance(entries, list):
+                        continue
+                    if mode == "append":
+                        old = self.sdk.storage.get(MEM_PREFIX + str(chat_key), [])
+                        old = old if isinstance(old, list) else []
+                        seen = {json.dumps(e, sort_keys=True, default=str) for e in old}
+                        for entry in entries:
+                            mark = json.dumps(entry, sort_keys=True, default=str)
+                            if mark not in seen:
+                                old.append(entry)
+                                seen.add(mark)
+                        self.sdk.storage.set(MEM_PREFIX + str(chat_key), old)
+                    else:
+                        self.sdk.storage.set(MEM_PREFIX + str(chat_key), entries)
+                applied.append("memory")
+
+# ---- mcp ----
+        if want("mcp") and isinstance(data.get("mcp"), list) and data["mcp"]:
+            mode = self._mode_of(strategies, "mcp")
+            if mode != "skip":
+                servers = [s for s in data["mcp"] if isinstance(s, dict)]
+                if mode == "append":
+                    existing = {s.get("name"): s for s in self.main.mcp.list_servers() if isinstance(s, dict)}
+                    for server in servers:
+                        if server.get("name") not in existing:
+                            existing[server.get("name")] = server
+                    self.main.mcp.replace_servers(list(existing.values()))
+                else:
+                    self.main.mcp.replace_servers(servers)
+                applied.append("mcp")
+
+# ---- skills ----
+        if want("skills") and isinstance(data.get("skills"), list):
+            mode = self._mode_of(strategies, "skills")
+            if mode != "skip":
+                known_names = {s.get("name") for s in self.main.skills.list_skills()}
+                for s in data["skills"]:
+                    if not (isinstance(s, dict) and s.get("name")):
+                        continue
+                    if mode == "append" and s.get("name") in known_names:
+                        continue  # 追加：同名技能不动
                     try:
                         self.main.skills.save_skill(
                             str(s.get("name")),
@@ -382,22 +577,98 @@ class ConfigApiMixin:
                         )
                     except (ValueError, OSError) as e:
                         errors.setdefault("skills", []).append(f"{s.get('name')}: {e}")
-            applied.append("skills")
-        if isinstance(data.get("config"), dict):
+                applied.append("skills")
+
+# ---- config ----
+        if want("config") and isinstance(data.get("config"), dict) and data["config"]:
+            mode = self._mode_of(strategies, "config")
+            if mode != "skip":
 # 配置回灌走统一校验 seam（与 dashboard/AI 工具同一 coerce），坏值拒收不落盘
-            applied_cfg, rejected = [], {}
-            for key, value in data["config"].items():
-                ok, coerced, err = QvQConfig.coerce(str(key), value)
-                if ok:
-                    self.sdk.config.setConfig(f"QvQChat.{key}", coerced)
-                    applied_cfg.append(str(key))
-                else:
-                    rejected[str(key)] = err
-            if applied_cfg:
-                applied.append("config")
-            if rejected:
-                errors["config"] = rejected
-        result = {"ok": True, "applied": applied}
+                applied_cfg, rejected = [], {}
+                for key, value in data["config"].items():
+                    ok, coerced, err = QvQConfig.coerce(str(key), value)
+                    if ok:
+                        self.sdk.config.setConfig(f"QvQChat.{key}", coerced)
+                        applied_cfg.append(str(key))
+                    else:
+                        rejected[str(key)] = err
+                if applied_cfg:
+                    applied.append("config")
+                if rejected:
+                    errors["config"] = rejected
+
+# ---- storage（全量 KV 回灌；append = 只补缺失键，覆盖已有键请用 overwrite）----
+        if want("storage") and isinstance(data.get("storage"), dict) and data["storage"]:
+            mode = self._mode_of(strategies, "storage")
+            if mode != "skip":
+                from .api_ops import PROTECTED_KEYS
+
+                written = 0
+                for key, value in data["storage"].items():
+                    if not isinstance(key, str) or not key.startswith("QvQChat:") or key in PROTECTED_KEYS:
+                        continue
+                    if mode == "append" and self.sdk.storage.get(key, None) is not None:
+                        continue  # 追加：已有键不动
+                    self.sdk.storage.set(key, value)
+                    written += 1
+                if written:
+                    applied.append("storage")
+        return applied, errors
+
+    async def import_zip(self, request):
+        """zip 导入：data_b64（base64）+ sections/strategies；peek=1 只探测不落盘。"""
+        import base64
+        import json as _json
+
+        body = await request.json()
+        body = body or {}
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(base64.b64decode(str(body.get("data_b64") or ""))))
+        except Exception:
+            return ({"error": "invalid zip"}, 400)
+        try:
+            payload = _json.loads(zf.read("data.json").decode("utf-8"))
+        except KeyError:
+            return ({"error": "data.json missing in zip"}, 400)
+        except Exception as e:
+            return ({"error": f"data.json parse failed: {e}"}, 400)
+        if not isinstance(payload, dict):
+            return ({"error": "data.json invalid"}, 400)
+        sections = body.get("sections")
+        strategies = body.get("strategies") or {}
+        if body.get("peek"):
+            return {
+                "sections": [k for k in ("models", "personas", "tasks", "memory", "mcp",
+                                         "skills", "config", "storage") if isinstance(payload.get(k), (list, dict)) and payload.get(k)],
+                "files": sorted({n.split("/", 1)[0] for n in zf.namelist() if "/" in n and not n.endswith("/")}),
+                "version": payload.get("version"),
+                "sanitize": bool(payload.get("sanitize")),
+            }
+        applied, errors = self._apply_import(payload, sections, strategies)
+# 文件还原：files 域的合并策略（overwrite 覆盖 / append 只补缺失 / skip）
+        file_mode = self._mode_of(strategies, "files")
+        files_restored = 0
+        if file_mode != "skip":
+            from .api_ops import STORAGE_FILE_DOMAINS
+
+            paths = {domain: Path(path) for domain, path in STORAGE_FILE_DOMAINS}
+            for name in zf.namelist():
+                if "/" not in name or name.endswith("/"):
+                    continue
+                domain, rel = name.split("/", 1)
+                root = paths.get(domain)
+                if root is None or not rel or ".." in Path(rel).parts:
+                    continue  # 越界/未知域一律拒写
+                target = root / rel
+                if file_mode == "append" and target.exists():
+                    continue
+                try:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(zf.read(name))
+                    files_restored += 1
+                except OSError as e:
+                    errors.setdefault("files", []).append(f"{name}: {e}")
+        result = {"ok": True, "applied": applied, "files_restored": files_restored}
         if errors:
             result["errors"] = errors
         return result

@@ -64,8 +64,8 @@ async def test_rate_limit_blocks_flood():
         async def reply(self, content, method="Text", quote=False):
             sent.append(content)
 
-    ev = Ev(text="刷屏", group=True, group_id="1", user_id="u9", at=True)
-    for _ in range(4):
+    for i in range(4):
+        ev = Ev(text=f"刷屏{i}", group=True, group_id="1", user_id="u9", at=True)
         await Main._on_message(main, ev)
         await asyncio.sleep(0.06)
     assert len(main.captured) == 2, f"应只放行 2 条，实际 {len(main.captured)}"

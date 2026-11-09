@@ -34,7 +34,7 @@ from .engine.base import TaskSpec
 from .engine.pool import ModelPool
 from .scheduler import Scheduler
 from .skills import SkillManager
-from .tools_builtin import agent, code, computer, erispulse, knowledge, memory, schedule, selfconfig, skilltools, takumi
+from .tools_builtin import agent, code, computer, erispulse, knowledge, memory, schedule, selfconfig, skilltools, takumi, todo
 from .version import __version__
 
 AUDIT_KEY = "QvQChat:audit"
@@ -243,6 +243,10 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         self._chat_locks: dict = {}
         self._pending: dict = {}
         self._waiting: dict = {}
+        self._merge_timers: dict = {}
+        self._last_reply_ts: dict = {}
+        self._proactive_recent: dict = {}
+        self._interrupted_notes: dict = {}
         self._rate_window: dict = {}
         self._rate_notice_shown: dict = {}
 
@@ -314,6 +318,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         self.delivery = Delivery(self)
         self._register_builtin_tools()
         self._register_handlers()
+        self._register_subagent_listener()
         self._register_dashboard()
         self._register_home_entry()
         self.eco.start()
@@ -371,6 +376,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         memory.register(self.registry, self)
         knowledge.register(self.registry, self)
         schedule.register(self.registry, self)
+        todo.register(self.registry, self)
         skilltools.register(self.registry, self)
         agent.register(self.registry, self)
         selfconfig.register(self.registry, self)
@@ -397,6 +403,35 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         missing = [n for n in ("qvq", "agent") if n not in registered]
         if missing:
             self.logger.warning(f"commands not registered: {', '.join(missing)}")
+
+    def _register_subagent_listener(self) -> None:
+        """后台子智能体完成事件 → 结果插回主会话（发起时 spawn 的那个群/私聊）。"""
+        lifecycle = getattr(self.sdk, "lifecycle", None)
+        if lifecycle is None:
+            return
+        lifecycle.register("qvq.subagent_done", self._on_subagent_done)
+
+    def _on_subagent_done(self, data) -> None:
+# 事件链立刻返回：插回消化在独立任务里跑（emit 等全部处理器完成才返回，
+# 不 spawn 会拖住后台子智能体收尾）
+        if not isinstance(data, dict):
+            return
+        parent = str(data.get("parent_chat_key") or "")
+        if not parent:
+            return
+        self.spawn(self._digest_subagent(parent, data))
+
+    async def _digest_subagent(self, parent_chat_key: str, data: dict) -> None:
+        task = str(data.get("task") or "")
+        answer = str(data.get("answer") or "")
+        sub_key = str(data.get("sub_key") or "")
+        prompt = texts.t("subagent_report_prompt", task=utils.truncate(task, 200),
+                         answer=utils.truncate(answer, 3500), session=sub_key)
+        try:
+            await self.run_prompt(parent_chat_key, prompt, origin="proactive",
+                                  persist=True, scene=texts.t("scene_subagent_report"))
+        except Exception as e:
+            self.logger.warning(f"subagent digest failed: {type(e).__name__}: {e}")
 
     def _register_dashboard(self) -> None:
         from .dashboard.live import LiveRegistry
@@ -501,6 +536,8 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             limit = int(getattr(self.cfg, "audit_limit", 5000) or 0)
             if limit > 0:
                 entries = entries[-limit:]
+# 写回存储（此前组装完 entries 直接丢弃——审计页永远为空）
+            self.sdk.storage.set(AUDIT_KEY, entries)
         except Exception as e:
 # 审计落盘失败不能完全静默
             self.logger.debug(f"audit persist failed: {e}")
@@ -508,7 +545,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
     async def run_prompt(self, chat_key: str, prompt: str, persona_id: str = "",
                          origin: str = "task", send: bool = True, user_id: str = "",
                          model: str = "", task_kind: str = "chat", scene: str = "",
-                         temperature: float | None = None) -> str:
+                         temperature: float | None = None, persist: bool = False) -> str:
         from .conversation.service import strip_account as _strip_account
 
         platform, detail_type, target_id = parse_chat_key(_strip_account(strip_isolation(chat_key)))
@@ -540,7 +577,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                     self.logger.debug(f"task model resolve failed: {e}")
 # 与聊天/面板同一把 per-chat 锁（本方法不与 _process_locked 互相嵌套，无死锁）
         async with self._lock_for(chat_key):
-            prepared = await self.sessions.prepare(chat_key, prompt, persona_id=persona_id, persist=False, scene=scene)
+            prepared = await self.sessions.prepare(chat_key, prompt, persona_id=persona_id, persist=persist, scene=scene)
             messages: list = []
             if send and platform:
                 messages.append({"role": "system", "content": texts.t("task_run_note")})
@@ -563,7 +600,19 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 priority=(6 if origin in ("plugin", "proactive") else (8 if origin in ("task", "dashboard", "rpc") else 0)),
                 prefill=str(persona.get("prefill") or ""),
             )
-            reply = utils.strip_stray_tags(result.text.strip()) or texts.t("no_reply_content")
+# 投递意图标签（[[转发]]/[[直发]]，含单括号变体）剥离：任务场景无转发卡语义，
+# 标签只当文本清扫；force 语义丢弃走自动规则
+            reply = utils.strip_output_tag(result.text.strip())[0]
+            reply = utils.strip_stray_tags(reply).strip() or texts.t("no_reply_content")
+# persist=True（插回式调用，如后台子智能体汇报消化）：问答双方都落会话，
+# 下轮对话 AI 才记得"汇报过什么、自己怎么消化的"；一次性任务调用保持 False 不留痕
+            if persist:
+                self.sessions.finalize(
+                    chat_key, reply,
+                    trace=result.tool_trace, rounds=getattr(result, "rounds", None),
+                    usage=getattr(result, "usage", None),
+                    model=(resolved_model or prepared.get("model") or ""),
+                )
             if send and platform:
                 delivered = any(
                     sent_platform == platform and sent_type == detail_type and sent_id == target_id
@@ -718,6 +767,17 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         budget.record(chat_key, "proactive")
 # 主动唤醒场景：明确"没人对你说话"，否则模型会把引导语当成有人在提问
         scene = texts.t("scene_proactive", reason=str(reason or "").strip() or texts.t("scene_proactive_noreason"))
+# 重复话题抑制：列出本会话最近主动发言（30 分钟内），明令不再翻旧账——
+# 否则模型从 summary/facts 里捡最显眼的旧话题反复自说自话（自己说的又进上下文，自激循环）
+        import time as _time
+
+        now = _time.time()
+        recent = [
+            txt for ts, txt in (self._proactive_recent.get(chat_key) or ())
+            if now - ts < 1800
+        ]
+        if recent:
+            scene = scene + "\n" + texts.t("scene_proactive_recent", recent=utils.truncate(" / ".join(recent[-5:]), 400))
         reply = await self.run_prompt(
             chat_key,
             str(prompt or "") or texts.t("participate_speak_prompt"),
@@ -726,6 +786,9 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             send=True,
             scene=scene,
         )
+        if str(reply or "").strip() not in ("", ".", "。", "-"):
+            self._proactive_recent.setdefault(chat_key, []).append((now, utils.truncate(str(reply).strip(), 120)))
+            del self._proactive_recent[chat_key][:-8]
         _log_proactive(True, "")
         return reply
 

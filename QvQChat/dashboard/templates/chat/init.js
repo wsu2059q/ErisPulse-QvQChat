@@ -5,10 +5,11 @@
     applyI18n();
 
     var chatInput = el("qvq-chat-input");
-    el("qvq-chat-send").onclick = function () {
-      if (chatBusy) { cancelChat(); return; }
-      sendChat();
-    };
+// 发送键永远发送：任务运行中则入队列（此前忙时点发送会变成取消，
+
+    el("qvq-chat-send").onclick = function () { sendChat(); };
+    var stopBtn = el("qvq-chat-stop");
+    if (stopBtn) stopBtn.onclick = function () { cancelChat(); };
     chatInput.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
@@ -37,12 +38,41 @@
       } catch (err) {}
     });
     el("qvq-chat-attach-btn").onclick = function () { el("qvq-chat-file").click(); };
+// 移动端表格卡片化：全局观察器给表格补 data-cards / data-col 属性
+// 都会被补上 data-cards/data-col（此前只有 loadInto 路径调用，其余页面在
+
+    (function watchTables() {
+      var pending = false;
+      var run = function () {
+        pending = false;
+        try { cardifyTables(document); } catch (e) {}
+      };
+      var observer = new MutationObserver(function () {
+        if (pending) return;
+        pending = true;
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+        else setTimeout(run, 16);
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    })();
 // 会话面板（浮层）：默认收起，按钮切换 .open
     var sideToggle = el("qvq-chat-side-toggle");
     if (sideToggle) sideToggle.onclick = function () {
       var side = el("qvq-chat-side");
       if (side) side.classList.toggle("open");
     };
+// 浮层关闭：点外部 / Esc / 选中会话后收起（此前只能再点按钮，点外部关不掉）
+    document.addEventListener("click", function (e) {
+      var side = el("qvq-chat-side");
+      if (!side || !side.classList.contains("open")) return;
+      if (side.contains(e.target) || (sideToggle && sideToggle.contains(e.target))) return;
+      side.classList.remove("open");
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      var side = el("qvq-chat-side");
+      if (side && side.classList.contains("open")) side.classList.remove("open");
+    });
     // 快速跳转面板（Ctrl+K / Cmd+K）
     document.addEventListener("keydown", function (e) {
       if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {

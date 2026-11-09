@@ -86,9 +86,10 @@
             var info = accts.filter(function (a) { return a.account === b; })[0];
             var persona = info ? (info.persona || "") : "";
             var cnt = info ? info.sessions : 0;
-            return '<span class="qvq-acct-badge' + (info ? " iso" : "") + '" title="' + esc(ad.platform) + (cnt ? " · " + cnt + " " + esc(t("acct_sessions_unit")) : "") + '">' + esc(b) +
+            return '<span class="qvq-acct-bot">' +
+              '<span class="qvq-acct-badge' + (info ? " iso" : "") + '" title="' + esc(ad.platform) + (cnt ? " · " + cnt + " " + esc(t("acct_sessions_unit")) : "") + '">' + esc(b) +
               (cnt ? " · " + cnt : "") + "</span>" +
-              '<span class="qvq-acct-persona">' + personaSelect(b, persona) + "</span>";
+              '<span class="qvq-acct-persona">' + personaSelect(b, persona) + "</span></span>";
           }).join("")
         : '<span class="qvq-tool-desc">-</span>';
       return '<div class="qvq-acct-row"><span class="qvq-acct-platform">' + esc(ad.platform) + "</span>" +
@@ -102,8 +103,9 @@
     if (stale.length) {
       html += '<div class="qvq-acct-row stale"><span class="qvq-acct-platform">' + esc(t("acct_offline")) + '</span><span class="qvq-acct-bots">' +
         stale.map(function (a) {
-          return '<span class="qvq-acct-badge iso" title="' + esc(a.platforms.join(", ")) + '">@' + esc(a.account) + " · " + a.sessions + "</span>" +
-            '<span class="qvq-acct-persona">' + personaSelect(a.account, a.persona || "") + "</span>";
+          return '<span class="qvq-acct-bot">' +
+            '<span class="qvq-acct-badge iso" title="' + esc(a.platforms.join(", ")) + '">@' + esc(a.account) + " · " + a.sessions + "</span>" +
+            '<span class="qvq-acct-persona">' + personaSelect(a.account, a.persona || "") + "</span></span>";
         }).join("") + "</span></div>";
     }
     box.innerHTML = html;
@@ -1496,16 +1498,23 @@
         '<label class="qvq-check-inline"><input type="checkbox" id="qvq-kb-all"/> ' + esc(t("batch_select_all")) + "</label>" +
         '<button type="button" class="qvq-btn small danger" id="qvq-kb-batch">' + esc(t("batch_delete")) + "</button>" +
         '<button type="button" class="qvq-btn small ghost" id="qvq-kb-organize">' + esc(t("organize_run")) + "</button></div>";
+// 三行结构：标题+标签 / 内容摘要 / 操作按钮独立列
       box.innerHTML = kbBatch + entries.map(function (entry) {
-        return '<div class="qvq-tool-row" data-kb="' + esc(entry.id) + '"><input type="checkbox" class="qvq-kb-check" data-check-id="' + esc(entry.id) + '"/>' +
-          '<span class="qvq-tool-name">' + esc(entry.title) +
-          (entry.source ? " <span class='qvq-chip'>" + esc(entry.source) + "</span>" : "") +
-          (entry.triggers && entry.triggers.length ? " <span class='qvq-chip'>@" + esc(entry.triggers.join(", ")) + "</span>" : "") +
-          (entry.priority ? " <span class='qvq-chip'>P" + esc(entry.priority) + "</span>" : "") +
-          (entry.owner ? " <span class='qvq-chip'>" + esc(t("kb_scope_chip_private")) + ": " + esc(entry.owner) + "</span>" : "") + "</span>" +
-          "<span class='qvq-tool-desc'>" + esc((entry.content || "").slice(0, 160)) + "</span>" +
-          "<button class='qvq-btn small' data-kb-edit='" + esc(entry.id) + "'>" + esc(t("kb_edit")) + "</button> " +
-          "<button class='qvq-btn small danger' data-kb-del='" + esc(entry.id) + "'>" + esc(t("del")) + "</button></div>";
+        var chips = (entry.source ? " <span class='qvq-chip qvq-kb-chip'>" + esc(entry.source) + "</span>" : "") +
+          (entry.triggers && entry.triggers.length ? " <span class='qvq-chip qvq-kb-chip'>@" + esc(entry.triggers.join(", ")) + "</span>" : "") +
+          (entry.priority ? " <span class='qvq-chip qvq-kb-chip'>P" + esc(entry.priority) + "</span>" : "") +
+          (entry.owner ? " <span class='qvq-chip qvq-kb-chip'>" + esc(t("kb_scope_chip_private")) + ": " + esc(entry.owner) + "</span>" : "");
+        var full = String(entry.content || "");
+        return '<div class="qvq-kb-row" data-kb="' + esc(entry.id) + '">' +
+          '<input type="checkbox" class="qvq-kb-check" data-check-id="' + esc(entry.id) + '"/>' +
+          '<div class="qvq-kb-main">' +
+          '<div class="qvq-kb-head"><span class="qvq-kb-title" title="' + esc(entry.title) + '">' + esc(entry.title) + "</span>" + chips + "</div>" +
+          '<div class="qvq-kb-desc" title="' + esc(full.slice(0, 500)) + '">' + esc(full.slice(0, 240)) + "</div>" +
+          "</div>" +
+          '<div class="qvq-kb-acts">' +
+          "<button class='qvq-btn small' data-kb-edit='" + esc(entry.id) + "'>" + esc(t("kb_edit")) + "</button>" +
+          "<button class='qvq-btn small danger' data-kb-del='" + esc(entry.id) + "'>" + esc(t("del")) + "</button>" +
+          "</div></div>";
       }).join("");
       bindKbBatch();
       box.querySelectorAll("button[data-kb-del]").forEach(function (btn) {
@@ -1989,7 +1998,210 @@
     };
     var reset = el("qvq-storage-reset");
     if (reset) reset.onclick = openStorageReset;
+    var exportBtns = [["qvq-export-san", true], ["qvq-export-full", false]];
+    exportBtns.forEach(function (pair) {
+      var btn = el(pair[0]);
+      if (!btn) return;
+      btn.onclick = function () {
+        downloadExport("/api/qvq/export?format=zip&sanitize=" + (pair[1] ? "1" : "0"),
+          "qvqchat-export-" + new Date().toISOString().slice(0, 10) + (pair[1] ? "-sanitized" : "") + ".zip", btn);
+      };
+    });
+    var pickBtn = el("qvq-export-pick");
+    if (pickBtn) pickBtn.onclick = openExportModal;
+    var importBtn = el("qvq-import-btn");
+    if (importBtn) importBtn.onclick = openImportModal;
     if (storageDomainOpen) loadStorageKeys(storageDomainOpen);
+  }
+
+  function downloadExport(url, filename, btn) {
+    if (btn) btn.disabled = true;
+    apiBlob(url).then(function (blob) {
+      if (btn) btn.disabled = false;
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast(t("saved"));
+    }).catch(function (e) {
+      if (btn) btn.disabled = false;
+      toast((e && e.message) || "error", true);
+    });
+  }
+
+  // ===== 导出/导入：内容选择 + 合并策略（覆盖 / 追加 / 跳过）=====
+
+  var EXPORT_GROUPS = [
+    ["export_grp_data", [["config", "export_sec_config"], ["models", "export_sec_models"], ["personas", "export_sec_personas"],
+      ["tasks", "export_sec_tasks"], ["memory", "export_sec_memory"], ["skills", "export_sec_skills"], ["mcp", "export_sec_mcp"]]],
+    ["export_grp_storage", [["sessions", "storage_d_sessions"], ["memories", "storage_d_memories"], ["profiles", "storage_d_profiles"],
+      ["personas", "storage_d_personas"], ["knowledge", "storage_d_knowledge"], ["audit", "storage_d_audit"], ["usage", "storage_d_usage"],
+      ["tasks", "storage_d_tasks"], ["participation", "storage_d_participation"], ["shares", "storage_d_shares"],
+      ["recall", "storage_d_recall"], ["pending", "storage_d_pending"], ["trash", "storage_d_trash"],
+      ["docs", "storage_d_docs"], ["settings", "storage_d_settings"], ["other", "storage_d_other"]]],
+    ["export_grp_files", [["uploads", "storage_d_uploads"], ["work", "storage_d_work"], ["docs_cache", "storage_d_docs_cache"]]],
+  ];
+
+  var STRATEGIES = [["overwrite", "strategy_overwrite"], ["append", "strategy_append"], ["skip", "strategy_skip"]];
+
+  function strategySelect(id) {
+    var html = "<select class='qvq-input' id='" + id + "'>";
+    STRATEGIES.forEach(function (pair) {
+      html += "<option value='" + pair[0] + "'>" + esc(t(pair[1])) + "</option>";
+    });
+    return html + "</select>";
+  }
+
+  function openExportModal() {
+    var html = "";
+    EXPORT_GROUPS.forEach(function (group) {
+      html += "<div class='qvq-label'>" + esc(t(group[0])) + "</div><div style='display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:6px'>";
+      group[1].forEach(function (p) {
+        html += "<label style='display:flex;align-items:center;gap:5px'><input type='checkbox' data-exp-sec='" + p[0] + "' checked /> " + esc(t(p[1])) + "</label>";
+      });
+      html += "</div>";
+    });
+    html += "<label style='display:flex;align-items:center;gap:6px;margin-top:10px'><input type='checkbox' id='qvq-exp-san' checked /> " +
+      esc(t("storage_export_hint")) + "</label>";
+    openForm(t("storage_export_pick"), html, function (body) {
+      var secs = [];
+      body.querySelectorAll("input[data-exp-sec]:checked").forEach(function (input) {
+        if (secs.indexOf(input.getAttribute("data-exp-sec")) === -1) secs.push(input.getAttribute("data-exp-sec"));
+      });
+      if (!secs.length) {
+        toast(t("export_none_selected"), true);
+        return;
+      }
+      var san = body.querySelector("#qvq-exp-san").checked;
+      closeModal();
+      downloadExport("/api/qvq/export?format=zip&sanitize=" + (san ? "1" : "0") +
+        "&domains=" + encodeURIComponent(secs.join(",")),
+        "qvqchat-export-" + new Date().toISOString().slice(0, 10) + (san ? "-sanitized" : "") + ".zip");
+    });
+  }
+
+  function openImportModal() {
+    var html =
+      "<label class='qvq-label'>" + esc(t("import_file_label")) + "</label>" +
+      "<input type='file' id='qvq-imp-file' accept='.json,.zip' class='qvq-input' />" +
+      "<div id='qvq-imp-body' style='margin-top:10px'></div>" +
+      "<div class='qvq-actions'><button class='qvq-btn' data-imp-apply disabled>" + esc(t("import_apply")) + "</button>" +
+      "<button class='qvq-btn ghost' data-imp-cancel>" + esc(t("cancel")) + "</button></div>";
+    openModal(t("storage_import"), html);
+    var body = el("qvq-modal-body");
+    body.querySelector("[data-imp-cancel]").onclick = closeModal;
+    var pending = null; // {kind: json|zip, data|b64}
+    var fileInput = body.querySelector("#qvq-imp-file");
+    fileInput.onchange = function () {
+      var file = this.files[0];
+      if (!file) return;
+      pending = null;
+      var applyBtn = body.querySelector("[data-imp-apply]");
+      applyBtn.disabled = true;
+      var box = body.querySelector("#qvq-imp-body");
+      if (/.zip$/i.test(file.name)) {
+        var reader = new FileReader();
+        reader.onload = function () {
+          var bytes = new Uint8Array(reader.result);
+          var bin = "";
+          for (var i = 0; i < bytes.length; i += 0x8000) {
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+          }
+          var b64 = btoa(bin);
+          api("/api/qvq/import/zip", "POST", { data_b64: b64, peek: true }).then(function (info) {
+            if (info && info.error) {
+              box.innerHTML = '<div class="qvq-empty">' + esc(info.error) + "</div>";
+              return;
+            }
+            pending = { kind: "zip", b64: b64, sections: info.sections || [], files: info.files || [] };
+            renderImportSections(body, pending, applyBtn);
+          });
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        var textReader = new FileReader();
+        textReader.onload = function () {
+          var parsed;
+          try {
+            parsed = JSON.parse(textReader.result);
+          } catch (e) {
+            box.innerHTML = '<div class="qvq-empty">' + esc(t("import_failed")) + "</div>";
+            return;
+          }
+          pending = { kind: "json", data: parsed, sections: detectedSections(parsed), files: [] };
+          renderImportSections(body, pending, applyBtn);
+        };
+        textReader.readAsText(file);
+      }
+    };
+    body.querySelector("[data-imp-apply]").onclick = function () {
+      if (!pending) return;
+      var sections = [];
+      body.querySelectorAll("input[data-imp-sec]:checked").forEach(function (input) {
+        sections.push(input.getAttribute("data-imp-sec"));
+      });
+      var strategies = {};
+      body.querySelectorAll("select[data-imp-strategy]").forEach(function (sel) {
+        strategies[sel.getAttribute("data-imp-strategy")] = sel.value;
+      });
+      if (pending.kind === "json") {
+        api("/api/qvq/import", "POST", { data: pending.data, sections: sections, strategies: strategies }).then(function (r) {
+          if (r && r.ok) {
+            toast(t("import_done").replace("{n}", (r.applied || []).length));
+            closeModal();
+          } else {
+            toast((r && r.error) || t("import_failed"), true);
+          }
+        });
+      } else {
+        api("/api/qvq/import/zip", "POST", { data_b64: pending.b64, sections: sections, strategies: strategies }).then(function (r) {
+          if (r && r.ok) {
+            toast(t("import_done").replace("{n}", (r.applied || []).length + (r.files_restored || 0)));
+            closeModal();
+            loadStorage();
+          } else {
+            toast((r && r.error) || t("import_failed"), true);
+          }
+        });
+      }
+    };
+  }
+
+  function detectedSections(data) {
+    var order = ["models", "personas", "tasks", "memory", "mcp", "skills", "config", "storage"];
+    var found = [];
+    order.forEach(function (key) {
+      var value = data && data[key];
+      if (Array.isArray(value) ? value.length : (value && typeof value === "object" && Object.keys(value).length)) {
+        found.push(key);
+      }
+    });
+    return found;
+  }
+
+  var SECTION_LABELS = {
+    models: "export_sec_models", personas: "export_sec_personas", tasks: "export_sec_tasks",
+    memory: "export_sec_memory", mcp: "export_sec_mcp", skills: "export_sec_skills",
+    config: "export_sec_config", storage: "export_sec_storage", files: "storage_d_uploads"
+  };
+
+  function renderImportSections(body, pending, applyBtn) {
+    var box = body.querySelector("#qvq-imp-body");
+    var names = (pending.sections || []).slice();
+    if (pending.kind === "zip" && (pending.files || []).length) names.push("files");
+    if (!names.length) {
+      box.innerHTML = '<div class="qvq-empty">' + esc(t("import_nothing")) + "</div>";
+      return;
+    }
+    var html = "";
+    names.forEach(function (name) {
+      html += "<div style='display:flex;align-items:center;gap:10px;margin-bottom:6px'>" +
+        "<label style='display:flex;align-items:center;gap:5px;flex:1'><input type='checkbox' data-imp-sec='" + esc(name) + "' checked /> " +
+        esc(t(SECTION_LABELS[name] || name)) + "</label>" + strategySelect("strat-" + name).replace("<select ", "<select data-imp-strategy='" + esc(name) + "' ") + "</div>";
+    });
+    box.innerHTML = html;
+    applyBtn.disabled = false;
   }
 
   function loadStorageKeys(domain) {

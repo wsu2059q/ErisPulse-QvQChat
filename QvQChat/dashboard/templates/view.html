@@ -156,6 +156,7 @@
     <section class="qvq-tab" data-section="chat">
       <div class="qvq-chat-app">
         <aside class="qvq-chat-side" id="qvq-chat-side"></aside>
+        <div class="qvq-chat-side-backdrop" id="qvq-chat-side-backdrop"></div>
         <div class="qvq-chat-main">
           <header class="qvq-chat-top">
             <button class="qvq-icon-btn" id="qvq-chat-side-toggle" type="button" data-i18n-title="chat_sessions_panel" title="会话面板">
@@ -191,9 +192,11 @@
                 <span id="qvq-chat-mm-label">自动 · 默认</span>
                 <i class="qvq-dd-chev"></i>
               </button>
+              <button class="qvq-composer-stop" id="qvq-chat-stop" type="button" data-i18n-title="chat_stop" title="停止" style="display:none">
+                <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+              </button>
               <button class="qvq-composer-send" id="qvq-chat-send" type="button" data-i18n-title="chat_send" title="发送">
                 <svg class="ico-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                <svg class="ico-stop" viewBox="0 0 24 24" style="display:none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
               </button>
             </div>
           </div>
@@ -352,8 +355,13 @@
       <div class="qvq-toolbar">
         <button class="qvq-btn ghost" id="qvq-storage-refresh" type="button" data-i18n="refresh">刷新</button>
         <button class="qvq-btn ghost" id="qvq-storage-slim" type="button" data-i18n="storage_slim">瘦身</button>
+        <button class="qvq-btn ghost" id="qvq-export-san" type="button" data-i18n="storage_export_san">去隐私导出…</button>
+        <button class="qvq-btn ghost" id="qvq-export-full" type="button" data-i18n="storage_export_full">完整导出…</button>
+        <button class="qvq-btn ghost" id="qvq-export-pick" type="button" data-i18n="storage_export_pick">选择导出…</button>
+        <button class="qvq-btn ghost" id="qvq-import-btn" type="button" data-i18n="storage_import">导入…</button>
         <button class="qvq-btn danger" id="qvq-storage-reset" type="button" data-i18n="storage_reset">一键重置…</button>
       </div>
+      <div class="qvq-tool-desc" data-i18n="storage_export_hint">导出全部内容：配置、模型、人格、全部会话与存储（含 AI 生成的工作区/上传文件）。去隐私导出会移除模型密钥、令牌等敏感值。</div>
       <div class="qvq-card">
         <div id="qvq-storage-domains"></div>
       </div>

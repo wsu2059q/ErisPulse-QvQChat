@@ -272,7 +272,9 @@ class EventsMixin:
             except Exception as e:
                 self.logger.debug(f"emit qvq.request failed: {e}")
             if bool(getattr(self.cfg, "request_auto_handle", False)):
-                await self._request_decision(event, entry)
+# spawn 不 await：决策是完整 AI 回合（含工具，可达数十秒），内联等待会拖住
+# 事件链（线上观察到 _on_request 阻塞 46.8s，连带 SQLite 写入排队 database locked）
+                self.spawn(self._request_decision(event, entry))
             else:
                 self.logger.info(f"request received (auto handle off): {entry.get('summary')}")
         except Exception:
@@ -307,6 +309,9 @@ class EventsMixin:
                 send=False,
                 user_id=admin_id,
                 scene=texts.t("scene_request_trigger", summary=summary),
+# persist=True：决策提问进管理员会话历史——否则主人回"同意"时智能体没有上下文，
+# 不知道在同意什么请求（线上实测踩到）
+                persist=True,
             )
         except Exception:
             self.logger.error("request decision failed:\n" + traceback.format_exc())
