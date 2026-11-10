@@ -49,6 +49,21 @@ def strip_stray_tags(text: str) -> str:
     return text.strip()
 
 
+# 假媒体标记：模型不调 TTS/表情包工具，自己写「[语音] 文字」假装发过语音。
+# 剥掉标记保留正文（用户至少能看到内容）；真语音走 tts_* 工具是唯一正道
+VOICE_PREFIX_RE = re.compile(r"^\s*[\[［](语音|声音|voice|audio)[\]］]\s*[:：]?\s*", re.IGNORECASE)
+
+
+def strip_fake_media_prefix(reply: str) -> str:
+    """剥掉开头的假媒体标记（[语音]/[voice] 等），只处理行首形态。"""
+    text = str(reply or "")
+    prev = None
+    while prev != text:
+        prev = text
+        text = VOICE_PREFIX_RE.sub("", text, count=1)
+    return text.strip()
+
+
 # 元叙述开头：模型把"回复策略/分析过程"写进正文首段（随后才是正式回复）
 META_SECTION_RE = re.compile(
     r"^\s*(回复策略|回复思路|回复方案|分析[：:或]|思考[：:过]|策略[：:]|"

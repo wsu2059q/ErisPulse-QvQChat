@@ -353,7 +353,7 @@ def register(registry: ToolRegistry, main) -> None:
             "max_tokens), delete, bind a persona to the current or any chat, unbind, and set/clear the "
             "global default persona. Admin only. "
             "Binding tiers (most specific first, first match wins): exact chat_key → group (platform:group:ID) → "
-            "@account (e.g. \"@643319481\", all chats served by that bot account) → platform (e.g. \"onebot11:*\") "
+            "@account (e.g. \"@<bot account id>\", all chats served by that bot account) → platform (e.g. \"<platform>:*\") "
             "→ global default. So to give ONE bot account a persona, bind with chat_key=\"@<account id>\"; "
             "to apply platform-wide use \"<platform>:*\". Use list first to see existing ids and bindings. "
             "Fields not provided on save keep their stored values (merge semantics)."
@@ -408,18 +408,19 @@ def register(registry: ToolRegistry, main) -> None:
         access="admin",
         description=(
             "Identity migration self-management: after a platform switch or account change, map an old "
-            "chat identity onto a new one so history/persona/memory follow. Platform equivalence hint: "
-            "snowluma and onebot11 are the SAME protocol family (one is a fork of the other) - migrating "
-            "between them is a safe like-for-like swap when the user id matches. For OTHER platform pairs, "
-            "judge yourself: matching user ids across different protocol families MAY be the same person "
-            "but verify with the user before migrating. Modes: alias (map only, histories untouched) / "
+            "chat identity onto a new one so history/persona/memory follow. Platform equivalence: if the old "
+            "and new platform names belong to the same protocol family (one may be a fork of the other), "
+            "migration is a safe like-for-like swap when the user id matches; adapters may self-declare "
+            "their family relations. For OTHER platform pairs, judge yourself: matching user ids across "
+            "different protocol families MAY be the same person but verify with the user before "
+            "migrating. Modes: alias (map only, histories untouched) / "
             "merge (merge old history/facts/memory into target, deduped by time) / overwrite (replace "
             "target history with source, target backed up to recycle bin first). Admin only."
         ),
         parameters=_schema(
             {
                 "action": _s(type="string", description="list / migrate / remove"),
-                "source": _s(type="string", description="Old chat key (platform:detail_type:id), e.g. onebot11:private:12345"),
+                "source": _s(type="string", description="Old chat key (platform:detail_type:id), e.g. <platform>:private:12345"),
                 "target": _s(type="string", description="migrate: new chat key to take over"),
                 "mode": _s(type="string", description="migrate: alias / merge / overwrite (default alias)"),
             },

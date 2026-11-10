@@ -97,6 +97,15 @@
           <div class="qvq-hero-limit" id="qvq-hero-limit"></div>
         </div>
       </div>
+      <div class="qvq-card" id="qvq-onboarding" style="display:none">
+        <h3 class="qvq-card-title" data-i18n="onboard_title">初始化引导</h3>
+        <div class="qvq-tool-desc" data-i18n="onboard_desc">以下生态模块额外注入了「使用建议」提示词（影响 AI 何时主动想到用它的能力）。无论是否勾选，模块的工具 AI 都能发现并使用（工具描述自带能力说明）；勾选只决定要不要这层额外的时机提示。</div>
+        <div id="qvq-onboard-list" style="margin:10px 0"></div>
+        <div class="qvq-actions">
+          <button class="qvq-btn" id="qvq-onboard-save" type="button" data-i18n="save">保存</button>
+          <button class="qvq-btn ghost" id="qvq-onboard-skip" type="button" data-i18n="onboard_skip">跳过</button>
+        </div>
+      </div>
       <div class="qvq-card">
         <h3 class="qvq-card-title" data-i18n="usage_title">用量趋势</h3>
         <div id="qvq-home-chart"></div>
@@ -325,9 +334,11 @@
         <div class="qvq-actions" style="margin-bottom:8px">
           <button class="qvq-btn ghost" id="qvq-identity-btn" data-i18n="identity_manage">身份迁移（换平台/换号保历史）</button>
           <button class="qvq-btn ghost" id="qvq-inbox-btn" data-i18n="inbox_title">事件收件箱</button>
+          <button class="qvq-btn ghost" id="qvq-todo-btn" data-i18n="todo_title">TODO 清单</button>
         </div>
         <div id="qvq-identity-box" style="display:none"></div>
         <div id="qvq-inbox-box" style="display:none"></div>
+        <div id="qvq-todo-box" style="display:none"></div>
         <div id="qvq-sessions-list"></div>
       </div>
     </section>
@@ -355,6 +366,7 @@
       <div class="qvq-toolbar">
         <button class="qvq-btn ghost" id="qvq-storage-refresh" type="button" data-i18n="refresh">刷新</button>
         <button class="qvq-btn ghost" id="qvq-storage-slim" type="button" data-i18n="storage_slim">瘦身</button>
+        <button class="qvq-btn ghost" id="qvq-storage-compact" type="button" data-i18n="storage_compact_btn">压缩会话…</button>
         <button class="qvq-btn ghost" id="qvq-export-san" type="button" data-i18n="storage_export_san">去隐私导出…</button>
         <button class="qvq-btn ghost" id="qvq-export-full" type="button" data-i18n="storage_export_full">完整导出…</button>
         <button class="qvq-btn ghost" id="qvq-export-pick" type="button" data-i18n="storage_export_pick">选择导出…</button>

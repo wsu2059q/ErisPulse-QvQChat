@@ -32,6 +32,14 @@ class UsageMixin:
                 by_chat = {}
             by_chat[chat_key] = int(by_chat.get(chat_key, 0) or 0) + tokens
             data["by_chat"] = by_chat
+# 用户维度（user_daily_budget 配额门槛读这里）：ctx.user_id 由调用方带出
+            user_id = str(usage.get("user_id") or "")
+            if user_id:
+                by_user = data.get("by_user")
+                if not isinstance(by_user, dict):
+                    by_user = {}
+                by_user[user_id] = int(by_user.get(user_id, 0) or 0) + tokens
+                data["by_user"] = by_user
             if model:
                 by_model = data.get("by_model")
                 if not isinstance(by_model, dict):

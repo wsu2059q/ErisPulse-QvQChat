@@ -295,6 +295,11 @@ def _cli_host(**cfg) -> CliHost:
     host = CliHost(**cfg)
     host.cfg.admins = ["u1"]
     host.scheduler = Scheduler(host)
+    # 主人级动作测试：u1 兼任框架主人（monkeypatch 框架主人表）
+    import importlib as _importlib
+
+    _main_mod = _importlib.import_module("QvQChat.Main")
+    _main_mod.framework_masters = lambda: ({"u1"}, {})
     return host
 
 

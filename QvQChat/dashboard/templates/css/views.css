@@ -1286,6 +1286,12 @@ body.qvq-show-keys .qvq-key-tag { display: inline; }
   flex-direction: column;
   gap: 12px;
 }
+.qvq-provider-card.provider-off {
+  opacity: 0.62;
+}
+.qvq-provider-card.provider-off .qvq-provider-title b {
+  text-decoration: line-through;
+}
 .qvq-provider-card {
   border: 1px solid var(--qvq-bd, rgba(128, 128, 128, 0.22));
   border-radius: 12px;

@@ -520,6 +520,38 @@ class InboxMixin(RecoveryMixin):
         if wants_recall and bool(getattr(self.cfg, "humanize_recall_message", True)):
             await delivery.recall_last(chat_key)
 
+    def _user_quota_allow(self, chat_key: str, sender_id: str, event) -> bool:
+        """用户级每日 token 配额：超限拒绝并至多提示一次（管理员豁免）。
+
+        计数在 record_usage 侧（by_user 累加），这里只做门槛判断。
+        """
+        limit = int(getattr(self.cfg, "user_daily_budget", 0) or 0)
+        if limit <= 0 or not sender_id:
+            return True
+        if self.is_admin(sender_id, "chat", event.get_platform() or ""):
+            return True
+        today = time.strftime("%Y-%m-%d")
+        data = self.sdk.storage.get(f"QvQChat:usage:{today}", {})
+        by_user = data.get("by_user") if isinstance(data, dict) else None
+        used = int((by_user or {}).get(sender_id, 0) or 0) if isinstance(by_user, dict) else 0
+        if used < limit:
+            return True
+        notice_key = f"QvQChat:usage:user_quota_noticed:{today}:{sender_id}"
+        if not self.sdk.storage.get(notice_key, False):
+            self.sdk.storage.set(notice_key, True)
+            try:
+                self.spawn(self._quota_notice(event, limit, used))
+            except Exception:
+                self.logger.debug("quota notice spawn failed")
+        self.logger.info(f"user daily quota exceeded ({chat_key}:{sender_id}): {used}/{limit}")
+        return False
+
+    async def _quota_notice(self, event, limit: int, used: int) -> None:
+        try:
+            await event.reply(texts.t("user_quota_reached", limit=limit, used=used))
+        except Exception as e:
+            self.logger.debug(f"quota notice reply failed: {e}")
+
     def _rate_allow(self, chat_key: str, sender_id: str, event) -> bool:
         """群聊 per-user 滑动窗口限频：超限静默丢弃（每窗口至多提示一次），管理员豁免。"""
         limit = int(getattr(self.cfg, "user_rate_limit", 0) or 0)
@@ -776,7 +808,10 @@ class InboxMixin(RecoveryMixin):
             ):
                 return
             event.done()
-            if not self._rate_allow(chat_key, str(event.get_user_id() or ""), event):
+            sender_for_quota = str(event.get_user_id() or "")
+            if not self._user_quota_allow(chat_key, sender_for_quota, event):
+                return
+            if not self._rate_allow(chat_key, sender_for_quota, event):
                 return
             images = self._extract_images(event)
             self._batch_message(event, chat_key, text, images)
@@ -909,7 +944,8 @@ class InboxMixin(RecoveryMixin):
     async def _auto_interrupt_decide(self, chat_key: str, old_live, new_text: str) -> tuple[str, str]:
         """auto 模式的中止/排队判定：cheap 模型结合当前任务与新消息给出决定。
 
-        返回 ("interrupt"|"queue", 理由)；任何失败回退 ("queue", "fallback")——
+        返回 (decision, 理由, 人设化话术)；话术给用户看（"先回你这个，那个任务排着"），
+        机制术语不外露；任何失败回退 ("queue", "fallback", "")——
         宁可排队也不要误杀正在跑的任务。
         """
 # 高负载降载：并发满载时不发判定调用（它本身也是一次模型请求），直接排队——
@@ -918,7 +954,7 @@ class InboxMixin(RecoveryMixin):
         if pool is not None and callable(getattr(pool, "background_blocked", None)) and pool.background_blocked():
             if bool(getattr(self.cfg, "log_debug", False)):
                 self.logger.debug("background skip: interrupt-decide (saturated) -> queue")
-            return "queue", "saturated-skip"
+            return "queue", "saturated-skip", ""
         try:
             current = utils.truncate(str(old_live.text or "").strip(), 500) or "（工具执行中，暂无输出）"
             incoming = utils.truncate(str(new_text or "").strip(), 400)
@@ -962,7 +998,8 @@ class InboxMixin(RecoveryMixin):
                             "agreeing to a pending confirmation), or is a direct question that the running "
                             "task cannot answer. Queue when it is casual chat or belongs to the running "
                             "task. Use <recent-chat> to tell what the new message is replying to. "
-                            'Reply ONLY with JSON: {"decision":"interrupt"|"queue","reason":"one short line"}'
+                            'Reply ONLY with JSON: {"decision":"interrupt"|"queue",'
+                            '"line":"one short in-persona sentence telling the user what happens to their message (and to the old task if stopped), no jargon"}'
                         ),
                     },
                     {
@@ -988,10 +1025,10 @@ class InboxMixin(RecoveryMixin):
                 decision = str(data.get("decision") or "").lower()
                 if decision in ("interrupt", "queue"):
                     self.logger.info(f"auto interrupt decision ({chat_key}): {decision} — {data.get('reason', '')}")
-                    return decision, str(data.get("reason") or "")
+                    return decision, str(data.get("reason") or ""), str(data.get("line") or "").strip()
         except Exception as e:
             self.logger.debug(f"auto interrupt decide failed, fallback queue: {e}")
-        return "queue", "fallback"
+        return "queue", "fallback", ""
 
     def _enqueue_waiting(self, chat_key: str, event, items: list) -> None:
         queue = self._waiting.setdefault(chat_key, [])
@@ -1201,18 +1238,31 @@ class InboxMixin(RecoveryMixin):
             return False
         if mode == "auto":
             incoming = " ".join(str(i.get("text") or "") for i in items if isinstance(i, dict) and i.get("text"))
-            decision, _why = await self._auto_interrupt_decide(chat_key, live, incoming)
-            if decision != "interrupt":
-                self._enqueue_waiting(chat_key, event, items)
+            decision, _why, line = await self._auto_interrupt_decide(chat_key, live, incoming)
+# 用户回执：默认用人设化话术（判定模型顺手生成），机制术语不外露；
+# interrupt_say_mode=plain 回退旧机制文案（运维修复期排查用）
+            say_style = str(getattr(self.cfg, "interrupt_say_mode", "persona") or "persona")
+            if say_style == "off":
+                pass  # 完全静默：用户消息直接进队/插队，不播报
+            elif say_style == "plain":
                 try:
-                    await event.reply(texts.t("interrupt_auto_queue"))
+                    await event.reply(texts.t("interrupt_auto_queue" if decision != "interrupt" else "interrupt_auto_stop"))
                 except Exception:
                     pass
+            else:
+                if line:
+                    try:
+                        await event.reply(line)
+                    except Exception:
+                        pass
+                elif decision != "interrupt":
+                    try:
+                        await event.reply(texts.t("interrupt_auto_queue"))
+                    except Exception:
+                        pass
+            if decision != "interrupt":
+                self._enqueue_waiting(chat_key, event, items)
                 return False
-            try:
-                await event.reply(texts.t("interrupt_auto_stop"))
-            except Exception:
-                pass
 # 中断上下文留给即将开始的新回合（模型知道上一轮做到哪被叫停了）
         current = str(getattr(live, "text", "") or "").strip()
         if current:
@@ -1371,20 +1421,24 @@ class InboxMixin(RecoveryMixin):
                         return
                     if mode == "auto":
 # AI 判定：结合当前任务与新消息，cheap 模型决定中止还是排队（失败回退排队）
-                        decision, why = await self._auto_interrupt_decide(
+                        decision, why, line = await self._auto_interrupt_decide(
                             chat_key, old_live, labeled
                         )
+                        say_style = str(getattr(self.cfg, "interrupt_say_mode", "persona") or "persona")
+                        if say_style != "off":
+                            if say_style == "plain" or not line:
+                                try:
+                                    await event.reply(texts.t("interrupt_auto_queue" if decision != "interrupt" else "interrupt_auto_stop"))
+                                except Exception:
+                                    pass
+                            elif line:
+                                try:
+                                    await event.reply(line)
+                                except Exception:
+                                    pass
                         if decision != "interrupt":
                             self._enqueue_waiting(chat_key, event, items)
-                            try:
-                                await event.reply(texts.t("interrupt_auto_queue"))
-                            except Exception:
-                                pass
                             return
-                        try:
-                            await event.reply(texts.t("interrupt_auto_stop"))
-                        except Exception:
-                            pass
                         old_live.cancel()
                         interrupted_note = texts.t(
                             "interrupted_note",
@@ -1543,8 +1597,13 @@ class InboxMixin(RecoveryMixin):
                         reply = utils.strip_meta_section(reply)
                     except Exception as e:
                         self.logger.debug(f"meta strip failed: {e}")
+# 假媒体标记：模型不调 TTS 工具自己写「[语音] xxx」假装发过语音——剥标记留正文
+                try:
+                    reply = utils.strip_fake_media_prefix(reply)
+                except Exception as e:
+                    self.logger.debug(f"fake media strip failed: {e}")
                 reply = reply or texts.t("no_reply_content")
-                self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""))
+                self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), user_id=sender_id)
                 try:
 # 隐私开关：listen_off 时回执事件也不出群
                     if not self.sessions.get_flag(chat_key, "listen_off"):

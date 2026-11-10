@@ -90,7 +90,9 @@ async def test_background_error_marks_probe_no_emit():
         main = FakeMain()
         _, probe = await _bg_spawn(main)
         assert probe["status"] == "error"
-        assert not [d for e, d in main.sdk.lifecycle.emitted if e == "qvq.subagent_done"]
+        # 失败也 emit（带 status/error），但 answer 为空
+        done = [d for e, d in main.sdk.lifecycle.emitted if e == "qvq.subagent_done"]
+        assert done and done[0]["status"] == "error" and "boom" in done[0]["error"]
     finally:
         agent_tool.AgentRunner = real
 
@@ -178,3 +180,59 @@ async def test_run_prompt_persist_writes_both_sides():
     await main.run_prompt(chat_key, "一次性任务提示", origin="task", send=False)
     texts2 = [str(m.get("content")) for m in main.sessions.get_contexts(chat_key)]
     assert not any("一次性任务提示" in t for t in texts2)
+
+
+async def test_failed_subagent_digests_failure_note():
+    """失败也插回：主人知道任务黄了，不是静默。"""
+    real = agent_tool.AgentRunner
+
+    class BoomRunner(_SpyRunner):
+        async def run(self, *, system, messages, ctx, **kwargs):
+            raise RuntimeError("boom 网络炸了")
+
+    agent_tool.AgentRunner = BoomRunner
+    try:
+        main = FakeMain()
+        setattr(main, "_digest_subagent", Main._digest_subagent.__get__(main))
+        setattr(main, "_on_subagent_done", Main._on_subagent_done.__get__(main))
+        main.sdk.lifecycle.register("qvq.subagent_done", main._on_subagent_done)
+        await _bg_spawn(main)
+        done = [d for e, d in main.sdk.lifecycle.emitted if e == "qvq.subagent_done"]
+        assert done and done[0]["status"] == "error"
+        await asyncio.gather(*main.spawned)
+        assert main.prompts, "失败必须插回主会话"
+        chat_key, prompt, kwargs = main.prompts[-1]
+        assert "boom 网络炸了" in prompt
+        assert kwargs.get("persist") is True
+    finally:
+        agent_tool.AgentRunner = real
+
+
+async def test_subjob_observability_and_cancel():
+    """可观测：running_get 带 subjobs；进程内任务可取消。"""
+    real = agent_tool.AgentRunner
+
+    class SlowRunner(_SpyRunner):
+        async def run(self, *, system, messages, ctx, **kwargs):
+            await asyncio.sleep(30)
+            from QvQChat.agent.runner import AgentResult
+
+            return AgentResult(text="慢结果")
+
+    agent_tool.AgentRunner = SlowRunner
+    try:
+        main = FakeMain()
+        main._event_inbox = {}
+        ctx = _group_ctx(main)
+        await agent_tool.spawn_agent(ctx, task="慢慢跑", background=True)
+        await asyncio.sleep(0.05)
+        jobs = agent_tool.list_subjobs(main)
+        running = [j for j in jobs if j["status"] == "running"]
+        assert running and running[0]["sub_key"].startswith("sub:")
+        assert agent_tool.cancel_subjob(main, running[0]["sub_key"]) is True
+        await asyncio.gather(*main.spawned, return_exceptions=True)
+        probe = main.sdk.storage.get(agent_tool.SUBJOB_PREFIX + running[0]["sub_key"], None)
+        assert probe["status"] == "cancelled"
+        assert agent_tool.cancel_subjob(main, running[0]["sub_key"]) is False  # 已结束
+    finally:
+        agent_tool.AgentRunner = real

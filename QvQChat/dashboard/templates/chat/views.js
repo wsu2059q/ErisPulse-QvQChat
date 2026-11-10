@@ -461,14 +461,17 @@
       var modelsHtml = collapsible
         ? "<details class='qvq-provider-fold'><summary>" + esc(t("models_id")) + " · " + models.length + "</summary><div class='qvq-model-grid'>" + chips + "</div></details>"
         : "<div class='qvq-model-grid'>" + chips + "</div>";
-      return "<div class='qvq-provider-card' data-id='" + esc(p.id) + "'>" +
+      var pOff = p.enabled === false;
+      return "<div class='qvq-provider-card" + (pOff ? " provider-off" : "") + "' data-id='" + esc(p.id) + "'>" +
         "<div class='qvq-provider-head'><div class='qvq-provider-title'><b>" + esc(p.name) + "</b>" +
         "<span class='qvq-chip'>" + enabled.length + "/" + models.length + "</span>" +
+        (pOff ? "<span class='qvq-chip danger-chip'>" + esc(t("provider_disabled")) + "</span>" : "") +
         "<span class='qvq-tool-desc'>" + esc(p.base_url || "") + "</span>" +
         "<span class='qvq-tool-desc mono'>" + esc(p.api_key_masked || "-") + "</span></div>" +
         "<div class='qvq-actions'>" +
         "<button class='qvq-btn small ghost' data-act='models' data-id='" + esc(p.id) + "'>" + esc(t("model_manage")) + "</button> " +
         "<button class='qvq-btn small ghost' data-act='edit' data-id='" + esc(p.id) + "'>" + esc(t("edit")) + "</button> " +
+        "<button class='qvq-btn small" + (pOff ? "" : " danger") + "' data-act='ptoggle' data-id='" + esc(p.id) + "' data-on='" + (pOff ? "1" : "0") + "'>" + esc(pOff ? t("provider_enable") : t("provider_disable")) + "</button> " +
         (firstModel ? "<button class='qvq-btn small ghost' data-act='test' data-model='" + esc(firstModel) + "'>" + esc(t("test")) + "</button> " : "") +
         "<button class='qvq-btn small danger' data-act='pdel' data-id='" + esc(p.id) + "'>" + esc(t("del")) + "</button>" +
         "</div></div>" + modelsHtml + "</div>";
@@ -490,6 +493,12 @@
             btn.disabled = false;
             if (r && r.ok) toast(t("model_test_ok") + " · " + (r.model || "") + " · " + r.ms + "ms");
             else toast((r && r.error) || t("model_test_fail"), true);
+          });
+        } else if (act === "ptoggle") {
+          api("/api/qvq/providers/toggle", "POST", { id: pid, enabled: btn.getAttribute("data-on") === "1" }).then(function (r) {
+            if (r && r.ok) toast(t("saved"));
+            else toast((r && r.error) || "error", true);
+            loadModels();
           });
         } else if (act === "models") {
           if (provider) openModelsModal(provider);
@@ -1133,7 +1142,8 @@
       var rows = skills.map(function (sk) {
         var src = sk.source === "file" ? ".md" : (sk.source || "dashboard");
         var chk = sk.enabled !== false ? " checked" : "";
-        return "<tr><td class='qvq-col-check'><input type='checkbox' class='qvq-skill-check' data-check-name='" + esc(sk.name) + "'/></td>" +
+        var skCheck = skillsBatchMode ? "<td class='qvq-col-check'><input type='checkbox' class='qvq-skill-check' data-check-name='" + esc(sk.name) + "'/></td>" : "";
+        return "<tr>" + skCheck +
           "<td><b>" + esc(sk.name) + "</b><div class='qvq-tool-desc'>" + esc((sk.description || "").slice(0, 100)) + "</div></td>" +
           "<td><span class='qvq-chip'>" + esc(src) + "</span></td>" +
           "<td><input type='checkbox' data-toggle='" + esc(sk.name) + "'" + chk + "/></td>" +
@@ -1141,10 +1151,14 @@
           "<button class='qvq-btn small danger' data-act='del' data-name='" + esc(sk.name) + "'>" + esc(t("del")) + "</button></td></tr>";
       }).join("");
       var skillBatch = '<div class="qvq-actions qvq-batch-bar">' +
-        '<label class="qvq-check-inline"><input type="checkbox" id="qvq-skills-all"/> ' + esc(t("batch_select_all")) + "</label>" +
-        '<button type="button" class="qvq-btn small danger" id="qvq-skills-batch">' + esc(t("batch_delete")) + "</button>" +
+        (skillsBatchMode
+          ? '<label class="qvq-check-inline"><input type="checkbox" id="qvq-skills-all"/> ' + esc(t("batch_select_all")) + "</label>" +
+            '<button type="button" class="qvq-btn small danger" id="qvq-skills-batch">' + esc(t("batch_delete")) + "</button>" +
+            '<button type="button" class="qvq-btn small ghost" id="qvq-skills-batch-exit">' + esc(t("batch_exit")) + "</button>"
+          : '<button type="button" class="qvq-btn small ghost" id="qvq-skills-batch-enter">' + esc(t("batch_delete")) + "…</button>") +
         '<button type="button" class="qvq-btn small ghost" id="qvq-skills-organize">' + esc(t("organize_run")) + "</button></div>";
-      el("qvq-skills-list").innerHTML = skillBatch + "<table class='qvq-table'><thead><tr><th></th><th>" + esc(t("skills_name")) + "</th><th>" + esc(t("skills_source")) +
+      var skHeadCheck = skillsBatchMode ? "<th></th>" : "";
+      el("qvq-skills-list").innerHTML = skillBatch + "<table class='qvq-table'><thead><tr>" + skHeadCheck + "<th>" + esc(t("skills_name")) + "</th><th>" + esc(t("skills_source")) +
         "</th><th>" + esc(t("on")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
       bindSkillBatch(skills);
       el("qvq-skills-list").querySelectorAll("input[data-toggle]").forEach(function (cb) {
@@ -1178,6 +1192,10 @@
   function bindSkillBatch(skills) {
     var list = el("qvq-skills-list");
     if (!list) return;
+    var skEnter = list.querySelector("#qvq-skills-batch-enter");
+    if (skEnter) skEnter.onclick = function () { skillsBatchMode = true; loadSkills(); return; };
+    var skExit = list.querySelector("#qvq-skills-batch-exit");
+    if (skExit) skExit.onclick = function () { skillsBatchMode = false; loadSkills(); return; };
     var all = list.querySelector("#qvq-skills-all");
     var batch = list.querySelector("#qvq-skills-batch");
     var organize = list.querySelector("#qvq-skills-organize");
@@ -1494,9 +1512,12 @@
         box.innerHTML = '<div class="qvq-empty">' + esc(t("kb_list_empty")) + "</div>";
         return;
       }
-      var kbBatch = '<div class="qvq-actions qvq-batch-bar">' +
-        '<label class="qvq-check-inline"><input type="checkbox" id="qvq-kb-all"/> ' + esc(t("batch_select_all")) + "</label>" +
-        '<button type="button" class="qvq-btn small danger" id="qvq-kb-batch">' + esc(t("batch_delete")) + "</button>" +
+      var kbBatch = (kbBatchMode
+        ? '<div class="qvq-actions qvq-batch-bar">' +
+          '<label class="qvq-check-inline"><input type="checkbox" id="qvq-kb-all"/> ' + esc(t("batch_select_all")) + "</label>" +
+          '<button type="button" class="qvq-btn small danger" id="qvq-kb-batch">' + esc(t("batch_delete")) + "</button>" +
+          '<button type="button" class="qvq-btn small ghost" id="qvq-kb-batch-exit">' + esc(t("batch_exit")) + "</button>"
+        : '<div class="qvq-actions qvq-batch-bar"><button type="button" class="qvq-btn small ghost" id="qvq-kb-batch-enter">' + esc(t("batch_delete")) + "…</button>") +
         '<button type="button" class="qvq-btn small ghost" id="qvq-kb-organize">' + esc(t("organize_run")) + "</button></div>";
 // 三行结构：标题+标签 / 内容摘要 / 操作按钮独立列
       box.innerHTML = kbBatch + entries.map(function (entry) {
@@ -1506,7 +1527,7 @@
           (entry.owner ? " <span class='qvq-chip qvq-kb-chip'>" + esc(t("kb_scope_chip_private")) + ": " + esc(entry.owner) + "</span>" : "");
         var full = String(entry.content || "");
         return '<div class="qvq-kb-row" data-kb="' + esc(entry.id) + '">' +
-          '<input type="checkbox" class="qvq-kb-check" data-check-id="' + esc(entry.id) + '"/>' +
+          (kbBatchMode ? '<input type="checkbox" class="qvq-kb-check" data-check-id="' + esc(entry.id) + '"/>' : "") +
           '<div class="qvq-kb-main">' +
           '<div class="qvq-kb-head"><span class="qvq-kb-title" title="' + esc(entry.title) + '">' + esc(entry.title) + "</span>" + chips + "</div>" +
           '<div class="qvq-kb-desc" title="' + esc(full.slice(0, 500)) + '">' + esc(full.slice(0, 240)) + "</div>" +
@@ -1558,6 +1579,10 @@
   function bindKbBatch() {
     var box = el("qvq-kb-list");
     if (!box) return;
+    var kbEnter = box.querySelector("#qvq-kb-batch-enter");
+    if (kbEnter) kbEnter.onclick = function () { kbBatchMode = true; loadKnowledge(); return; };
+    var kbExit = box.querySelector("#qvq-kb-batch-exit");
+    if (kbExit) kbExit.onclick = function () { kbBatchMode = false; loadKnowledge(); return; };
     var all = box.querySelector("#qvq-kb-all");
     var batch = box.querySelector("#qvq-kb-batch");
     var organize = box.querySelector("#qvq-kb-organize");
@@ -1789,6 +1814,9 @@
 
   // 会话页账户筛选（多账户隔离：@account 后缀）；空串 = 全部
   var sessionsAcctFilter = "";
+  var sessionsBatchMode = false;  // 批量选择模式：点「批量删除」进入，复选框/全选栏只在该模式下显示
+  var kbBatchMode = false;      // 知识库批量模式
+  var skillsBatchMode = false;  // 技能批量模式
 
   function loadSessions() {
     api("/api/qvq/sessions").then(function (data) {
@@ -1822,7 +1850,10 @@
         if (session.pinned) flags += ' <span class="qvq-chip">' + esc(t("chat_pin_s")) + "</span>";
         if (session.archived) flags += ' <span class="qvq-chip">' + esc(t("chat_archived")) + "</span>";
         if (session.live) flags += ' <span class="qvq-chip live">' + esc(t("orch_running")) + "</span>";
-        return "<tr><td class='qvq-col-check'><input type='checkbox' class='qvq-session-check' data-check-key='" + esc(session.chat_key) + "'/></td>" +
+        var checkCell = sessionsBatchMode
+          ? "<td class='qvq-col-check'><input type='checkbox' class='qvq-session-check' data-check-key='" + esc(session.chat_key) + "'/></td>"
+          : "";
+        return "<tr>" + checkCell +
           "<td><b>" + esc(sessionDisplayName(session)) + "</b>" +
           (acct ? ' <span class="qvq-acct-badge" title="@' + esc(acct) + '">@' + esc(acct) + "</span>" : "") +
           flags +
@@ -1834,10 +1865,14 @@
           "<button class='qvq-btn small ghost' data-access='" + esc(session.chat_key) + "'>" + esc(t("sess_members")) + "</button> " +
           "<button class='qvq-btn small danger' data-key='" + esc(session.chat_key) + "'>" + esc(t("reset_btn")) + "</button></td></tr>";
       }).join("");
-      var sessionBatch = '<div class="qvq-actions qvq-batch-bar">' +
-        '<label class="qvq-check-inline"><input type="checkbox" id="qvq-sessions-all"/> ' + esc(t("batch_select_all")) + "</label>" +
-        '<button type="button" class="qvq-btn small danger" id="qvq-sessions-batch">' + esc(t("batch_delete")) + "</button></div>";
-      el("qvq-sessions-list").innerHTML = filterBar + sessionBatch + "<table class='qvq-table'><thead><tr><th></th><th>" + esc(t("col_chatkey")) + "</th><th>" + esc(t("col_persona")) +
+      var sessionBatch = sessionsBatchMode
+        ? '<div class="qvq-actions qvq-batch-bar">' +
+          '<label class="qvq-check-inline"><input type="checkbox" id="qvq-sessions-all"/> ' + esc(t("batch_select_all")) + "</label>" +
+          '<button type="button" class="qvq-btn small danger" id="qvq-sessions-batch">' + esc(t("batch_delete")) + "</button>" +
+          '<button type="button" class="qvq-btn small ghost" id="qvq-sessions-batch-exit">' + esc(t("batch_exit")) + "</button></div>"
+        : '<div class="qvq-actions qvq-batch-bar"><button type="button" class="qvq-btn small ghost" id="qvq-sessions-batch-enter">' + esc(t("batch_delete")) + "…</button></div>";
+      var headCheck = sessionsBatchMode ? "<th></th>" : "";
+      el("qvq-sessions-list").innerHTML = filterBar + sessionBatch + "<table class='qvq-table'><thead><tr>" + headCheck + "<th>" + esc(t("col_chatkey")) + "</th><th>" + esc(t("col_persona")) +
         "</th><th>" + esc(t("col_turns")) + "</th><th>" + esc(t("col_preview")) + "</th><th>" + esc(t("col_updated")) + "</th><th>" + esc(t("actions")) + "</th></tr></thead><tbody>" + rows + "</tbody></table>";
       }
       el("qvq-sessions-list").querySelectorAll(".qvq-acct-filter .qvq-chip-btn").forEach(function (chip) {
@@ -1867,6 +1902,10 @@
   function bindSessionBatch() {
     var box = el("qvq-sessions-list");
     if (!box) return;
+    var enter = box.querySelector("#qvq-sessions-batch-enter");
+    if (enter) enter.onclick = function () { sessionsBatchMode = true; loadSessions(); return; };
+    var exit = box.querySelector("#qvq-sessions-batch-exit");
+    if (exit) exit.onclick = function () { sessionsBatchMode = false; loadSessions(); return; };
     var all = box.querySelector("#qvq-sessions-all");
     var batch = box.querySelector("#qvq-sessions-batch");
     if (all) all.onchange = function () {
@@ -1994,6 +2033,23 @@
       api("/api/qvq/storage/slim", "POST", {}).then(function (r) {
         toast(t("storage_slim_done").replace("{n}", (r && r.sessions) || 0) + " · " + fmtBytes((r && r.freed) || 0));
         loadStorage();
+      });
+    };
+    // 批量压缩：全部会话历史浓缩为摘要
+    var compactBtn = el("qvq-storage-compact");
+    if (compactBtn) compactBtn.onclick = function () {
+      confirmDialog(t("storage_compact_confirm")).then(function (ok) {
+        if (!ok) return;
+        compactBtn.disabled = true;
+        api("/api/qvq/storage/compact-sessions", "POST", {}).then(function (r) {
+          compactBtn.disabled = false;
+          if (r && r.ok) {
+            toast(t("storage_compact_done").replace("{n}", (r.sessions) || 0) + " · -" + fmtBytes((r.freed_chars) || 0));
+            loadStorage();
+          } else {
+            toast((r && r.error) || "error", true);
+          }
+        }).catch(function () { compactBtn.disabled = false; });
       });
     };
     var reset = el("qvq-storage-reset");

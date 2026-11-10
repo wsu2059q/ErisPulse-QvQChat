@@ -109,6 +109,7 @@
   function loadOverview() {
     var heroEl = el("qvq-hero-title");
     if (heroEl) heroEl.textContent = heroTitle();
+    maybeOnboarding();
     api("/api/qvq/status").then(function (data) {
       var tools = data.tools || {};
       var total = 0;

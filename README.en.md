@@ -77,6 +77,11 @@ Chat commands use `/qvq` (`/agent` still works as an alias; each subcommand also
 | `/qvq status` | models, tools and sessions at a glance |
 | `/qvq takeover [minutes]` | take over this session (admin), defaults to 10 minutes |
 | `/qvq release` | release the takeover |
+| `/qvq trigger [mode]` | view/set trigger rule (all/at_only/lurk/off) |
+| `/qvq listen on/off` | per-chat listening toggle (privacy) |
+| `/qvq memories` | view session memories/profile |
+| `/qvq rewind [n]` | rewind recent n messages |
+| `/qvq whoami` | identity/admin diagnosis |
 
 ---
 

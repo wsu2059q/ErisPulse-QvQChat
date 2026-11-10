@@ -12,6 +12,20 @@ class MemoryStore:
     def __init__(self, sdk: Any, config: Any):
         self.sdk = sdk
         self.config = config
+        self._vectors = None  # 懒构造（engine.vectors），embedding_enabled 时 recall 走语义分支
+
+    def _vectors_if_enabled(self):
+        if self._vectors is not None:
+            return self._vectors
+        try:
+            from ..engine import vectors as _vectors
+
+            if getattr(self.config, "embedding_enabled", False) and _vectors.available(self.config):
+                self._vectors = _vectors
+                return self._vectors
+        except Exception:
+            pass
+        return None
 
     def entries(self, chat_key: str) -> list[dict]:
         data = self.sdk.storage.get(MEM_PREFIX + chat_key, [])
@@ -60,6 +74,29 @@ class MemoryStore:
             limit = int(getattr(self.config, "memory_recall", 6))
         if not query.strip():
             return sorted(entries, key=lambda e: e.get("ts", 0), reverse=True)[:limit]
+        vectors = self._vectors_if_enabled()
+        if vectors is not None:
+# 语义分支：余弦为主，重要性/时间衰减做轻调（条目少时 embedding 也保真）
+            try:
+                qvecs = vectors.embed([query], self.config)
+                qvec = qvecs[0] if qvecs else None
+                if qvec is not None:
+                    contents = [str(e.get("content") or "") for e in entries]
+                    dvecs = vectors.embed(contents, self.config) if contents else []
+                    if len(dvecs) == len(entries):
+                        scored = []
+                        for entry, dvec in zip(entries, dvecs):
+                            score = vectors.cosine(qvec, dvec) * 3.0
+                            if score <= 0:
+                                continue
+                            score += entry.get("importance", 3) * 0.1
+                            days = max(0.0, (now - entry.get("ts", now)) / 86400)
+                            score -= days * 0.05
+                            scored.append((score, entry))
+                        scored.sort(key=lambda pair: pair[0], reverse=True)
+                        return [entry for score, entry in scored[:limit] if score > 0.2]
+            except Exception:
+                pass  # 语义环节任何失败回退词面
         scored = []
         for entry in entries:
             score = utils.overlap_score(query, entry.get("content", "")) * 2.0

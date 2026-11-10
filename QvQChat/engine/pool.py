@@ -157,6 +157,8 @@ class ModelPool:
             "base_url": str(data.get("base_url") or "").rstrip("/"),
             "api_key": str(data.get("api_key") or ""),
             "models": data.get("models") if isinstance(data.get("models"), list) else [],
+# provider 级禁用开关：临时下线整个供应方（模型链跳过；重新启用即恢复）
+            "enabled": bool(data.get("enabled", True)),
         }
         if not entry["base_url"]:
             raise EngineError(texts.t("provider_base_url_required"))
@@ -433,6 +435,8 @@ class ModelPool:
     def needs_enrichment(self, providers: list[dict] | None = None) -> bool:
         checks = ("context_length", "tool_call", "cost")
         for provider in providers if providers is not None else self.list_providers():
+            if provider.get("enabled") is False:
+                continue
             for model in provider.get("models") or []:
                 if isinstance(model, dict) and model.get("enabled", True) and model.get("manual") is not True:
                     if any(model.get(key) is None for key in checks):
@@ -535,6 +539,8 @@ class ModelPool:
             if not found:
                 continue
             provider, model = found
+            if provider.get("enabled") is False:
+                continue  # provider 级禁用：整家临时下线
             if not model.get("enabled", True):
                 continue
             models.append(

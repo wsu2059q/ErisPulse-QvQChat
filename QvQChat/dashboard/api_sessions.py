@@ -103,7 +103,82 @@ class SessionsApiMixin:
             limit = 100
         entries = self._inbox_entries(kind, account)
         unread = sum(1 for e in entries if not e.get("read"))
+# 读取即标已读（单源：与 AI list_events 同一 read 字段；仅标记本次返回的页）
+        for entry in entries[:limit]:
+            if entry.get("read"):
+                continue
+            entry["read"] = True
+            try:
+                inbox_account = str(entry.get("account") or "default")
+                for item in self.main._inbox_load(inbox_account):
+                    if str(item.get("id") or "") == str(entry.get("id") or ""):
+                        item["read"] = True
+                self.main._inbox_save(inbox_account)
+                self._inbox_cache_drop(inbox_account)
+            except Exception:
+                pass
         return {"events": entries[:limit], "total": len(entries), "unread": unread}
+
+    async def inbox_handle(self, request):
+        """面板直接处置请求事件（同意/拒绝）：转调 handle_request 的路由逻辑
+        （类型还原 + 账户绑定），处置后标记条目已读。"""
+        body = await request.json()
+        entry_id = str((body or {}).get("id") or "")
+        action = str((body or {}).get("action") or "accept").lower()
+        if action not in ("accept", "reject"):
+            return ({"error": "action must be accept/reject"}, 400)
+        entry = None
+        for candidate in self._inbox_entries("request", ""):
+            if str(candidate.get("id") or "") == entry_id:
+                entry = candidate
+                break
+        if entry is None:
+            return ({"error": "request entry not found"}, 404)
+        from ..tools_builtin.erispulse import _request_route_kwargs, _resolve_account_name
+        from ..agent.tools import ToolContext
+
+        platform = str(entry.get("platform") or "")
+        request_id = str(entry.get("request_id") or "")
+        account = _resolve_account_name(
+            self.sdk.adapter.get(platform) if platform else None,
+            str(entry.get("account") or ""),
+        ) if platform else ""
+        ctx = ToolContext(main=self.main, sdk=self.sdk, config=self.main.cfg,
+                          chat_key=str(entry.get("chat_key") or ""), platform=platform,
+                          user_id=str(entry.get("user_id") or ""), origin="dashboard")
+        extra = _request_route_kwargs(ctx, account, request_id,
+                                      str(entry.get("sub_type") or ""),
+                                      str(entry.get("group_id") or ""))
+        adapter = self.sdk.adapter.get(platform) if platform else None
+        if adapter is None:
+            return {"ok": False, "error": f"adapter {platform} not found"}
+        try:
+            request_dsl = adapter.Request(request_id)
+            if account:
+                request_dsl = request_dsl.Using(account)
+            operation = getattr(request_dsl, action, None)
+            if not callable(operation):
+                return {"ok": False, "error": f"invalid action {action}"}
+            result = operation(**extra)
+            import inspect as _inspect
+
+            if _inspect.isawaitable(result):
+                result = await result
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+# 已读标记：面板与 AI 视角一致
+        try:
+            inbox_account = str(entry.get("account") or "default")
+            for item in self.main._inbox_load(inbox_account):
+                if str(item.get("id") or "") == entry_id:
+                    item["read"] = True
+            self.main._inbox_save(inbox_account)
+            self._inbox_cache_drop(inbox_account)
+        except Exception:
+            pass
+        self.main.audit("inbox_handle", {"id": entry_id, "action": action,
+                                         "platform": platform, "request_id": request_id})
+        return {"ok": True, "result": result}
 
     def _inbox_cache_drop(self, account: str) -> None:
         # AI 侧读的是 main._event_inbox 里的同一个 list 对象：面板删改后必须
@@ -386,6 +461,41 @@ class SessionsApiMixin:
             return ({"error": "chat_key required"}, 400)
         report = await self.main.conversations.compact_now(chat_key)
         return {"ok": True, "report": report}
+
+
+    # ---------- 会话 TODO 清单（与 AI 工具同库 TodoStore） ----------
+
+    def _todo_store(self):
+        return self.main.conversations.todos
+
+    async def todo_list(self, request):
+        chat_key = str(self._query(request, "chat_key") or "")
+        if not chat_key:
+            return ({"error": "chat_key required"}, 400)
+        todos = self._todo_store().items(chat_key)
+        return {"todos": todos}
+
+    async def todo_save(self, request):
+        """整表替换（与 AI 的 todo_write 同语义）；空列表 = 清空。"""
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        items = (body or {}).get("items")
+        if not chat_key or not isinstance(items, list):
+            return ({"error": "chat_key and items required"}, 400)
+        todos = self._todo_store().replace(chat_key, [str(i) for i in items])
+        return {"ok": True, "todos": todos}
+
+    async def todo_update(self, request):
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        todo_id = str((body or {}).get("id") or "")
+        status = str((body or {}).get("status") or "")
+        if not chat_key or not todo_id:
+            return ({"error": "chat_key and id required"}, 400)
+        todo = self._todo_store().update(chat_key, todo_id, status=status)
+        if todo is None:
+            return ({"error": "todo not found"}, 404)
+        return {"ok": True, "todo": todo}
 
     async def sessions_reset(self, request):
         body = await request.json()

@@ -77,6 +77,11 @@ admins = ["123456"]   # 你在聊天平台上的使用者 id
 | `/qvq 狀態` | 模型、工具與會話概況 |
 | `/qvq 接管 [分鐘]` | 接管目前會話（管理員），預設 10 分鐘 |
 | `/qvq 釋放` | 釋放接管 |
+| `/qvq trigger [模式]` | 查看/設定觸發規則（all/at_only/lurk/off） |
+| `/qvq listen on/off` | 本群監聽開關（隱私） |
+| `/qvq memories` | 查看本會話記憶/畫像 |
+| `/qvq rewind [n]` | 回溯最近 n 條訊息 |
+| `/qvq whoami` | 身分/管理員判定診斷 |
 
 ---
 

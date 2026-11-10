@@ -40,7 +40,10 @@ class EventsMixin:
             return default
 
     def _event_self_id(self, event) -> str:
-        return self._ev_s(event, lambda: event.get_self_account_id())
+# 稳定 user_id 优先（与 @账户 会话后缀同口径）；老适配器无该方法时回退配置名，
+# 别名机制（_inbox_alias_keys）保证两种口径互相可见
+        sid = self._ev_s(event, lambda: event.get_self_user_id())
+        return sid or self._ev_s(event, lambda: event.get_self_account_id())
 
     def _event_chat_key(self, event) -> str:
         """非消息事件的会话键：有群 id → 群键；否则私聊键（user_id 或 operator_id）。"""
@@ -99,17 +102,70 @@ class EventsMixin:
 
     # ---------- 事件收件箱 ----------
 
+    def _inbox_alias_keys(self, account: str) -> list[str]:
+        """收件箱账户键别名：user_id ↔ 配置名互换（同一账户两种称呼都能命中）。
+
+        历史包袱：收件箱曾按 get_self_account_id()（配置名，会漂移）存键，
+        会话/操作链路统一用稳定 user_id——两套口径对不上时第二账户的
+        事件全部"查无此箱"。这里把两个名字都作为候选键。
+        """
+        keys = [str(account or "default")]
+        if str(account or "default") == "default":
+            return keys
+        try:
+            for adapter in self._iter_adapters():
+                accounts = getattr(adapter, "accounts", None)
+                if not isinstance(accounts, dict):
+                    continue
+                for acct_name, cfg in accounts.items():
+                    bot_id = str(getattr(cfg, "bot_id", "") or "")
+                    if not bot_id:
+                        continue
+                    if bot_id == str(account):
+                        keys.append(str(acct_name))
+                    elif str(acct_name) == str(account):
+                        keys.append(bot_id)
+        except Exception:
+            pass
+        seen: list[str] = []
+        for key in keys:
+            if key and key not in seen:
+                seen.append(key)
+        return seen
+
+    def _iter_adapters(self):
+        try:
+            names = self.sdk.adapter.list_registered()
+        except Exception:
+            names = []
+        for name in names or []:
+            adapter = None
+            try:
+                adapter = self.sdk.adapter.get(str(name))
+            except Exception:
+                adapter = None
+            if adapter is not None:
+                yield adapter
+
     def _inbox_load(self, account: str) -> list:
         if getattr(self, "_event_inbox", None) is None:
             self._event_inbox = {}
         cached = self._event_inbox.get(account)
         if cached is not None:
             return cached
-        try:
-            stored = self.sdk.storage.get(EVENT_INBOX_KEY + account)
-        except Exception:
-            stored = None
-        entries = stored if isinstance(stored, list) else []
+        entries: list = []
+        for key in self._inbox_alias_keys(account):
+            try:
+                stored = self.sdk.storage.get(EVENT_INBOX_KEY + key)
+            except Exception:
+                stored = None
+            if isinstance(stored, list) and stored:
+                entries.extend(e for e in stored if isinstance(e, dict))
+# 多别名合并后按时间排序去重（同 id 只留最新）
+        dedup: dict[str, dict] = {}
+        for entry in entries:
+            dedup[str(entry.get("id") or "")] = entry
+        entries = sorted(dedup.values(), key=lambda e: float(e.get("ts") or 0))
         self._event_inbox[account] = entries
         return entries
 
@@ -281,8 +337,12 @@ class EventsMixin:
             self.logger.error("on_request failed:\n" + traceback.format_exc())
 
     async def _request_decision(self, event, entry: dict) -> None:
-        """AI 自主处理请求：以管理员身份跑决策回合（handle_request 自带 admin 护栏），
-        决策文本汇报到管理员私聊；未配置管理员则只入箱不决策。"""
+        """AI 自主处理请求：决策回合以管理员身份跑（handle_request 自带 admin 护栏）。
+
+        回执两路：群请求的决策发到**事件来源群**（申请人/邀请人看得到受理进度，
+        此前只私聊管理员，群里无人知道发生了什么）；管理员私聊同步一份询问
+        （操作权在管理员，handle_request 有 admin 护栏）。未配置管理员只入箱。
+        """
         platform = str(entry.get("platform") or "")
         try:
             admin_ids = [str(a) for a in (self.sessions._admin_ids_for(platform) or [])]
@@ -295,6 +355,11 @@ class EventsMixin:
         suffix = _account_suffix_for(self.cfg, self.sdk, event)
         admin_chat = make_chat_key(platform, "private", admin_id) + suffix
         summary = str(entry.get("summary") or "")
+        group_id = str(entry.get("group_id") or "")
+# 群请求 → 来源群也收决策回执（与管理员私聊同一份决策文本）
+        source_chat = ""
+        if group_id:
+            source_chat = make_chat_key(platform, "group", group_id) + suffix
         try:
             reply = await self.run_prompt(
                 admin_chat,
@@ -319,6 +384,12 @@ class EventsMixin:
         reply = str(reply or "").strip()
         if not reply:
             return
+        if source_chat:
+            try:
+                await self.delivery.send_segments(platform, "group", group_id, [(0.0, reply)],
+                                                  from_tools=False, chat_key=source_chat)
+            except Exception as e:
+                self.logger.debug(f"request group report send failed: {e}")
         try:
             await self.delivery.send_segments(platform, "private", admin_id, [(0.0, reply)],
                                               from_tools=False, chat_key=admin_chat)

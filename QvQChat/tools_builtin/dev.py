@@ -39,7 +39,7 @@ def register(registry: ToolRegistry, main) -> None:
             "Use it to verify changes without restarting the whole bot (the erispulse-dev skill covers the workflow)."
         ),
         parameters=_schema(
-            {"name": {"type": "string", "description": "Module name as registered, e.g. QvQMemes"}},
+            {"name": {"type": "string", "description": "Module name as registered (use the installed module's exact name)"}},
             ["name"],
         ),
         handler=reload_module,

@@ -322,6 +322,47 @@ def _account_kwarg_of(adapter) -> str:
     return "account_id"  # 含显式 account_id 或仅 **params（按标准传）
 
 
+def _resolve_account_name(adapter, account_id: str) -> str:
+    """把稳定 user_id（数字）映射回账户配置名；映射不到原样返回。
+
+    适配器对配置名是第一优先级精确匹配；数字 id 依赖 bot_id 回填——那是
+    运行时态（连接后识别），重启后未活动的账户没有。数字在框架三层匹配
+    失配时会静默回落第一个启用账户：请求受理/空间操作从错误账户发出
+    （线上实测：对第二账户的邀请同意操作从第一账户发出）。
+    """
+    acct = str(account_id or "").strip()
+    if not acct:
+        return acct
+    try:
+        accounts = adapter.accounts
+        if not isinstance(accounts, dict):
+            return acct
+        if acct in accounts:
+            return acct  # 已是配置名
+# 运行时绑定表（SnowLuma 惯例：{账户名: bot_id}，事件到达即回填）
+        bot_ids = getattr(adapter, "_bot_ids", None)
+        if isinstance(bot_ids, dict):
+            for name, bot_id in bot_ids.items():
+                if str(bot_id or "") == acct:
+                    return str(name)
+# 逐账户查 _get_bot_id(name) / cfg.bot_id 属性
+        getter = getattr(adapter, "_get_bot_id", None)
+        for name, cfg in accounts.items():
+            bot_id = ""
+            if callable(getter):
+                try:
+                    bot_id = str(getter(name) or "")
+                except Exception:
+                    bot_id = ""
+            if not bot_id:
+                bot_id = str(getattr(cfg, "bot_id", "") or "")
+            if bot_id == acct:
+                return str(name)
+    except Exception:
+        pass
+    return acct
+
+
 async def call_adapter_api(ctx: ToolContext, platform: str, endpoint: str, params: dict | None = None,
                            account: str = "") -> str:
     adapter = ctx.sdk.adapter.get(platform)
@@ -332,6 +373,7 @@ async def call_adapter_api(ctx: ToolContext, platform: str, endpoint: str, param
 # 不带账户会落到适配器默认账户（多账户下看到/操作到别人身上）
     acct = str(account or getattr(ctx, "self_id", "") or "")
     if acct:
+        acct = _resolve_account_name(adapter, acct)
         kwarg = _account_kwarg_of(adapter)
         try:
             result = await adapter.call_api(endpoint, **{kwarg: acct}, **kwargs)
@@ -352,8 +394,12 @@ async def handle_request(ctx: ToolContext, platform: str, request_id: str,
         return texts.t("adapter_not_found", platform=platform)
     action = str(action).lower()
     try:
-# 多账户默认绑发起会话的账户：不绑会落到适配器默认账户（张冠李戴受理）
+# 多账户默认绑发起会话的账户：不绑会落到适配器默认账户（张冠李戴受理）。
+# 数字 user_id 先映射回配置名——配置名是适配器第一优先级精确匹配，
+# 数字依赖 bot_id 回填（运行时态），失配会被静默回落第一个启用账户
         account = str(account or getattr(ctx, "self_id", "") or "")
+        if account:
+            account = _resolve_account_name(adapter, account)
         request = adapter.Request(str(request_id))
         if account:
             request = request.Using(account)
@@ -567,20 +613,20 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="send_message",
         access="safe",
-        description="Send a message to a user/group on ANY platform (cross-platform outreach). The send method is chosen by platform capability automatically (Markdown > Html > Text, with plain-text fallback); pass method to force one. DEFAULT TARGET = the CURRENT session: omit platform/target_type/target_id entirely to reply here. Fill them ONLY for a different destination — the platform name MUST be the exact 'platform' value returned by list_platforms, never guessed from the user's wording (e.g. a Bilibili user still needs the registered platform name). If the user asks to reach someone elsewhere but the exact platform/id is unclear, ASK the user instead of guessing.",
+        description="Send a message to a user/group on ANY platform (cross-platform outreach). The send method is chosen by platform capability automatically (Markdown > Html > Text, with plain-text fallback); pass method to force one. DEFAULT TARGET = the CURRENT session: omit platform/target_type/target_id entirely to reply here. Fill them ONLY for a different destination — the platform name MUST be the exact 'platform' value returned by list_platforms, never guessed from the user's wording (a user mentioning a website name still needs the registered platform name). If the user asks to reach someone elsewhere but the exact platform/id is unclear, ASK the user instead of guessing.",
         parameters=_schema(
             {
-                "platform": _s(type="string", description="Exact platform name as returned by list_platforms (e.g. onebot11, bilibili, yunhu). OMIT to use the current session's platform. Not the website name the user mentioned — verify with list_platforms when unsure."),
+                "platform": _s(type="string", description="Exact platform name as returned by list_platforms; see list_platforms for valid values. OMIT to use the current session's platform. Not the website name the user mentioned — verify with list_platforms when unsure."),
                 "target_type": _s(type="string", description="user / group / channel. OMIT to use the current session's type."),
                 "target_id": _s(type="string", description="Target id. OMIT to use the current session's id."),
                 "text": _s(type="string", description="Text content (markdown allowed; downgraded to plain text automatically when the platform only supports Text)"),
                 "image_url": _s(type="string", description="Image URL or local path"),
-                "audio_path": _s(type="string", description="Path to an EXISTING audio file (sandbox workspace, or a TTS output dir from an eco voice tool such as eco_TTS_*). Produce audio with the eco TTS tool first, then send its returned file path here - that is the whole two-step voice flow."),
+                "audio_path": _s(type="string", description="Path to an EXISTING audio file (sandbox workspace, or an output dir of an installed voice-synthesis tool). Produce audio with that voice tool first, then send its returned file path here - that is the whole two-step voice flow."),
                 "file_path": _s(type="string", description="Send a local file as a document. MUST be a path inside this chat's work sandbox (list_files to browse; write_file/download_file/zip_files to produce one). Paths outside the sandbox are rejected."),
                 "at": _s(type="string", description="User id to mention"),
                 "reply_to": _s(type="string", description="Message id to quote"),
                 "method": _s(type="string", description="Force a specific send method (e.g. Markdown, EmojiFace); empty for auto"),
-                "as_forward": _s(type="boolean", description="Send as a merged-forward card (onebot11 only); long text converts automatically anyway"),
+                "as_forward": _s(type="boolean", description="Send as a merged-forward card (only on platforms that support MergeForward; see list_platforms); long text converts automatically anyway"),
             },
             [],
         ),
@@ -619,9 +665,9 @@ def register(registry: ToolRegistry, main) -> None:
         access="admin",
         description=(
             "Call a platform adapter's native API directly — this is how platform-specific abilities are reached "
-            "(e.g. QQ Zone feeds via snowluma: get_qzone_feeds / get_qzone_msg_list / send_qzone_msg / like_qzone / "
-            "comment_qzone; Bilibili content via get_user_dynamics / search_video / get_popular). "
-            "Endpoint names and params are whatever the installed adapter exposes; the call is bound to this "
+            "(e.g. social feeds, media search, account-scoped actions). Endpoint names and params are whatever "
+            "the installed adapter exposes — discover them from the adapter's docs or its self-declared usage "
+            "hints (installed adapters may inject their own capability notes); the call is bound to this "
             "session's bot account by default."
         ),
         parameters=_schema(
@@ -653,7 +699,7 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="list_events",
         access="safe",
-        description="List platform events (notices & requests) waiting in this bot account's event inbox - pokes, recalls, member changes, friend/group requests AND platform-specific extended event types, with their raw payload fields preserved. Events land here even when they did not trigger a chat reply. Reading marks entries as read.",
+        description="List platform events (notices & requests) waiting in this bot account's event inbox - pokes, recalls, member changes, friend/group requests AND platform-specific extended event types, with their raw payload fields preserved. Events land here even when they did not trigger a chat reply. Reading marks entries as read. Multi-account: each bot account has its OWN inbox (events for account B are not visible from account A's session); to handle a request that arrived on another account, pass that account id to handle_request.",
         parameters=_schema(
             {
                 "kind": _s(type="string", description="Optional filter: notice / request. Empty for all."),

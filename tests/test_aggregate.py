@@ -29,6 +29,7 @@ def make_main(**overrides):
         "_live_conflict", "_auto_interrupt_decide",
         "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
         "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice",
+        "_user_quota_allow", "_quota_notice",
         "_maybe_send_opening",
         "_is_command_message", "_command_yields", "_drain_waiting", "_enqueue_waiting", "_trigger_mode_of", "_is_direct_address", "_dup_delivery_gate", "_is_sibling_bot", "_quote_content", "_has_reply_segment", "_quote_targets_me",
     ):

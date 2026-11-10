@@ -15,6 +15,7 @@ _EVENT_METHODS = (
     "_on_notice", "_on_request", "_request_decision", "_maybe_wake_on_notice",
     "_event_chat_key", "_event_self_id", "_event_sub_type", "_event_summary",
     "_event_raw_text", "_inbox_load", "_inbox_save", "_inbox_add", "_inbox_pick",
+    "_inbox_alias_keys", "_iter_adapters",
     "_notice_type_hit", "_notice_rate_ok", "_ev_s",
 )
 
