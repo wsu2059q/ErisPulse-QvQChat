@@ -34,6 +34,43 @@ class OpsApiMixin:
         ]
         return {"tasks": tasks, "runs": runs}
 
+    async def tasks_save(self, request):
+        """创建/编辑定时任务（复用 scheduler.add 的校验链；id 存在即更新）。"""
+        from ..utils import parse_schedule
+
+        body = await request.json()
+        if not isinstance(body, dict):
+            return ({"error": "body required"}, 400)
+        task_id = str(body.get("id") or "")
+        try:
+            parsed = parse_schedule(str(body.get("schedule") or ""))
+        except ValueError as e:
+            return ({"error": f"schedule invalid: {e}"}, 400)
+        existing = self.main.scheduler.list()
+        if task_id:
+            known = {t.get("id") for t in existing}
+            if task_id not in known:
+                return ({"error": "task not found"}, 404)
+        spec = {
+            "name": str(body.get("name") or "task"),
+            "schedule": parsed,
+            "schedule_raw": str(body.get("schedule") or ""),
+            "platform": str(body.get("platform") or ""),
+            "target_type": str(body.get("target_type") or "user"),
+            "target_id": str(body.get("target_id") or ""),
+            "prompt": str(body.get("prompt") or ""),
+            "persona": str(body.get("persona") or ""),
+            "account": str(body.get("account") or ""),
+            "chat_key": str(body.get("chat_key") or ""),
+            "model": str(body.get("model") or ""),
+            "task_kind": str(body.get("task_kind") or ""),
+        }
+        if task_id:
+            spec["id"] = task_id
+        task = self.main.scheduler.add(spec)
+        self.main.audit("tasks_save", {"id": task["id"], "name": task.get("name", "")})
+        return {"ok": True, "task": task}
+
     async def tasks_run(self, request):
         """手动触发一次任务（不改下次计划时间）。"""
         body = await request.json()

@@ -218,12 +218,39 @@ class EcosystemBridge:
                 })
 
     def external_prompts(self) -> list[str]:
-        """模块贡献的使用建议（按 priority 降序；注入系统提示，由 AI 自行判断）。"""
+        """模块贡献的使用建议（按 priority 降序；注入系统提示，由 AI 自行判断）。
+
+        初始化引导面：用户可按模块排除注入（QvQChat.eco_prompt_exclude，
+        首启引导面板写这里）——模块服务照常桥接成工具，只是"使用建议"
+        不再进系统提示（AI 仍可从工具列表发现能力）。
+        """
+        excluded = set(self.main_eco_prompt_exclude())
         ordered = sorted(
-            self._ext_prompts,
+            (p for p in self._ext_prompts if p["module"] not in excluded),
             key=lambda item: (-float(item.get("priority", 0) or 0), item["module"], item["index"]),
         )
         return [item["text"] for item in ordered]
+
+    def external_prompt_modules(self) -> list[dict]:
+        """引导面数据：有注入建议的模块清单（模块名/条数/首条摘要）。"""
+        by_module: dict[str, list] = {}
+        for item in self._ext_prompts:
+            by_module.setdefault(item["module"], []).append(item)
+        return [
+            {
+                "module": module,
+                "count": len(items),
+                "preview": str(items[0].get("text") or "")[:80],
+            }
+            for module, items in sorted(by_module.items())
+        ]
+
+    def main_eco_prompt_exclude(self) -> list:
+        try:
+            value = getattr(self.main.cfg, "eco_prompt_exclude", None)
+            return value if isinstance(value, list) else []
+        except Exception:
+            return []
 
     def external_skills(self) -> list[dict]:
         """模块贡献的技能（只读，source=module:<模块名>）。"""

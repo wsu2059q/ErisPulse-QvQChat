@@ -319,6 +319,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         self._register_builtin_tools()
         self._register_handlers()
         self._register_subagent_listener()
+        self._start_health_probe()
         self._register_dashboard()
         self._register_home_entry()
         self.eco.start()
@@ -397,12 +398,77 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 # 不主动 event.done 认领——通知/请求没有命令分发器竞争）
         notice.on_notice(priority=99998)(self._on_notice)
         request.on_request(priority=99998)(self._on_request)
-        for name in ("qvq", "agent", "qvqchat"):
+        for name in ("qvq", "qvqchat"):
             command(name, help="QvQChat")(self._cmd_agent)
         registered = getattr(command, "commands", {})
-        missing = [n for n in ("qvq", "agent") if n not in registered]
+        missing = [n for n in ("qvq",) if n not in registered]
         if missing:
             self.logger.warning(f"commands not registered: {', '.join(missing)}")
+
+    def _start_health_probe(self) -> None:
+        """健康主动探针：每 6h 检查模型池/适配器连通性，异常才通知管理员（静默健康不打扰）。"""
+        self.spawn(self._health_probe_loop())
+
+    async def _health_probe_loop(self) -> None:
+        import asyncio as _asyncio
+
+        await _asyncio.sleep(30)  # 等启动完成（适配器连接/模型注册）
+        while True:
+            try:
+                await self._health_probe_once()
+            except Exception as e:
+                self.logger.debug(f"health probe failed: {type(e).__name__}: {e}")
+            await _asyncio.sleep(6 * 3600)
+
+    async def _health_probe_once(self) -> None:
+        problems: list[str] = []
+# 1) 模型池：ping 一次（便宜请求；全挂才报，个别模型 failover 已有断路器管）
+        try:
+            await self.pool.chat(ChatRequest(messages=[{"role": "user", "content": "ping"}], max_tokens=1))
+        except Exception as e:
+            problems.append(texts.t("probe_models_down", error=utils.truncate(str(e), 120)))
+# 2) 适配器：已注册但零在线 bot
+        try:
+            for name in self.sdk.adapter.list_registered():
+                try:
+                    bots = self.sdk.adapter.list_bots(str(name)) or {}
+                    per = bots.get(name, bots) if isinstance(bots, dict) else {}
+                    if isinstance(per, dict) and not per:
+                        problems.append(texts.t("probe_adapter_offline", platform=str(name)))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        if not problems:
+            self.logger.debug("health probe: all good")
+            return
+# 通知管理员（每平台首个管理员；一次探针最多通知 3 个平台避免风暴）
+        notified = 0
+        for platform in list(dict.fromkeys(
+            str(p.get("platform") or "") for p in self.scheduler.list()
+        ))[:3] or [""]:
+            try:
+                admin_ids = self.sessions._admin_ids_for(platform)
+            except Exception:
+                admin_ids = []
+            if not admin_ids:
+                continue
+            suffix = ""
+            chat = f"{platform}:private:{admin_ids[0]}" if platform else ""
+            if not chat:
+                continue
+            try:
+                await self.run_prompt(
+                    chat + suffix,
+                    texts.t("probe_report", problems="\n".join(f"- {p}" for p in problems)),
+                    origin="task", send=True, user_id=admin_ids[0],
+                    scene=texts.t("scene_proactive", reason=texts.t("scene_proactive_noreason")),
+                )
+                notified += 1
+            except Exception as e:
+                self.logger.debug(f"probe notify failed ({platform}): {e}")
+            if notified >= 2:
+                break
 
     def _register_subagent_listener(self) -> None:
         """后台子智能体完成事件 → 结果插回主会话（发起时 spawn 的那个群/私聊）。"""
@@ -425,8 +491,18 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         task = str(data.get("task") or "")
         answer = str(data.get("answer") or "")
         sub_key = str(data.get("sub_key") or "")
-        prompt = texts.t("subagent_report_prompt", task=utils.truncate(task, 200),
-                         answer=utils.truncate(answer, 3500), session=sub_key)
+        status = str(data.get("status") or "done")
+# 失败/取消也插回：发起者应知道任务黄了（此前只有 done 才回报，失败静默）
+        if status == "cancelled":
+            prompt = texts.t("subagent_cancelled_prompt", task=utils.truncate(task, 200),
+                             session=sub_key)
+        elif status == "error":
+            prompt = texts.t("subagent_failed_prompt", task=utils.truncate(task, 200),
+                             error=utils.truncate(str(data.get("error") or ""), 300),
+                             session=sub_key)
+        else:
+            prompt = texts.t("subagent_report_prompt", task=utils.truncate(task, 200),
+                             answer=utils.truncate(answer, 3500), session=sub_key)
         try:
             await self.run_prompt(parent_chat_key, prompt, origin="proactive",
                                   persist=True, scene=texts.t("scene_subagent_report"))
@@ -603,7 +679,8 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 # 投递意图标签（[[转发]]/[[直发]]，含单括号变体）剥离：任务场景无转发卡语义，
 # 标签只当文本清扫；force 语义丢弃走自动规则
             reply = utils.strip_output_tag(result.text.strip())[0]
-            reply = utils.strip_stray_tags(reply).strip() or texts.t("no_reply_content")
+            reply = utils.strip_stray_tags(reply)
+            reply = utils.strip_fake_media_prefix(reply) or texts.t("no_reply_content")
 # persist=True（插回式调用，如后台子智能体汇报消化）：问答双方都落会话，
 # 下轮对话 AI 才记得"汇报过什么、自己怎么消化的"；一次性任务调用保持 False 不留痕
             if persist:

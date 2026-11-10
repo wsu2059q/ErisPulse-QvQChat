@@ -66,7 +66,7 @@ async def test_render_image_calls_takumi_and_returns_path():
 async def test_render_image_without_takumi_reports():
     ctx = make_ctx()
     out = await takumi.render_image(ctx, html="<h1>x</h1>")
-    assert "Takumi" in out
+    assert "HTML" in out  # 通用化文案：不再点名具体扩展
 
 
 def test_render_image_registered_only_with_takumi():

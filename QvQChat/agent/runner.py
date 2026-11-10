@@ -208,6 +208,16 @@ class AgentRunner:
             return "unknown"
         return str(result) if result else "unknown"
 
+    @staticmethod
+    def _is_tool_name_text(text: str, tool_names: set) -> bool:
+        """整段文本是否只有工具名（单行精确命中或多行每行都是）——模型把
+        调用意图写成文字的退化形态，不该作为回复/中间发言发给用户。"""
+        stripped = str(text or "").strip()
+        if not stripped or not tool_names:
+            return False
+        lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+        return bool(lines) and all(line in tool_names for line in lines)
+
     async def _dispatch(self, kind: str, request: ChatRequest, *, needs: list | None = None,
                         model: str | None = None, prefer: str = "", on_delta=None, on_reset=None,
                         on_reasoning=None, chat_key: str = "", priority: int = 0):
@@ -478,6 +488,8 @@ class AgentRunner:
         rounds: list = []
         nudged = False  # 空最终回复重问已用过（限一次）
 # tool_call 能力闭环（schemas 非空且未显式指定模型时）
+        raw_tool_names = {str(s.get("name") or "") for s in schemas if isinstance(s, dict)}
+        raw_tool_names.discard("")
         schemas, system, chat_needs = self._apply_tools_fallback(schemas, system, model)
         delivery_hint: bool | None = None
 # 预填充（人格级口语开场白）：只在首轮请求以 assistant 结尾消息注入，模型从这里续写。
@@ -556,6 +568,10 @@ class AgentRunner:
             used_model = response.model or used_model
             if not response.tool_calls:
                 final_text, tag_hint = utils.strip_output_tag((response.content or "").strip())
+# 模型退化形态：把工具名当正文输出（eco_QvQMemes_send_sticker 原样发给用户）。
+# 视为空回复走 nudge 重问；多行全为工具名的同样拦截
+                if final_text.strip() and self._is_tool_name_text(final_text, raw_tool_names):
+                    final_text = ""
                 # 跑完工具后返回空文本（部分模型 tool_calls 结束后的常态）：
                 # 不把"没有可回复的内容"甩给用户——补一轮无工具重问，要最终结论（限一次）
                 if not final_text.strip() and not nudged:
@@ -573,6 +589,9 @@ class AgentRunner:
 # 中间发言也可携带 [[转发]]/[[直发]] 标签（首个命中记录为整轮投递意图，并从展示文本剥离）
             speech, tag_hint = utils.strip_output_tag((response.content or "").strip())
             speech = utils.strip_stray_tags(speech)
+# 工具名文本同样不作为中间发言发出（模型把调用意图写成了文字）
+            if speech and self._is_tool_name_text(speech, raw_tool_names):
+                speech = ""
             if delivery_hint is None and tag_hint is not None:
                 delivery_hint = tag_hint
             rounds.append({"text": speech, "tools": []})

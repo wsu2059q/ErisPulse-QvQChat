@@ -793,6 +793,28 @@ class ConversationService:
         """预算装填溢出触发的压缩。"""
         return await self.compactor.compact(chat_key, force=True, reason="budget")
 
+# ===== 会话健康体检：体积/残留指标（强化压缩与清理入口的数据面） =====
+
+    def health_of(self, chat_key: str) -> dict:
+        """会话健康体检：上下文体量与残留计数（只读不修改）。
+
+        指标：条数/字符量、工具残留(rounds/trace)条数、超长正文条数。
+        强化压缩（compact force）会把整段历史浓缩为摘要小作文，这些
+        残留随之消失——体检用于排序与前后对比。
+        """
+        contexts = self.get_contexts(chat_key)
+        messages = [c for c in contexts if isinstance(c, dict)]
+        chars = sum(len(self._text_of(c.get("content"))) for c in messages)
+        residue = sum(1 for c in messages if c.get("rounds") or c.get("trace"))
+        oversized = sum(1 for c in messages if len(self._text_of(c.get("content"))) > 2400)
+        return {
+            "chat_key": chat_key,
+            "messages": len(messages),
+            "chars": chars,
+            "tool_residue": residue,
+            "oversized": oversized,
+            "healthy": not (residue or oversized or chars > 200_000),
+        }
 
     def create(self, platform: str = DASHBOARD_PLATFORM, detail_type: str = "private", target_id: str = "") -> str:
 
@@ -1108,10 +1130,15 @@ class ConversationService:
         usage: dict | None = None,
         model: str = "",
         title_from: str = "",
+        user_id: str = "",
     ) -> str:
 
         self.append(chat_key, "assistant", reply, trace=trace, rounds=rounds)
         if usage:
+# 用户维度记账（user_daily_budget 配额读 by_user）
+            if user_id:
+                usage = dict(usage)
+                usage["user_id"] = user_id
             self.main.record_usage(chat_key, usage, model)
         overflow = self.trim_overflow(chat_key, keep=max(2, int(getattr(self.config, "context_limit", 30))))
         if overflow:
@@ -1133,6 +1160,15 @@ class ConversationService:
         clean, facts = extract_facts(summary)
         if facts and getattr(self.config, "facts_extract", True):
             self.append_facts(chat_key, facts)
+# TODO 类 facts 双写 TodoStore（执行面单源）：压缩抽出的待办进清单，
+# AI 面板都能看到并推进；画像侧保留 TODO fact 作历史轨迹
+        todo_items = [f.split("|", 1)[1].strip() for f in facts if f.startswith("TODO|")]
+        if todo_items:
+            try:
+                for item in todo_items:
+                    self.todos.add(chat_key, item)
+            except Exception:
+                pass
         self.append_summary(chat_key, clean or summary)
 
 

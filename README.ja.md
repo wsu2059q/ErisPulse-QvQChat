@@ -77,6 +77,11 @@ admins = ["123456"]   # チャットプラットフォームでのあなたの�
 | `/qvq status` | モデル・ツール・セッションの概況 |
 | `/qvq takeover [分]` | このセッションを引き継ぎ（管理者）、デフォルト 10 分 |
 | `/qvq release` | 引き継ぎを解除 |
+| `/qvq trigger [モード]` | トリガールールの表示/設定（all/at_only/lurk/off） |
+| `/qvq listen on/off` | このチャットの監視オン/オフ（プライバシー） |
+| `/qvq memories` | セッションの記憶/プロファイル表示 |
+| `/qvq rewind [n]` | 直近 n 件を巻き戻し |
+| `/qvq whoami` | 身元/管理者判定の診断 |
 
 ---
 

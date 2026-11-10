@@ -57,6 +57,7 @@ class ConfigApiMixin:
             key = item.get("api_key") or ""
             item["api_key_masked"] = ("*" * 8 + key[-4:]) if len(key) > 4 else ("*" * len(key) if key else "")
             item.pop("api_key", None)
+            item.setdefault("enabled", True)  # provider 级开关（临时下线整家）
             providers.append(item)
         by_id = {str(p.get("id") or ""): p for p in self.main.pool.list_providers()}
         chain = []
@@ -93,6 +94,7 @@ class ConfigApiMixin:
 
     async def providers_save(self, request):
         body = dict(await request.json() or {})
+        self.main.audit("providers_save", {"id": str(body.get("id") or ""), "models": len(body.get("models") or [])})
         enriched = 0
         models = body.get("models")
         if isinstance(models, list):
@@ -107,6 +109,18 @@ class ConfigApiMixin:
             return {"ok": True, "provider": {**entry, "api_key": ""}, "enriched": enriched}
         except Exception as e:
             return ({"error": str(e)}, 400)
+
+    async def provider_toggle(self, request):
+        """临时禁用/启用整个模型池（enabled=false 下线，链路跳过；模型配置不动）。"""
+        body = await request.json()
+        provider_id = str((body or {}).get("id") or "")
+        provider = self.main.pool.get_provider(provider_id)
+        if provider is None:
+            return ({"error": "provider not found"}, 404)
+        enabled = bool((body or {}).get("enabled", True))
+        self.main.pool.save_provider({**provider, "enabled": enabled})
+        self.main.audit("provider_toggle", {"id": provider_id, "enabled": enabled})
+        return {"ok": True, "id": provider_id, "enabled": enabled}
 
     async def models_detect(self, request):
         body = await request.json()
@@ -229,6 +243,7 @@ class ConfigApiMixin:
 
     async def mcp_save(self, request):
         body = await request.json()
+        self.main.audit("mcp_save", {"name": str((body or {}).get("name") or "")})
         try:
             saved = self.main.mcp.save_server(body or {})
         except ValueError as e:
@@ -276,6 +291,39 @@ class ConfigApiMixin:
             "info": dict(self.main.eco.info),
             "extensions": self.main.eco.extensions_status(),
         }
+
+    async def onboarding_get(self, request):
+        """初始化引导数据：哪些生态模块贡献了「使用建议」+ 当前注入开关状态。"""
+        eco = getattr(self.main, "eco", None)
+        modules = eco.external_prompt_modules() if eco is not None and hasattr(eco, "external_prompt_modules") else []
+        excluded = set(getattr(self.main.cfg, "eco_prompt_exclude", None) or [])
+        return {
+            "modules": [
+                {**m, "injected": m["module"] not in excluded}
+                for m in modules
+            ],
+            "excluded": sorted(excluded),
+        }
+
+    async def onboarding_set(self, request):
+        """保存引导选择：{module: bool}——True 注入使用建议，False 仅保留工具。"""
+        body = await request.json()
+        choices = (body or {}).get("choices")
+        if not isinstance(choices, dict):
+            return ({"error": "choices object required"}, 400)
+        current = set(getattr(self.main.cfg, "eco_prompt_exclude", None) or [])
+        for module, want in choices.items():
+            name = str(module)
+            if bool(want):
+                current.discard(name)
+            else:
+                current.add(name)
+        self.sdk.config.setConfig("QvQChat.eco_prompt_exclude", sorted(current))
+        try:
+            setattr(self.main.cfg, "eco_prompt_exclude", sorted(current))
+        except Exception:
+            pass
+        return {"ok": True, "excluded": sorted(current)}
 
     async def skills_get(self, request):
         return {"skills": self.main.skills.list_skills()}
@@ -430,6 +478,8 @@ class ConfigApiMixin:
         sections = (body or {}).get("sections")
         strategies = (body or {}).get("strategies") or {}
         applied, errors = self._apply_import(data, sections, strategies)
+        if applied:
+            self.main.audit("import_data", {"sections": applied})
         result = {"ok": True, "applied": applied}
         if errors:
             result["errors"] = errors
@@ -732,6 +782,8 @@ class ConfigApiMixin:
                 errors[str(key)] = err
         if errors:
             return ({"ok": False, "applied": applied, "errors": errors}, 400)
+        if applied:
+            self.main.audit("config_set", {"keys": applied})
         return {"ok": True, "applied": applied}
 
     # ===== 插件设置（框架声明式配置流：qvq_settings 仅作归属标记） =====

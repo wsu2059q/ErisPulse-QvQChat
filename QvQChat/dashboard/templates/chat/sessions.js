@@ -218,9 +218,15 @@
           ? '<span class="qvq-tool-desc">' + esc(t("inbox_read")) + "</span>"
           : '<strong>' + esc(t("inbox_unread")) + "</strong>";
         var acct = e2.account || "-";
+        // 请求事件：面板直接同意/拒绝
+        var handleBtns = e2.kind === "request" && e2.request_id
+          ? '<button class="qvq-btn small" data-inbox-act="accept" data-inbox-id="' + esc(e2.id) + '">' + esc(t("inbox_accept")) + "</button> " +
+            '<button class="qvq-btn small danger" data-inbox-act="reject" data-inbox-id="' + esc(e2.id) + '">' + esc(t("inbox_reject")) + "</button> "
+          : "";
         return "<tr><td>" + esc(when) + "</td><td>" + esc(acct) + "</td><td>" + esc(kindLabel +
           (detail ? " · " + detail : "")) + "</td><td>" + esc(e2.summary || "") + "</td><td>" + state +
-          '</td><td><button class="qvq-btn small danger" data-inbox-del="' + esc(e2.id) + '" data-inbox-acct="' + esc(acct) + '">' + esc(t("del")) + "</button></td></tr>";
+          "</td><td>" + handleBtns +
+          '<button class="qvq-btn small danger" data-inbox-del="' + esc(e2.id) + '" data-inbox-acct="' + esc(acct) + '">' + esc(t("del")) + "</button></td></tr>";
       }).join("");
       box.innerHTML =
         "<div class='qvq-actions' style='margin-bottom:6px'>" +
@@ -250,9 +256,96 @@
             .then(function () { renderInboxBox(); });
         };
       });
+      box.querySelectorAll("[data-inbox-act]").forEach(function (btn) {
+        btn.onclick = function () {
+          var action = btn.getAttribute("data-inbox-act");
+          api("/api/qvq/inbox/handle", "POST", { id: btn.getAttribute("data-inbox-id"), action: action })
+            .then(function (r) {
+              if (r && r.ok) {
+                toast(t("saved"));
+              } else {
+                toast((r && r.error) || "error", true);
+              }
+              renderInboxBox();
+            });
+        };
+      });
     });
   }
   if (el("qvq-inbox-btn")) el("qvq-inbox-btn").onclick = toggleInboxBox;
+// 会话页 TODO 清单抽屉：与 AI 同库（TodoStore），编辑即生效
+  var todoChatKey = "";
+  function toggleTodoBox() {
+    var box = el("qvq-todo-box");
+    if (!box) return;
+    var show = box.style.display === "none";
+    box.style.display = show ? "" : "none";
+    if (show) {
+      // 默认锚定当前会话（可改）
+      todoChatKey = chatSession;
+      renderTodoBox();
+    }
+  }
+
+  function renderTodoBox() {
+    var box = el("qvq-todo-box");
+    if (!box) return;
+    api("/api/qvq/todo?chat_key=" + encodeURIComponent(todoChatKey)).then(function (data) {
+      if (!box || !data || data.__http >= 400) return;
+      var todos = (data && data.todos) || [];
+      var mark = { pending: "[ ]", in_progress: "[~]", completed: "[x]" };
+      var rows = todos.map(function (td) {
+        var statusSel = '<select class="qvq-select" data-td-status="' + esc(td.id) + '" style="max-width:130px">' +
+          ["pending", "in_progress", "completed"].map(function (st) {
+            return '<option value="' + st + '"' + (td.status === st ? " selected" : "") + ">" + esc(t("todo_s_" + st) || st) + "</option>";
+          }).join("") + "</select>";
+        return "<tr><td>" + esc(mark[td.status] || "[ ]") + "</td><td>" + esc(td.content || "") + "</td><td>" + statusSel +
+          '</td><td><button class="qvq-btn small danger" data-td-del="' + esc(td.id) + '">' + esc(t("del")) + "</button></td></tr>";
+      }).join("");
+      box.innerHTML =
+        "<div class='qvq-actions' style='margin-bottom:6px'>" +
+        "<input class='qvq-input' id='qvq-todo-chatkey' value='" + esc(todoChatKey) + "' style='flex:1 1 220px' title='chat_key' />" +
+        "<button class='qvq-btn small' id='qvq-todo-load'>" + esc(t("retry")) + "</button>" +
+        "</div>" +
+        "<div class='qvq-actions' style='margin-bottom:6px'>" +
+        "<input class='qvq-input' id='qvq-todo-new' placeholder='" + esc(t("todo_new_ph")) + "' style='flex:1 1 260px' />" +
+        "<button class='qvq-btn small' id='qvq-todo-add'>" + esc(t("chat_new")) + "</button>" +
+        "</div>" +
+        (rows
+          ? "<table class='qvq-table'><thead><tr><th></th><th>" + esc(t("col_detail")) + "</th><th>" + esc(t("chat_interrupt_mode")) + "</th><th></th></tr></thead><tbody>" + rows + "</tbody></table>"
+          : "<div class='qvq-tool-desc'>" + esc(t("todo_empty")) + "</div>");
+      var load = box.querySelector("#qvq-todo-load");
+      if (load) load.onclick = function () {
+        var input = box.querySelector("#qvq-todo-chatkey");
+        todoChatKey = (input && input.value.trim()) || chatSession;
+        renderTodoBox();
+      };
+      var add = box.querySelector("#qvq-todo-add");
+      if (add) add.onclick = function () {
+        var input = box.querySelector("#qvq-todo-new");
+        var text = (input && input.value.trim()) || "";
+        if (!text) return;
+        api("/api/qvq/todo/save", "POST", { chat_key: todoChatKey, items: todos.map(function (x) { return x.content; }).concat([text]) })
+          .then(function () { renderTodoBox(); });
+      };
+      box.querySelectorAll("[data-td-status]").forEach(function (sel) {
+        sel.onchange = function () {
+          api("/api/qvq/todo/update", "POST", { chat_key: todoChatKey, id: sel.getAttribute("data-td-status"), status: sel.value })
+            .then(function () { renderTodoBox(); });
+        };
+      });
+      box.querySelectorAll("[data-td-del]").forEach(function (btn) {
+        btn.onclick = function () {
+          var id = btn.getAttribute("data-td-del");
+          var rest = todos.filter(function (x) { return x.id !== id; }).map(function (x) { return x.content; });
+          api("/api/qvq/todo/save", "POST", { chat_key: todoChatKey, items: rest })
+            .then(function () { renderTodoBox(); });
+        };
+      });
+    });
+  }
+  if (el("qvq-todo-btn")) el("qvq-todo-btn").onclick = toggleTodoBox;
+
 
   function applyEffectiveSettings() {
     var curSess = null;

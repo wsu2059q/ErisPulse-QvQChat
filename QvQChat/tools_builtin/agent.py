@@ -89,7 +89,8 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
             "status": "running",
             "started": time.time(),
         })
-        main.spawn(_run_background(main, sub_key, sub_ctx, system, [str(t) for t in (tools or [])], task))
+        spawned = main.spawn(_run_background(main, sub_key, sub_ctx, system, [str(t) for t in (tools or [])], task))
+        register_live_subjob(sub_key, spawned)
         return texts.t("subagent_background_started", session=sub_key)
 
     started = time.monotonic()
@@ -112,7 +113,10 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
 
 
 async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[str], task: str) -> None:
-    """后台执行体：跑完落探针 + emit qvq.subagent_done（Main 监听后插回主会话消化）。"""
+    """后台执行体：跑完落探针 + emit qvq.subagent_done（Main 监听后插回主会话消化）。
+
+    成败都 emit：失败静默违背"自动汇报"承诺——发起者应知道任务黄了。
+    """
     started = time.monotonic()
     try:
         async with _SUBJOB_SEMAPHORE:
@@ -126,18 +130,42 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
         answer = (result.text or "").strip() or "-"
         main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
         status = "done"
+        error = ""
+    except asyncio.CancelledError:
+# 取消也是终态：探针标 cancelled，插回一条取消说明（不是 error）
+        probe = main.sdk.storage.get(SUBJOB_PREFIX + sub_key, None)
+        if isinstance(probe, dict):
+            probe.update({"status": "cancelled", "finished": time.time()})
+            main.sdk.storage.set(SUBJOB_PREFIX + sub_key, probe)
+        parent = str(getattr(sub_ctx, "parent_chat_key", "") or "")
+        if parent:
+            try:
+                await main.sdk.lifecycle.emit("qvq.subagent_done", {
+                    "sub_key": sub_key,
+                    "parent_chat_key": parent,
+                    "task": utils.truncate(task, 500),
+                    "answer": "",
+                    "status": "cancelled",
+                    "error": "",
+                    "ms": int((time.monotonic() - started) * 1000),
+                })
+            except Exception:
+                pass
+        raise
     except Exception as e:
         answer = ""
         status = "error"
-        main.sessions.append(sub_key, "assistant", f"[error] {type(e).__name__}: {e}")
-        main.logger.warning(f"background subagent failed: {type(e).__name__}: {e}")
+        error = f"{type(e).__name__}: {e}"
+        main.sessions.append(sub_key, "assistant", f"[error] {error}")
+        main.logger.warning(f"background subagent failed: {error}")
     ms = int((time.monotonic() - started) * 1000)
     probe = main.sdk.storage.get(SUBJOB_PREFIX + sub_key, None)
     if isinstance(probe, dict):
-        probe.update({"status": status, "finished": time.time(), "ms": ms})
+        probe.update({"status": status, "finished": time.time(), "ms": ms,
+                      "error": error if status == "error" else ""})
         main.sdk.storage.set(SUBJOB_PREFIX + sub_key, probe)
     parent = str(getattr(sub_ctx, "parent_chat_key", "") or "")
-    if not parent or status != "done":
+    if not parent:
         return
     try:
         await main.sdk.lifecycle.emit("qvq.subagent_done", {
@@ -145,6 +173,8 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
             "parent_chat_key": parent,
             "task": utils.truncate(task, 500),
             "answer": answer[:4000],
+            "status": status,
+            "error": error,
             "ms": ms,
         })
     except Exception as e:
@@ -174,6 +204,68 @@ def recover_subjobs(main) -> None:
             probe["status"] = "interrupted"
             probe["finished"] = time.time()
             main.sdk.storage.set(SUBJOB_PREFIX + str(sub_key), probe)
+
+
+# ===== 可观测：进程内子任务注册表（运行中可取消，终态查探针） =====
+
+_LIVE_SUBJOBS: dict[str, asyncio.Task] = {}
+
+
+def register_live_subjob(sub_key: str, task: asyncio.Task) -> None:
+    _LIVE_SUBJOBS[sub_key] = task
+
+
+def unregister_live_subjob(sub_key: str) -> None:
+    _LIVE_SUBJOBS.pop(sub_key, None)
+
+
+def cancel_subjob(main, sub_key: str) -> bool:
+    """取消后台子智能体：进程内任务 cancel（终态由 _run_background 的
+    CancelledError 分支落探针 + 插回取消说明）；不在进程内则 False。"""
+    task = _LIVE_SUBJOBS.get(str(sub_key))
+    if task is None or task.done():
+        return False
+    task.cancel()
+    return True
+
+
+def list_subjobs(main, limit: int = 50) -> list:
+    """子智能体任务列表：运行中（进程内注册表）+ 终态（探针，新在前）。"""
+    rows: list = []
+    listed: set = set()
+    for sub_key, task in _LIVE_SUBJOBS.items():
+        if task.done():
+            continue
+        probe = main.sdk.storage.get(SUBJOB_PREFIX + str(sub_key), None) or {}
+        rows.append({
+            "sub_key": str(sub_key),
+            "status": "running",
+            "task": probe.get("task", ""),
+            "parent_chat_key": probe.get("parent_chat_key", ""),
+            "started": probe.get("started", 0),
+        })
+        listed.add(str(sub_key))
+    try:
+        index = main.sdk.storage.get(SUBJOB_INDEX_KEY, [])
+    except Exception:
+        index = []
+    for sub_key in (index if isinstance(index, list) else []):
+        key = str(sub_key)
+        if key in listed:
+            continue
+        probe = main.sdk.storage.get(SUBJOB_PREFIX + key, None)
+        if isinstance(probe, dict):
+            rows.append({
+                "sub_key": key,
+                "status": str(probe.get("status") or "?"),
+                "task": probe.get("task", ""),
+                "parent_chat_key": probe.get("parent_chat_key", ""),
+                "started": probe.get("started", 0),
+                "finished": probe.get("finished", 0),
+                "ms": probe.get("ms", 0),
+                "error": probe.get("error", ""),
+            })
+    return rows[: max(1, int(limit))]
 
 
 def _context_block(main, ctx) -> str:

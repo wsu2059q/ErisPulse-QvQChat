@@ -21,7 +21,7 @@ MAIN_STATIC_NAMES = (
     "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
         "_live_conflict", "_auto_interrupt_decide",
     "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
-    "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice",
+    "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice", "_user_quota_allow", "_quota_notice",
     "_on_message", "_drain_waiting", "_enqueue_waiting", "_announce_queued",
     "_cmd_agent", "_cmd_persona",
 )
@@ -134,7 +134,7 @@ def _make_lock_main():
         "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
         "_live_conflict", "_auto_interrupt_decide",
         "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
-        "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice",
+        "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice", "_user_quota_allow", "_quota_notice",
     ):
         static_attr = inspect.getattr_static(Main, name)
         if isinstance(static_attr, staticmethod):

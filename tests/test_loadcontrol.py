@@ -287,10 +287,10 @@ async def test_interrupt_decide_skips_model_when_saturated():
     main._auto_interrupt_decide = lambda *a, **k: InboxMixin._auto_interrupt_decide(main, *a, **k)
     main._enqueue_waiting = lambda *a, **k: None
     live = SimpleNamespace(text="正在执行的任务")
-    decision, why = await main._auto_interrupt_decide("onebot11:group:1", live, "新消息")
+    decision, why, line = await main._auto_interrupt_decide("onebot11:group:1", live, "新消息")
     assert decision == "queue" and calls == []
     main.pool.gate._active = 0
-    decision, why = await main._auto_interrupt_decide("onebot11:group:1", live, "新消息")
+    decision, why, line = await main._auto_interrupt_decide("onebot11:group:1", live, "新消息")
     assert calls == ["compact"]  # 不饱和时正常判定
 
 
