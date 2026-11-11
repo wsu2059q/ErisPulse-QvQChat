@@ -706,6 +706,14 @@
         "<option value='yes'" + (m.prefill_ok === true ? " selected" : "") + ">" + esc(t("model_prefill_yes")) + "</option>" +
         "<option value='no'" + (m.prefill_ok === false ? " selected" : "") + ">" + esc(t("model_prefill_no")) + "</option></select>" +
         "<div class='qvq-tool-desc'>" + esc(t("model_prefill_hint")) + "</div>" +
+        "<label class='qvq-label'>" + esc(t("model_effort")) + "</label>" +
+        "<select class='qvq-select' id='qvq-me-effort'>" +
+        "<option value=''" + (!m.reasoning_effort ? " selected" : "") + ">" + esc(t("model_effort_follow")) + "</option>" +
+        "<option value='off'" + (m.reasoning_effort === "off" ? " selected" : "") + ">off</option>" +
+        "<option value='low'" + (m.reasoning_effort === "low" ? " selected" : "") + ">low</option>" +
+        "<option value='medium'" + (m.reasoning_effort === "medium" ? " selected" : "") + ">medium</option>" +
+        "<option value='high'" + (m.reasoning_effort === "high" ? " selected" : "") + ">high</option></select>" +
+        "<div class='qvq-tool-desc'>" + esc(t("model_effort_hint")) + "</div>" +
         "<label class='qvq-label'>" + esc(t("model_notes")) + "</label>" +
         "<textarea class='qvq-textarea' id='qvq-me-notes' rows='3' placeholder='" + esc(t("model_notes_ph")) + "'>" + esc(m.notes || "") + "</textarea>" +
         "<label class='qvq-check-row' style='margin-top:14px'><input type='checkbox' id='qvq-me-enabled'" + (m.enabled !== false ? " checked" : "") + "/><span>" + esc(t("model_enabled")) + "</span></label>" +
@@ -735,6 +743,7 @@
       next.cost = (pin === "" && pout === "") ? null : { input: Number(pin || 0), output: Number(pout || 0) };
       var pfill = fv(body, "qvq-me-prefill");
       next.prefill_ok = pfill === "yes" ? true : (pfill === "no" ? false : null);
+      next.reasoning_effort = fv(body, "qvq-me-effort");
       next.notes = fv(body, "qvq-me-notes");
       var models = (provider.models || []).slice();
       var idx = -1;
@@ -826,6 +835,14 @@
         "<div id='qvq-mf-remote'></div>";
     } else {
       fields +=
+        "<label class='qvq-label'>" + esc(t("model_effort")) + "</label>" +
+        "<select class='qvq-select' id='qvq-mf-effort'>" +
+        "<option value=''" + (!provider.reasoning_effort ? " selected" : "") + ">" + esc(t("model_effort_follow")) + "</option>" +
+        "<option value='off'" + (provider.reasoning_effort === "off" ? " selected" : "") + ">off</option>" +
+        "<option value='low'" + (provider.reasoning_effort === "low" ? " selected" : "") + ">low</option>" +
+        "<option value='medium'" + (provider.reasoning_effort === "medium" ? " selected" : "") + ">medium</option>" +
+        "<option value='high'" + (provider.reasoning_effort === "high" ? " selected" : "") + ">high</option></select>" +
+        "<div class='qvq-tool-desc'>" + esc(t("model_effort_provider_hint")) + "</div>" +
         "<div class='qvq-tool-desc'>" + esc(t("models_meta_note")) + "</div>" +
         "<div class='qvq-actions'><button class='qvq-btn small ghost' id='qvq-mf-manage' type='button'>" + esc(t("model_manage")) + "</button></div>";
     }
@@ -836,6 +853,8 @@
         base_url: fv(body, "qvq-mf-url"),
         api_key: fv(body, "qvq-mf-key")
       };
+      var effortSel = fv(body, "qvq-mf-effort");
+      if (effortSel != null) payload.reasoning_effort = effortSel;
       if (!editingId) {
         payload.models = fv(body, "qvq-mf-id").split(",").map(function (x) { return x.trim(); }).filter(Boolean)
           .map(function (id) { return { id: id, enabled: true }; });

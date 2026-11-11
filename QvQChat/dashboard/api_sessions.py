@@ -22,7 +22,27 @@ class SessionsApiMixin:
 
     async def sessions_get(self, request):
         sessions = self.main.sessions.list_sessions()
-        for session in sessions:
+        total = len(sessions)
+# 窗口参数：大会话量（几百群）时全量展开每会话的成员/路由/策略解析是面板卡顿
+# 的主因——列表行按页展开，账户聚合/身份建议仍用全量计算（纯内存，便宜）
+        try:
+            limit_n = max(1, min(int(self._query(request, "limit") or 0), 200))
+        except ValueError:
+            limit_n = 0
+        try:
+            start_i = int(self._query(request, "start") or 0)
+        except ValueError:
+            start_i = 0
+        archived_only = str(self._query(request, "archived") or "").strip() == "1"
+        rows = [s for s in sessions if s.get("archived")] if archived_only else sessions
+        total = len(rows)
+        if limit_n:
+            start_i = max(0, min(start_i, total))
+            window = rows[start_i : start_i + limit_n]
+        else:
+            start_i = 0
+            window = rows
+        for session in window:
             if str(session.get("platform") or "") == "dashboard" and not session.get("name"):
                 session["name"] = texts.t("dashboard_session_name")
             session["members"] = self.main.sessions.members_of(session.get("chat_key") or "")
@@ -30,19 +50,22 @@ class SessionsApiMixin:
 # 会话治理策略随行下发：面板开关直接渲染 muted/low_token/priority 当前值
             session["policy"] = get_policy(self.sdk, session.get("chat_key") or "")
         try:
-            self.main.spawn(self.main.conversations.resolve_session_names(sessions))
+            self.main.spawn(self.main.conversations.resolve_session_names(window))
         except Exception as e:
             self.main.logger.debug(f"resolve session names failed: {e}")
         live_keys = set()
         try:
-            for s in sessions:
+            for s in window:
                 if self._live.busy(s["chat_key"]):
                     live_keys.add(s["chat_key"])
                     s["live"] = True
         except Exception as e:
             self.main.logger.debug(f"live session mark failed: {e}")
         return {
-            "sessions": sessions,
+            "sessions": window,
+            "total": total,
+            "start": start_i,
+            "limit": limit_n,
             "live_sessions": sorted(live_keys),
             "ui_defaults": self._ui_defaults(),
             "accounts": self._accounts_overview(sessions),
@@ -97,17 +120,21 @@ class SessionsApiMixin:
         return entries
 
     async def inbox_get(self, request):
-        """事件收件箱面板：通知/请求列表（聚合多账户），支持类型过滤与条数。"""
+        """事件收件箱面板：通知/请求列表（聚合多账户），支持类型过滤与分页。"""
         kind = str(self._query(request, "kind") or "").strip().lower()
         account = str(self._query(request, "account") or "").strip()
         try:
             limit = max(1, min(int(self._query(request, "limit") or 100), 500))
         except ValueError:
             limit = 100
+        try:
+            offset = max(0, int(self._query(request, "offset") or 0))
+        except ValueError:
+            offset = 0
         entries = self._inbox_entries(kind, account)
         unread = sum(1 for e in entries if not e.get("read"))
 # 读取即标已读（单源：与 AI list_events 同一 read 字段；仅标记本次返回的页）
-        for entry in entries[:limit]:
+        for entry in entries[offset : offset + limit]:
             if entry.get("read"):
                 continue
             entry["read"] = True
@@ -120,7 +147,8 @@ class SessionsApiMixin:
                 self._inbox_cache_drop(inbox_account)
             except Exception:
                 pass
-        return {"events": entries[:limit], "total": len(entries), "unread": unread}
+        return {"events": entries[offset : offset + limit], "total": len(entries), "unread": unread,
+                "offset": offset, "limit": limit}
 
     async def inbox_handle(self, request):
         """面板直接处置请求事件（同意/拒绝）：转调 handle_request 的路由逻辑
@@ -539,7 +567,7 @@ class SessionsApiMixin:
         return {"ok": True, "ui": saved}
 
     async def session_policy(self, request):
-        """会话治理策略（muted/low_token/priority）：只传要改的键，返回更新后的完整策略。
+        """会话治理策略（muted/low_token/priority/session_budget）：只传要改的键，返回更新后的完整策略。
 
         与 /qvq mute|policy|lowtoken 同一存储（conversation/policy），双入口单事实源。
         """
@@ -547,7 +575,7 @@ class SessionsApiMixin:
         chat_key = str((body or {}).get("chat_key") or "")
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
-        updates = {k: body[k] for k in ("muted", "low_token", "priority") if k in body}
+        updates = {k: body[k] for k in ("muted", "low_token", "priority", "session_budget") if k in body}
         policy = set_policy(self.sdk, chat_key, **updates)
 # 面板改策略与聊天命令同源，审计留痕（detail 记录本次变更的键值）
         self.main.audit("session_policy", {"chat_key": chat_key, **updates})

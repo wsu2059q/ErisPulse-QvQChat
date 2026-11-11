@@ -557,6 +557,9 @@ class ModelPool:
 # 透出 models.db 目录数据，否则 context_length/cost 是死数据
                     "context_length": model.get("context_length"),
                     "max_output_tokens": model.get("max_output_tokens"),
+# 思考强度（模型条目 > 提供商默认，engine 注入链消费）
+                    "reasoning_effort": str(model.get("reasoning_effort") or ""),
+                    "provider_reasoning_effort": str(provider.get("reasoning_effort") or ""),
                     "cost": model.get("cost") if isinstance(model.get("cost"), dict) else None,
 # 自定义说明与预填充支持（编辑器维护；models.dev enrich 不碰这两个字段）
                     "notes": str(model.get("notes") or ""),
@@ -757,10 +760,15 @@ class ModelPool:
         """
         self._route_chat_spec(spec, request)# 难度感知路由（默认关闭，不改显式约束）
         model = self.resolve_task_model(spec)
-# 思考强度注入优先级：
-# 1) 全局 reasoning_effort 显式配置——所有请求统一（含辅助调用）
-# 2) 自动降思考：chat 且难度路由判为 cheap 时用 effort_smalltalk（仅 chat 主对话）
-        effort = str(getattr(self.config, "reasoning_effort", "") or "")
+# 思考强度注入优先级（近端覆盖远端）：
+# 调用方显式 > 模型条目 > 提供商默认 > 全局配置；全都为空且 chat+cheap 时
+# 才落 effort_smalltalk 自动降档（自动档绝不覆盖任何显式档位）
+        effort = (
+            str(getattr(request, "reasoning_effort", "") or "")
+            or str(model.get("reasoning_effort") or "")
+            or str(model.get("provider_reasoning_effort") or "")
+            or str(getattr(self.config, "reasoning_effort", "") or "")
+        )
         if not effort and str(spec.kind) == "chat" and str(spec.prefer or "") == "cheap":
             effort = str(getattr(self.config, "effort_smalltalk", "") or "")
         scoped = ChatRequest(
@@ -770,7 +778,7 @@ class ModelPool:
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             needs=request.needs,
-            reasoning_effort=effort or str(getattr(request, "reasoning_effort", "") or ""),
+            reasoning_effort=effort,
         )
         priority = int(spec.priority or 0) if str(spec.kind) == "chat" else 8
         return await self.chat(scoped, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning, priority=priority)
@@ -820,6 +828,16 @@ class ModelPool:
                     f"dropped {len(chain) - len(same)} cross-provider models"
                 )
                 chain = same
+# 思考强度直连路径兜底：不经 dispatch 的调用（面板聊天/OpenAI 端点等）也要吃到
+# 模型条目 > 提供商默认 > 全局配置的档位（调用方显式档位保持最高优先级）
+        if not str(getattr(request, "reasoning_effort", "") or ""):
+            inherited = (
+                str(primary.get("reasoning_effort") or "")
+                or str(primary.get("provider_reasoning_effort") or "")
+                or str(getattr(self.config, "reasoning_effort", "") or "")
+            )
+            if inherited:
+                request.reasoning_effort = inherited
 # 负载分流（并发时转移）：首选 provider 在飞数达到阈值时，把更闲的 provider 稳定提前——
 # 不等报错就分流；各 provider 的 base_url 不同也照常工作
         if bool(getattr(self.config, "provider_load_steering", True)) and chain:
@@ -906,7 +924,9 @@ class ModelPool:
                     "text": prompt
                     or "Describe this image in detail in its likely language: subjects, text, layout and anything notable.",
                 },
-                {"type": "image_url", "image_url": {"url": url}},
+# 本地路径转 base64 data URL：厂商拉不到部署机本地文件（不转 = 静默丢图，
+# 打标签全部失败留「未分类」的根因）
+                {"type": "image_url", "image_url": {"url": utils.image_data_url(url)}},
             ]
             try:
                 response = await self.dispatch(

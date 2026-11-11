@@ -674,10 +674,37 @@ async def list_events(ctx: ToolContext, kind: str = "", limit: int = 20) -> str:
     return utils.to_text({"events": picked, "total": len(entries)})
 
 
+async def recall_message(ctx: ToolContext) -> str:
+    """撤回本会话机器人最近一条消息：模型发错内容后的自纠通道。
+
+    模型想撤回时会发明语法（线上事故：把 `[recall] <id>` 当正文发出来）——
+    真通道在这儿，描述里明确告知，杜绝发明语法。"""
+    delivery = getattr(ctx.main, "delivery", None)
+    recall = getattr(delivery, "recall_last", None)
+    if not callable(recall):
+        return utils.to_text({"ok": False, "error": "recall unavailable on this deployment"})
+    ok = await recall(str(ctx.chat_key or ""))
+    if ok:
+        return utils.to_text({"ok": True, "recalled": "last message"})
+    return utils.to_text({
+        "ok": False,
+        "error": "recall failed: nothing recallable (no message sent in this chat within the last ~2 minutes, or platform lacks delete_msg)",
+    })
+
+
 def register(registry: ToolRegistry, main) -> None:
+    registry.register(Tool(
+        name="recall_message",
+        access="safe",
+        dedupe_success=True,
+        description="Recall (delete) the bot's own most recent message in the CURRENT chat — the self-correction channel after sending something wrong. Takes no parameters. Only works within ~2 minutes of that message and on platforms supporting delete_msg; failures are reported honestly. NEVER write your own recall syntax (like [recall] <id>) into reply text — that is not a real protocol; call this tool instead.",
+        parameters=_schema({}, []),
+        handler=recall_message,
+    ))
     registry.register(Tool(
         name="send_message",
         access="safe",
+        dedupe_success=True,
         description="Send a message to a user/group on ANY platform (cross-platform outreach). The send method is chosen by platform capability automatically (Markdown > Html > Text, with plain-text fallback); pass method to force one. DEFAULT TARGET = the CURRENT session: omit platform/target_type/target_id entirely to reply here. Fill them ONLY for a different destination — the platform name MUST be the exact 'platform' value returned by list_platforms, never guessed from the user's wording (a user mentioning a website name still needs the registered platform name). If the user asks to reach someone elsewhere but the exact platform/id is unclear, ASK the user instead of guessing. Forced methods are signature-checked before sending: a method needing extra parameters is rejected up-front with its required list (nothing is sent or queued) — check list_platforms for signatures.",
         parameters=_schema(
             {
@@ -700,6 +727,7 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="send_dsl",
         access="safe",
+        dedupe_success=True,
         description="Full SendDSL power: build a complete send chain — Using(account), rules (retry/timeout/defer/priority), modifiers (Reply/At/AtAll/...), then any send method the platform supports. Inspect list_platforms for available methods.",
         parameters=_schema(
             {

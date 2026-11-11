@@ -20,7 +20,7 @@ class MemoryStore:
         try:
             from ..engine import vectors as _vectors
 
-# 省钱模式：语义检索每次查询都是一次 embedding 调用——降级为词面 overlap 匹配
+# 低token模式：语义检索每次查询都是一次 embedding 调用——降级为词面 overlap 匹配
             if (
                 getattr(self.config, "embedding_enabled", False)
                 and not bool(getattr(self.config, "budget_mode", False))

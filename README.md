@@ -73,7 +73,7 @@ admins = ["123456"]   # 你在聊天平台上的用户 id
 | `/qvq listen on\|off` | 管理员 | 本会话是否参与旁听 |
 | `/qvq mute` · `/qvq unmute` | 管理员 | 屏蔽 / 解除屏蔽本会话 |
 | `/qvq policy high\|normal\|low` | 管理员 | 会话资源优先级 |
-| `/qvq lowtoken on\|off` | 管理员 | 会话级省钱模式 |
+| `/qvq lowtoken on\|off` · `/qvq budget <n>` | 管理员 | 会话级低token模式 / 会话日限额（0 不限） |
 | `/qvq subjobs` · `/qvq health` | 管理员 | 后台任务列表 / 立即体检 |
 | `/qvq takeover [分钟]` · `/qvq release` | 管理员 | 接管 / 释放会话 |
 | `/qvq memories clear profile\|facts` | 主人 | 清空画像 / 事实 |
@@ -88,7 +88,7 @@ admins = ["123456"]   # 你在聊天平台上的用户 id
 - **定时任务**：自然语言创建，支持 cron / at / in / every 四种格式，执行记录可查。
 - **扩展**：任何 ErisPulse 模块声明的服务都会成为智能体的工具，装上即生效。
 - **多账户**：平台的多个 bot 账户可独立隔离会话。
-- **省钱模式**：全局开关，对话优先便宜模型并压缩输入，适合高流量场景。
+- **低token模式**：全局开关或会话级叠加，也可超限自动进入；系统提示与历史轻量化、辅助调用走便宜链路，适合高流量场景。
 
 ## 网页控制台
 

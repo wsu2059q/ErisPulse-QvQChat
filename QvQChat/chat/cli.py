@@ -104,6 +104,7 @@ class CliMixin:
             ("unmute", "cmd_desc_unmute", True),
             ("policy", "cmd_desc_policy", True),
             ("lowtoken", "cmd_desc_lowtoken", True),
+            ("budget", "cmd_desc_budget", True),
             ("start", "menu_start", True),
             ("persona", "menu_persona", True),
         ]),
@@ -314,8 +315,8 @@ class CliMixin:
                     state=texts.t("listen_on_state" if listening else "listen_off_state"),
                     effect="",
                 ))
-            elif sub in ("mute", "unmute", "屏蔽", "解除屏蔽", "policy", "策略", "lowtoken", "省钱", "省流"):
-# 会话治理（屏蔽/优先级/省钱）四个子命令统一入口，见 _cmd_policy
+            elif sub in ("mute", "unmute", "屏蔽", "解除屏蔽", "policy", "策略", "lowtoken", "省钱", "省流", "budget", "限额"):
+# 会话治理（屏蔽/优先级/低token/限额）子命令统一入口，见 _cmd_policy
                 await self._cmd_policy(event, chat_key, user_id, tokens)
             elif sub in ("rewind", "回溯", "回滾"):
 # 平台侧回溯：成员限幅 6 条（只动刚发的对话）；更多属会话破坏，管理员限定
@@ -464,15 +465,18 @@ class CliMixin:
     @staticmethod
     def _policy_labels(policy: dict) -> dict:
         """策略值 → 回复文案 format 标签（中文短标签固定，与 locale 文案解耦）。"""
+        budget = int(policy.get("session_budget") or 0)
         return {
             "priority": {"high": "高", "normal": "常规", "low": "低"}.get(str(policy.get("priority") or ""), "常规"),
             "low_token": "开" if policy.get("low_token") else "关",
+            "session_budget": f"{budget}" if budget else "不限",
         }
 
     async def _cmd_policy(self, event, chat_key: str, user_id: str, tokens: list) -> None:
         """/qvq mute|unmute：屏蔽开关（消息入口早闸不回复不旁听）。
         /qvq policy [high|normal|low]：资源优先级（无参回用法+当前值）。
-        /qvq lowtoken on|off：省钱模式（输入瘦身，配合全局 budget_mode 省更多）。"""
+        /qvq lowtoken on|off：低token模式（输入瘦身，配合全局 budget_mode 省更多）。
+        /qvq budget <token数|0>：会话级每日 token 限额（0 不限）。"""
         if not self.is_admin(user_id, platform=event.get_platform() or ""):
             await event.reply(texts.t("needs_admin"))
             return
@@ -484,6 +488,17 @@ class CliMixin:
         if sub in ("unmute", "解除屏蔽"):
             set_policy(self.sdk, chat_key, muted=False)
             await event.reply(texts.t("policy_muted_off"))
+            return
+        if sub in ("budget", "限额"):
+# 会话级每日 token 限额：0 关闭；非数字回用法（附当前值）
+            arg = tokens[1] if len(tokens) >= 2 else ""
+            try:
+                value = max(0, int(arg))
+            except (TypeError, ValueError):
+                await event.reply(texts.t("policy_usage", **self._policy_labels(get_policy(self.sdk, chat_key))))
+                return
+            policy = set_policy(self.sdk, chat_key, session_budget=value)
+            await event.reply(texts.t("policy_set", **self._policy_labels(policy)))
             return
         if sub in ("lowtoken", "省钱", "省流"):
             action = tokens[1].lower() if len(tokens) >= 2 else ""

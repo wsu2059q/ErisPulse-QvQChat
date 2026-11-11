@@ -1424,6 +1424,21 @@ button.qvq-sw:focus-visible {
   color: var(--qvq-accent);
   background: var(--qvq-accent-soft);
 }
+/* 会话列表分页条：‹ n/m ›，两端到界置灰（内联 opacity） */
+.qvq-chat-sfoot[data-sess-pager] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+.qvq-chat-sfoot[data-sess-pager] .qvq-chat-pg {
+  padding: 0 10px;
+  font-size: 14px;
+  line-height: 1;
+}
+.qvq-chat-sfoot[data-sess-pager] .qvq-chat-pg:hover {
+  color: var(--qvq-accent);
+}
 .qvq-chat-snone {
   padding: 14px 10px;
   font-size: 12px;

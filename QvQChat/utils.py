@@ -557,6 +557,32 @@ def overlap_score(query: str, content: str) -> float:
     return len(q & c) / len(q)
 
 
+def image_data_url(url: str, max_bytes: int = 6 * 1024 * 1024) -> str:
+    """本地图片路径 → base64 data URL；http(s)/data: 原样返回。
+
+    云厂商拉不到部署机本地路径，`{"image_url": {"url": "/app/data/..."}}` 会被
+    静默丢图——"视觉模型说没收到图、工具反复 view_image"死循环的根因。
+    读取失败/超限原样返回（由调用方向模型如实描述）。"""
+    text = str(url or "").strip()
+    if not text or text.startswith(("http://", "https://", "data:")):
+        return text
+    path = text[7:] if text.startswith("file://") else text
+    try:
+        from pathlib import Path as _Path
+
+        file = _Path(path)
+        if not file.is_file() or file.stat().st_size > max_bytes:
+            return text
+        import base64 as _base64
+
+        suffix = file.suffix.lower().lstrip(".") or "png"
+        if suffix == "jpg":
+            suffix = "jpeg"
+        return f"data:image/{suffix};base64," + _base64.b64encode(file.read_bytes()).decode()
+    except Exception:
+        return text
+
+
 async def run_process(
     args: str | list[str],
     cwd: str | None = None,

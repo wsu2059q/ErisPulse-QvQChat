@@ -281,6 +281,10 @@
   }
 
   var chatShowArchived = false;
+  // 会话列表按页取，每页 chatSessLimit 条
+  var chatSessPage = 0;
+  var chatSessTotal = 0;
+  var chatSessLimit = 80;
 
   var PIN_SVG = "<svg viewBox='0 0 24 24'><path d='M12 17v5M9 3h6l-1 7 3 2v2H7v-2l3-2z'/></svg>";
   var DEL_SVG = "<svg viewBox='0 0 24 24'><path d='M3 6h18M8 6V4h8v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6'/></svg>";
@@ -400,18 +404,26 @@
     if (!known[chatSession]) {
       items.unshift({ chat_key: chatSession, updated: Date.now() / 1000 });
     }
-    var archivedCount = chatMeta.sessions.filter(function (s) { return s.archived; }).length;
+    var archivedCount = chatShowArchived ? chatSessTotal : chatMeta.sessions.filter(function (s) { return s.archived; }).length;
     var shown = chatShowArchived
       ? items.filter(function (s) { return s.chat_key === chatSession || s.archived; })
       : items.filter(function (s) { return !s.archived || s.chat_key === chatSession; });
     var newBtn = '<div class="qvq-chat-srow qvq-nav-new" data-new="1"><span class="qvq-chat-sname">+ ' + esc(t("chat_new")) + "</span></div>";
+    var pages = Math.max(1, Math.ceil(chatSessTotal / chatSessLimit));
+    var pager = "";
+    if (pages > 1) {
+      pager = '<div class="qvq-chat-sfoot" data-sess-pager="1">' +
+        '<span class="qvq-chat-pg" data-pg="prev"' + (chatSessPage <= 0 ? ' style="opacity:.35"' : "") + '>‹</span>' +
+        "<span>" + (chatSessPage + 1) + " / " + pages + "</span>" +
+        '<span class="qvq-chat-pg" data-pg="next"' + (chatSessPage >= pages - 1 ? ' style="opacity:.35"' : "") + '>›</span></div>';
+    }
     var foot = '<div class="qvq-chat-sfoot' + (chatShowArchived ? " on" : "") + '" data-archived-toggle="1">' +
       esc(t("chat_archived")) + (archivedCount ? " · " + archivedCount : "") + "</div>" +
       (archivedCount && chatShowArchived
         ? '<div class="qvq-chat-sfoot" data-purge-archived="1">' + esc(t("chat_purge_archived")) + "</div>"
         : "");
 
-    var listHtml = '<div class="qvq-nav-srows" data-srows="1">' + newBtn + (sessionRowsHtml(shown) || "") + "</div>" + foot;
+    var listHtml = '<div class="qvq-nav-srows" data-srows="1">' + newBtn + (sessionRowsHtml(shown) || "") + "</div>" + pager + foot;
 // 浮层头部带关闭按钮（仅侧面板）
     var sideHtml = '<div class="qvq-chat-shead"><span class="qvq-chat-shead-t">' + esc(t("chat_sessions_panel")) +
       '</span><button class="qvq-icon-btn" data-side-close="1" title="' + esc(t("cancel")) + '">' +
@@ -428,10 +440,17 @@
       });
       var sb = sideBox.querySelector("[data-new]");
       if (sb) sb.onclick = function () { newChat(); };
+      var sPager = sideBox.querySelector("[data-sess-pager]");
+      if (sPager) {
+        var sPrev = sPager.querySelector("[data-pg=prev]");
+        var sNext = sPager.querySelector("[data-pg=next]");
+        if (sPrev) sPrev.onclick = function () { loadChatMeta({ page: chatSessPage - 1, history: false }); };
+        if (sNext) sNext.onclick = function () { loadChatMeta({ page: chatSessPage + 1, history: false }); };
+      }
       var sFoot = sideBox.querySelector("[data-archived-toggle]");
       if (sFoot) sFoot.onclick = function () {
         chatShowArchived = !chatShowArchived;
-        renderChatSessions();
+        loadChatMeta({ resetPage: true, history: false });
       };
       var sPurge = sideBox.querySelector("[data-purge-archived]");
       if (sPurge) sPurge.onclick = function () {
@@ -456,10 +475,17 @@
         bindSessionRows(navBox, true);
         var nb = navBox.querySelector("[data-new]");
         if (nb) nb.onclick = function () { newChat(); closeDrawer(); };
+        var nPager = navBox.querySelector("[data-sess-pager]");
+        if (nPager) {
+          var nPrev = nPager.querySelector("[data-pg=prev]");
+          var nNext = nPager.querySelector("[data-pg=next]");
+          if (nPrev) nPrev.onclick = function () { loadChatMeta({ page: chatSessPage - 1, history: false }); };
+          if (nNext) nNext.onclick = function () { loadChatMeta({ page: chatSessPage + 1, history: false }); };
+        }
         var footEl = navBox.querySelector("[data-archived-toggle]");
         if (footEl) footEl.onclick = function () {
           chatShowArchived = !chatShowArchived;
-          renderChatSessions();
+          loadChatMeta({ resetPage: true, history: false });
         };
         var purgeEl = navBox.querySelector("[data-purge-archived]");
         if (purgeEl) purgeEl.onclick = function () {
@@ -497,12 +523,17 @@
   // 历史由本地增量维护
   function loadChatMeta(opts) {
     var withHistory = !(opts && opts.history === false);
+    if (opts && opts.page != null) chatSessPage = Math.max(0, parseInt(opts.page, 10) || 0);
+    if (opts && opts.resetPage) chatSessPage = 0;
+    var sessUrl = "/api/qvq/sessions?limit=" + chatSessLimit + "&start=" + (chatSessPage * chatSessLimit) +
+      (chatShowArchived ? "&archived=1" : "");
     Promise.all([
-      api("/api/qvq/sessions"),
+      api(sessUrl),
       api("/api/qvq/personas"),
       api("/api/qvq/models")
     ]).then(function (results) {
       chatMeta.sessions = (results[0] && results[0].sessions) || [];
+      chatSessTotal = (results[0] && results[0].total) || chatMeta.sessions.length;
       chatMeta.personas = (results[1] && results[1].personas) || [];
       chatMeta.uiDefaults = (results[0] && results[0].ui_defaults) || {};
       chatMeta.accounts_overview = (results[0] && results[0].accounts) || {};

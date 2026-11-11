@@ -259,6 +259,7 @@ class QvQConfig(BaseConfig):
         default="safe",
         metadata=_desc("eco_default_access", "未自声明服务的默认访问档：safe 全员可用（默认——TTS/表情包等表达型工具不再对普通成员隐藏）/ admin 仅管理员。改 admin 会把未声明的生态工具整体藏起来，普通用户会话将无法发语音/表情", "eco", 6, "select", ["safe", "admin"]),
     )
+    eco_call_timeout: int = field(default=90, metadata=_desc("eco_call_timeout", "生态服务调用超时（秒，0 不限）：超时向模型如实报错，不挂起回合", "eco", 7, "number"))
 
     mcp_timeout: int = field(default=30, metadata=_desc("mcp_timeout", "MCP 请求超时（秒）", "mcp", 1, "number"))
 
@@ -285,7 +286,7 @@ class QvQConfig(BaseConfig):
     kb_chunk_overlap: int = field(default=50, metadata=_desc("kb_chunk_overlap", "知识库相邻分块的重叠字符数", "kb", 4, "number"))
 # Lorebook 世界书（触发式注入）+ 语义检索（KB 侧向量层）
     kb_triggers_enabled: bool = field(default=True, metadata=_desc("kb_triggers_enabled", "世界书触发注入：条目配置 triggers 关键词后，最近对话命中即注入该条目（SillyTavern World Info 模式，与检索注入并存）", "kb", 5, "switch"))
-    kb_trigger_window: int = field(default=6, metadata=_desc("kb_trigger_window", "世界书触发扫描的最近消息条数（含本次消息）", "kb", 6, "number"))
+    kb_trigger_window: int = field(default=5, metadata=_desc("kb_trigger_window", "世界书触发扫描的最近消息条数（含本次消息）", "kb", 6, "number"))
     kb_cooldown_min: int = field(default=30, metadata=_desc("kb_cooldown_min", "世界书条目新添加时的默认触发冷却分钟数（冷却期内不再注入，条目级 cooldown_min 可覆盖；0 不冷却）", "kb", 7, "number"))
     embedding_enabled: bool = field(default=False, metadata=_desc("embedding_enabled", "知识库语义检索：向量层可用时按余弦相似度检索（任何环节不可用自动回退词面打分，零配置行为不变）", "kb", 8, "switch"))
     embedding_model: str = field(default="", metadata=_desc("embedding_model", "向量模型名字符串（配合 embedding_provider，如 text-embedding-3-small；留空用 provider 内 model）", "kb", 9, "text"))
@@ -315,8 +316,9 @@ class QvQConfig(BaseConfig):
     turn_timeout: float = field(default=900.0, metadata=_desc("turn_timeout", "单回合执行超时（秒）：回合超过该时长（任务卡死/模型无响应）自动收束并放行后续消息，部分输出照常入库；0 关闭", "chat", 76, "number"))
     chat_listen_mode: str = field(default="all", metadata=_desc("chat_listen_mode", "会话监听模式：all 全部响应 / whitelist 仅响应 chat_whitelist 名单内的会话；配合会话面板的屏蔽开关可静音指定会话", "chat", 77, "select", ["all", "whitelist"]))
     chat_whitelist: list[str] = field(default_factory=list, metadata=_desc("chat_whitelist", "白名单会话列表（chat_listen_mode=whitelist 时生效），填 chat_key（如 onebot11:group:123456），支持前缀匹配平台段", "chat", 78, "lines"))
-    budget_mode: bool = field(default=False, metadata=_desc("budget_mode", "省钱模式（全局）：chat 回合按实际成本升序优先便宜模型，任务冲突判定跳过 AI 直接入队，记忆语义检索降级为词面匹配，系统提示词轻量瘦身（kb/技能清单跳过，人格保留）——不改变发言风格，省单价也省调用量", "chat", 79, "switch"))
-    join_agg_window: float = field(default=0.0, metadata=_desc("join_agg_window", "入群欢迎合并窗口（秒）：窗口内多人先后进群合并为一次欢迎回合，0 按消息聚合窗口（aggregate_window）取值；负数或显式 0.5-60 之间可覆盖", "chat", 80, "number"))
+    budget_mode: bool = field(default=False, metadata=_desc("budget_mode", "低token模式（全局）：chat 回合按实际成本升序优先便宜模型，任务冲突判定跳过 AI 直接入队，记忆语义检索降级为词面匹配，系统提示词轻量瘦身（kb/技能清单跳过，人格保留）——不改变发言风格，省单价也省调用量", "chat", 79, "switch"))
+    budget_auto_on_limit: bool = field(default=False, metadata=_desc("budget_auto_on_limit", "超限自动低token：全局日上限（daily_token_limit）或会话日限额触发后，该会话自动进入低token模式直到次日（只影响之后的回合，不改写会话策略存储；默认关闭）", "chat", 80, "switch"))
+    join_agg_window: float = field(default=0.0, metadata=_desc("join_agg_window", "入群欢迎合并窗口（秒）：窗口内多人先后进群合并为一次欢迎回合，0 按消息聚合窗口（aggregate_window）取值；负数或显式 0.5-60 之间可覆盖", "chat", 81, "number"))
 
 # 群聊参与决策（插件化扩展点；默认关闭：装插件≠放行）
     participation_enabled: bool = field(default=False, metadata=_desc("participation_enabled", "群聊参与决策：未被 @/前缀命中时问询生态插件的 qvq_decision 服务判断是否插话（默认关闭，需自行开启）", "participation", 1, "switch", dangerous=True))
