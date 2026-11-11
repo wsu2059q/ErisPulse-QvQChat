@@ -52,6 +52,8 @@ class ModelPool:
         self._breaker: dict[str, dict] = {}
 # Provider 负载分流：provider_id -> 在飞请求数（并发时把新请求导向更闲的一家）
         self._provider_active: dict[str, int] = {}
+# 至少成功过一次的模型（负载分流抢占链首的门槛，见 _record_success）
+        self._ever_ok: set[str] = set()
 # 难度感知路由（默认关闭）：chat_key -> (prefer, reason, ts)
         self.routing_cache: dict[str, tuple] = {}
 # 路由统计与最近决策回看（{prefer: 计数} / deque[{chat_key, prefer, reason, ts}]）
@@ -91,6 +93,10 @@ class ModelPool:
 
     def _record_success(self, model_id: str) -> None:
         self.__dict__.setdefault("_breaker", {}).pop(model_id, None)
+# 已验证集：该模型至少真实成功过一次。负载分流只允许"服务过"的 provider
+# 抢占链首——新加的 provider active=0 永远最闲，否则并发一来就被导到
+# 从未验证的模型上（全局间歇性空回复事故：谁最闲就轮到谁，而它没跑通过）
+        self.__dict__.setdefault("_ever_ok", set()).add(str(model_id))
 
     def _is_open(self, model_id: str) -> bool:
         import time as _time
@@ -839,7 +845,10 @@ class ModelPool:
             if inherited:
                 request.reasoning_effort = inherited
 # 负载分流（并发时转移）：首选 provider 在飞数达到阈值时，把更闲的 provider 稳定提前——
-# 不等报错就分流；各 provider 的 base_url 不同也照常工作
+# 不等报错就分流；各 provider 的 base_url 不同也照常工作。
+# 门槛：只在"至少成功服务过一次"的 provider 之间重排——新加的 provider
+# active=0 永远最闲，不分门槛就等于并发一来请求全被导到未验证模型上
+# （全局间歇性空回复事故根因），从未跑通的沉底、不参与抢占
         if bool(getattr(self.config, "provider_load_steering", True)) and chain:
             threshold = max(1, int(getattr(self.config, "provider_steer_active", 2) or 2))
             primary_active = self._provider_active.get(chain[0]["provider"], 0)
@@ -847,6 +856,7 @@ class ModelPool:
                 before = chain[0]["id"]
                 chain.sort(key=lambda m: (
                     1 if self._is_open(m["id"]) else 0,
+                    0 if str(m["id"]) in self._ever_ok else 1,
                     self._provider_active.get(m["provider"], 0),
                 ))
                 if chain[0]["id"] != before:
@@ -903,6 +913,25 @@ class ModelPool:
                     continue
                 self._provider_active[model["provider"]] = max(0, self._provider_active.get(model["provider"], 0) - 1)
                 response.model = model["id"]
+# 空响应软失败：HTTP 200 但无正文且无工具调用不是成功——坏配置的备用模型
+# （连通但输出空）此前会在这里"成功"返回空，主对话拿到的就是
+# "没有可回复的内容"（间歇性空回复事故：取决于哪次请求落到备用链上）。
+# 链上还有模型时记 fail 并继续尝试下一个
+                if (
+                    index + 1 < len(chain)
+                    and not (response.content or "").strip()
+                    and not response.tool_calls
+                ):
+                    self._record_fail(model["id"])
+                    errors.append(f"{model['id']}: empty content (no text, no tool calls)")
+                    if on_reset is not None:
+                        try:
+                            result = on_reset()
+                            if asyncio.iscoroutine(result):
+                                await result
+                        except Exception:
+                            pass
+                    continue
                 self._record_success(model["id"])
                 return response
             raise EngineError(texts.t("engine_all_failed", errors=" | ".join(errors)))

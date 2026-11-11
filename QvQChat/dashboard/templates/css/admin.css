@@ -1003,6 +1003,32 @@ button.qvq-sw:focus-visible {
   background: var(--qvq-bg-s);
   color: var(--qvq-accent);
 }
+/* 分类计数徽标：组内设置项条数 */
+.qvq-cat-btn .qvq-cat-n {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 0 6px;
+  min-width: 14px;
+  font-style: normal;
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--qvq-tx-t);
+  background: var(--qvq-bg-s);
+  border-radius: 8px;
+}
+.qvq-cat-btn.active .qvq-cat-n {
+  color: var(--qvq-accent);
+  background: var(--qvq-accent-soft);
+}
+/* 搜索命中高亮 */
+.qvq-settings-form mark,
+mark {
+  background: var(--qvq-accent-soft);
+  color: var(--qvq-accent);
+  border-radius: 3px;
+  padding: 0 1px;
+}
 .qvq-cat-btn.active {
   background: var(--qvq-accent-fill);
   border-color: transparent;

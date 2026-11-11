@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from .. import texts, utils
 
 MEM_PREFIX = "QvQChat:mem:"
 GLOBAL_SCOPE = "global"
+FORGET_PRUNE_KEY = "QvQChat:memforget:last_prune"  # 前缀避开 MEM_PREFIX（list_scopes 按 keys() 枚举）
+
+# 遗忘曲线（只作用 source="auto" 的自动记忆；user 主动记的永不自动清）：
+# importance → 保留天数。低权重旧记忆淡出，重要记忆留到自然失效为止，
+# 5 级与人工记忆不过期——"有些是要长期记忆的，不是一刀切"
+RETENTION_DAYS = {1: 14, 2: 14, 3: 60, 4: 180, 5: 0}  # 0 = 永久
 
 
 class MemoryStore:
@@ -43,7 +50,8 @@ class MemoryStore:
     def _normalized(text: str) -> str:
         return "".join(str(text).lower().split())
 
-    def remember(self, chat_key: str, content: str, category: str = "", importance: int = 3) -> str:
+    def remember(self, chat_key: str, content: str, category: str = "", importance: int = 3,
+                 source: str = "user") -> str:
         content = content.strip()
         if not content:
             return texts.t("memory_empty_content")
@@ -61,14 +69,57 @@ class MemoryStore:
                 "category": category or "general",
                 "importance": max(1, min(5, int(importance or 3))),
                 "ts": utils.now_ts(),
+                "source": source if source in ("user", "auto") else "user",
             }
         )
+        self._maybe_forget(chat_key, entries)
         max_items = int(getattr(self.config, "memory_max", 200))
         if len(entries) > max_items:
             entries.sort(key=lambda e: (e.get("importance", 3), e.get("ts", 0)), reverse=True)
             entries = entries[:max_items]
         self._save(chat_key, entries)
         return texts.t("memory_added", count=len(entries))
+
+    def _maybe_forget(self, chat_key: str, entries: list) -> int:
+        """遗忘曲线懒清理：跨天首条写入时对全部会话执行一次（照 usage 滚动清理模式）。
+
+        只淡出 source="auto" 且超过分级保留期的条目；user 记忆与 importance 5 永不过期。
+        返回本次清理条数。"""
+        if not bool(getattr(self.config, "memory_forget", True)):
+            return 0
+        today = time.strftime("%Y-%m-%d")
+        try:
+            last = self.sdk.storage.get(FORGET_PRUNE_KEY, "")
+            if last == today:
+                return 0
+        except Exception:
+            pass
+        removed_total = 0
+        try:
+            now = time.time()
+            for key in [str(k) for k in (self.sdk.storage.keys() or []) if str(k).startswith(MEM_PREFIX)]:
+                stored = self.sdk.storage.get(key, [])
+                if not isinstance(stored, list) or not stored:
+                    continue
+                kept = []
+                for entry in stored:
+                    if not isinstance(entry, dict) or entry.get("source") != "auto":
+                        kept.append(entry)
+                        continue
+                    days = RETENTION_DAYS.get(int(entry.get("importance") or 3), 60)
+                    if days <= 0:
+                        kept.append(entry)
+                        continue
+                    if now - float(entry.get("ts") or 0) > days * 86400:
+                        removed_total += 1
+                        continue
+                    kept.append(entry)
+                if len(kept) != len(stored):
+                    self.sdk.storage.set(key, kept)
+            self.sdk.storage.set(FORGET_PRUNE_KEY, today)
+        except Exception:
+            return removed_total
+        return removed_total
 
     def recall(self, chat_key: str, query: str = "", limit: int = 0) -> list[dict]:
         entries = self.entries(chat_key)

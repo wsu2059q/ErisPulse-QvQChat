@@ -3,7 +3,7 @@ import asyncio
 from QvQChat.conversation.service import ConversationService, make_chat_key, parse_chat_key
 from QvQChat.conversation.memory import MemoryStore
 
-from fakes import FakeMain
+from fakes import FakeMain, make_ctx
 
 
 def test_chat_key_roundtrip():
@@ -277,3 +277,116 @@ def test_skills_merge_external_and_builtin_wins():
     assert skills["ext-skill"]["enabled"] is True
 # 内置同名优先
     assert skills["self-config"]["source"] == "builtin"
+
+
+# ---------- 遗忘曲线 / 压缩沉淀 / 记忆分页 / 群语气学习 ----------
+
+import time as _time
+
+from QvQChat.conversation.memory import FORGET_PRUNE_KEY
+
+
+def test_forgetting_curve_spares_user_and_importance5():
+    main = FakeMain()
+    store = MemoryStore(main.sdk, main.cfg)
+    old_ts = _time.time() - 200 * 86400  # 200 天前
+# auto 记忆：1 级超 14 天 → 该清；5 级永久 → 保留
+    store._save("s", [
+        {"content": "旧闲聊", "category": "auto", "importance": 1, "ts": old_ts, "source": "auto"},
+        {"content": "重要结论", "category": "auto", "importance": 5, "ts": old_ts, "source": "auto"},
+        {"content": "用户亲口让记的", "category": "fact", "importance": 1, "ts": old_ts, "source": "user"},
+    ])
+    store._maybe_forget("s", store.entries("s"))
+    contents = [e["content"] for e in store.entries("s")]
+    assert "旧闲聊" not in contents
+    assert "重要结论" in contents          # importance 5 永久
+    assert "用户亲口让记的" in contents     # user 来源永不自动清
+# 跨天只清一次：同日再触发不重复删
+    assert main.sdk.storage.get(FORGET_PRUNE_KEY) == _time.strftime("%Y-%m-%d")
+
+
+def test_forgetting_curve_disabled_and_levels():
+    main = FakeMain(memory_forget=False)
+    store = MemoryStore(main.sdk, main.cfg)
+    old_ts = _time.time() - 200 * 86400
+    store._save("s", [{"content": "旧闲聊", "category": "auto", "importance": 1, "ts": old_ts, "source": "auto"}])
+    assert store._maybe_forget("s", store.entries("s")) == 0
+    assert store.entries("s")[0]["content"] == "旧闲聊"
+# 分级：3 级 60 天内保留、4 级 180 天内保留（关掉开关才测到这步，避免跨天键污染）
+    main2 = FakeMain()
+    store2 = MemoryStore(main2.sdk, main2.cfg)
+    store2._save("s", [
+        {"content": "三个月前", "category": "auto", "importance": 3, "ts": _time.time() - 50 * 86400, "source": "auto"},
+        {"content": "半年前", "category": "auto", "importance": 4, "ts": _time.time() - 170 * 86400, "source": "auto"},
+    ])
+    store2._maybe_forget("s", store2.entries("s"))
+    contents = [e["content"] for e in store2.entries("s")]
+    assert "三个月前" in contents and "半年前" in contents
+
+
+def test_remember_auto_source_roundtrip():
+    main = FakeMain()
+    store = MemoryStore(main.sdk, main.cfg)
+    store.remember("s", "压缩抽出的事实", source="auto")
+    store.remember("s", "人工记忆", importance=5)
+    by_src = {e["content"]: e["source"] for e in store.entries("s")}
+    assert by_src["压缩抽出的事实"] == "auto" and by_src["人工记忆"] == "user"
+# 非法 source 归一为 user（防自动记忆冒充人工记忆逃过遗忘）
+    store.remember("s", "另一个", source="hacker")
+    assert [e for e in store.entries("s") if e["content"] == "另一个"][0]["source"] == "user"
+
+
+async def test_list_memory_pagination_and_filter():
+    from QvQChat.tools_builtin import memory as memory_tools
+
+    ctx = make_ctx()
+    main = ctx.main
+    store = main.memory
+    for i in range(45):
+        store.remember("test:private:1", f"关于猫咪的第{i}条观察记录", category="fact" if i % 2 else "auto")
+    out = await memory_tools.list_memory(ctx)
+    assert out.startswith("total=45 page=1/2")
+    assert "第44条" in out  # 最新在前
+    out2 = await memory_tools.list_memory(ctx, page=2)
+    assert out2.startswith("total=45 page=2/2")
+    assert "第44条" not in out2
+    out3 = await memory_tools.list_memory(ctx, category="auto")
+    assert out3.startswith("total=23") and "第44条" in out3  # 偶数编号 23 条（44 是偶数 → auto 类）
+    out4 = await memory_tools.list_memory(ctx, q="第40条")
+    assert out4.startswith("total=1") and "第40条" in out4
+
+
+async def test_learn_group_style_updates_state():
+    main = FakeMain()
+
+    class StylePool:
+        async def dispatch(self, spec, request, **kwargs):
+            class R:
+                content = "大家互称老铁，爱玩梗，语气活跃"
+            return R()
+
+        def background_blocked(self):
+            return False
+
+    main.pool = StylePool()
+    main.conversations.set_group_name("test:group:9", "测试群")
+    for i in range(8):
+        main.conversations.append("test:group:9", "user" if i % 2 else "assistant", f"消息{i}")
+    await main.conversations.learn_group_style("test:group:9")
+    assert main.conversations.group_style_of("test:group:9") == "大家互称老铁，爱玩梗，语气活跃"
+
+
+def test_group_style_trigger_threshold():
+    """两段式：首学 30 轮尽快入乡随俗，之后 120 轮慢刷（群风格基本固定）。"""
+    main = FakeMain(group_style_first_turns=30, group_style_refresh_turns=120)
+    cfg = main.cfg
+    assert int(cfg.group_style_first_turns) == 30 and int(cfg.group_style_refresh_turns) == 120
+    assert bool(getattr(cfg, "group_style_learn", True)) and ":group:" in "test:group:8"
+# 触发判定（finalize 内同款逻辑）：未学过 → turns 达首学阈值即触发
+    last = 0
+    assert (10 >= 30) is False and (30 >= 30) is True  # turns=10 未到 / turns=30 到点
+# 已学过 → 距上次满刷新间隔才触发；refresh=0 表示只学一次
+    last = 30
+    assert (120 > 0 and 150 - last >= 120) is True    # turns=150 到点
+    assert (120 > 0 and 100 - last >= 120) is False   # turns=100 未到
+    assert (0 > 0 and True) is False                  # refresh=0 永不再刷

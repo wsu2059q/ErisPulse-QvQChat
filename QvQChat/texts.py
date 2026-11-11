@@ -737,11 +737,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "ru": "Платформа: {platform}.",
     },
     "chat_output_rules": {
-        "zh-CN": "不要在回复里写你的思考、策略或分析过程（如「回复策略：」「我应该……」「让我看看」开头的段落），直接给出要发的内容本身。闲聊输出规则（仅日常聊天，任务与工具场景不受限）：一次只发一条短消息，不要拆成多条连发，不要换行分段；简短自然、像随手打的一句话；不要虚构或建议不存在的命令/斜杠指令（比如编一个「/join 群号」）——你不确定某个命令是否存在就不要提它，改用自然语言说明操作步骤，或让对方用 /qvq 查看真实可用的命令；不要复述或改写对方上一条消息；不要在结尾硬造反问去延续话题；没有可接的内容就简短回应。篇幅与语气跟随人格设定与对方的节奏。",
-        "zh-TW": "不要在回覆裡寫你的思考、策略或分析過程（如「回覆策略：」「我應該……」「讓我看看」開頭的段落），直接給出要發的內容本身。閒聊輸出規則（僅日常聊天，任務與工具場景不受限）：一次只發一條短訊息，不要拆成多條連發，不要換行分段；簡短自然、像隨手打的一句話；不要虛構或建議不存在的命令/斜杠指令（比如編一個「/join 群號」）——不確定某個命令是否存在就不要提它，改用自然語言說明操作步驟，或讓對方用 /qvq 查看真實可用的命令；不要複述或改寫對方上一條訊息；不要在結尾硬造反問去延續話題；沒有可接的內容就簡短回應。篇幅與語氣跟隨人格設定與對方的節奏。",
-        "en": "Never include your reasoning, strategy or analysis in the reply (paragraphs starting like 'Reply strategy:', 'I should...', 'Let me check') - output only the content to send. Casual-chat output rules (daily chat only; tasks and tools unaffected): send ONE short message at a time — never split into multiple stacked messages, no line breaks; keep it brief and natural like a quickly typed line; never invent or suggest commands that don't exist (e.g. making up '/join <group id>') — if unsure a command exists, don't mention it: explain the steps in plain words or point to /qvq for the real menu; never restate or rephrase the other side's last message; don't end with a forced question to keep the topic alive; when there's nothing to add, answer briefly. Length and tone follow the persona and the other side's rhythm.",
-        "ja": "返信に思考・戦略・分析の過程を書かない（「返信戦略：」「私は…すべき」「確認しよう」で始まる段落など）。送る内容そのものだけを出力する。雑談の出力ルール（日常会話のみ。タスク・ツール場面は対象外）：一度に短いメッセージを1通だけ送る——複数連投や改行分割はしない。短く自然に、さっと打った一行のように。存在しないコマンドやスラッシュ命令をでっち上げて提案しない（「/join グループ番号」など）——自信がなければ口にしない：自然な言葉で手順を説明するか、/qvq で実際のメニューを確認してもらう。相手の直前のメッセージを言い換えて繰り返さない；話を繋ぐために無理に質問で締めない；付け足す内容がなければ簡潔に返す。長さと語調はペルソナ設定と相手のテンポに合わせる。",
-        "ru": "Не включай в ответ свои рассуждения, стратегию или анализ (абзацы вроде «Стратегия ответа:», «Мне стоит…», «Дай посмотрю») - выводи только сам текст для отправки.Правила бытовой болтовни (только повседневный чат; задачи и инструменты не затронуты): отправляй ОДНО короткое сообщение за раз — без серии сообщений и без переносов строк; коротко и естественно, как быстро набранная строка; не выдумывай и не предлагай несуществующие команды (вроде «/join <id группы>)» — если не уверен, что команда есть, не упоминай её: объясни шаги своими словами или предложи /qvq для списка реальных команд; не пересказывай последнее сообщение собеседника; не заканчивай натянутым встречным вопросом; если добавить нечего — ответь кратко. Длина и тон задаются персонажем и темпом собеседника.",
+        "zh-CN": "不要在回复里写你的思考、策略或分析过程（如「回复策略：」「我应该……」「让我看看」开头的段落），直接给出要发的内容本身。闲聊输出规则（仅日常聊天，任务与工具场景不受限）：一次只发一条短消息，不要拆成多条连发，不要换行分段；简短自然、像随手打的一句话；不要虚构或建议不存在的命令/斜杠指令（比如编一个「/join 群号」）——你不确定某个命令是否存在就不要提它，改用自然语言说明操作步骤，或让对方用 /qvq 查看真实可用的命令；不要复述或改写对方上一条消息；不要在结尾硬造反问去延续话题；确实无话可说、对方只是自顾自互动时，整条回复只输出 [[不回复]]（系统会保持沉默，不发送任何内容）。篇幅与语气跟随人格设定与对方的节奏。",
+        "zh-TW": "不要在回覆裡寫你的思考、策略或分析過程（如「回覆策略：」「我應該……」「讓我看看」開頭的段落），直接給出要發的內容本身。閒聊輸出規則（僅日常聊天，任務與工具場景不受限）：一次只發一條短訊息，不要拆成多條連發，不要換行分段；簡短自然、像隨手打的一句話；不要虛構或建議不存在的命令/斜杠指令（比如編一個「/join 群號」）——不確定某個命令是否存在就不要提它，改用自然語言說明操作步驟，或讓對方用 /qvq 查看真實可用的命令；不要複述或改寫對方上一條訊息；不要在結尾硬造反問去延續話題；確實無話可說、對方只是自顧自互動時，整條回覆只輸出 [[不回覆]]（系統會保持沉默）。篇幅與語氣跟隨人格設定與對方的節奏。",
+        "en": "Never include your reasoning, strategy or analysis in the reply (paragraphs starting like 'Reply strategy:', 'I should...', 'Let me check') - output only the content to send. Casual-chat output rules (daily chat only; tasks and tools unaffected): send ONE short message at a time — never split into multiple stacked messages, no line breaks; keep it brief and natural like a quickly typed line; never invent or suggest commands that don't exist (e.g. making up '/join <group id>') — if unsure a command exists, don't mention it: explain the steps in plain words or point to /qvq for the real menu; never restate or rephrase the other side's last message; don't end with a forced question to keep the topic alive; when there is truly nothing to add, reply with exactly [[skip]] on its own (the system stays silent and sends nothing). Length and tone follow the persona and the other side's rhythm.",
+        "ja": "返信に思考・戦略・分析の過程を書かない（「返信戦略：」「私は…すべき」「確認しよう」で始まる段落など）。送る内容そのものだけを出力する。雑談の出力ルール（日常会話のみ。タスク・ツール場面は対象外）：一度に短いメッセージを1通だけ送る——複数連投や改行分割はしない。短く自然に、さっと打った一行のように。存在しないコマンドやスラッシュ命令をでっち上げて提案しない（「/join グループ番号」など）——自信がなければ口にしない：自然な言葉で手順を説明するか、/qvq で実際のメニューを確認してもらう。相手の直前のメッセージを言い換えて繰り返さない；話を繋ぐために無理に質問で締めない；どうしても付け足すことがない場合は [[skip]] のみを出力する（システムは沈黙し何も送信しない）。長さと語調はペルソナ設定と相手のテンポに合わせる。",
+        "ru": "Не включай в ответ свои рассуждения, стратегию или анализ (абзацы вроде «Стратегия ответа:», «Мне стоит…», «Дай посмотрю») - выводи только сам текст для отправки.Правила бытовой болтовни (только повседневный чат; задачи и инструменты не затронуты): отправляй ОДНО короткое сообщение за раз — без серии сообщений и без переносов строк; коротко и естественно, как быстро набранная строка; не выдумывай и не предлагай несуществующие команды (вроде «/join <id группы>)» — если не уверен, что команда есть, не упоминай её: объясни шаги своими словами или предложи /qvq для списка реальных команд; не пересказывай последнее сообщение собеседника; не заканчивай натянутым встречным вопросом; если добавить действительно нечего — выведи ровно [[skip]] отдельной строкой (система промолчит и ничего не отправит). Длина и тон задаются персонажем и темпом собеседника.",
     },
     "share_chat_system": {
         "zh-CN": "访问者正在通过一个只读分享链接基于这段对话继续提问。只依据上下文内容回答；超出上下文的问题就说明不知道。这是纯文本对话：不执行任务、不调用任何工具、不承诺任何操作。回答保持简洁。",
@@ -937,6 +937,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Generate a short title for the given conversation: at most 12 words, no quotes or trailing punctuation, output only the title itself.",
         "ja": "与えられた会話に短いタイトルを付ける：12 語以内、引用符や句点なし、タイトルそのものだけを出力。",
         "ru": "Придумай короткий заголовок для диалога: не более 12 слов, без кавычек и знаков в конце, выведи только сам заголовок.",
+    },
+    "group_style_system": {
+        "zh-CN": "从这段群聊记录里提炼本群的说话风格：大家的称呼习惯、常用口头禅、玩什么梗、语气偏活跃还是克制。用 1 句话（不超过 40 字）概括，直接输出内容本身，不要任何前缀。",
+        "zh-TW": "從這段群聊記錄裡提煉本群的說話風格：大家的稱呼習慣、常用口頭禪、玩什麼梗、語氣偏活躍還是克制。用 1 句話（不超過 40 字）概括，直接輸出內容本身，不要任何前綴。",
+        "en": "Distill this group chat's speaking style: how members address each other, common catchphrases, running jokes, and whether the tone is hyped or reserved. One sentence (max 40 words), output only the content with no prefix.",
+        "ja": "このグループチャットから話し方のスタイルを抽出してください：メンバー同士の呼び方、口癖、流行っているネタ、テンションの高さ。1文（40語以内）でまとめ、前置きなしで本文のみ出力。",
+        "ru": "Выделите из этой групповой переписки стиль общения: как обращаются друг к другу, типичные фразы, шутки, тон (оживлённый или сдержанный). Одно предложение (до 40 слов), выведите только сам текст.",
+    },
+    "scene_group_style": {
+        "zh-CN": "\n〔本群说话风格〕{style}（自然融入，不必刻意模仿每个梗）",
+        "zh-TW": "\n〔本群說話風格〕{style}（自然融入，不必刻意模仿每個梗）",
+        "en": "\n[This group's speaking style] {style} (blend in naturally; no need to copy every joke)",
+        "ja": "\n〔このグループの話し方〕{style}（自然に馴染ませる。個々のネタを再現する必要はない）",
+        "ru": "\n[Стиль общения этой группы] {style} (вливайся естественно; не обязательно копировать каждую шутку)",
     },
     "subagent_system": {
         "zh-CN": "你是主智能体派出的子智能体，独立完成给定任务后汇报结论。任务：{task}\n要求：不向用户追问澄清；需要的探索、试错都在本会话内完成；最终回复只给结论与关键结果。",

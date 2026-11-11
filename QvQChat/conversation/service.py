@@ -638,6 +638,16 @@ class ConversationService:
     def group_name_of(self, chat_key: str) -> str:
         return str(self._state(chat_key).get("group_name") or "")
 
+    def group_style_of(self, chat_key: str) -> str:
+        state = self._state(chat_key)
+        style = state.get("group_style")
+        return str(style.get("text") or "") if isinstance(style, dict) else ""
+
+    def set_group_style(self, chat_key: str, text: str) -> None:
+        state = self._state(chat_key)
+        state["group_style"] = {"text": str(text or "").strip()[:160], "ts": utils.now_ts()}
+        self._save_no_touch(chat_key, state)
+
     def set_group_name(self, chat_key: str, name: str) -> None:
         state = self._state(chat_key)
         state["group_name"] = name
@@ -1167,9 +1177,11 @@ class ConversationService:
         model: str = "",
         title_from: str = "",
         user_id: str = "",
+        skip_append: bool = False,
     ) -> str:
 
-        self.append(chat_key, "assistant", reply, trace=trace, rounds=rounds)
+        if not skip_append:
+            self.append(chat_key, "assistant", reply, trace=trace, rounds=rounds)
         if usage:
 # 用户维度记账（user_daily_budget 配额读 by_user）
             if user_id:
@@ -1181,6 +1193,26 @@ class ConversationService:
             self.main.spawn(self._summarize_overflow(chat_key, overflow))
         if title_from and not self.group_name_of(chat_key):
             self.main.spawn(self.title_task(chat_key, title_from, reply))
+# 群语气学习（两段式）：首次 30 轮尽快入乡随俗，之后 120 轮才慢刷一次——
+# 群风格基本固定（一个月都不变），不用频繁同步（state["group_style_turn"] 防重复触发）
+        first = int(getattr(self.config, "group_style_first_turns", 30) or 0)
+        refresh = int(getattr(self.config, "group_style_refresh_turns", 120) or 0)
+        if (
+            first > 0
+            and bool(getattr(self.config, "group_style_learn", True))
+            and ":group:" in str(chat_key)
+        ):
+            state = self._state(chat_key)
+            turns = int(state.get("turns") or 0)
+            last_learned = int(state.get("group_style_turn") or 0)
+            if last_learned == 0:
+                due = turns >= first
+            else:
+                due = refresh > 0 and turns - last_learned >= refresh
+            if due and turns > 0:
+                state["group_style_turn"] = turns
+                self._save_no_touch(chat_key, state)
+                self.main.spawn(self.learn_group_style(chat_key))
         return reply
 
     async def _summarize_overflow(self, chat_key: str, removed: list) -> None:
@@ -1196,6 +1228,17 @@ class ConversationService:
         clean, facts = extract_facts(summary)
         if facts and getattr(self.config, "facts_extract", True):
             self.append_facts(chat_key, facts)
+# 压缩沉淀：关键事实同步进长期记忆（source=auto，随遗忘曲线淡出）——
+# 会话 facts/summary 只在本会话生效，跨天回忆检索靠记忆库
+        if facts and bool(getattr(self.config, "compact_to_memory", True)):
+            memory = getattr(self.main, "memory", None)
+            if memory is not None:
+                for fact in facts:
+                    try:
+                        memory.remember(chat_key, fact.split("|", 1)[-1].strip()[:200],
+                                        category="auto", importance=3, source="auto")
+                    except Exception:
+                        pass
 # TODO 类 facts 双写 TodoStore（执行面单源）：压缩抽出的待办进清单，
 # AI 面板都能看到并推进；画像侧保留 TODO fact 作历史轨迹
         todo_items = [f.split("|", 1)[1].strip() for f in facts if f.startswith("TODO|")]
@@ -1537,6 +1580,53 @@ class ConversationService:
                 self.set_group_name(chat_key, title)
         except Exception as e:
             self.main.logger.warning(f"title generation failed: {e}")
+
+    async def learn_group_style(self, chat_key: str) -> None:
+        """群语气学习：从最近群聊提取本群说话风格（1-2 句）存 state["group_style"]。
+
+        消费方 build_system_parts 群聊时注入——bot 在不同群里说不同的话
+        （每个群模都不一样，小eris 点名需求）。走 cheap 派发，成本极低。"""
+        pool = getattr(self.main, "pool", None)
+        if pool is None:
+            return
+        if callable(getattr(pool, "background_blocked", None)) and pool.background_blocked():
+            self.main.logger.debug("background skip: group-style (saturated)")
+            return
+        contexts = self.get_contexts(chat_key)
+        window = contexts[-30:]
+        if len(window) < 6:
+            return
+        transcript = []
+        for entry in window:
+            if not isinstance(entry, dict):
+                continue
+            role = "bot" if entry.get("role") == "assistant" else "member"
+            text = utils.truncate(self._text_of(entry.get("content")), 120)
+            if text:
+                transcript.append(f"{role}: {text}")
+        if len(transcript) < 6:
+            return
+        from ..engine.base import ChatRequest
+
+        request = ChatRequest(
+            messages=[
+                {"role": "system", "content": texts.t("group_style_system")},
+                {"role": "user", "content": "\n".join(transcript[:40])},
+            ],
+            max_tokens=80,
+            temperature=0.4,
+        )
+        try:
+            dispatch = getattr(pool, "dispatch", None)
+            if callable(dispatch):
+                resp = await dispatch(TaskSpec(kind="compact", prefer="cheap"), request)
+            else:
+                resp = await pool.chat(request)
+            style = (resp.content or "").strip().splitlines()[0][:160] if (resp.content or "").strip() else ""
+            if style:
+                self.set_group_style(chat_key, style)
+        except Exception as e:
+            self.main.logger.debug(f"group style learn failed: {e}")
 
 
     def save_upload(self, name: str, data: str) -> str | None:

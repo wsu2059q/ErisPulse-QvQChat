@@ -126,6 +126,45 @@ class OpenAIEngine:
         return merged
 
     @staticmethod
+    def sanitize_messages(messages: list) -> list:
+        """请求前字段级容错：剔除/占位坏字段而不是抛出。
+
+        历史可能被写入坏形态（空 text part、url 为空的 image part、清空后什么
+        都不剩的消息、空文本 user/assistant）——部分 provider 对这些直接拒
+        （4xx）或返回空正文，且坏历史持久化后**只有存了它的会话一直空回复**
+        （线上间歇性空回复事故形态：换会话就好）。清洗后照常访问模型。"""
+        cleaned: list = []
+        for msg in messages or []:
+            if not isinstance(msg, dict):
+                continue
+            role = str(msg.get("role") or "")
+            if role not in ("system", "user", "assistant", "tool"):
+                continue
+            content = msg.get("content")
+            if isinstance(content, list):
+                parts: list = []
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    ptype = str(part.get("type") or "")
+                    if ptype == "text":
+                        if str(part.get("text") or "").strip():
+                            parts.append(part)
+                    elif ptype == "image_url":
+                        url = str((part.get("image_url") or {}).get("url") or "").strip()
+                        if url:
+                            parts.append(part)
+                    else:
+                        parts.append(part)
+                if not parts:
+                    continue
+                msg = {**msg, "content": parts}
+            elif isinstance(content, str) and not content.strip() and role in ("user", "assistant"):
+                msg = {**msg, "content": "（空）"}
+            cleaned.append(msg)
+        return cleaned or list(messages or [])
+
+    @staticmethod
     def _extract(message) -> tuple[str, list[ToolCall]]:
         content = getattr(message, "content", None) or ""
         if not isinstance(content, str):
@@ -295,6 +334,14 @@ class OpenAIEngine:
             await consume(stream)
 
         await run_stream(kwargs)
+# 思考模型空正文自愈：reasoning 吃满 max_tokens、content 零产出（finish=length
+# 且聚合为空）。续写没有意义（assistant 空内容续写仍空）——清空重跑并放大
+# token 预算，限一次；不修则该模型在流式主对话里永远"没有可回复的内容"
+        if finish == "length" and not tools_acc and not "".join(texts).strip():
+            texts.clear()
+            retry_kwargs = dict(kwargs)
+            retry_kwargs["max_tokens"] = min(int(kwargs.get("max_tokens") or 2048) * 4, 65536)
+            await run_stream(retry_kwargs)
         if finish == "length" and tools_acc:
             if on_reset is not None:
                 try:
@@ -309,7 +356,8 @@ class OpenAIEngine:
             retry_kwargs["max_tokens"] = min(int(kwargs.get("max_tokens") or 2048) * 4, 65536)
             await run_stream(retry_kwargs)
         rounds = 0
-        while finish == "length" and not tools_acc and rounds < 2:
+# 续写只对"已有部分正文被截断"有意义：正文仍为空说明是思考打满，上面已重跑过
+        while finish == "length" and not tools_acc and "".join(texts).strip() and rounds < 2:
             rounds += 1
             cont_kwargs = dict(kwargs)
             cont_kwargs["messages"] = list(kwargs["messages"]) + [
@@ -342,7 +390,7 @@ class OpenAIEngine:
 
     async def chat(self, base_url: str, api_key: str, request: ChatRequest, on_delta=None, on_reset=None, on_reasoning=None) -> ChatResponse:
         client = self.client_for(base_url, api_key)
-        kwargs: dict = {"model": request.model, "messages": self.merge_system(request.messages)}
+        kwargs: dict = {"model": request.model, "messages": self.sanitize_messages(self.merge_system(request.messages))}
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
         if request.max_tokens:
