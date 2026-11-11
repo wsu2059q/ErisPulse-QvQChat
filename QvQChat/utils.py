@@ -21,11 +21,19 @@ _WEEKDAY_ZH = ("周一", "周二", "周三", "周四", "周五", "周六", "周�
 # 输出投递控制标签：[[转发]] 强制合并转发 / [[直发]] 强制普通消息直发。
 # 可出现在任意一段 AI 发言开头（首个命中对整轮生效，见 AgentRunner.delivery_hint）
 OUTPUT_TAG_RE = re.compile(r"^\[\[(转发|直发)\]\]\s*")
+# 自主跳过标签：模型判断"这条不值得回"（无人问津的接话/纯表情刷屏）时输出，
+# 全链静默——不发送、不写占位进上下文；与空回复静默共用 inbox 层的 skip 分支
+SKIP_TAG_RE = re.compile(r"^\[\[(?:不回复|skip)\]\]$", re.IGNORECASE)
 # 模型经常把标签写进正文中间、漏写成单括号，甚至塞进 send_message 内容里——
 # 统一清扫：双括号任意位置 + 单括号行首（独占一行或同行带正文，如 "[直发] xxx"）
 # 标签与正文同行的形态：单/双括号规则都不命中时会原样发出
 STRAY_TAG_RE = re.compile(r"^\s*\[\[?(转发|直发)\]\]?\s*", re.MULTILINE)
 STRAY_TAG_INLINE_RE = re.compile(r"\[\[(转发|直发)\]\]")
+
+
+def is_skip_reply(reply: str) -> bool:
+    """整条回复是否为自主跳过标记（[[不回复]]/[[skip]]，允许首尾空白）。"""
+    return bool(SKIP_TAG_RE.match(str(reply or "").strip()))
 
 
 def strip_output_tag(reply: str) -> tuple[str, bool | None]:

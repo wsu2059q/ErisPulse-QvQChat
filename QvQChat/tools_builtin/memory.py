@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from .. import texts, utils
 from ..agent.tools import Tool, ToolContext, ToolRegistry
 from ..conversation.memory import GLOBAL_SCOPE
@@ -37,13 +39,34 @@ async def forget(ctx: ToolContext, query: str, scope: str = "chat") -> str:
     return utils.to_text({"removed": removed})
 
 
-async def list_memory(ctx: ToolContext, scope: str = "chat") -> str:
+async def list_memory(ctx: ToolContext, scope: str = "chat", page: int = 1,
+                      category: str = "", q: str = "") -> str:
+    """记忆分页浏览：大会话记忆多了以后 AI 自己也要能按页/按类/按关键词翻。"""
     store = ctx.main.memory
     entries = store.entries(_scope_key(ctx, scope))
-    if not entries:
+    entries.sort(key=lambda e: e.get("ts", 0), reverse=True)
+    if category:
+        entries = [e for e in entries if str(e.get("category") or "") == category.strip()]
+    if q.strip():
+        needle = q.strip().lower()
+        entries = [e for e in entries if needle in str(e.get("content") or "").lower()]
+    total = len(entries)
+    if not total:
         return texts.t("memory_empty")
-    lines = [f"[{e.get('category', 'general')}|{e.get('importance', 3)}] {e.get('content', '')}" for e in entries]
-    return "\n".join(lines)
+    page_size = 40
+    try:
+        page = max(1, int(page or 1))
+    except (TypeError, ValueError):
+        page = 1
+    pages = (total + page_size - 1) // page_size
+    page = min(page, pages)
+    window = entries[(page - 1) * page_size : (page - 1) * page_size + page_size]
+    lines = [
+        f"[{e.get('category', 'general')}|{e.get('importance', 3)}|{time.strftime('%m-%d', time.localtime(float(e.get('ts') or 0)))}] {e.get('content', '')}"
+        for e in window
+    ]
+    header = f"total={total} page={page}/{pages}" + ("" if pages <= 1 else " (use page=N to browse)")
+    return header + "\n" + "\n".join(lines)
 
 
 def register(registry: ToolRegistry, main) -> None:
@@ -92,9 +115,14 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="list_memory",
         access="safe",
-        description="List all long-term memories of the current chat (or global scope).",
+        description="Browse long-term memories of the current chat (or global scope), newest first, 40 per page. Filter by category or keyword; the header shows total and page position. Auto memories (injected by context compaction) decay over time; user memories never expire.",
         parameters=_schema(
-            {"scope": _s(type="string", description="chat or global")},
+            {
+                "scope": _s(type="string", description="chat or global"),
+                "page": _s(type="integer", description="Page number, 1-based"),
+                "category": _s(type="string", description="Filter by exact category (e.g. auto / preference / fact)"),
+                "q": _s(type="string", description="Keyword filter inside content"),
+            },
             [],
         ),
         handler=list_memory,

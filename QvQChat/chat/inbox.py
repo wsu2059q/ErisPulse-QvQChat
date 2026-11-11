@@ -1474,6 +1474,10 @@ class InboxMixin(RecoveryMixin):
                         scene += texts.t("scene_quote_note")
 # 场景注记随 ctx 走：spawn_agent 时注入子智能体（群名/发言人/触发方式）
                 ctx.scene_note = scene
+# 群语气画像：后台学习出的本群说话风格（很小的一段，低token也不影响语气一致性）
+                group_style = self.sessions.group_style_of(chat_key)
+                if group_style:
+                    scene += texts.t("scene_group_style", style=group_style)
                 if getattr(self.cfg, "group_isolation", False):
                     scene += texts.t("scene_isolation_note")
             else:
@@ -1790,6 +1794,20 @@ class InboxMixin(RecoveryMixin):
 # 同回合去重：最终回复与最后一条已投递阶段发言规范化后相同 → 阶段发言已代表过它，
 # 不重复投递最终条（"阶段发言+最终回复"双胞胎）；会话历史与回执广播照常
                 duplicate_final = bool(last_speech) and utils.collapse_spaces(reply) == last_speech
+# 静默终局：模型自主跳过（[[不回复]]）或清理后为空 → 不发送、不写占位进上下文
+# （占位文案刷屏事故+污染历史；usage 照记）。空回复带模型名记 warning——
+# "配了新模型之后一直空回复"的排障起点
+                skip_reply = utils.is_skip_reply(reply)
+                if skip_reply or not reply.strip():
+                    if skip_reply:
+                        self.logger.info(f"skip reply requested by model ({chat_key})")
+                    else:
+                        self.logger.warning(
+                            f"empty reply after cleanup (model={getattr(result, 'model', '')}, tools={len(result.tool_trace)}), skipped sending ({chat_key})"
+                        )
+                    self.sessions.finalize(chat_key, "", trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), user_id=sender_id, skip_append=True)
+                    self._drain_waiting(chat_key)
+                    return
                 reply = reply or texts.t("no_reply_content")
                 self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), user_id=sender_id)
                 try:

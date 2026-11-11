@@ -68,7 +68,11 @@ async def manage_models(ctx: ToolContext, action: str = "list", provider: dict |
             known = ", ".join(m["id"] for m in pool.list_models())
             return f"unknown model: {wanted} (available: {known or 'none'})"
         ctx.sdk.config.setConfig("QvQChat.default_model", wanted)
-        return utils.to_text({"ok": True, "default_model": wanted})
+        return utils.to_text({
+            "ok": True,
+            "default_model": wanted,
+            "note": "this changes the PRIMARY model for ALL chats immediately (failover follows pool order); make sure the model works with tool calls and produces non-empty content before switching",
+        })
     return f"unknown action: {action} (list / presets / save / delete / fetch_models / set_default)"
 
 

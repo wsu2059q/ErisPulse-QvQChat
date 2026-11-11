@@ -299,3 +299,67 @@ async def test_stream_chat_flushes_unclosed_think_to_reasoning():
     assert resp.content is None# 正文为空但思考完整可见
     assert deltas == []
     assert "".join(reasonings) == "思考中，继续思考"
+
+
+# ---------- 字段容错 / 流式空正文自愈 / 空响应 failover ----------
+
+def test_sanitize_messages_drops_bad_fields():
+    from QvQChat.engine.openai import OpenAIEngine
+
+    messages = [
+        {"role": "user", "content": [{"type": "text", "text": "  "}, {"type": "text", "text": "在吗"}]},
+        {"role": "assistant", "content": [{"type": "image_url", "image_url": {"url": ""}}]},
+        {"role": "user", "content": "   "},
+        {"role": "weird", "content": "x"},
+        {"role": "user", "content": "正常"},
+    ]
+    out = OpenAIEngine.sanitize_messages(messages)
+    assert len(out) == 3
+    assert out[0]["content"] == [{"type": "text", "text": "在吗"}]
+    assert out[1]["content"] == "（空）"
+    assert out[2]["content"] == "正常"
+# 空文本 user 被占位保留、坏 assistant 整条剔除、非法 role 剔除
+    assert [m["role"] for m in out] == ["user", "user", "user"]
+# 全部剔光的极端输入回退原样（宁可让 provider 报错也不发空请求）
+    assert OpenAIEngine.sanitize_messages([{"role": "weird", "content": "x"}]) == [{"role": "weird", "content": "x"}]
+
+
+@pytest.mark.asyncio
+async def test_stream_empty_content_retries_with_bigger_budget():
+    """思考模型把 max_tokens 全花在 reasoning、正文零产出（finish=length）：
+    流式层自动放大 token 预算重跑一次，而不是把空串交回上层。"""
+    first = [
+        _chunk(delta=_delta(reasoning="思考很多很多")),
+        _chunk(delta=_delta(), finish="length"),
+    ]
+    second = [
+        _chunk(delta=_delta(content="这是正文")),
+        _chunk(delta=_delta(), finish="stop"),
+    ]
+    engine, completions = _engine_with([])
+    calls = []
+
+    class SeqCompletions:
+        async def create(self, **kwargs):
+            calls.append(kwargs)
+            return FakeStream(first if len(calls) == 1 else second)
+
+    engine._clients[("", "")] = SimpleNamespace(chat=SimpleNamespace(completions=SeqCompletions()))
+    deltas = []
+    resp = await engine.chat(
+        "", "", ChatRequest(messages=[{"role": "user", "content": "hi"}], model="m", max_tokens=2048),
+        on_delta=deltas.append,
+    )
+    assert resp.content == "这是正文"
+    assert len(calls) == 2
+    assert calls[1]["max_tokens"] == 2048 * 4
+
+
+def test_skip_reply_tag():
+    from QvQChat import utils
+
+    assert utils.is_skip_reply("[[不回复]]")
+    assert utils.is_skip_reply("[[SKIP]]")
+    assert utils.is_skip_reply(" [[不回复]] ")
+    assert not utils.is_skip_reply("[[转发]] 正文")
+    assert not utils.is_skip_reply("普通回复")

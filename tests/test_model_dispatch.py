@@ -288,3 +288,70 @@ def test_vision_task_no_candidate_raises():
         assert "task_models.vision" in str(e) or "视觉" in str(e)
     else:
         raise AssertionError("expected EngineError")
+
+
+# ===== 负载分流门槛：从未成功过的 provider 不抢占链首 =====
+
+def test_steering_never_routes_to_unverified_provider():
+    """并发高时链按"最闲优先"重排，但新加的 provider active=0 永远最闲——
+    不设门槛就把请求导到从未验证的模型上（全局间歇性空回复事故）。"""
+    pool = make_pool()
+# p1 主模型已验证成功；模拟另一个 provider 刚被配置进来（active=0、从未成功）
+    pool._ever_ok.add("p1:smart")
+    pool._provider_active["p1"] = 5   # 主 provider 满载，触发 steering
+    pool._provider_active["p2"] = 0
+# 造一个未验证 provider 的模型条目参与链
+    pool.save_provider({
+        "id": "p2", "name": "P2", "base_url": "https://p2/v1", "api_key": "k",
+        "models": [{"id": "unverified", "enabled": True, "tool_call": True}],
+    })
+    chain = [dict(m) for m in pool.list_models()]
+# 与 chat() 相同的 steering 排序：breaker > 已验证 > active
+    chain.sort(key=lambda m: (
+        1 if pool._is_open(m["id"]) else 0,
+        0 if str(m["id"]) in pool._ever_ok else 1,
+        pool._provider_active.get(m["provider"], 0),
+    ))
+    assert chain[0]["provider"] == "p1", "未验证 provider 不得抢占链首（哪怕它最闲）"
+
+
+def test_steering_allows_verified_provider():
+    """已成功服务过的 provider 仍可被 steering 提前（本来的分流能力不受影响）。"""
+    pool = make_pool()
+    pool.save_provider({
+        "id": "p2", "name": "P2", "base_url": "https://p2/v1", "api_key": "k",
+        "models": [{"id": "backup", "enabled": True, "tool_call": True}],
+    })
+    pool._ever_ok.add("p2:backup")     # p2 验证过
+    pool._provider_active["p1"] = 5    # 主满载
+    pool._provider_active["p2"] = 0    # p2 闲
+    chain = [dict(m) for m in pool.list_models()]
+    chain.sort(key=lambda m: (
+        1 if pool._is_open(m["id"]) else 0,
+        0 if str(m["id"]) in pool._ever_ok else 1,
+        pool._provider_active.get(m["provider"], 0),
+    ))
+    assert chain[0]["provider"] == "p2"
+
+
+def test_empty_response_soft_fails_to_next_model():
+    """HTTP 200 但无正文且无工具调用 = 软失败：记 fail 继续链下一模型，
+    而不是把空响应当成功交回上层。"""
+    import asyncio
+
+    from QvQChat.engine.base import EngineError
+
+    pool = make_pool()
+    calls = []
+
+    class FlakyEngine:
+        async def chat(self, base_url, api_key, request, on_delta=None, on_reset=None, on_reasoning=None):
+            calls.append(request.model)
+            if request.model == "plain":
+                return ChatResponse(content="", usage={"total_tokens": 1})  # 200 空正文
+            return ChatResponse(content="来自第二个模型", usage={"total_tokens": 2})
+
+    pool.engine = FlakyEngine()
+    resp = asyncio.run(pool.chat(ChatRequest(messages=[{"role": "user", "content": "hi"}], model="p1:plain")))
+    assert resp.content == "来自第二个模型"
+    assert calls == ["plain", "smart"]  # 空响应后落到链上下一个

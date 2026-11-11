@@ -2802,10 +2802,14 @@
 
   // chat 组语义分块（字段 order 上界 → 小节标题键）
   var CHAT_SECTIONS = [
-    { max: 9, key: "settings_sec_context" },
-    { max: 13, key: "settings_sec_forward" },
-    { max: 16, key: "settings_sec_reply" },
-    { max: 19, key: "settings_sec_flow" },
+    { max: 18, key: "settings_sec_context" },
+    { max: 30, key: "settings_sec_forward" },
+    { max: 42, key: "settings_sec_reply" },
+    { max: 51, key: "settings_sec_flow" },
+    { max: 58, key: "settings_sec_opening" },
+    { max: 68, key: "settings_sec_access" },
+    { max: 76, key: "settings_sec_output" },
+    { max: 80, key: "settings_sec_send" },
     { max: 999, key: "settings_sec_misc" }
   ];
 
@@ -3049,7 +3053,9 @@
     nav.innerHTML = groups.map(function (g) {
       var label = t("group_" + g);
       if (label === "group_" + g) label = g;
-      return "<button class='qvq-cat-btn" + (g === currentCategory ? " active" : "") + "' data-cat='" + esc(g) + "'>" + esc(label) + "</button>";
+      var n = settingsFields.filter(function (f) { return f.group === g; }).length;
+      return "<button class='qvq-cat-btn" + (g === currentCategory ? " active" : "") + "' data-cat='" + esc(g) + "'>" + esc(label) +
+        (n ? "<i class='qvq-cat-n'>" + n + "</i>" : "") + "</button>";
     }).join("");
     nav.querySelectorAll("button[data-cat]").forEach(function (btn) {
       btn.onclick = function () { switchSettingsCategory(btn.getAttribute("data-cat")); };
@@ -3105,13 +3111,13 @@
   }
 
   // 表单分发：按 schema 类型/widget 渲染，值取 settingsDraft
-  function settingField(f) {
+  function settingField(f, q) {
     var key = esc(f.key);
     var value = (f.key in settingsDraft) ? settingsDraft[f.key] : f.value;
     var widget = f.widget || "text";
     var type = f.type || "str";
-    var head = "<label class='qvq-label'>" + esc(f.description || f.key) +
-      " <span class='qvq-key-tag'>" + esc(f.key) + "</span>" +
+    var head = "<label class='qvq-label'>" + markHits(f.description || f.key, q) +
+      " <span class='qvq-key-tag'>" + markHits(f.key, q) + "</span>" +
       (f.dangerous ? " <span class='qvq-danger-tag'>" + esc(t("settings_dangerous")) + "</span>" : "") +
       "</label>";
     var input;
@@ -3173,6 +3179,16 @@
       "<div class='qvq-field-err' data-err='" + key + "'></div></div>";
   }
 
+  function markHits(text, q) {
+    var safe = esc(String(text == null ? "" : text));
+    if (!q) return safe;
+    try {
+      return safe.replace(new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "gi"), "<mark>$1</mark>");
+    } catch (e) {
+      return safe;
+    }
+  }
+
   function renderSettingsForm() {
     settingsCaptureDraft();  // 重绘前收编当前 DOM 值进 draft
     var box = el("qvq-settings-form");
@@ -3182,6 +3198,13 @@
     if (q) {
       fields = settingsFields.filter(function (f) {
         return f.key.toLowerCase().indexOf(q) >= 0 || String(f.description || "").toLowerCase().indexOf(q) >= 0;
+      });
+// 键名命中排前，同级保持 order
+      fields.sort(function (a, b) {
+        var ak = a.key.toLowerCase().indexOf(q) >= 0 ? 0 : 1;
+        var bk = b.key.toLowerCase().indexOf(q) >= 0 ? 0 : 1;
+        if (ak !== bk) return ak - bk;
+        return (a.order || 99) - (b.order || 99);
       });
     } else {
       fields = settingsFields.filter(function (f) { return f.group === currentCategory; });
@@ -3200,7 +3223,7 @@
     var lastPlugin = "";
     fields.forEach(function (f) {
       if (q) {
-        html += "<div class='qvq-settings-hit'><span class='qvq-chip'>" + esc(t("group_" + f.group)) + "</span>" + settingField(f) + "</div>";
+        html += "<div class='qvq-settings-hit'><span class='qvq-chip'>" + esc(t("group_" + f.group)) + "</span>" + settingField(f, q) + "</div>";
         return;
       }
       if (f.group === "chat") {
