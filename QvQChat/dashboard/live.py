@@ -8,6 +8,9 @@ import time
 from dataclasses import dataclass, field
 
 RETAIN_SECONDS = 2 * 3600
+# running 态陈旧线：卡死任务 10 分钟无任何 delta/tool 事件即视为陈旧（get() 会回收），
+# 正常长任务不会误杀——publish 在流式/工具事件都会刷新 updated
+RUN_STALE_SECONDS = 600
 
 
 @dataclass
@@ -15,6 +18,8 @@ class LiveStream:
     session: str
     status: str = "running"
     text: str = ""
+    # 任务发起时的原始用户文本：demote（让路后台续跑）时据此重建任务
+    prompt: str = ""
     reasoning: str = ""
     steps: list = field(default_factory=list)
     segments: list = field(default_factory=list)
@@ -98,7 +103,15 @@ class LiveStream:
                 pass
 
     def stale(self) -> bool:
-        return self.status != "running" and time.time() - self.updated > RETAIN_SECONDS
+        now = time.time()
+# 非 running：超保留期即回收（现状）
+        if self.status != "running":
+            return now - self.updated > RETAIN_SECONDS
+# running 但任务已死而注册表没跟上（防御：done/end 分支漏跑时别让会话永远"忙碌"）
+        if self.task is not None and self.task.done():
+            return True
+# running 且长时间无任何事件（publish 会刷新 updated）：任务卡死，回收放行后续消息
+        return now - self.updated > RUN_STALE_SECONDS
 
 
 class LiveRegistry:
@@ -153,7 +166,7 @@ class LiveRegistry:
 def bind(live: LiveStream):
 
     def flush_think() -> None:
-        """把当前轮的思考落成独立段（每轮一块，不再跨轮合并）。
+        """把当前轮的思考落成独立段（每轮一块，不跨轮合并）。
 
         触发时机：轮内出现首个文本增量 / 工具开始——即思考阶段结束。
         """

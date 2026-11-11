@@ -20,7 +20,12 @@ class MemoryStore:
         try:
             from ..engine import vectors as _vectors
 
-            if getattr(self.config, "embedding_enabled", False) and _vectors.available(self.config):
+# 省钱模式：语义检索每次查询都是一次 embedding 调用——降级为词面 overlap 匹配
+            if (
+                getattr(self.config, "embedding_enabled", False)
+                and not bool(getattr(self.config, "budget_mode", False))
+                and _vectors.available(self.config)
+            ):
                 self._vectors = _vectors
                 return self._vectors
         except Exception:

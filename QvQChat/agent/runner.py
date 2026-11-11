@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -11,6 +12,11 @@ from .. import texts, utils
 from ..prompts import CRITIQUE_PROMPT, REFLEXION_PLAN_PROMPT
 from ..utils import truncate
 from .tools import ToolContext, ToolRegistry
+
+# 工具名判定时的行清洗字符（只在比对用，不动原文）：反引号/中英文引号包裹 + 句末标点。
+# 线上模型把工具名写成 `eco_TTS_tts_speak`。这类带包裹/标点的形态，精确等值比对会漏拦
+_TOOL_NAME_STRIP_EDGE = "`'\"「」『』“”‘’"
+_TOOL_NAME_STRIP_TAIL = "。．."
 
 
 @dataclass
@@ -209,14 +215,77 @@ class AgentRunner:
         return str(result) if result else "unknown"
 
     @staticmethod
+    def _clean_tool_name_line(line: str) -> str:
+        """判定前清洗一行：剥两端空白与包裹符（反引号/中英文引号）、句末标点。
+        只用于与工具名集合比对，不改原文——模型常把工具名带反引号或句号写出
+        （典型形态：工具名 `eco_TTS_tts_speak` 原样出现，精确等值比对不命中）。"""
+        text = str(line or "").strip()
+        while True:
+            before = text
+            text = text.strip(_TOOL_NAME_STRIP_EDGE).rstrip(_TOOL_NAME_STRIP_TAIL).strip()
+            if text == before:
+                return text
+
+    @staticmethod
     def _is_tool_name_text(text: str, tool_names: set) -> bool:
-        """整段文本是否只有工具名（单行精确命中或多行每行都是）——模型把
-        调用意图写成文字的退化形态，不该作为回复/中间发言发给用户。"""
+        """整段文本是否只有工具名（单行命中或多行每行都是，判定前先清洗每行的
+        包裹符/句末标点）——模型把调用意图写成文字的退化形态，不该作为
+        回复/中间发言发给用户。"""
         stripped = str(text or "").strip()
         if not stripped or not tool_names:
             return False
-        lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+        lines = [AgentRunner._clean_tool_name_line(line) for line in stripped.splitlines()]
+        lines = [line for line in lines if line]
         return bool(lines) and all(line in tool_names for line in lines)
+
+    def _all_tool_names(self) -> set:
+        """全注册表工具名（含 eco 桥接注入的动态工具）：模型复述的是会话历史/
+        trace 里的工具名，本回合 schemas 未必有（如「eco_TTS_tts_speak」
+        原样发给用户）。优先 list()；老式/fake 注册表退回遍历内部 _tools 表。"""
+        names: set = set()
+        registry = getattr(self, "registry", None)
+        if registry is None:
+            return names
+        listing = getattr(registry, "list", None)
+        if callable(listing):
+            try:
+                names |= {str(t.name) for t in (listing() or [])}
+            except Exception:
+                pass
+        if not names:
+            internal = getattr(registry, "_tools", None)
+            if isinstance(internal, dict):
+                names |= {str(name) for name in internal}
+        return names
+
+    @staticmethod
+    def _eco_names_from_contexts(contexts: list) -> set:
+        """兜底扫历史 messages 里的 eco_ 前缀蛇形工具名：桥接工具随模块卸载
+        unregister_prefix 后注册表已无此名，但历史/trace 里仍可能被模型复述。
+        保守只认 eco_ 前缀 + 蛇形词形；模块名段允许大写（eco_TTS_tts_speak /
+        eco_QvQMemes_send_sticker），否则真事故名反而扫不到。"""
+        names: set = set()
+        try:
+            for message in contexts or []:
+                if not isinstance(message, dict):
+                    continue
+                blob = message.get("content")
+                if isinstance(blob, list):
+                    blob = "\n".join(str(p.get("text") or "") for p in blob if isinstance(p, dict))
+                if not isinstance(blob, str):
+                    blob = ""
+# 工具调用历史单独序列化：模型复述的往往正是这里出现过的工具名（即使 content 是普通文本）
+                tool_calls = message.get("tool_calls")
+                if tool_calls:
+                    try:
+                        blob += "\n" + json.dumps(tool_calls, ensure_ascii=False, default=str)
+                    except (TypeError, ValueError):
+                        pass
+                if blob and "eco_" in blob:
+                    names.update(re.findall(r"eco_[A-Za-z0-9_]+", blob))
+        except Exception:
+            pass
+        return names
 
     async def _dispatch(self, kind: str, request: ChatRequest, *, needs: list | None = None,
                         model: str | None = None, prefer: str = "", on_delta=None, on_reset=None,
@@ -224,6 +293,13 @@ class AgentRunner:
         """pool 支持 TaskSpec 分派时走 dispatch(kind)，否则退回 pool.chat（兼容老式池对象）。
 
         priority：并发闸门优先级（用户直答 0 / 插话 6 / 后台任务 8）。"""
+# 省钱模式：chat 回合统一按实际成本升序挑模型（便宜优先、贵的垫底）——
+# 显式 prefer/model 与能力过滤不受影响；难度路由也会因 prefer 已占位而短路
+        if (
+            str(kind) == "chat" and not str(prefer or "") and not model
+            and bool(getattr(getattr(self, "config", None), "budget_mode", False))
+        ):
+            prefer = "cheap"
         dispatch = getattr(self.pool, "dispatch", None)
         if callable(dispatch):
             spec = TaskSpec(kind=kind, needs=needs, prefer=prefer, model=model, chat_key=chat_key, priority=priority)
@@ -490,6 +566,10 @@ class AgentRunner:
 # tool_call 能力闭环（schemas 非空且未显式指定模型时）
         raw_tool_names = {str(s.get("name") or "") for s in schemas if isinstance(s, dict)}
         raw_tool_names.discard("")
+# 拦截源扩到全注册表 + 历史 eco 名：模型是从会话历史/trace 复述工具名（上回合
+# schemas、可能已被卸载的 eco 动态工具），仅比对本回合 schemas 无法覆盖全部来源
+        raw_tool_names |= self._all_tool_names()
+        raw_tool_names |= self._eco_names_from_contexts(contexts)
         schemas, system, chat_needs = self._apply_tools_fallback(schemas, system, model)
         delivery_hint: bool | None = None
 # 预填充（人格级口语开场白）：只在首轮请求以 assistant 结尾消息注入，模型从这里续写。
@@ -723,7 +803,7 @@ class AgentRunner:
         return prefill + text
 
     def _prefill_blocked(self, model: str | None) -> bool:
-        """auto 探测记忆：该模型此前 prefill 请求失败（本进程内不再重试）。"""
+        """auto 探测记忆：已失败过 prefill 的模型在本进程内跳过重试。"""
         return bool(model) and model in getattr(self, "_prefill_failures", set())
 
     def _mark_prefill_blocked(self, model: str | None) -> None:

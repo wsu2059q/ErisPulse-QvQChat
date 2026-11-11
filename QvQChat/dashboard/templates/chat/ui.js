@@ -80,13 +80,23 @@
     document.querySelectorAll(".qvq-dd-btn.open").forEach(function (b) { b.classList.remove("open"); });
   }
 
-  // 浮层挂 body：滚动/缩放时关闭
-  window.addEventListener("scroll", closeAllMenus, true);
+  // 浮层挂 body：滚动/缩放时关闭。捕获阶段接收页面各处滚动，
+  // 滚动源在下拉面板内部（.qvq-dd-menu）时不关闭
+  
+  window.addEventListener("scroll", function (e) {
+    var src = e.target;
+    if (src && src.closest && src.closest(".qvq-dd-menu")) return;
+    closeAllMenus();
+  }, true);
   window.addEventListener("resize", closeAllMenus);
 
   function enhanceSelects(root) {
-    // F3 无障碍：原生 <select>
-    void root;
+    // qvSelect.wrap 接管页面里的原生 <select>：
+    // 原位渲染触发钮+面板，隐藏的原生控件继续承载 .value（保存与 onchange 逻辑读 .value）
+    (root || document).querySelectorAll("select.qvq-select, select.qvq-input").forEach(function (sel) {
+      if (sel.getAttribute("data-qvq-dd")) return;
+      qvSelect.wrap(sel);
+    });
   }
 
 

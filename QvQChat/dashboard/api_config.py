@@ -209,7 +209,7 @@ class ConfigApiMixin:
             previous = str(self.sdk.storage.get(f"QvQChat:binding:{chat_key}", "") or "")
             if previous and (not persona or str(persona) != previous):
                 undo = self._trash_put("binding", {"chat_key": chat_key, "persona": previous})
-# 仅写 KV 权威绑定（state.persona 镜像已废弃，不再回写）
+# 仅写 KV 权威绑定；state.persona 镜像已废弃
         self.main.personas.bind(chat_key, persona)
         return {"ok": True, "undo": undo}
 

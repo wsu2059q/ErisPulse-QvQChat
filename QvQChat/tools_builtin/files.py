@@ -39,7 +39,13 @@ def sandbox_root(ctx: ToolContext) -> Path:
 
 
 def _extra_send_dirs(ctx: ToolContext) -> list[Path]:
-    """file_extra_dirs 配置解析为绝对路径列表（相对路径按框架工作目录）。"""
+    """file_extra_dirs 配置解析为绝对路径列表（相对路径按框架工作目录）。
+
+    始终并入框架 data 根目录：QvQChat 自身与生态模块（TTS 缓存、表情包缓存等）
+    的产物默认都落在 data/ 下，只读发送放宽到整棵树是安全且必要的——
+    旧配置只写了某个子目录（如 data/TTS/audio）时，模块换输出路径也不会再次
+    被"路径不在沙箱"挡住。写入/删除仍严格限会话沙箱，不受此影响。
+    """
     result = []
     for item in getattr(ctx.config, "file_extra_dirs", []) or []:
         text = str(item or "").strip()
@@ -49,6 +55,9 @@ def _extra_send_dirs(ctx: ToolContext) -> list[Path]:
             result.append(Path(text).expanduser().resolve())
         except OSError:
             continue
+    data_root = Path("data").resolve()
+    if data_root not in result:
+        result.append(data_root)
     return result
 
 
@@ -76,6 +85,14 @@ def sandbox_resolve(ctx: ToolContext, path: str, *, must_exist: bool = False,
             for extra in _extra_send_dirs(ctx):
                 if resolved == extra or extra in resolved.parents:
                     return resolved
+        if allow_extra:
+# 发送场景的拒绝要给出可操作信息：把允许的目录列出来（模块产物常被放到
+# 意料之外的路径，只说"不在沙箱里"模型和运维都无从下手）
+            allowed = "、".join(str(p) for p in _extra_send_dirs(ctx)) or "-"
+            raise ValueError(
+                f"path not sendable: {path} — allowed dirs: {sandbox_root(ctx)}、{allowed} "
+                f"(add the module's output dir to file_extra_dirs in settings if needed)"
+            )
         raise ValueError(f"path escapes the work sandbox: {path} (all file paths must stay inside list_files root)")
     if must_exist and not resolved.exists():
         raise ValueError(f"file not found: {path} (use list_files to inspect the sandbox)")

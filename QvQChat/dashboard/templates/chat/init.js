@@ -5,7 +5,7 @@
     applyI18n();
 
     var chatInput = el("qvq-chat-input");
-// 发送键永远发送：任务运行中则入队列（此前忙时点发送会变成取消，
+// 发送键始终发送：任务运行中入队列；停止由独立停止键负责
 
     el("qvq-chat-send").onclick = function () { sendChat(); };
     var stopBtn = el("qvq-chat-stop");
@@ -39,7 +39,7 @@
     });
     el("qvq-chat-attach-btn").onclick = function () { el("qvq-chat-file").click(); };
 // 移动端表格卡片化：全局观察器给表格补 data-cards / data-col 属性
-// 都会被补上 data-cards/data-col（此前只有 loadInto 路径调用，其余页面在
+// （loadInto 路径另外在渲染后直接调用 cardifyTables）
 
     (function watchTables() {
       var pending = false;
@@ -61,7 +61,7 @@
       var side = el("qvq-chat-side");
       if (side) side.classList.toggle("open");
     };
-// 浮层关闭：点外部 / Esc / 选中会话后收起（此前只能再点按钮，点外部关不掉）
+// 浮层关闭：点外部 / Esc 后收起
     document.addEventListener("click", function (e) {
       var side = el("qvq-chat-side");
       if (!side || !side.classList.contains("open")) return;

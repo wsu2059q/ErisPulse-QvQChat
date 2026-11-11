@@ -137,9 +137,14 @@ async def test_eco_access_declared_by_module():
     assert "sticker_add" not in hint
 
 
-async def test_eco_access_default_admin_without_declaration():
+async def test_eco_access_default_follows_config():
+    """未声明服务的默认档走 eco_default_access（默认 safe——表达型工具不再对普通成员隐藏）。"""
     catalog = {"Weather": [{"name": "get_weather", "signature": "(city: str)"}]}
     main, bridge = make_bridge(catalog)
+    await bridge.refresh()
+    assert main.registry.get("eco_Weather_get_weather").access == "safe"
+# 运营方切回 admin 后未声明服务整体收紧
+    main.cfg.eco_default_access = "admin"
     await bridge.refresh()
     assert main.registry.get("eco_Weather_get_weather").access == "admin"
 

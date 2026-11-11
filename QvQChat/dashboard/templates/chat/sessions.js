@@ -447,6 +447,8 @@
       body.querySelector("#qs-persona").value = chatPersona;
       body.querySelector("#qs-trigger").value = (chatMeta && chatMeta.ui && chatMeta.ui.trigger_mode) || "";
       body.querySelector("#qs-listen-off").checked = !!(chatMeta && chatMeta.listen_off);
+      // 单个布尔勾选 → qvSwitch.wrap 开关视觉（原生 checkbox 仍是数据源）
+      qvSwitch.wrap(body.querySelector("#qs-listen-off"));
       function collect() {
         return {
           density: body.querySelector("#qs-density").value,
@@ -1000,6 +1002,77 @@
         start: { step_id: "t" + i, name: t.tool || "?", arguments: t.arguments || "" },
         end: { step_id: "t" + i, name: t.tool || "?", output: t.output || "", ms: t.ms },
       };
+    });
+  }
+
+  // ===== 会话策略：屏蔽 / 省流 / 优先级（会话页行内快捷控制） =====
+  // 契约：GET /api/qvq/sessions 每行带 policy={muted,low_token,priority}；
+  // POST /api/qvq/session/policy {chat_key, muted?/low_token?/priority?} → {ok, policy}。
+  // 接口 404 或请求失败时静默还原控件，不弹错误。
+  var SESS_POLICY_PRIORITIES = ["high", "normal", "low"];
+
+  function sessionPolicyOf(s) {
+    var p = (s && s.policy) || {};
+    return {
+      muted: p.muted === true,
+      low_token: p.low_token === true,
+      priority: SESS_POLICY_PRIORITIES.indexOf(p.priority) >= 0 ? p.priority : "normal"
+    };
+  }
+
+  function sessPolicyPriorityLabel(pr) {
+    return t(pr === "high" ? "sess_policy_high" : (pr === "low" ? "sess_policy_low" : "sess_policy_normal"));
+  }
+
+  // 会话行操作列的策略控件占位（按钮内容由 bindSessionPolicyControls 填充）
+  function sessPolicyCellHtml(key) {
+    return '<span class="qvq-sess-policy" data-policy-key="' + esc(key) + '"></span>';
+  }
+
+  function sessPolicyWrapHtml(pol) {
+    return '<button type="button" class="qvq-chip-btn qvq-pol-btn' + (pol.muted ? " on" : "") + '" data-pol-act="muted" title="' + esc(t("sess_policy_muted")) + '">' + esc(t("sess_policy_muted")) + "</button>" +
+      '<button type="button" class="qvq-chip-btn qvq-pol-btn' + (pol.low_token ? " on" : "") + '" data-pol-act="low_token" title="' + esc(t("sess_policy_low_token")) + '">' + esc(t("sess_policy_low_token")) + "</button>" +
+      '<button type="button" class="qvq-chip-btn qvq-pol-btn' + (pol.priority !== "normal" ? " on" : "") + '" data-pol-act="priority" title="' + esc(t("sess_policy_priority")) + '">' + esc(sessPolicyPriorityLabel(pol.priority)) + "</button>";
+  }
+
+  function bindPolicyWrap(wrap, session) {
+    var key = wrap.getAttribute("data-policy-key");
+    wrap.innerHTML = sessPolicyWrapHtml(sessionPolicyOf(session));
+    wrap.querySelectorAll("button[data-pol-act]").forEach(function (btn) {
+      btn.onclick = function () {
+        if (!session) return;
+        var act = btn.getAttribute("data-pol-act");
+        var pol = sessionPolicyOf(session);
+        // 优先级 chip 循环点击：high → normal → low → high
+        if (act === "priority") pol.priority = SESS_POLICY_PRIORITIES[(SESS_POLICY_PRIORITIES.indexOf(pol.priority) + 1) % SESS_POLICY_PRIORITIES.length];
+        else pol[act] = !pol[act];
+        var body = { chat_key: key };
+        body[act] = pol[act];
+        var row = btn.closest("tr");
+        if (row) row.classList.toggle("qvq-sess-muted", pol.muted);
+        var revert = function () {
+          if (row) row.classList.toggle("qvq-sess-muted", sessionPolicyOf(session).muted);
+          bindPolicyWrap(wrap, session);
+        };
+        api("/api/qvq/session/policy", "POST", body).then(function (r) {
+          if (r && r.ok && (r.__http || 0) < 400) {
+            session.policy = r.policy || pol;
+            toast(t("sess_policy_saved"));
+            bindPolicyWrap(wrap, session);
+          } else {
+            revert(); // 旧后端无此接口（404）或保存失败：静默还原
+          }
+        }, revert);
+      };
+    });
+  }
+
+  function bindSessionPolicyControls(root, sessions) {
+    (root || document).querySelectorAll(".qvq-sess-policy").forEach(function (wrap) {
+      var key = wrap.getAttribute("data-policy-key");
+      var session = null;
+      (sessions || []).forEach(function (s) { if (s.chat_key === key) session = s; });
+      bindPolicyWrap(wrap, session);
     });
   }
 

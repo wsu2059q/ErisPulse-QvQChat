@@ -95,6 +95,8 @@ class QvQConfig(BaseConfig):
     task_models: dict = field(default_factory=dict, metadata=_desc("task_models", "任务分派：给指定类别的任务固定用某个模型。值为池内模型 id（provider:model）。可选类别：chat 主对话 / compact 上下文压缩 / title 会话标题 / vision 视觉描述 / toolselect 工具筛选 / announce 定时播报。示例：{\"vision\": \"provider:glm-4v\", \"compact\": \"provider:cheap-model\"}。留空 {} 则按能力过滤与成本自动选择", "model", 6, "json"))
     routing_enabled: bool = field(default=False, metadata=_desc("routing_enabled", "难度感知模型路由（实验性，默认关闭）：按本轮首条用户消息的难度自动选择便宜/均衡/高质量模型（寒暄短句走便宜、含代码或长分析走高质量）；仅对未显式指定模型/偏好/能力过滤的对话生效", "model", 7, "switch"))
     routing_ttl: int = field(default=300, metadata=_desc("routing_ttl", "难度分级结果的会话内缓存秒数：同会话短时间连续消息复用上次分级（0 表示不缓存，每条独立分级）", "model", 8, "number"))
+    reasoning_effort: str = field(default="", metadata=_desc("reasoning_effort", "全局思考强度：留空不干预（跟随模型默认与 effort_smalltalk 自动降思考）/ off 尝试关闭思考（Qwen/GLM 系 extra_body，非思考模型自动忽略）/ low · medium · high 推理档位（OpenAI o 系等）；对所有模型请求统一生效", "model", 9, "select", ["", "off", "low", "medium", "high"]))
+    aux_model: str = field(default="", metadata=_desc("aux_model", "辅助调用统一模型（池内 id：provider:model）：中止判定/排队播报/上下文压缩/标题/工具筛选等后台调用统一用它，留空按成本自动选最便宜。防止辅助调用被自动路由到不想用的便宜模型池（用量统计会区分记录）", "model", 10, "text", placeholder="provider:model"))
 
     trigger_mode: str = field(default="all", metadata=_desc("trigger_mode", "主动发言触发规则（全局默认，可被会话设置覆盖）：all 全部（@/唤醒词/私聊等默认规则）/ at_only 仅艾特（群里只响应 @ 与唤醒词，私聊照常）/ lurk 窥屏（只旁听记录，不回复不插话）/ off 关闭（不响应聊天，命令仍可用）", "trigger", 6, "select", ["all", "at_only", "lurk", "off"]))
     reply_private: bool = field(default=True, metadata=_desc("reply_private", "私聊消息触发智能体", "trigger", 1, "switch"))
@@ -137,8 +139,8 @@ class QvQConfig(BaseConfig):
     split_min_length: int = field(default=120, metadata=_desc("split_min_length", "分段回复的最小触发长度（字符），低于此值单条发送", "chat", 15, "number"))
     split_delay: float = field(default=1.2, metadata=_desc("split_delay", "分段回复每段之间的间隔秒数", "chat", 16, "number"))
     tool_notice_mode: str = field(default="brief", metadata=_desc("tool_notice_mode", "平台侧长任务播报（对话风格）：off 静默 / first_last 首尾（只发开场一句与最终结论，中间阶段发言静默）/ brief 发送全部开场与阶段性发言（默认，不发工具明细）/ all 另加每轮工具明细", "chat", 17, "select", ["off", "first_last", "brief", "all"]))
-    interrupt_mode: str = field(default="auto", metadata=_desc("interrupt_mode", "任务运行中来新消息的处理：auto 由 AI 判断中止还是排队（结合当前任务与新消息，失败回退排队）/ queue 一律排队、当前任务后台继续 / interrupt 一律取消当前任务、新消息带中断上下文重新开始", "chat", 18, "select", ["auto", "queue", "interrupt"]))
-    interrupt_say_mode: str = field(default="persona", metadata=_desc("interrupt_say_mode", "任务让路时的用户回执：persona 用人格口吻说一句（判定模型顺手生成，如\"先回你这个，那个任务排着\"）/ plain 机制文案（排查用）/ off 静默处理不播报", "chat", 19, "select", ["persona", "plain", "off"]))
+    interrupt_mode: str = field(default="auto", metadata=_desc("interrupt_mode", "任务运行中来新消息的处理：auto 由 AI 三选——中止（新消息纠正/取消任务）· 让路后台（旧任务转子智能体继续，新消息立即处理）· 排队（失败回退排队）/ queue 一律排队 / interrupt 一律中止", "chat", 18, "select", ["auto", "queue", "interrupt"]))
+    interrupt_say_mode: str = field(default="persona", metadata=_desc("interrupt_say_mode", "任务让路时的用户回执：persona 用人格口吻说一句（判定模型顺手生成，如\"先回你这个，那个任务排着\"）/ plain 直白模板（不额外调用模型）/ off 静默处理不播报；排队消息只在第一条时回执一次", "chat", 19, "select", ["persona", "plain", "off"]))
     aggregate_window: float = field(default=5.0, metadata=_desc("aggregate_window", "消息聚合窗口（秒）：窗口内的多条消息合并为一次请求，0 关闭", "chat", 20, "number"))
     reply_merge_window: float = field(default=8.0, metadata=_desc("reply_merge_window", "回复合并窗口（秒）：刚回复过的会话先不开新回合，窗口内陆续到达的消息合并为一次后续回复，防短时多条逐条轰炸；0 关闭", "chat", 21, "number"))
     extra_prompts: list[str] = field(default_factory=list, metadata=_desc("extra_prompts", "自定义注入提示词（每行一条，追加到系统提示词末尾）", "chat", 22, "lines"))
@@ -253,6 +255,10 @@ class QvQConfig(BaseConfig):
         default_factory=list,
         metadata=_desc("eco_admin", "运营方覆盖：强制仅管理员可用的服务（「模块:服务」，支持通配）。优先级最高——用于否决模块的 safe 自声明", "eco", 5, "list", items="tools", dangerous=True),
     )
+    eco_default_access: str = field(
+        default="safe",
+        metadata=_desc("eco_default_access", "未自声明服务的默认访问档：safe 全员可用（默认——TTS/表情包等表达型工具不再对普通成员隐藏）/ admin 仅管理员。改 admin 会把未声明的生态工具整体藏起来，普通用户会话将无法发语音/表情", "eco", 6, "select", ["safe", "admin"]),
+    )
 
     mcp_timeout: int = field(default=30, metadata=_desc("mcp_timeout", "MCP 请求超时（秒）", "mcp", 1, "number"))
 
@@ -294,7 +300,7 @@ class QvQConfig(BaseConfig):
     file_max_read_chars: int = field(default=20000, metadata=_desc("file_max_read_chars", "read_file 单次返回最大字符数", "tools", 21, "number"))
     file_max_write_chars: int = field(default=200000, metadata=_desc("file_max_write_chars", "write_file 单次写入最大字符数", "tools", 22, "number"))
     file_max_download_mb: int = field(default=20, metadata=_desc("file_max_download_mb", "download_file 单文件大小上限（MB）", "tools", 23, "number"))
-    file_extra_dirs: list[str] = field(default_factory=lambda: ["data/TTS/audio"], metadata=_desc("file_extra_dirs", "可发送的额外目录白名单（沙箱外的只读发送来源，如生态模块产物目录；语音合成等模块的输出文件可直接经 send_message 发出）。写入/删除仍严格限会话沙箱", "tools", 24, "list"))
+    file_extra_dirs: list[str] = field(default_factory=lambda: ["data"], metadata=_desc("file_extra_dirs", "可发送的额外目录白名单（沙箱外的只读发送来源；默认放行整个 data 树——TTS/表情包等生态模块的产物文件可直接经 send_message 发出）。写入/删除仍严格限会话沙箱", "tools", 24, "list"))
 # 多提供商负载分流
     provider_load_steering: bool = field(default=True, metadata=_desc("provider_load_steering", "负载分流：首选提供商在飞请求数达到阈值时，新请求直接导向池内更闲的提供商（并发时转移，不用等报错）", "model", 20, "switch"))
     provider_steer_active: int = field(default=2, metadata=_desc("provider_steer_active", "触发分流的单提供商在飞请求数阈值", "model", 21, "number"))
@@ -306,6 +312,11 @@ class QvQConfig(BaseConfig):
     storage_auto_maintain: bool = field(default=True, metadata=_desc("storage_auto_maintain", "每日自动存储维护：rounds/trace 双写去重、回收站与文件工作区过期清理", "chat", 73, "switch"))
     trash_retention_days: int = field(default=14, metadata=_desc("trash_retention_days", "回收站保留天数（过期自动清理；撤销按钮在此期限内有效）", "chat", 74, "number"))
     work_retention_days: int = field(default=30, metadata=_desc("work_retention_days", "文件工作区会话目录保留天数（按最后修改时间；0 不清理）", "chat", 75, "number"))
+    turn_timeout: float = field(default=900.0, metadata=_desc("turn_timeout", "单回合执行超时（秒）：回合超过该时长（任务卡死/模型无响应）自动收束并放行后续消息，部分输出照常入库；0 关闭", "chat", 76, "number"))
+    chat_listen_mode: str = field(default="all", metadata=_desc("chat_listen_mode", "会话监听模式：all 全部响应 / whitelist 仅响应 chat_whitelist 名单内的会话；配合会话面板的屏蔽开关可静音指定会话", "chat", 77, "select", ["all", "whitelist"]))
+    chat_whitelist: list[str] = field(default_factory=list, metadata=_desc("chat_whitelist", "白名单会话列表（chat_listen_mode=whitelist 时生效），填 chat_key（如 onebot11:group:123456），支持前缀匹配平台段", "chat", 78, "lines"))
+    budget_mode: bool = field(default=False, metadata=_desc("budget_mode", "省钱模式（全局）：chat 回合按实际成本升序优先便宜模型，任务冲突判定跳过 AI 直接入队，记忆语义检索降级为词面匹配，系统提示词轻量瘦身（kb/技能清单跳过，人格保留）——不改变发言风格，省单价也省调用量", "chat", 79, "switch"))
+    join_agg_window: float = field(default=0.0, metadata=_desc("join_agg_window", "入群欢迎合并窗口（秒）：窗口内多人先后进群合并为一次欢迎回合，0 按消息聚合窗口（aggregate_window）取值；负数或显式 0.5-60 之间可覆盖", "chat", 80, "number"))
 
 # 群聊参与决策（插件化扩展点；默认关闭：装插件≠放行）
     participation_enabled: bool = field(default=False, metadata=_desc("participation_enabled", "群聊参与决策：未被 @/前缀命中时问询生态插件的 qvq_decision 服务判断是否插话（默认关闭，需自行开启）", "participation", 1, "switch", dangerous=True))
@@ -365,7 +376,7 @@ class QvQConfig(BaseConfig):
             if isinstance(value, str):
                 text = value.strip()
                 if not text:
-# 存量 bug 止血：清空数字字段不再落 ""（运行时 int("") 会崩）
+# 数字字段清空时回退默认值（运行时 int("") 会崩溃）
                     return False, None, texts.t("config_err_number", name=key)
                 try:
                     value = float(text)

@@ -13,7 +13,7 @@
       sess_members: "成员", sess_members_hint: "成员白名单（每行一个用户 ID，* 表示全员；留空恢复全员）", sess_sources_hint: "接受其它会话的输入（每行一个 chat_key，如 onebot11:group:123；这些会话的消息会路由到本会话）", kb_export: "导出", kb_import: "导入",
       nav_orchestrate: "编排", orchestrate_desc: "智能体总览：模型链 · 健康 · 运行状态 · 任务时间线", orch_model_chain: "模型链（故障转移顺序）", orch_chain_hint: "拖拽调整故障转移顺序，松手自动保存", orch_chain_saved: "链序已保存", orch_health: "模型健康", health_ok: "全部模型正常", health_cooldown: "冷却中", health_fails: "连续失败 {n} 次", health_left: "剩余 {s}s", orch_running: "运行状态", running_none: "没有正在运行的任务：发消息或创建定时任务后可在这里看到实时状态", orch_timeline: "任务时间线", timeline_empty: "暂无任务与执行记录：到「定时任务」创建一个试试", orch_capabilities: "能力开关", caps_tools: "工具", caps_skills: "技能", task_next: "下次", task_last: "最近", task_status_error: "上次失败", cost_title: "成本估算", cost_total: "14 天合计", cost_daily: "每日成本（柱）与累计（线）", cost_by_model: "按模型分布", cost_empty: "暂无带单价的用量数据（模型价格来自 models.dev 目录）", orch_accounts: "适配器账户", orch_accounts_hint: "各平台登录的 bot 账户；同平台多账户时会话按 @账户 隔离", orch_accounts_empty: "没有已连接的适配器", acct_filter_all: "全部账户", acct_sessions_unit: "个会话", acct_multi: "多账户隔离", acct_offline: "已离线的隔离账户", nav_storage: "存储", storage_desc: "全部数据库内容：查看 / 清理 / 重置", storage_total: "总占用", storage_slim: "瘦身", storage_compact_btn: "压缩会话…", storage_compact_confirm: "把全部会话历史压缩为摘要小作文？工具输出等残留将随之消失；人格绑定、记忆、事实不受影响", storage_compact_done: "已压缩 {n} 个会话", storage_reset: "一键重置…", storage_export_san: "去隐私导出…", storage_export_full: "完整导出…", storage_export_hint: "导出全部内容：配置、模型、人格、全部会话与存储（含 AI 生成的工作区/上传文件）。去隐私导出会移除模型密钥、令牌等敏感值。", storage_export_pick: "选择导出…", storage_import: "导入…", export_grp_data: "数据段落", export_grp_storage: "存储域", export_grp_files: "文件目录", export_sec_config: "运行时配置", export_sec_models: "模型与链", export_sec_personas: "人格", export_sec_tasks: "定时任务", export_sec_memory: "记忆", export_sec_skills: "技能", export_sec_mcp: "MCP", export_sec_storage: "存储键值（会话/事实/画像等）", strategy_overwrite: "覆盖", strategy_append: "追加", strategy_skip: "跳过", export_none_selected: "请至少选择一项", import_file_label: "选择文件（.json 或 .zip）", import_apply: "导入", import_nothing: "文件中没有可导入的内容", import_done: "导入完成：{n} 项", import_failed: "导入失败：文件无法解析", storage_empty: "存储为空：正常现象，对话/记忆/审计产生数据后会出现在这里", storage_domain: "数据域", storage_count: "条目", storage_size: "大小", storage_browse: "浏览键", storage_clear: "清空", storage_confirm_clear: "清空「{d}」？该域全部数据将被删除", storage_cleared: "已清理 {n} 项", storage_keys_title: "键浏览", storage_keys_hint: "展开一个域后，这里列出它的全部键，可查看内容或删除", storage_no_keys: "该域没有键", storage_key_col: "键", storage_truncated: "内容过长，已截断", storage_reset_hint: "勾选要【保留】的域，未勾选的将被清空", storage_reset_warn: "一键重置不可撤销；保留模型配置可避免重新填 API Key", storage_reset_confirm: "确定执行一键重置？", storage_slim_done: "已瘦身 {n} 个会话", storage_d_sessions: "会话上下文", storage_d_memories: "记忆", storage_d_profiles: "用户画像", storage_d_personas: "人格与绑定", storage_d_knowledge: "知识库", storage_d_audit: "审计日志", storage_d_usage: "用量记录", storage_d_tasks: "定时任务", storage_d_participation: "参与决策", storage_d_shares: "会话分享", storage_d_trash: "回收站", storage_d_recall: "召回索引", storage_d_pending: "待发队列", storage_d_models: "模型配置", storage_d_mcp: "MCP 配置", storage_d_docs: "文档缓存", storage_d_docs_cache: "文档缓存目录", storage_d_uploads: "上传文件", storage_d_work: "文件工作区", storage_d_settings: "界面设置", storage_d_other: "其它", 
       overview_desc: "智能体运行一览", overview_detail: "运行详情",
-      stat_models: "模型", stat_tools: "工具", stat_eco: "生态工具", stat_sessions: "会话",
+      stat_models: "模型", stat_tools: "工具", stat_eco: "生态工具", stat_eco_modules: " 个生态模块", stat_eco_tools: " 个工具", stat_sessions: "会话",
       stat_tasks: "任务", stat_mcp: "MCP", stat_extensions: "扩展", stat_security: "安全",
       on: "开", off: "关", takeovers: "接管中会话", trust_on: "完全信任",
       chat_desc: "直接测试智能体", chat_placeholder: "说点什么…", chat_send: "发送",
@@ -57,7 +57,7 @@
       audit_clear_confirm: "确认清空全部审计记录？（不可恢复）",
       audit_cleared: "审计已清空",
       models_desc: "任意 OpenAI 兼容服务商，按顺序故障转移", models_add: "添加 / 更新模型",
-      models_name: "名称", models_id: "模型名", models_temp: "温度", models_maxtok: "最大 token", model_smart: "智能配置", model_smart_hint: "开启后从 models.dev 自动补全上下文、能力和价格", model_context: "上下文窗口", model_max_output: "最大输出 Token", model_detect: "从 models.dev 检测", model_detected: "已从 models.dev 补全元数据", model_detect_empty: "models.dev 未收录该模型，请手动填写", model_advanced: "高级配置", model_input_types: "输入类型", model_input_text: "文本", model_input_image: "图片", model_input_video: "视频", model_input_pdf: "PDF", model_caps: "模型能力", model_tool_call: "工具调用", model_reasoning: "推理", model_price: "单价（每百万 token）", model_price_in: "输入", model_price_out: "输出", model_enabled: "启用该模型", model_manage: "模型配置", model_refresh: "刷新能力与价格", model_refresh_done: "已更新 {n} 项", model_delete_confirm: "删除该模型？", model_cap_tools: "工具", model_cap_no_tools: "无工具", model_cap_vision: "视觉", model_cap_reason: "推理", model_unknown: "能力未知", orch_chain_top_no_tools: "链首模型未标记「工具调用」，启用工具的对话会跳过它；请到模型池补全能力或手动开启。", model_none: "还没有模型", model_add_title: "添加模型", model_edit_title: "编辑模型配置", models_key_col: "key", models_auto_enrich_note: "保存后会自动从 models.dev 补全能力与价格，可在「模型配置」里逐个调整", models_meta_note: "模型能力/价格请在「模型配置」里编辑；这里保存不会改动模型列表。", batch_result: "成功 {ok} 项，失败 {fail} 项", backup_import_confirm: "导入将合并/覆盖以下数据：{sections}。确定继续？", regen: "重新生成", session_rename: "重命名会话", session_name_label: "会话名称", session_rename_ph: "留空恢复默认显示", refresh: "刷新", todo_title: "TODO 清单", todo_new_ph: "新待办内容…", todo_empty: "该会话没有 TODO（AI 用 todo_write 写入后显示在这里）", todo_s_pending: "待办", todo_s_in_progress: "进行中", todo_s_completed: "已完成", batch_exit: "退出选择", list_load_failed: "加载失败", retry: "重试", onboard_title: "初始化引导", onboard_desc: "以下生态模块额外注入了「使用建议」提示词（影响 AI 何时主动想到用它的能力）。无论是否勾选，模块的工具 AI 都能发现并使用（工具描述自带能力说明）；勾选只决定要不要这层额外的时机提示。", onboard_prompts_n: "{n} 条建议", onboard_skip: "跳过", settings_show_keys: "显示字段名", load_more: "加载更多",
+      models_name: "名称", models_id: "模型名", models_temp: "温度", models_maxtok: "最大 token", model_smart: "智能配置", model_smart_hint: "开启后从 models.dev 自动补全上下文、能力和价格", model_context: "上下文窗口", model_max_output: "最大输出 Token", model_detect: "从 models.dev 检测", model_detected: "已从 models.dev 补全元数据", model_detect_empty: "models.dev 未收录该模型，请手动填写", model_advanced: "高级配置", model_input_types: "输入类型", model_input_text: "文本", model_input_image: "图片", model_input_video: "视频", model_input_pdf: "PDF", model_caps: "模型能力", model_tool_call: "工具调用", model_reasoning: "推理", model_price: "单价（每百万 token）", model_price_in: "输入", model_price_out: "输出", model_enabled: "启用该模型", provider_disable: "临时停用", provider_enable: "重新启用", provider_disabled: "已停用", model_manage: "模型配置", model_refresh: "刷新能力与价格", model_refresh_done: "已更新 {n} 项", model_delete_confirm: "删除该模型？", model_cap_tools: "工具", model_cap_no_tools: "无工具", model_cap_vision: "视觉", model_cap_reason: "推理", model_unknown: "能力未知", orch_chain_top_no_tools: "链首模型未标记「工具调用」，启用工具的对话会跳过它；请到模型池补全能力或手动开启。", model_none: "还没有模型", model_add_title: "添加模型", model_edit_title: "编辑模型配置", models_key_col: "key", models_auto_enrich_note: "保存后会自动从 models.dev 补全能力与价格，可在「模型配置」里逐个调整", models_meta_note: "模型能力/价格请在「模型配置」里编辑；这里保存不会改动模型列表。", batch_result: "成功 {ok} 项，失败 {fail} 项", backup_import_confirm: "导入将合并/覆盖以下数据：{sections}。确定继续？", regen: "重新生成", session_rename: "重命名会话", session_name_label: "会话名称", session_rename_ph: "留空恢复默认显示", refresh: "刷新", todo_title: "TODO 清单", todo_new_ph: "新待办内容…", todo_empty: "该会话没有 TODO（AI 用 todo_write 写入后显示在这里）", todo_s_pending: "待办", todo_s_in_progress: "进行中", todo_s_completed: "已完成", batch_exit: "退出选择", list_load_failed: "加载失败", retry: "重试", onboard_title: "初始化引导", onboard_desc: "以下生态模块额外注入了「使用建议」提示词（影响 AI 何时主动想到用它的能力）。无论是否勾选，模块的工具 AI 都能发现并使用（工具描述自带能力说明）；勾选只决定要不要这层额外的时机提示。", onboard_prompts_n: "{n} 条建议", onboard_skip: "跳过", settings_show_keys: "显示字段名", load_more: "加载更多",
       save: "保存", actions: "操作", test: "测试", edit: "编辑", del: "删除",
       models_empty: "模型池为空，先添加一个吧", model_test_ok: "模型可用", model_test_fail: "模型不可用",
       saved: "已保存", deleted: "已删除", confirm_del: "确认删除？",
@@ -75,7 +75,7 @@
       memory_empty: "该作用域暂无记忆",
       profile_card_title: "用户画像", profile_card_user: "用户", profile_card_empty: "暂无画像",
       profile_card_clear: "清空画像", profile_card_confirm: "清空该用户的画像？", memory_importance: "重要度", health_reset: "重置", trash_page: "回收站", trash_hint: "删除操作的撤销期限内的暂存；过期自动清理", trash_expires: "剩余", trash_days: "天", trash_restore: "恢复", trash_empty: "回收站为空", panel_title: "快速跳转", panel_ph: "搜会话 / 页面 / 设置项…", panel_none: "没有匹配项", profile_sec_traits: "特征", chat_pin_s: "置顶", profile_sec_preferences: "偏好", profile_sec_facts: "事实", profile_updated: "更新于",
-      sessions_desc: "会话与人格绑定", sessions_empty: "还没有会话：去聊天页发一条消息，或等平台消息进来",
+      sessions_desc: "会话与人格绑定", sessions_empty: "还没有会话：去聊天页发一条消息，或等平台消息进来", sess_policy_muted: "屏蔽", sess_policy_low_token: "省钱", sess_policy_priority: "优先级", sess_policy_high: "高", sess_policy_normal: "常规", sess_policy_low: "低", sess_policy_saved: "策略已保存",
       col_turns: "轮数", col_updated: "更新时间", reset_btn: "重置", col_persona: "人格",
       audit_desc: "操作与确认记录", audit_empty: "还没有审计记录：AI 每次调用工具都会在这里留痕",
       col_tool: "工具", col_detail: "详情",
@@ -101,7 +101,7 @@
       skills_export: "导出", skills_import: "导入", skills_empty: "还没有技能，新建一个或把 .md 放入技能目录",
       skills_source: "来源",
       personas_reset: "恢复默认", personas_modified: "已自定义", sessions_msgs: "消息", yesterday: "昨天", tomorrow: "明天",
-      personas_new: "新建人格", mcp_add: "添加服务器", cancel: "取消", mcp_command: "命令", mcp_args: "参数（每行一个）", mcp_headers: "请求头（JSON）", mcp_server: "服务器", hero_dawn_1: "早呀，今天从点什么开始？", hero_dawn_2: "早安，我已就位", hero_dawn_3: "刚醒就来找我聊？", hero_morning_1: "上午好，有什么想聊的？", hero_morning_2: "在的，随时开聊", hero_morning_3: "今天有什么打算？说给我听听", hero_noon_1: "中午好，吃饭了吗？", hero_noon_2: "午休一下，我盯着呢", hero_noon_3: "吃饱了才有力气干活", hero_afternoon_1: "下午好，有点困就聊聊天", hero_afternoon_2: "下午茶时间，歇会儿？", hero_afternoon_3: "别硬撑，累了就歇", hero_evening_1: "晚上好，今天过得怎么样？", hero_evening_2: "回来啦，辛苦了", hero_evening_3: "夜聊模式，随时开麦", hero_late_1: "还没睡呀？", hero_late_2: "夜深了，早点休息", hero_late_3: "睡不着就聊会儿天",
+      personas_new: "新建人格", mcp_add: "添加服务器", mcp_name_required: "请填写 MCP 名称", cancel: "取消", mcp_command: "命令", mcp_args: "参数（每行一个）", mcp_headers: "请求头（JSON）", mcp_server: "服务器", hero_dawn_1: "早呀，今天从点什么开始？", hero_dawn_2: "早安，我已就位", hero_dawn_3: "刚醒就来找我聊？", hero_morning_1: "上午好，有什么想聊的？", hero_morning_2: "在的，随时开聊", hero_morning_3: "今天有什么打算？说给我听听", hero_noon_1: "中午好，吃饭了吗？", hero_noon_2: "午休一下，我盯着呢", hero_noon_3: "吃饱了才有力气干活", hero_afternoon_1: "下午好，有点困就聊聊天", hero_afternoon_2: "下午茶时间，歇会儿？", hero_afternoon_3: "别硬撑，累了就歇", hero_evening_1: "晚上好，今天过得怎么样？", hero_evening_2: "回来啦，辛苦了", hero_evening_3: "夜聊模式，随时开麦", hero_late_1: "还没睡呀？", hero_late_2: "夜深了，早点休息", hero_late_3: "睡不着就聊会儿天",
       nav_group_run: "运行", group_kb: "知识库", group_skills: "技能", group_other: "其它",
       settings_search_ph: "搜索设置项…", settings_no_match: "没有匹配的设置项", settings_invalid_value: "值无效，请修正", settings_json_bad: "JSON 格式错误", settings_no_change: "没有修改，无需保存", settings_danger_confirm: "即将修改安全相关设置，确认继续？", settings_unsaved: "有未保存的设置修改，离开将丢失。确认离开？", settings_save_partial: "以下字段未通过校验，未保存", settings_dangerous: "高危", settings_show: "显示", settings_hide: "隐藏", settings_list_add: "添加一项", plugin_settings_empty: "暂无可配置的插件：插件提供 qvq_settings 服务后自动出现在这里",
       settings_sec_context: "上下文与压缩", settings_sec_forward: "合并转发", settings_sec_reply: "分段回复", settings_sec_flow: "运行策略", settings_sec_misc: "其它",
@@ -121,7 +121,7 @@
       sess_members: "成員", sess_members_hint: "成員白名單（每行一個使用者 ID，* 表示全員；留空恢復全員）", sess_sources_hint: "接受其它會話的輸入（每行一個 chat_key，如 onebot11:group:123；這些會話的訊息會路由到本會話）", kb_export: "匯出", kb_import: "匯入",
       nav_orchestrate: "編排", orchestrate_desc: "智能體總覽：模型鏈 · 健康 · 執行狀態 · 任務時間線", orch_model_chain: "模型鏈（故障轉移順序）", orch_chain_hint: "拖曳調整故障轉移順序，鬆手自動儲存", orch_chain_saved: "鏈序已儲存", orch_health: "模型健康", health_ok: "全部模型正常", health_cooldown: "冷卻中", health_fails: "連續失敗 {n} 次", health_left: "剩餘 {s}s", orch_running: "執行狀態", running_none: "暫無執行中的任務", orch_timeline: "任務時間線", timeline_empty: "暫無任務與執行記錄", orch_capabilities: "能力開關", caps_tools: "工具", caps_skills: "技能", task_next: "下次", task_last: "最近", task_status_error: "上次失敗", cost_title: "成本估算", cost_total: "14 天合計", cost_daily: "每日成本（柱）與累計（線）", cost_by_model: "按模型分佈", cost_empty: "暫無帶單價的用量資料（模型價格來自 models.dev 目錄）", orch_accounts: "介面卡帳戶", orch_accounts_hint: "各平台登入的 bot 帳戶；同平台多帳戶時會話按 @帳戶 隔離", orch_accounts_empty: "沒有已連線的介面卡", acct_filter_all: "全部帳戶", acct_sessions_unit: "個會話", acct_multi: "多帳戶隔離", acct_offline: "已離線的隔離帳戶", nav_storage: "儲存", storage_desc: "全部資料庫內容：查看 / 清理 / 重置", storage_total: "總佔用", storage_slim: "瘦身", storage_compact_btn: "壓縮會話…", storage_compact_confirm: "把全部會話歷史壓縮為摘要小作文？工具輸出等殘留將隨之消失；人格綁定、記憶、事實不受影響", storage_compact_done: "已壓縮 {n} 個會話", storage_reset: "一鍵重置…", storage_export_san: "去隱私匯出…", storage_export_full: "完整匯出…", storage_export_hint: "匯出全部內容：設定、模型、人格、全部會話與儲存（含 AI 生成的工作區/上傳檔案）。去隱私匯出會移除模型金鑰、權杖等敏感值。", storage_export_pick: "選擇匯出…", storage_import: "匯入…", export_grp_data: "資料段落", export_grp_storage: "儲存域", export_grp_files: "檔案目錄", export_sec_config: "執行時設定", export_sec_models: "模型與鏈", export_sec_personas: "人格", export_sec_tasks: "定時任務", export_sec_memory: "記憶", export_sec_skills: "技能", export_sec_mcp: "MCP", export_sec_storage: "儲存鍵值（會話/事實/畫像等）", strategy_overwrite: "覆蓋", strategy_append: "追加", strategy_skip: "跳過", export_none_selected: "請至少選擇一項", import_file_label: "選擇檔案（.json 或 .zip）", import_apply: "匯入", import_nothing: "檔案中沒有可匯入的內容", import_done: "匯入完成：{n} 項", import_failed: "匯入失敗：檔案無法解析", storage_empty: "儲存為空", storage_domain: "資料域", storage_count: "條目", storage_size: "大小", storage_browse: "瀏覽鍵", storage_clear: "清空", storage_confirm_clear: "清空「{d}」？該域全部資料將被刪除", storage_cleared: "已清理 {n} 項", storage_keys_title: "鍵瀏覽", storage_keys_hint: "展開一個域後，這裡列出它的全部鍵，可查看內容或刪除", storage_no_keys: "該域沒有鍵", storage_key_col: "鍵", storage_truncated: "內容過長，已截斷", storage_reset_hint: "勾選要【保留】的域，未勾選的將被清空", storage_reset_warn: "一鍵重置不可撤銷；保留模型設定可避免重新填 API Key", storage_reset_confirm: "確定執行一鍵重置？", storage_slim_done: "已瘦身 {n} 個會話", storage_d_sessions: "會話上下文", storage_d_memories: "記憶", storage_d_profiles: "使用者畫像", storage_d_personas: "人格與綁定", storage_d_knowledge: "知識庫", storage_d_audit: "稽核日誌", storage_d_usage: "用量記錄", storage_d_tasks: "定時任務", storage_d_participation: "參與決策", storage_d_shares: "會話分享", storage_d_trash: "回收站", storage_d_recall: "召回索引", storage_d_pending: "待發佇列", storage_d_models: "模型設定", storage_d_mcp: "MCP 設定", storage_d_docs: "文件快取", storage_d_docs_cache: "文件快取目錄", storage_d_uploads: "上傳檔案", storage_d_work: "檔案工作區", storage_d_settings: "介面設定", storage_d_other: "其它",
       overview_desc: "智慧代理運行一覽", overview_detail: "運行詳情",
-      stat_models: "模型", stat_tools: "工具", stat_eco: "生態工具", stat_sessions: "會話",
+      stat_models: "模型", stat_tools: "工具", stat_eco: "生態工具", stat_eco_modules: " 個生態模組", stat_eco_tools: " 個工具", stat_sessions: "會話",
       stat_tasks: "任務", stat_mcp: "MCP", stat_extensions: "擴展", stat_security: "安全",
       on: "開", off: "關", takeovers: "接管中會話", trust_on: "完全信任",
       chat_desc: "直接測試智慧代理", chat_placeholder: "說點什麼…", chat_send: "傳送",
@@ -165,7 +165,7 @@
       audit_clear_confirm: "確認清空全部審計記錄？（不可恢復）",
       audit_cleared: "審計已清空",
       models_desc: "任意 OpenAI 相容服務商，依順序故障轉移", models_add: "新增 / 更新模型",
-      models_name: "名稱", models_id: "模型名", models_temp: "溫度", models_maxtok: "最大 token", model_smart: "智慧設定", model_smart_hint: "開啟後從 models.dev 自動補全上下文、能力和價格", model_context: "上下文視窗", model_max_output: "最大輸出 Token", model_detect: "從 models.dev 偵測", model_detected: "已從 models.dev 補全中繼資料", model_detect_empty: "models.dev 未收錄該模型，請手動填寫", model_advanced: "進階設定", model_input_types: "輸入類型", model_input_text: "文字", model_input_image: "圖片", model_input_video: "影片", model_input_pdf: "PDF", model_caps: "模型能力", model_tool_call: "工具呼叫", model_reasoning: "推理", model_price: "單價（每百萬 token）", model_price_in: "輸入", model_price_out: "輸出", model_enabled: "啟用該模型", model_manage: "模型設定", model_refresh: "重新整理能力與價格", model_refresh_done: "已更新 {n} 項", model_delete_confirm: "刪除該模型？", model_cap_tools: "工具", model_cap_no_tools: "無工具", model_cap_vision: "視覺", model_cap_reason: "推理", model_unknown: "能力未知", orch_chain_top_no_tools: "鏈首模型未標記「工具呼叫」，啟用工具的對話會跳過它；請到模型池補全能力或手動開啟。", model_none: "還沒有模型", model_add_title: "新增模型", model_edit_title: "編輯模型設定", models_key_col: "key", models_auto_enrich_note: "儲存後會自動從 models.dev 補全能力與價格，可在「模型設定」裡逐個調整", models_meta_note: "模型能力/價格請在「模型設定」裡編輯；這裡儲存不會改動模型列表。", batch_result: "成功 {ok} 項，失敗 {fail} 項", backup_import_confirm: "匯入將合併/覆蓋以下資料：{sections}。確定繼續？", regen: "重新生成", session_rename: "重新命名會話", session_name_label: "會話名稱", session_rename_ph: "留空恢復預設顯示", refresh: "重新整理", todo_title: "TODO 清單", todo_new_ph: "新待辦內容…", todo_empty: "該會話沒有 TODO（AI 用 todo_write 寫入後顯示在這裡）", todo_s_pending: "待辦", todo_s_in_progress: "進行中", todo_s_completed: "已完成", batch_exit: "退出選擇", list_load_failed: "載入失敗", retry: "重試", onboard_title: "初始化引導", onboard_desc: "以下生態模組額外注入了「使用建議」提示詞（影響 AI 何時主動想到用它的能力）。無論是否勾選，模組的工具 AI 都能發現並使用（工具描述自帶能力說明）；勾選只決定要不要這層額外的時機提示。", onboard_prompts_n: "{n} 條建議", onboard_skip: "跳過", settings_show_keys: "顯示欄位名", load_more: "載入更多",
+      models_name: "名稱", models_id: "模型名", models_temp: "溫度", models_maxtok: "最大 token", model_smart: "智慧設定", model_smart_hint: "開啟後從 models.dev 自動補全上下文、能力和價格", model_context: "上下文視窗", model_max_output: "最大輸出 Token", model_detect: "從 models.dev 偵測", model_detected: "已從 models.dev 補全中繼資料", model_detect_empty: "models.dev 未收錄該模型，請手動填寫", model_advanced: "進階設定", model_input_types: "輸入類型", model_input_text: "文字", model_input_image: "圖片", model_input_video: "影片", model_input_pdf: "PDF", model_caps: "模型能力", model_tool_call: "工具呼叫", model_reasoning: "推理", model_price: "單價（每百萬 token）", model_price_in: "輸入", model_price_out: "輸出", model_enabled: "啟用該模型", provider_disable: "暫時停用", provider_enable: "重新啟用", provider_disabled: "已停用", model_manage: "模型設定", model_refresh: "重新整理能力與價格", model_refresh_done: "已更新 {n} 項", model_delete_confirm: "刪除該模型？", model_cap_tools: "工具", model_cap_no_tools: "無工具", model_cap_vision: "視覺", model_cap_reason: "推理", model_unknown: "能力未知", orch_chain_top_no_tools: "鏈首模型未標記「工具呼叫」，啟用工具的對話會跳過它；請到模型池補全能力或手動開啟。", model_none: "還沒有模型", model_add_title: "新增模型", model_edit_title: "編輯模型設定", models_key_col: "key", models_auto_enrich_note: "儲存後會自動從 models.dev 補全能力與價格，可在「模型設定」裡逐個調整", models_meta_note: "模型能力/價格請在「模型設定」裡編輯；這裡儲存不會改動模型列表。", batch_result: "成功 {ok} 項，失敗 {fail} 項", backup_import_confirm: "匯入將合併/覆蓋以下資料：{sections}。確定繼續？", regen: "重新生成", session_rename: "重新命名會話", session_name_label: "會話名稱", session_rename_ph: "留空恢復預設顯示", refresh: "重新整理", todo_title: "TODO 清單", todo_new_ph: "新待辦內容…", todo_empty: "該會話沒有 TODO（AI 用 todo_write 寫入後顯示在這裡）", todo_s_pending: "待辦", todo_s_in_progress: "進行中", todo_s_completed: "已完成", batch_exit: "退出選擇", list_load_failed: "載入失敗", retry: "重試", onboard_title: "初始化引導", onboard_desc: "以下生態模組額外注入了「使用建議」提示詞（影響 AI 何時主動想到用它的能力）。無論是否勾選，模組的工具 AI 都能發現並使用（工具描述自帶能力說明）；勾選只決定要不要這層額外的時機提示。", onboard_prompts_n: "{n} 條建議", onboard_skip: "跳過", settings_show_keys: "顯示欄位名", load_more: "載入更多",
       save: "儲存", actions: "操作", test: "測試", edit: "編輯", del: "刪除",
       models_empty: "模型池為空，先新增一個吧", model_test_ok: "模型可用", model_test_fail: "模型不可用",
       saved: "已儲存", deleted: "已刪除", confirm_del: "確認刪除？",
@@ -183,7 +183,7 @@
       memory_empty: "該作用域暫無記憶",
       profile_card_title: "使用者畫像", profile_card_user: "使用者", profile_card_empty: "暫無畫像",
       profile_card_clear: "清空畫像", profile_card_confirm: "清空該使用者的畫像？", memory_importance: "重要度", health_reset: "重置", trash_page: "回收站", trash_hint: "刪除操作的撤銷期限內的暫存；過期自動清理", trash_expires: "剩餘", trash_days: "天", trash_restore: "恢復", trash_empty: "回收站為空", panel_title: "快速跳轉", panel_ph: "搜會話 / 頁面 / 設定項…", panel_none: "沒有匹配項", profile_sec_traits: "特徵", chat_pin_s: "置頂", profile_sec_preferences: "偏好", profile_sec_facts: "事實", profile_updated: "更新於",
-      sessions_desc: "會話與人格綁定", sessions_empty: "暫無會話",
+      sessions_desc: "會話與人格綁定", sessions_empty: "暫無會話", sess_policy_muted: "封鎖", sess_policy_low_token: "省钱", sess_policy_priority: "優先級", sess_policy_high: "高", sess_policy_normal: "一般", sess_policy_low: "低", sess_policy_saved: "策略已保存",
       col_turns: "輪數", col_updated: "更新時間", reset_btn: "重置", col_persona: "人格",
       audit_desc: "操作與確認記錄", audit_empty: "暫無審計記錄",
       col_tool: "工具", col_detail: "詳情",
@@ -209,7 +209,7 @@
       skills_export: "匯出", skills_import: "匯入", skills_empty: "還沒有技能，新增一個或把 .md 放入技能目錄",
       skills_source: "來源",
       personas_reset: "恢復預設", personas_modified: "已自訂", sessions_msgs: "訊息", yesterday: "昨天", tomorrow: "明天",
-      personas_new: "新增人格", mcp_add: "新增伺服器", cancel: "取消", mcp_command: "命令", mcp_args: "參數（每行一個）", mcp_headers: "請求頭（JSON）", mcp_server: "伺服器", hero_dawn_1: "早啊，今天從哪開始？", hero_dawn_2: "早安，我已就位", hero_dawn_3: "剛醒就來找我聊？", hero_morning_1: "上午好，有什麼想聊的？", hero_morning_2: "在的，隨時開聊", hero_morning_3: "今天有什麼計畫？說給我聽聽", hero_noon_1: "中午好，吃飯了嗎？", hero_noon_2: "午休一下，我盯著呢", hero_noon_3: "吃飽了才有力氣做事", hero_afternoon_1: "下午好，有點睏就聊聊天", hero_afternoon_2: "下午茶時間，歇會兒？", hero_afternoon_3: "別硬撐，累了就休息", hero_evening_1: "晚上好，今天過得怎樣？", hero_evening_2: "回來啦，辛苦了", hero_evening_3: "夜聊模式，隨時開麥", hero_late_1: "還沒睡呀？", hero_late_2: "夜深了，早點休息", hero_late_3: "睡不著就聊會兒天",
+      personas_new: "新增人格", mcp_add: "新增伺服器", mcp_name_required: "請填寫 MCP 名稱", cancel: "取消", mcp_command: "命令", mcp_args: "參數（每行一個）", mcp_headers: "請求頭（JSON）", mcp_server: "伺服器", hero_dawn_1: "早啊，今天從哪開始？", hero_dawn_2: "早安，我已就位", hero_dawn_3: "剛醒就來找我聊？", hero_morning_1: "上午好，有什麼想聊的？", hero_morning_2: "在的，隨時開聊", hero_morning_3: "今天有什麼計畫？說給我聽聽", hero_noon_1: "中午好，吃飯了嗎？", hero_noon_2: "午休一下，我盯著呢", hero_noon_3: "吃飽了才有力氣做事", hero_afternoon_1: "下午好，有點睏就聊聊天", hero_afternoon_2: "下午茶時間，歇會兒？", hero_afternoon_3: "別硬撐，累了就休息", hero_evening_1: "晚上好，今天過得怎樣？", hero_evening_2: "回來啦，辛苦了", hero_evening_3: "夜聊模式，隨時開麥", hero_late_1: "還沒睡呀？", hero_late_2: "夜深了，早點休息", hero_late_3: "睡不著就聊會兒天",
       nav_group_run: "運行", group_kb: "知識庫", group_skills: "技能", group_other: "其它",
       settings_search_ph: "搜尋設定項…", settings_no_match: "沒有符合的設定項", settings_invalid_value: "值無效，請修正", settings_json_bad: "JSON 格式錯誤", settings_no_change: "沒有修改，無需儲存", settings_danger_confirm: "即將修改安全相關設定，確認繼續？", settings_unsaved: "有未儲存的設定修改，離開將遺失。確認離開？", settings_save_partial: "以下欄位未通過校驗，未儲存", settings_dangerous: "高危", settings_show: "顯示", settings_hide: "隱藏", settings_list_add: "新增一項", plugin_settings_empty: "暫無可設定的外掛：外掛提供 qvq_settings 服務後自動出現在這裡",
       settings_sec_context: "上下文與壓縮", settings_sec_forward: "合併轉發", settings_sec_reply: "分段回覆", settings_sec_flow: "運行策略", settings_sec_misc: "其它",
@@ -229,7 +229,7 @@
       sess_members: "Members", sess_members_hint: "Member allowlist (one user ID per line, * = everyone; empty resets to everyone)", sess_sources_hint: "Accept input from other chats (one chat_key per line, e.g. onebot11:group:123; their messages route into this chat)", kb_export: "Export", kb_import: "Import",
       nav_orchestrate: "Orchestration", orchestrate_desc: "Agent at a glance: model chain · health · runs · task timeline", orch_model_chain: "Model chain (failover order)", orch_chain_hint: "Drag to reorder the failover chain; saves automatically on drop", orch_chain_saved: "Chain order saved", orch_health: "Model health", health_ok: "All models healthy", health_cooldown: "Cooling down", health_fails: "{n} consecutive failures", health_left: "{s}s left", orch_running: "Running", running_none: "No running tasks", orch_timeline: "Task timeline", timeline_empty: "No tasks or runs yet", orch_capabilities: "Capability switches", caps_tools: "Tools", caps_skills: "Skills", task_next: "Next", task_last: "Last", task_status_error: "Last run failed", cost_title: "Cost estimate", cost_total: "14-day total", cost_daily: "Daily cost (bars) and cumulative (line)", cost_by_model: "By model", cost_empty: "No priced usage yet (model prices come from the models.dev catalog)", orch_accounts: "Adapter accounts", orch_accounts_hint: "Bots logged in per platform; with multiple accounts on one platform, sessions are isolated per @account", orch_accounts_empty: "No connected adapters", acct_filter_all: "All accounts", acct_sessions_unit: "sessions", acct_multi: "multi-account isolation", acct_offline: "Offline isolated accounts", nav_storage: "Storage", storage_desc: "Everything in the database: browse / clean / reset", storage_total: "Total", storage_slim: "Slim", storage_compact_btn: "Compact sessions…", storage_compact_confirm: "Compress ALL session histories into digest summaries? Tool-output residue disappears with them; persona bindings, memories and facts are untouched", storage_compact_done: "Compacted {n} sessions", storage_reset: "Reset all…", storage_export_san: "Export sanitized…", storage_export_full: "Export full…", storage_export_hint: "Export everything: config, models, personas, all sessions and storage (incl. AI-generated work sandbox/uploads). Sanitized export strips model keys, tokens and other secrets.", storage_export_pick: "Choose contents…", storage_import: "Import…", export_grp_data: "Data sections", export_grp_storage: "Storage domains", export_grp_files: "File folders", export_sec_config: "Runtime config", export_sec_models: "Models & chain", export_sec_personas: "Personas", export_sec_tasks: "Scheduled tasks", export_sec_memory: "Memories", export_sec_skills: "Skills", export_sec_mcp: "MCP", export_sec_storage: "Storage KV (sessions/facts/profiles)", strategy_overwrite: "Overwrite", strategy_append: "Append", strategy_skip: "Skip", export_none_selected: "Select at least one item", import_file_label: "Pick a file (.json or .zip)", import_apply: "Import", import_nothing: "Nothing importable in this file", import_done: "Imported: {n} items", import_failed: "Import failed: file could not be parsed", storage_empty: "Storage is empty", storage_domain: "Domain", storage_count: "Entries", storage_size: "Size", storage_browse: "Browse keys", storage_clear: "Clear", storage_confirm_clear: "Clear \"{d}\"? All data in this domain will be deleted", storage_cleared: "Cleaned {n} items", storage_keys_title: "Key browser", storage_keys_hint: "Expand a domain above; its keys are listed here — view content or delete", storage_no_keys: "No keys in this domain", storage_key_col: "Key", storage_truncated: "Content too long, truncated", storage_reset_hint: "Check the domains to KEEP; unchecked ones will be wiped", storage_reset_warn: "Reset cannot be undone; keep model config to avoid re-entering API keys", storage_reset_confirm: "Run the full reset?", storage_slim_done: "Slimmed {n} sessions", storage_d_sessions: "Session contexts", storage_d_memories: "Memories", storage_d_profiles: "User profiles", storage_d_personas: "Personas & bindings", storage_d_knowledge: "Knowledge base", storage_d_audit: "Audit log", storage_d_usage: "Usage records", storage_d_tasks: "Scheduled tasks", storage_d_participation: "Participation", storage_d_shares: "Session shares", storage_d_trash: "Trash", storage_d_recall: "Recall index", storage_d_pending: "Pending sends", storage_d_models: "Model config", storage_d_mcp: "MCP config", storage_d_docs: "Docs cache", storage_d_docs_cache: "Docs cache dir", storage_d_uploads: "Uploads", storage_d_work: "Work sandbox", storage_d_settings: "UI settings", storage_d_other: "Other", 
       overview_desc: "agent runtime at a glance", overview_detail: "Details",
-      stat_models: "Models", stat_tools: "Tools", stat_eco: "Eco tools", stat_sessions: "Sessions",
+      stat_models: "Models", stat_tools: "Tools", stat_eco: "Eco tools", stat_eco_modules: " eco modules", stat_eco_tools: " tools", stat_sessions: "Sessions",
       stat_tasks: "Tasks", stat_mcp: "MCP", stat_extensions: "Extensions", stat_security: "Security",
       on: "on", off: "off", takeovers: "Takeovers", trust_on: "Full trust",
       chat_desc: "test the agent directly", chat_placeholder: "Say something…", chat_send: "Send",
@@ -273,7 +273,7 @@
       audit_clear_confirm: "Clear ALL audit entries?",
       audit_cleared: "Audit cleared",
       models_desc: "Any OpenAI-compatible provider, with failover", models_add: "Add / update model",
-      models_name: "Name", models_id: "Model", models_temp: "Temperature", models_maxtok: "Max tokens", model_smart: "Auto config", model_smart_hint: "Fill context, capabilities and pricing from models.dev", model_context: "Context window", model_max_output: "Max output tokens", model_detect: "Detect from models.dev", model_detected: "Metadata filled from models.dev", model_detect_empty: "Not found on models.dev; fill manually", model_advanced: "Advanced", model_input_types: "Input types", model_input_text: "Text", model_input_image: "Image", model_input_video: "Video", model_input_pdf: "PDF", model_caps: "Capabilities", model_tool_call: "Tool calling", model_reasoning: "Reasoning", model_price: "Price (per 1M tokens)", model_price_in: "Input", model_price_out: "Output", model_enabled: "Enable this model", model_manage: "Models", model_refresh: "Refresh capabilities & prices", model_refresh_done: "Updated {n} fields", model_delete_confirm: "Delete this model?", model_cap_tools: "tools", model_cap_no_tools: "no tools", model_cap_vision: "vision", model_cap_reason: "reasoning", model_unknown: "unknown", orch_chain_top_no_tools: "The first model is not marked for tool calling; tool-enabled chats will skip it. Fill its capabilities in Model Pool or enable it manually.", model_none: "No models yet", model_add_title: "Add model", model_edit_title: "Edit model config", models_key_col: "key", models_auto_enrich_note: "Capabilities and pricing are auto-filled from models.dev after saving; fine-tune each model in Models", models_meta_note: "Edit capabilities/pricing under Models; saving here won't touch the model list.", batch_result: "{ok} ok, {fail} failed", backup_import_confirm: "Import will merge/overwrite: {sections}. Continue?", regen: "Regenerate", session_rename: "Rename session", session_name_label: "Session name", session_rename_ph: "empty = default", refresh: "Refresh", todo_title: "TODO list", todo_new_ph: "New todo…", todo_empty: "No TODOs in this session (they appear once the AI writes with todo_write)", todo_s_pending: "pending", todo_s_in_progress: "in progress", todo_s_completed: "done", batch_exit: "Exit selection", list_load_failed: "Failed to load", retry: "Retry", onboard_title: "First-run setup", onboard_desc: 'These ecosystem modules additionally inject "usage hint" prompt lines (nudging when the AI thinks of their capability). Regardless of checkboxes, the AI can always discover and use their tools — descriptions carry the capability info; ticking only decides whether this extra timing nudge is included.', onboard_prompts_n: "{n} hints", onboard_skip: "Skip", settings_show_keys: "Show field keys", load_more: "Load more",
+      models_name: "Name", models_id: "Model", models_temp: "Temperature", models_maxtok: "Max tokens", model_smart: "Auto config", model_smart_hint: "Fill context, capabilities and pricing from models.dev", model_context: "Context window", model_max_output: "Max output tokens", model_detect: "Detect from models.dev", model_detected: "Metadata filled from models.dev", model_detect_empty: "Not found on models.dev; fill manually", model_advanced: "Advanced", model_input_types: "Input types", model_input_text: "Text", model_input_image: "Image", model_input_video: "Video", model_input_pdf: "PDF", model_caps: "Capabilities", model_tool_call: "Tool calling", model_reasoning: "Reasoning", model_price: "Price (per 1M tokens)", model_price_in: "Input", model_price_out: "Output", model_enabled: "Enable this model", provider_disable: "Disable", provider_enable: "Re-enable", provider_disabled: "disabled", model_manage: "Models", model_refresh: "Refresh capabilities & prices", model_refresh_done: "Updated {n} fields", model_delete_confirm: "Delete this model?", model_cap_tools: "tools", model_cap_no_tools: "no tools", model_cap_vision: "vision", model_cap_reason: "reasoning", model_unknown: "unknown", orch_chain_top_no_tools: "The first model is not marked for tool calling; tool-enabled chats will skip it. Fill its capabilities in Model Pool or enable it manually.", model_none: "No models yet", model_add_title: "Add model", model_edit_title: "Edit model config", models_key_col: "key", models_auto_enrich_note: "Capabilities and pricing are auto-filled from models.dev after saving; fine-tune each model in Models", models_meta_note: "Edit capabilities/pricing under Models; saving here won't touch the model list.", batch_result: "{ok} ok, {fail} failed", backup_import_confirm: "Import will merge/overwrite: {sections}. Continue?", regen: "Regenerate", session_rename: "Rename session", session_name_label: "Session name", session_rename_ph: "empty = default", refresh: "Refresh", todo_title: "TODO list", todo_new_ph: "New todo…", todo_empty: "No TODOs in this session (they appear once the AI writes with todo_write)", todo_s_pending: "pending", todo_s_in_progress: "in progress", todo_s_completed: "done", batch_exit: "Exit selection", list_load_failed: "Failed to load", retry: "Retry", onboard_title: "First-run setup", onboard_desc: 'These ecosystem modules additionally inject "usage hint" prompt lines (nudging when the AI thinks of their capability). Regardless of checkboxes, the AI can always discover and use their tools — descriptions carry the capability info; ticking only decides whether this extra timing nudge is included.', onboard_prompts_n: "{n} hints", onboard_skip: "Skip", settings_show_keys: "Show field keys", load_more: "Load more",
       save: "Save", actions: "Actions", test: "Test", edit: "Edit", del: "Delete",
       models_empty: "Model pool is empty, add one", model_test_ok: "model works", model_test_fail: "model failed",
       saved: "Saved", deleted: "Deleted", confirm_del: "Delete this?",
@@ -291,7 +291,7 @@
       memory_empty: "No memories in this scope",
       profile_card_title: "User Profile", profile_card_user: "User", profile_card_empty: "No profile yet",
       profile_card_clear: "Clear Profile", profile_card_confirm: "Clear this user's profile?", memory_importance: "Importance", health_reset: "Reset", trash_page: "Trash", trash_hint: "Staged deletes awaiting undo; auto-purged after retention", trash_expires: "Expires in", trash_days: "d", trash_restore: "Restore", trash_empty: "Trash is empty", panel_title: "Quick jump", panel_ph: "Search sessions / pages / settings…", panel_none: "No matches", profile_sec_traits: "Traits", chat_pin_s: "Pinned", profile_sec_preferences: "Preferences", profile_sec_facts: "Facts", profile_updated: "Updated",
-      sessions_desc: "Sessions and persona bindings", sessions_empty: "No sessions",
+      sessions_desc: "Sessions and persona bindings", sessions_empty: "No sessions", sess_policy_muted: "Mute", sess_policy_low_token: "Budget", sess_policy_priority: "Priority", sess_policy_high: "High", sess_policy_normal: "Normal", sess_policy_low: "Low", sess_policy_saved: "Policy saved",
       col_turns: "Turns", col_updated: "Updated", reset_btn: "Reset", col_persona: "Persona",
       audit_desc: "Operation and confirmation log", audit_empty: "No audit records",
       col_tool: "Tool", col_detail: "Detail",
@@ -316,7 +316,7 @@
       skills_add: "New skill", skills_edit: "Edit skill", skills_name: "Name", skills_description: "Description", skills_body: "Body",
       skills_export: "Export", skills_import: "Import", skills_empty: "No skills yet — create one or drop .md files into the skills dir",
       skills_source: "Source",
-      personas_reset: "Reset to default", personas_modified: "customized", sessions_msgs: "Messages", yesterday: "Yesterday", tomorrow: "Tomorrow", personas_new: "New persona", mcp_add: "Add server", cancel: "Cancel", mcp_command: "Command", mcp_args: "Arguments (one per line)", mcp_headers: "Headers (JSON)", mcp_server: "Server",
+      personas_reset: "Reset to default", personas_modified: "customized", sessions_msgs: "Messages", yesterday: "Yesterday", tomorrow: "Tomorrow", personas_new: "New persona", mcp_add: "Add server", mcp_name_required: "MCP name is required", cancel: "Cancel", mcp_command: "Command", mcp_args: "Arguments (one per line)", mcp_headers: "Headers (JSON)", mcp_server: "Server",
       hero_dawn_1: "Morning! Where shall we start today?", hero_dawn_2: "Good morning, I'm all set", hero_dawn_3: "Up early — want to chat?", hero_morning_1: "Good morning! What's on your mind?", hero_morning_2: "I'm here whenever you're ready", hero_morning_3: "Any plans today? Tell me about them", hero_noon_1: "Lunch yet? Don't skip it", hero_noon_2: "Take a break, I'll hold the fort", hero_noon_3: "Good food, good mood, good work", hero_afternoon_1: "Afternoon! A little chat beats more coffee", hero_afternoon_2: "Tea time? You've earned it", hero_afternoon_3: "Don't push too hard — pause when you need", hero_evening_1: "Evening! How was your day?", hero_evening_2: "You're back — good work today", hero_evening_3: "Night mode: thoughts unloading welcome", hero_late_1: "Still up?", hero_late_2: "It's late — rest soon, okay?", hero_late_3: "Can't sleep? Talk to me",
       nav_group_run: "Runtime", group_kb: "Knowledge", group_skills: "Skills", group_other: "Other",
       settings_search_ph: "Search settings…", settings_no_match: "No matching settings", settings_invalid_value: "Invalid value — please fix", settings_json_bad: "Invalid JSON", settings_no_change: "No changes to save", settings_danger_confirm: "You are about to change security-related settings. Continue?", settings_unsaved: "There are unsaved setting changes. Leave and discard them?", settings_save_partial: "These fields failed validation and were not saved", settings_dangerous: "danger", settings_show: "Show", settings_hide: "Hide", settings_list_add: "Add item", plugin_settings_empty: "No plugins with settings yet: a plugin exposing the qvq_settings service appears here",
@@ -337,7 +337,7 @@
       sess_members: "メンバー", sess_members_hint: "メンバー許可リスト（1 行に 1 つのユーザー ID、* は全員。空で全員に戻す）", sess_sources_hint: "他のセッションの入力を受け入れる（1 行に 1 つの chat_key、例 onebot11:group:123。そのメッセージはこのセッションに転送されます）", kb_export: "エクスポート", kb_import: "インポート",
       nav_orchestrate: "オーケストレーション", orchestrate_desc: "エージェント一覧：モデルチェーン · 正常性 · 実行状態 · タスクタイムライン", orch_model_chain: "モデルチェーン（フェイルオーバー順）", orch_chain_hint: "ドラッグでフェイルオーバー順を変更、離すと自動保存", orch_chain_saved: "チェーン順を保存しました", orch_health: "モデル正常性", health_ok: "すべてのモデルは正常", health_cooldown: "クールダウン中", health_fails: "連続 {n} 回失敗", health_left: "残り {s} 秒", orch_running: "実行状態", running_none: "実行中のタスクはありません", orch_timeline: "タスクタイムライン", timeline_empty: "タスクと実行履歴はまだありません", orch_capabilities: "機能スイッチ", caps_tools: "ツール", caps_skills: "スキル", task_next: "次回", task_last: "前回", task_status_error: "前回失敗", cost_title: "コスト概算", cost_total: "14 日合計", cost_daily: "日次コスト（棒）と累積（線）", cost_by_model: "モデル別", cost_empty: "単価付きの使用量はまだありません（モデル価格は models.dev カタログより）", orch_accounts: "アダプターアカウント", orch_accounts_hint: "各プラットフォームのログイン bot；同一プラットフォームで複数アカウントの場合は @アカウント で分離", orch_accounts_empty: "接続中のアダプターはありません", acct_filter_all: "すべてのアカウント", acct_sessions_unit: "セッション", acct_multi: "複数アカウント分離", acct_offline: "オフラインの分離アカウント", nav_storage: "ストレージ", storage_desc: "データベースの全内容：閲覧 / クリーン / リセット", storage_total: "合計", storage_slim: "スリム化", storage_compact_btn: "会話を圧縮…", storage_compact_confirm: "すべてのセッション履歴を要約に圧縮しますか？ツール出力などの残留は消えます。ペルソナ束縛・記憶・事実には影響しません", storage_compact_done: "{n} セッションを圧縮しました", storage_reset: "全リセット…", storage_export_san: "プライバシー除去エクスポート…", storage_export_full: "完全エクスポート…", storage_export_hint: "全内容をエクスポート：設定・モデル・ペルソナ・全セッションとストレージ（AI 生成の作業サンドボックス/アップロード含む）。プライバシー除去ではモデルキーやトークン等の機密値を取り除きます。", storage_export_pick: "内容を選んでエクスポート…", storage_import: "インポート…", export_grp_data: "データセクション", export_grp_storage: "ストレージドメイン", export_grp_files: "ファイルフォルダ", export_sec_config: "実行時設定", export_sec_models: "モデルとチェーン", export_sec_personas: "ペルソナ", export_sec_tasks: "定期タスク", export_sec_memory: "メモリ", export_sec_skills: "スキル", export_sec_mcp: "MCP", export_sec_storage: "ストレージKV（セッション/事実/プロファイル）", strategy_overwrite: "上書き", strategy_append: "追記", strategy_skip: "スキップ", export_none_selected: "少なくとも1つ選択してください", import_file_label: "ファイルを選択（.json / .zip）", import_apply: "インポート", import_nothing: "インポート可能な内容がありません", import_done: "インポート完了：{n} 件", import_failed: "インポート失敗：ファイルを解析できません", storage_empty: "ストレージは空です", storage_domain: "ドメイン", storage_count: "件数", storage_size: "サイズ", storage_browse: "キー一覧", storage_clear: "クリア", storage_confirm_clear: "「{d}」をクリア？このドメインの全データが削除されます", storage_cleared: "{n} 件をクリーン", storage_keys_title: "キーブラウザ", storage_keys_hint: "ドメインを展開すると全キーがここに表示されます。内容の閲覧・削除が可能", storage_no_keys: "このドメインにキーはありません", storage_key_col: "キー", storage_truncated: "内容が長いため切り詰めました", storage_reset_hint: "【保持する】ドメインにチェック。未チェックのものは消去されます", storage_reset_warn: "全リセットは取り消せません。モデル設定を保持すれば API Key の再入力は不要です", storage_reset_confirm: "全リセットを実行しますか？", storage_slim_done: "{n} セッションをスリム化", storage_d_sessions: "セッション履歴", storage_d_memories: "メモリ", storage_d_profiles: "ユーザープロファイル", storage_d_personas: "ペルソナとバインド", storage_d_knowledge: "ナレッジベース", storage_d_audit: "監査ログ", storage_d_usage: "使用量", storage_d_tasks: "定期タスク", storage_d_participation: "参加判断", storage_d_shares: "セッション共有", storage_d_trash: "ごみ箱", storage_d_recall: "リコール索引", storage_d_pending: "送信待ち", storage_d_models: "モデル設定", storage_d_mcp: "MCP 設定", storage_d_docs: "ドキュメントキャッシュ", storage_d_docs_cache: "ドキュメントキャッシュディレクトリ", storage_d_uploads: "アップロード", storage_d_work: "作業サンドボックス", storage_d_settings: "UI 設定", storage_d_other: "その他", 
       overview_desc: "エージェントの実行状況", overview_detail: "詳細",
-      stat_models: "モデル", stat_tools: "ツール", stat_eco: "生態ツール", stat_sessions: "セッション",
+      stat_models: "モデル", stat_tools: "ツール", stat_eco: "生態ツール", stat_eco_modules: " エコモジュール", stat_eco_tools: " ツール", stat_sessions: "セッション",
       stat_tasks: "タスク", stat_mcp: "MCP", stat_extensions: "拡張", stat_security: "セキュリティ",
       on: "オン", off: "オフ", takeovers: "接管中のセッション", trust_on: "完全信頼",
       chat_desc: "エージェントを直接テスト", chat_placeholder: "何か話しかけて…", chat_send: "送信",
@@ -382,7 +382,7 @@
       audit_clear_confirm: "全ての監査記録を削除？",
       audit_cleared: "クリアしました",
       models_desc: "OpenAI 互換エンドポイント、プール順にフェイルオーバー", models_add: "モデル追加 / 更新",
-      models_name: "名前", models_id: "モデル名", models_temp: "温度", models_maxtok: "最大トークン", model_smart: "自動設定", model_smart_hint: "models.dev からコンテキスト・能力・価格を自動補完", model_context: "コンテキスト長", model_max_output: "最大出力トークン", model_detect: "models.dev から取得", model_detected: "models.dev のメタデータを反映しました", model_detect_empty: "models.dev に未収録です。手動で入力してください", model_advanced: "詳細設定", model_input_types: "入力タイプ", model_input_text: "テキスト", model_input_image: "画像", model_input_video: "動画", model_input_pdf: "PDF", model_caps: "モデル能力", model_tool_call: "ツール呼び出し", model_reasoning: "推論", model_price: "単価（100万トークンあたり）", model_price_in: "入力", model_price_out: "出力", model_enabled: "このモデルを有効化", model_manage: "モデル設定", model_refresh: "能力と価格を更新", model_refresh_done: "{n} 項目を更新しました", model_delete_confirm: "このモデルを削除しますか？", model_cap_tools: "ツール", model_cap_no_tools: "ツール不可", model_cap_vision: "視覚", model_cap_reason: "推論", model_unknown: "能力不明", orch_chain_top_no_tools: "先頭モデルに「ツール呼び出し」の印がありません。ツール有効の会話ではスキップされます。モデルプールで能力を補完するか手動で有効にしてください。", model_none: "モデルがまだありません", model_add_title: "モデル追加", model_edit_title: "モデル設定を編集", models_key_col: "key", models_auto_enrich_note: "保存後、models.dev から能力と価格を自動補完します。詳細は「モデル設定」で調整できます", models_meta_note: "能力/価格は「モデル設定」で編集してください。ここでの保存はモデル一覧を変更しません。", batch_result: "{ok} 件成功、{fail} 件失敗", backup_import_confirm: "インポートは以下のデータを統合/上書きします：{sections}。続行しますか？", regen: "再生成", session_rename: "セッション名変更", session_name_label: "セッション名", session_rename_ph: "空欄で既定表示に戻す", refresh: "更新", todo_title: "TODO リスト", todo_new_ph: "新しいTODO…", todo_empty: "このセッションにTODOはありません（AI が todo_write で書くと表示）", todo_s_pending: "未着手", todo_s_in_progress: "進行中", todo_s_completed: "完了", batch_exit: "選択を終了", list_load_failed: "読み込みに失敗", retry: "再試行", onboard_title: "初期セットアップ", onboard_desc: "以下のモジュールは追加で「使用ヒント」を注入しています（AI がいつその能力を思い出すかのタイミングに影響）。チェックに関係なくツール自体は常に使えます（説明に能力記載）；チェックはこの追加のタイミング提示をするかだけです。", onboard_prompts_n: "{n} 件", onboard_skip: "スキップ", settings_show_keys: "キー名を表示", load_more: "さらに読み込む",
+      models_name: "名前", models_id: "モデル名", models_temp: "温度", models_maxtok: "最大トークン", model_smart: "自動設定", model_smart_hint: "models.dev からコンテキスト・能力・価格を自動補完", model_context: "コンテキスト長", model_max_output: "最大出力トークン", model_detect: "models.dev から取得", model_detected: "models.dev のメタデータを反映しました", model_detect_empty: "models.dev に未収録です。手動で入力してください", model_advanced: "詳細設定", model_input_types: "入力タイプ", model_input_text: "テキスト", model_input_image: "画像", model_input_video: "動画", model_input_pdf: "PDF", model_caps: "モデル能力", model_tool_call: "ツール呼び出し", model_reasoning: "推論", model_price: "単価（100万トークンあたり）", model_price_in: "入力", model_price_out: "出力", model_enabled: "このモデルを有効化", provider_disable: "一時無効化", provider_enable: "再有効化", provider_disabled: "無効", model_manage: "モデル設定", model_refresh: "能力と価格を更新", model_refresh_done: "{n} 項目を更新しました", model_delete_confirm: "このモデルを削除しますか？", model_cap_tools: "ツール", model_cap_no_tools: "ツール不可", model_cap_vision: "視覚", model_cap_reason: "推論", model_unknown: "能力不明", orch_chain_top_no_tools: "先頭モデルに「ツール呼び出し」の印がありません。ツール有効の会話ではスキップされます。モデルプールで能力を補完するか手動で有効にしてください。", model_none: "モデルがまだありません", model_add_title: "モデル追加", model_edit_title: "モデル設定を編集", models_key_col: "key", models_auto_enrich_note: "保存後、models.dev から能力と価格を自動補完します。詳細は「モデル設定」で調整できます", models_meta_note: "能力/価格は「モデル設定」で編集してください。ここでの保存はモデル一覧を変更しません。", batch_result: "{ok} 件成功、{fail} 件失敗", backup_import_confirm: "インポートは以下のデータを統合/上書きします：{sections}。続行しますか？", regen: "再生成", session_rename: "セッション名変更", session_name_label: "セッション名", session_rename_ph: "空欄で既定表示に戻す", refresh: "更新", todo_title: "TODO リスト", todo_new_ph: "新しいTODO…", todo_empty: "このセッションにTODOはありません（AI が todo_write で書くと表示）", todo_s_pending: "未着手", todo_s_in_progress: "進行中", todo_s_completed: "完了", batch_exit: "選択を終了", list_load_failed: "読み込みに失敗", retry: "再試行", onboard_title: "初期セットアップ", onboard_desc: "以下のモジュールは追加で「使用ヒント」を注入しています（AI がいつその能力を思い出すかのタイミングに影響）。チェックに関係なくツール自体は常に使えます（説明に能力記載）；チェックはこの追加のタイミング提示をするかだけです。", onboard_prompts_n: "{n} 件", onboard_skip: "スキップ", settings_show_keys: "キー名を表示", load_more: "さらに読み込む",
       save: "保存", actions: "操作", test: "テスト", edit: "編集", del: "削除",
       models_empty: "モデルプールが空です", model_test_ok: "モデル OK", model_test_fail: "モデル NG",
       saved: "保存しました", deleted: "削除しました", confirm_del: "削除しますか？",
@@ -400,7 +400,7 @@
       memory_empty: "記憶がありません",
       profile_card_title: "ユーザープロファイル", profile_card_user: "ユーザー", profile_card_empty: "プロファイルなし",
       profile_card_clear: "プロファイルを消去", profile_card_confirm: "このユーザーのプロファイルを消去しますか？", memory_importance: "重要度", health_reset: "リセット", trash_page: "ゴミ箱", trash_hint: "削除の取り消し期間中の一時保管。期限を過ぎると自動削除", trash_expires: "残り", trash_days: "日", trash_restore: "復元", trash_empty: "ゴミ箱は空です", panel_title: "クイックジャンプ", panel_ph: "セッション / ページ / 設定を検索…", panel_none: "該当なし", profile_sec_traits: "特徴", chat_pin_s: "ピン留め", profile_sec_preferences: "好み", profile_sec_facts: "事実", profile_updated: "最終更新",
-      sessions_desc: "会話ウィンドウとペルソナ binding", sessions_empty: "セッションなし",
+      sessions_desc: "会話ウィンドウとペルソナ binding", sessions_empty: "セッションなし", sess_policy_muted: "ミュート", sess_policy_low_token: "節約", sess_policy_priority: "優先度", sess_policy_high: "高", sess_policy_normal: "通常", sess_policy_low: "低", sess_policy_saved: "ポリシーを保存しました",
       col_turns: "ターン", col_updated: "更新", reset_btn: "リセット", col_persona: "ペルソナ",
       audit_desc: "PC 操作と確認の記錄", audit_empty: "監査記錄なし",
       col_tool: "ツール", col_detail: "詳細",
@@ -425,7 +425,7 @@
       skills_add: "スキル追加", skills_edit: "スキル編集", skills_name: "名前", skills_description: "説明", skills_body: "内容",
       skills_export: "エクスポート", skills_import: "インポート", skills_empty: "スキルがありません。作成するか .md をスキルディレクトリへ",
       skills_source: "提供元",
-      personas_reset: "デフォルトに戻す", personas_modified: "変更済み", sessions_msgs: "メッセージ", yesterday: "昨日", tomorrow: "明日", personas_new: "ペルソナ追加", mcp_add: "サーバー追加", cancel: "キャンセル", mcp_command: "コマンド", mcp_args: "引数（1行ずつ）", mcp_headers: "ヘッダー（JSON）", mcp_server: "サーバー",
+      personas_reset: "デフォルトに戻す", personas_modified: "変更済み", sessions_msgs: "メッセージ", yesterday: "昨日", tomorrow: "明日", personas_new: "ペルソナ追加", mcp_add: "サーバー追加", mcp_name_required: "MCP 名を入力してください", cancel: "キャンセル", mcp_command: "コマンド", mcp_args: "引数（1行ずつ）", mcp_headers: "ヘッダー（JSON）", mcp_server: "サーバー",
       hero_dawn_1: "おはよう！今日は何から始める？", hero_dawn_2: "おはよう、もう準備できてるよ", hero_dawn_3: "早起だね、話でもする？", hero_morning_1: "おはよう！何か話したいことある？", hero_morning_2: "いつでも付き合うよ", hero_morning_3: "今日の予定、聞かせて", hero_noon_1: "昼ごはん食べた？", hero_noon_2: "少し休んで、ここは任せて", hero_noon_3: "昼寝の時間かもね", hero_afternoon_1: "やあ！眠い時はおしゃべりが一番", hero_afternoon_2: "お茶でも飲む？", hero_afternoon_3: "無理しないでね", hero_evening_1: "こんばんは、今日どうだった？", hero_evening_2: "おかえり、お疲れさま", hero_evening_3: "夜トーク、始めようか", hero_late_1: "まだ起きてるの？", hero_late_2: "もう遅いよ、そろそろ寝よう", hero_late_3: "眠れないなら話相手になるよ",
       nav_group_run: "実行", group_kb: "ナレッジ", group_skills: "スキル", group_other: "その他",
       settings_search_ph: "設定項を検索…", settings_no_match: "一致する設定項はありません", settings_invalid_value: "値が無効です。修正してください", settings_json_bad: "JSON 形式エラー", settings_no_change: "変更はありません", settings_danger_confirm: "セキュリティ関連の設定を変更しようとしています。続行しますか？", settings_unsaved: "未保存の設定変更があります。破棄して離れますか？", settings_save_partial: "以下の項目が検証に失敗したため保存されませんでした", settings_dangerous: "危険", settings_show: "表示", settings_hide: "非表示", settings_list_add: "項目を追加", plugin_settings_empty: "設定可能なプラグインはまだありません：qvq_settings サービスを提供するとここに表示されます",
@@ -445,7 +445,7 @@
       sess_members: "Участники", sess_members_hint: "Белый список участников (один ID в строке, * = все; пусто — вернуть всех)", sess_sources_hint: "Принимать ввод из других чатов (один chat_key в строке, напр. onebot11:group:123; их сообщения направляются в этот чат)", kb_export: "Экспорт", kb_import: "Импорт",
       nav_orchestrate: "Оркестрация", orchestrate_desc: "Обзор агента: цепочка моделей · здоровье · выполнение · время задач", orch_model_chain: "Цепочка моделей (порядок failover)", orch_chain_hint: "Перетащите, чтобы изменить порядок failover; сохраняется автоматически", orch_chain_saved: "Порядок цепочки сохранён", orch_health: "Здоровье моделей", health_ok: "Все модели исправны", health_cooldown: "Охлаждение", health_fails: "Подряд сбоев: {n}", health_left: "Осталось {s} с", orch_running: "Выполнение", running_none: "Нет запущенных задач", orch_timeline: "Время задач", timeline_empty: "Задач и запусков пока нет", orch_capabilities: "Переключатели возможностей", caps_tools: "Инструменты", caps_skills: "Навыки", task_next: "Далее", task_last: "Прошлый", task_status_error: "Прошлый запуск не удался", cost_title: "Оценка расходов", cost_total: "Сумма за 14 дней", cost_daily: "Расходы по дням (столбцы) и накопительно (линия)", cost_by_model: "По моделям", cost_empty: "Нет данных с ценами (цены моделей из каталога models.dev)", orch_accounts: "Аккаунты адаптеров", orch_accounts_hint: "Боты, вошедшие на платформах; при нескольких аккаунтах на одной платформе сессии изолируются по @аккаунту", orch_accounts_empty: "Нет подключённых адаптеров", acct_filter_all: "Все аккаунты", acct_sessions_unit: "сессий", acct_multi: "изоляция аккаунтов", acct_offline: "Оффлайн-аккаунты с изоляцией", nav_storage: "Хранилище", storage_desc: "Всё содержимое базы: просмотр / очистка / сброс", storage_total: "Всего", storage_slim: "Сжать", storage_compact_btn: "Сжать сессии…", storage_compact_confirm: "Сжать историю ВСЕХ сессий в краткие резюме? Остатки выводов инструментов исчезнут; привязки персон, память и факты не затрагиваются", storage_compact_done: "Сжато сессий: {n}", storage_reset: "Полный сброс…", storage_export_san: "Экспорт без приватности…", storage_export_full: "Полный экспорт…", storage_export_hint: "Экспортируйте всё: конфигурацию, модели, персон, все сессии и хранилище (включая созданные ИИ рабочие файлы/загрузки). Экспорт без приватности удаляет ключи моделей, токены и другие секреты.", storage_export_pick: "Выбрать содержимое…", storage_import: "Импорт…", export_grp_data: "Секции данных", export_grp_storage: "Домены хранилища", export_grp_files: "Папки файлов", export_sec_config: "Конфигурация", export_sec_models: "Модели и цепочка", export_sec_personas: "Персоны", export_sec_tasks: "Задачи по расписанию", export_sec_memory: "Память", export_sec_skills: "Навыки", export_sec_mcp: "MCP", export_sec_storage: "KV хранилища (сессии/факты/профили)", strategy_overwrite: "Перезапись", strategy_append: "Дополнение", strategy_skip: "Пропустить", export_none_selected: "Выберите хотя бы один пункт", import_file_label: "Выберите файл (.json или .zip)", import_apply: "Импортировать", import_nothing: "В файле нет данных для импорта", import_done: "Импортировано: {n} эл.", import_failed: "Ошибка импорта: файл не удалось разобрать", storage_empty: "Хранилище пусто", storage_domain: "Домен", storage_count: "Записей", storage_size: "Размер", storage_browse: "Ключи", storage_clear: "Очистить", storage_confirm_clear: "Очистить «{d}»? Все данные домена будут удалены", storage_cleared: "Очищено: {n}", storage_keys_title: "Браузер ключей", storage_keys_hint: "Раскройте домен — здесь появятся все его ключи: просмотр и удаление", storage_no_keys: "В домене нет ключей", storage_key_col: "Ключ", storage_truncated: "Содержимое слишком длинное, обрезано", storage_reset_hint: "Отметьте домены для 【сохранения】; неотмеченные будут стёрты", storage_reset_warn: "Сброс необратим; сохраните конфигурацию моделей, чтобы не вводить API-ключи заново", storage_reset_confirm: "Выполнить полный сброс?", storage_slim_done: "Сжато сессий: {n}", storage_d_sessions: "Контексты сессий", storage_d_memories: "Память", storage_d_profiles: "Профили пользователей", storage_d_personas: "Персонажи и привязки", storage_d_knowledge: "База знаний", storage_d_audit: "Журнал аудита", storage_d_usage: "Использование", storage_d_tasks: "Задачи", storage_d_participation: "Участие", storage_d_shares: "Ссылки сессий", storage_d_trash: "Корзина", storage_d_recall: "Индекс напоминаний", storage_d_pending: "Очередь отправки", storage_d_models: "Конфиг моделей", storage_d_mcp: "Конфиг MCP", storage_d_docs: "Кэш документации", storage_d_docs_cache: "Каталог кэша док.", storage_d_uploads: "Загрузки", storage_d_work: "Рабочая песочница", storage_d_settings: "Настройки интерфейса", storage_d_other: "Другое", 
       overview_desc: "Обзор состояния агента", overview_detail: "Подробности",
-      stat_models: "Модели", stat_tools: "Инструменты", stat_eco: "Эко-инстр.", stat_sessions: "Сессии",
+      stat_models: "Модели", stat_tools: "Инструменты", stat_eco: "Эко-инстр.", stat_eco_modules: " эко-модулей", stat_eco_tools: " инстр.", stat_sessions: "Сессии",
       stat_tasks: "Задачи", stat_mcp: "MCP", stat_extensions: "Расширения", stat_security: "Безопасность",
       on: "вкл", off: "выкл", takeovers: "Под контролем", trust_on: "Полное доверие",
       chat_desc: "прямой тест агента, инструменты доступны", chat_placeholder: "Скажите что-нибудь…", chat_send: "Отправить",
@@ -489,7 +489,7 @@
       audit_clear_confirm: "Очистить ВСЕ записи?",
       audit_cleared: "Аудит очищен",
       models_desc: "OpenAI-совместимые endpoint'ы с failover по пулу", models_add: "Добавить / обновить модель",
-      models_name: "Имя", models_id: "Модель", models_temp: "Температура", models_maxtok: "Макс. токенов", model_smart: "Автонастройка", model_smart_hint: "Заполнить контекст, возможности и цену из models.dev", model_context: "Контекстное окно", model_max_output: "Макс. выходных токенов", model_detect: "Определить из models.dev", model_detected: "Метаданные заполнены из models.dev", model_detect_empty: "Нет в models.dev — заполните вручную", model_advanced: "Дополнительно", model_input_types: "Типы ввода", model_input_text: "Текст", model_input_image: "Изображение", model_input_video: "Видео", model_input_pdf: "PDF", model_caps: "Возможности модели", model_tool_call: "Вызов инструментов", model_reasoning: "Рассуждение", model_price: "Цена (за 1M токенов)", model_price_in: "Ввод", model_price_out: "Вывод", model_enabled: "Включить модель", model_manage: "Модели", model_refresh: "Обновить возможности и цены", model_refresh_done: "Обновлено полей: {n}", model_delete_confirm: "Удалить эту модель?", model_cap_tools: "инструменты", model_cap_no_tools: "без инструментов", model_cap_vision: "зрение", model_cap_reason: "рассуждение", model_unknown: "неизвестно", orch_chain_top_no_tools: "У первой модели не отмечен вызов инструментов; диалоги с инструментами её пропустят. Заполните возможности в пуле моделей или включите вручную.", model_none: "Моделей пока нет", model_add_title: "Добавить модель", model_edit_title: "Настройка модели", models_key_col: "key", models_auto_enrich_note: "После сохранения возможности и цены автоматически заполняются из models.dev; точная настройка — в разделе «Модели»", models_meta_note: "Возможности и цены редактируются в разделе «Модели»; сохранение здесь не меняет список моделей.", batch_result: "Успешно: {ok}, с ошибками: {fail}", backup_import_confirm: "Импорт объединит/перезапишет: {sections}. Продолжить?", regen: "Перегенерировать", session_rename: "Переименовать", session_name_label: "Название сессии", session_rename_ph: "пусто = по умолчанию", refresh: "Обновить", todo_title: "TODO список", todo_new_ph: "Новое дело…", todo_empty: "В сессии нет TODO (появятся после todo_write у ИИ)", todo_s_pending: "ожидает", todo_s_in_progress: "в работе", todo_s_completed: "готово", batch_exit: "Выйти из выбора", list_load_failed: "Не удалось загрузить", retry: "Повторить", onboard_title: "Первоначальная настройка", onboard_desc: "Эти модули дополнительно внедряют «подсказки использования» (влияют на то, когда ИИ вспоминает об их возможности). Независимо от галочек инструменты доступны всегда (описания несут информацию о возможности); галочка решает только, нужен ли этот дополнительный подталкивающий слой.", onboard_prompts_n: "{n} подсказок", onboard_skip: "Пропустить", settings_show_keys: "Показывать ключи", load_more: "Показать ещё", undo: "Отменить", search_ph: "Поиск…",
+      models_name: "Имя", models_id: "Модель", models_temp: "Температура", models_maxtok: "Макс. токенов", model_smart: "Автонастройка", model_smart_hint: "Заполнить контекст, возможности и цену из models.dev", model_context: "Контекстное окно", model_max_output: "Макс. выходных токенов", model_detect: "Определить из models.dev", model_detected: "Метаданные заполнены из models.dev", model_detect_empty: "Нет в models.dev — заполните вручную", model_advanced: "Дополнительно", model_input_types: "Типы ввода", model_input_text: "Текст", model_input_image: "Изображение", model_input_video: "Видео", model_input_pdf: "PDF", model_caps: "Возможности модели", model_tool_call: "Вызов инструментов", model_reasoning: "Рассуждение", model_price: "Цена (за 1M токенов)", model_price_in: "Ввод", model_price_out: "Вывод", model_enabled: "Включить модель", provider_disable: "Отключить", provider_enable: "Включить снова", provider_disabled: "отключён", model_manage: "Модели", model_refresh: "Обновить возможности и цены", model_refresh_done: "Обновлено полей: {n}", model_delete_confirm: "Удалить эту модель?", model_cap_tools: "инструменты", model_cap_no_tools: "без инструментов", model_cap_vision: "зрение", model_cap_reason: "рассуждение", model_unknown: "неизвестно", orch_chain_top_no_tools: "У первой модели не отмечен вызов инструментов; диалоги с инструментами её пропустят. Заполните возможности в пуле моделей или включите вручную.", model_none: "Моделей пока нет", model_add_title: "Добавить модель", model_edit_title: "Настройка модели", models_key_col: "key", models_auto_enrich_note: "После сохранения возможности и цены автоматически заполняются из models.dev; точная настройка — в разделе «Модели»", models_meta_note: "Возможности и цены редактируются в разделе «Модели»; сохранение здесь не меняет список моделей.", batch_result: "Успешно: {ok}, с ошибками: {fail}", backup_import_confirm: "Импорт объединит/перезапишет: {sections}. Продолжить?", regen: "Перегенерировать", session_rename: "Переименовать", session_name_label: "Название сессии", session_rename_ph: "пусто = по умолчанию", refresh: "Обновить", todo_title: "TODO список", todo_new_ph: "Новое дело…", todo_empty: "В сессии нет TODO (появятся после todo_write у ИИ)", todo_s_pending: "ожидает", todo_s_in_progress: "в работе", todo_s_completed: "готово", batch_exit: "Выйти из выбора", list_load_failed: "Не удалось загрузить", retry: "Повторить", onboard_title: "Первоначальная настройка", onboard_desc: "Эти модули дополнительно внедряют «подсказки использования» (влияют на то, когда ИИ вспоминает об их возможности). Независимо от галочек инструменты доступны всегда (описания несут информацию о возможности); галочка решает только, нужен ли этот дополнительный подталкивающий слой.", onboard_prompts_n: "{n} подсказок", onboard_skip: "Пропустить", settings_show_keys: "Показывать ключи", load_more: "Показать ещё", undo: "Отменить", search_ph: "Поиск…",
       save: "Сохранить", actions: "Действия", test: "Тест", edit: "Правка", del: "Удалить",
       models_empty: "Пул моделей пуст, добавьте", model_test_ok: "модель работает", model_test_fail: "модель недоступна",
       saved: "Сохранено", deleted: "Удалено", confirm_del: "Удалить?",
@@ -507,7 +507,7 @@
       memory_empty: "В этой области памяти нет",
       profile_card_title: "Профиль пользователя", profile_card_user: "Пользователь", profile_card_empty: "Профиль пуст",
       profile_card_clear: "Очистить профиль", profile_card_confirm: "Очистить профиль этого пользователя?", memory_importance: "Важность", health_reset: "Сброс", trash_page: "Корзина", trash_hint: "Удаления ожидают отмены; очищается автоматически", trash_expires: "Осталось", trash_days: "д", trash_restore: "Восстановить", trash_empty: "Корзина пуста", panel_title: "Быстрый переход", panel_ph: "Поиск сессий / страниц / настроек…", panel_none: "Нет совпадений", profile_sec_traits: "Черты", chat_pin_s: "Закреплено", profile_sec_preferences: "Предпочтения", profile_sec_facts: "Факты", profile_updated: "Обновлено",
-      sessions_desc: "окна диалогов и привязки личностей", sessions_empty: "Сессий нет",
+      sessions_desc: "окна диалогов и привязки личностей", sessions_empty: "Сессий нет", sess_policy_muted: "Игнор", sess_policy_low_token: "Экономия", sess_policy_priority: "Приоритет", sess_policy_high: "Высокий", sess_policy_normal: "Обычный", sess_policy_low: "Низкий", sess_policy_saved: "Политика сохранена",
       col_turns: "Ходы", col_updated: "Обновлено", reset_btn: "Сброс", col_persona: "Личность",
       audit_desc: "операции на ПК и подтверждения", audit_empty: "Записей аудита нет",
       col_tool: "Инструмент", col_detail: "Детали",
@@ -532,7 +532,7 @@
       skills_add: "Новый навык", skills_edit: "Правка навыка", skills_name: "Имя", skills_description: "Описание", skills_body: "Содержимое",
       skills_export: "Экспорт", skills_import: "Импорт", skills_empty: "Навыков пока нет — создайте или положите .md в каталог навыков",
       skills_source: "Источник",
-      personas_reset: "Сбросить к стандартной", personas_modified: "изменена", sessions_msgs: "Сообщения", yesterday: "Вчера", tomorrow: "Завтра", personas_new: "Новая личность", mcp_add: "Добавить сервер", cancel: "Отмена", mcp_command: "Команда", mcp_args: "Аргументы (по одному в строке)", mcp_headers: "Заголовки (JSON)", mcp_server: "Сервер",
+      personas_reset: "Сбросить к стандартной", personas_modified: "изменена", sessions_msgs: "Сообщения", yesterday: "Вчера", tomorrow: "Завтра", personas_new: "Новая личность", mcp_add: "Добавить сервер", mcp_name_required: "Укажите имя MCP", cancel: "Отмена", mcp_command: "Команда", mcp_args: "Аргументы (по одному в строке)", mcp_headers: "Заголовки (JSON)", mcp_server: "Сервер",
       hero_dawn_1: "Доброе утро! С чего начнём?", hero_dawn_2: "Утро! Я уже тут", hero_dawn_3: "Рано встал — поболтаем?", hero_morning_1: "Привет! О чём подумаем?", hero_morning_2: "Я на связи, как всегда", hero_morning_3: "Какие планы? Расскажи", hero_noon_1: "Обедал? Не пропускай", hero_noon_2: "Отдохни, я присмотрю", hero_noon_3: "Пора на маленький перерыв", hero_afternoon_1: "Добрый день! Разговор лучше кофе", hero_afternoon_2: "Чаю? Ты заслужил", hero_afternoon_3: "Не перегибай — отдыхай, когда надо", hero_evening_1: "Добрый вечер! Как день прошёл?", hero_evening_2: "С возвращением, ты молодец", hero_evening_3: "Вечерний разговор — святое дело", hero_late_1: "Ещё не спишь?", hero_late_2: "Уже поздно — пойди отдохни", hero_late_3: "Не спится? Поболтаем",
       nav_group_run: "Выполнение", group_kb: "База знаний", group_skills: "Навыки", group_other: "Другое",
       settings_search_ph: "Поиск настроек…", settings_no_match: "Нет подходящих настроек", settings_invalid_value: "Недопустимое значение — исправьте", settings_json_bad: "Неверный JSON", settings_no_change: "Нет изменений для сохранения", settings_danger_confirm: "Вы меняете настройки безопасности. Продолжить?", settings_unsaved: "Есть несохранённые изменения настроек. Покинуть и отбросить их?", settings_save_partial: "Эти поля не прошли проверку и не сохранены", settings_dangerous: "опасно", settings_show: "Показать", settings_hide: "Скрыть", settings_list_add: "Добавить", plugin_settings_empty: "Пока нет плагинов с настройками: плагин со службой qvq_settings появится здесь",
@@ -569,6 +569,527 @@
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
+
+  /* ===== 组件库：qvSelect / qvMulti / qvSwitch =====
+     接管原生 <select> 与 <input type=checkbox>，配色取自 base.css 的 CSS 变量：
+     - 回调形态 qvSelect/qvMulti/qvSwitch(opts)：返回组件句柄 {el, get, set}
+     - 兼容形态 .wrap()：在原位渲染组件，状态同步回隐藏的原生控件——
+       保存逻辑读 .value / :checked，外部程序化赋值经属性拦截同步到组件
+     开合使用 .qvq-dd-* 类：单开走 closeAllMenus（ui.js），
+     外点/滚动/缩放关闭走全局监听（init.js document click、ui.js scroll/resize） */
+
+  // Esc 关闭面板（全局监听只绑一次）
+  var qvCompEscBound = false;
+  function qvBindCompEsc() {
+    if (qvCompEscBound) return;
+    qvCompEscBound = true;
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      closeAllMenus();
+    });
+  }
+
+  // 属性赋值拦截：value/checked 写入后同步组件，不派发事件
+  function qvHookProp(obj, prop, afterSet) {
+    try {
+      var proto = Object.getPrototypeOf(obj);
+      var desc = null;
+      while (proto && !(desc = Object.getOwnPropertyDescriptor(proto, prop))) proto = Object.getPrototypeOf(proto);
+      if (!desc || !desc.set) return;
+      Object.defineProperty(obj, prop, {
+        configurable: true,
+        enumerable: desc.enumerable,
+        get: desc.get ? function () { return desc.get.call(this); } : undefined,
+        set: function (v) {
+          desc.set.call(this, v);
+          afterSet(v);
+        }
+      });
+    } catch (e) {}
+  }
+
+  // 面板定位（全部实例统一算法）：触发元素 getBoundingClientRect + position:fixed，
+  // 默认下方 4px；下方空间不足时向上翻；左右钳制在视口内（8px 边距）。
+  // 窄视口（<640px）切换为底部动作面板（bottom sheet，圆角朝上，纯 CSS 定位）。
+  // 滚动/缩放关闭由 ui.js 的全局监听处理（closeAllMenus）。
+  function qvPlaceMenu(btn, menu) {
+    var vw = window.innerWidth || 1024;
+    var vh = window.innerHeight || 768;
+    if (vw < 640) {
+      menu.classList.add("sheet");
+      menu.style.left = "";
+      menu.style.top = "";
+      menu.style.minWidth = "";
+      menu.style.width = "";
+      return;
+    }
+    menu.classList.remove("sheet");
+    var r = btn.getBoundingClientRect();
+    menu.style.minWidth = Math.max(Math.round(r.width), 96) + "px";
+    var GAP = 4;
+    var maxW = 420;
+    if (menu.offsetWidth > maxW) menu.style.width = maxW + "px";
+    var mw = menu.offsetWidth;
+    var mh = menu.offsetHeight;
+    var left = Math.round(Math.max(8, Math.min(r.left, vw - mw - 8)));
+    var top;
+    if (r.bottom + GAP + mh <= vh - 8 || (vh - r.bottom) >= r.top) top = Math.round(r.bottom + GAP);
+    else top = Math.round(r.top - mh - GAP);
+    if (top + mh > vh - 8) top = Math.max(8, Math.round(vh - mh - 8));
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+  }
+
+  // 共用骨架：触发钮（.qvq-select 输入样式 + .qvq-dd-btn flex 布局）；
+  // 面板挂在 body 下（fixed 定位，不受父级 offsetParent 与 overflow 裁剪影响）
+  function qvDropdown(small) {
+    var root = document.createElement("div");
+    root.className = "qvq-dd-wrap";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "qvq-select qvq-dd-btn" + (small ? " qvq-input-sm" : "");
+    btn.setAttribute("aria-haspopup", "listbox");
+    var label = document.createElement("span");
+    label.className = "qvq-dd-label";
+    var chev = document.createElement("i");
+    chev.className = "qvq-dd-chev";
+    btn.appendChild(label);
+    btn.appendChild(chev);
+    var menu = document.createElement("div");
+    menu.className = "qvq-dd-menu";
+    menu.setAttribute("role", "listbox");
+    root.appendChild(btn);
+    document.body.appendChild(menu);
+    // 双向关联：宿主移除（如模态关闭 innerHTML 清空）后，body 上的孤儿面板可被回收
+    menu.__qvqRoot = root;
+    root.__qvqMenu = menu;
+    return { root: root, btn: btn, label: label, menu: menu, active: -1 };
+  }
+
+  function qvMenuClose(dd) {
+    dd.menu.classList.remove("open");
+    dd.btn.classList.remove("open");
+    dd.active = -1;
+    // 宿主已脱离文档（模态关闭等）：面板留在 body 上成了孤儿，直接回收
+    if (dd.menu.isConnected && dd.root && !dd.root.isConnected) dd.menu.remove();
+  }
+
+  // 回收孤儿面板（组件宿主已被 innerHTML 清除而面板未关闭）
+  function qvSweepMenus() {
+    document.querySelectorAll(".qvq-dd-menu").forEach(function (m) {
+      if (!m.classList.contains("open") && (!m.__qvqRoot || !m.__qvqRoot.isConnected)) m.remove();
+    });
+  }
+
+  // 上下渐隐切换：按可滚动量切 fade-top/fade-bottom。
+  // 开面板与面板内滚动时刷新；滚动源在面板内时 ui.js 全局监听跳过关闭
+  function qvUpdateFade(menu) {
+    var room = menu.scrollHeight - menu.clientHeight;
+    if (room <= 2) { menu.classList.remove("fade-top", "fade-bottom"); return; }
+    menu.classList.toggle("fade-top", menu.scrollTop > 2);
+    menu.classList.toggle("fade-bottom", menu.scrollTop < room - 2);
+  }
+  var qvFadeBound = false;
+  function qvBindMenuFade(menu) {
+    if (menu.__qvqFade) return;
+    menu.__qvqFade = true;
+    menu.addEventListener("scroll", function () { qvUpdateFade(menu); }, { passive: true });
+  }
+
+  // 单开：先 closeAllMenus 关其它实例，再重建选项并按视口定位
+  function qvMenuToggle(dd, build) {
+    if (dd.menu.classList.contains("open")) { qvMenuClose(dd); return; }
+    closeAllMenus();
+    qvSweepMenus();
+    build();
+    if (!dd.menu.isConnected) document.body.appendChild(dd.menu);
+    dd.menu.classList.add("open");
+    dd.btn.classList.add("open");
+    qvPlaceMenu(dd.btn, dd.menu);
+    qvBindMenuFade(dd.menu);
+    qvUpdateFade(dd.menu);
+  }
+
+  function qvMarkActive(dd, rows, idx) {
+    dd.active = idx;
+    for (var i = 0; i < rows.length; i++) rows[i].classList.toggle("active", i === idx);
+    if (rows[idx] && rows[idx].scrollIntoView) {
+      try { rows[idx].scrollIntoView({ block: "nearest" }); } catch (e) { rows[idx].scrollIntoView(); }
+    }
+  }
+
+  function qvFocusSelected(dd, rows) {
+    var cur = -1;
+    for (var i = 0; i < rows.length; i++) if (rows[i].classList.contains("sel")) cur = i;
+    qvMarkActive(dd, rows, Math.max(cur, 0));
+  }
+
+  function qvMoveActive(dd, rows, dir) {
+    if (!rows.length) return;
+    var idx = dd.active;
+    do {
+      idx = (idx + dir + rows.length) % rows.length;
+    } while (rows[idx].classList.contains("dis") && idx !== dd.active);
+    qvMarkActive(dd, rows, idx);
+  }
+
+  // 键盘：关→↓↑ 展开；开→↑↓ 移动高亮、Enter/Space 选中、Tab/Esc 关闭
+  // （关态的 Enter/Space 走按钮原生 click → 展开）
+  function qvBindKeyNav(dd, ctl) {
+    dd.btn.addEventListener("keydown", function (e) {
+      var open = dd.menu.classList.contains("open");
+      if (!open) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          ctl.open();
+        }
+        return;
+      }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        ctl.move(e.key === "ArrowDown" ? 1 : -1);
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        ctl.commit();
+      } else if (e.key === "Tab") {
+        qvMenuClose(dd);
+      }
+    });
+  }
+
+  /* ---- qvSelect：自定义单选下拉 ---- */
+  function qvSelect(opts) {
+    opts = opts || {};
+    qvBindCompEsc();
+    var dd = qvDropdown(opts.small);
+    var options = opts.options || [];
+    var value = opts.value;
+    var onChange = opts.onChange;
+    var rows = [];
+
+    function labelOf(o) { return o.label != null ? String(o.label) : String(o.value); }
+    function syncLabel() {
+      for (var i = 0; i < options.length; i++) {
+        if (String(options[i].value) === String(value)) {
+          dd.label.textContent = labelOf(options[i]);
+          dd.label.classList.remove("ph");
+          return;
+        }
+      }
+      dd.label.textContent = opts.placeholder || "";
+      dd.label.classList.toggle("ph", !!opts.placeholder);
+    }
+    function buildPanel() {
+      dd.menu.innerHTML = "";
+      rows = [];
+      options.forEach(function (o, i) {
+        var row = document.createElement("div");
+        row.className = "qvq-dd-opt" + (String(o.value) === String(value) ? " sel" : "") + (o.disabled ? " dis" : "");
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", String(o.value) === String(value) ? "true" : "false");
+        row.setAttribute("data-i", i);
+        var txt = document.createElement("span");
+        txt.textContent = labelOf(o);
+        row.appendChild(txt);
+        row.insertAdjacentHTML("beforeend", DD_CHECK);
+        row.addEventListener("mouseenter", function () { qvMarkActive(dd, rows, i); });
+        dd.menu.appendChild(row);
+        rows.push(row);
+      });
+      if (!rows.length) {
+        var emptyRow = document.createElement("div");
+        emptyRow.className = "qvq-dd-opt dis";
+        emptyRow.textContent = opts.placeholder || "-";
+        dd.menu.appendChild(emptyRow);
+      }
+    }
+    function pick(i) {
+      var o = options[i];
+      if (!o || o.disabled) return;
+      var changed = String(o.value) !== String(value);
+      value = o.value;
+      syncLabel();
+      qvMenuClose(dd);
+      if (changed && onChange) onChange(o.value);
+    }
+    dd.btn.addEventListener("click", function (e) {
+      // stopPropagation：阻止冒泡到 document 的全局 click 触发 closeAllMenus
+      e.stopPropagation();
+      qvMenuToggle(dd, buildPanel);
+      if (dd.menu.classList.contains("open")) qvFocusSelected(dd, rows);
+    });
+    dd.menu.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var row = e.target.closest ? e.target.closest(".qvq-dd-opt") : null;
+      if (row && !row.classList.contains("dis")) pick(parseInt(row.getAttribute("data-i"), 10));
+    });
+    qvBindKeyNav(dd, {
+      open: function () {
+        qvMenuToggle(dd, buildPanel);
+        if (dd.menu.classList.contains("open")) qvFocusSelected(dd, rows);
+      },
+      move: function (dir) { qvMoveActive(dd, rows, dir); },
+      commit: function () { if (dd.active >= 0) pick(dd.active); }
+    });
+    syncLabel();
+    return {
+      el: dd.root,
+      get: function () { return value; },
+      set: function (v) { value = v; syncLabel(); },
+      update: function (next) {
+        if (next && next.options) options = next.options;
+        if (next && "value" in next) value = next.value;
+        syncLabel();
+      }
+    };
+  }
+
+  // 兼容形态：原位接管原生 <select>。原生控件隐藏保留（保存逻辑读 .value），
+  // 选中值同步回 select 并派发 change；外部程序化赋值经属性拦截同步到触发钮。
+  qvSelect.wrap = function (sel, onChange) {
+    if (!sel || sel.tagName !== "SELECT") return null;
+    if (sel.__qvqSel) return sel.__qvqSel;
+    sel.__qvqSel = true;
+    sel.setAttribute("data-qvq-dd", "");
+    function readOptions() {
+      var out = [];
+      for (var i = 0; i < sel.options.length; i++) {
+        var o = sel.options[i];
+        out.push({ value: o.value, label: o.textContent, disabled: o.disabled });
+      }
+      return out;
+    }
+    var comp = qvSelect({
+      small: sel.classList.contains("qvq-input-sm"),
+      value: sel.value,
+      options: readOptions(),
+      onChange: function (v) {
+        var before = sel.value;
+        sel.value = v;
+        if (sel.value !== before) {
+          try { sel.dispatchEvent(new Event("change", { bubbles: true })); } catch (err) {}
+        }
+        if (onChange) onChange(sel.value);
+      }
+    });
+    // select 的内联样式（宽度约束等）转嫁到组件壳，再隐藏原生控件
+    if (sel.style && sel.style.cssText) comp.el.setAttribute("style", sel.style.cssText);
+    sel.style.display = "none";
+    // 三个来源都会刷新组件：value 程序化赋值（属性拦截）、外部派发的 change、
+    // 选项列表变动（innerHTML 重建 options，如人格/模型列表异步加载）
+    function refreshFromSelect() {
+      comp.update({ options: readOptions(), value: sel.value });
+    }
+    qvHookProp(sel, "value", refreshFromSelect);
+    sel.addEventListener("change", refreshFromSelect);
+    if (window.MutationObserver) {
+      new MutationObserver(refreshFromSelect).observe(sel, { childList: true, subtree: true });
+    }
+    // 焦点保留：select 持焦时把焦点移到组件触发钮
+    var hadFocus = document.activeElement === sel;
+    sel.parentNode.insertBefore(comp.el, sel);
+    comp.el.appendChild(sel);
+    if (hadFocus) {
+      var trig = comp.el.querySelector(".qvq-dd-btn");
+      if (trig) try { trig.focus(); } catch (e) {}
+    }
+    return comp;
+  };
+
+  /* ---- qvMulti：自定义多选下拉（触发钮显示 chips，超过 2 个折叠 +N） ---- */
+  function qvMulti(opts) {
+    opts = opts || {};
+    qvBindCompEsc();
+    var dd = qvDropdown(opts.small);
+    dd.root.classList.add("qvq-multi");
+    var options = opts.options || [];
+    var values = (opts.values || []).map(String);
+    var onChange = opts.onChange;
+    var rows = [];
+    var COLLAPSE = 2;
+
+    function labelOf(o) { return o.label != null ? String(o.label) : String(o.value); }
+    function has(v) { return values.indexOf(String(v)) >= 0; }
+    function get() { return values.slice(); }
+    function syncChips() {
+      dd.label.innerHTML = "";
+      var labels = [];
+      options.forEach(function (o) { if (has(o.value)) labels.push(labelOf(o)); });
+      values.forEach(function (v) {
+        var known = options.some(function (o) { return String(o.value) === v; });
+        if (!known) labels.push(v);
+      });
+      if (!labels.length) {
+        dd.label.textContent = opts.placeholder || "";
+        dd.label.classList.add("ph");
+        return;
+      }
+      dd.label.classList.remove("ph");
+      labels.slice(0, COLLAPSE).forEach(function (lb) {
+        var chip = document.createElement("span");
+        chip.className = "qvq-multi-chip";
+        chip.textContent = lb;
+        dd.label.appendChild(chip);
+      });
+      if (labels.length > COLLAPSE) {
+        var more = document.createElement("span");
+        more.className = "qvq-multi-more";
+        more.textContent = "+" + (labels.length - COLLAPSE);
+        dd.label.appendChild(more);
+      }
+    }
+    function buildPanel() {
+      dd.menu.innerHTML = "";
+      rows = [];
+      options.forEach(function (o, i) {
+        var row = document.createElement("div");
+        row.className = "qvq-dd-opt" + (has(o.value) ? " sel" : "") + (o.disabled ? " dis" : "");
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", has(o.value) ? "true" : "false");
+        row.setAttribute("data-i", i);
+        var txt = document.createElement("span");
+        txt.textContent = labelOf(o);
+        row.appendChild(txt);
+        row.insertAdjacentHTML("beforeend", DD_CHECK);
+        row.addEventListener("mouseenter", function () { qvMarkActive(dd, rows, i); });
+        dd.menu.appendChild(row);
+        rows.push(row);
+      });
+      if (!rows.length) {
+        var emptyRow = document.createElement("div");
+        emptyRow.className = "qvq-dd-opt dis";
+        emptyRow.textContent = opts.placeholder || "-";
+        dd.menu.appendChild(emptyRow);
+      }
+    }
+    function toggleVal(i) {
+      var o = options[i];
+      if (!o || o.disabled) return;
+      var sv = String(o.value);
+      var at = values.indexOf(sv);
+      if (at >= 0) values.splice(at, 1);
+      else values.push(sv);
+      // 面板保持打开：只更新勾选态与触发钮 chips
+      rows[i].classList.toggle("sel", has(o.value));
+      rows[i].setAttribute("aria-selected", has(o.value) ? "true" : "false");
+      syncChips();
+      if (onChange) onChange(get());
+    }
+    dd.btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      qvMenuToggle(dd, buildPanel);
+    });
+    dd.menu.addEventListener("click", function (e) {
+      // 多选：点选项只切换勾选，不关面板；stopPropagation 阻止全局 click 的 closeAllMenus
+      e.stopPropagation();
+      var row = e.target.closest ? e.target.closest(".qvq-dd-opt") : null;
+      if (row && !row.classList.contains("dis")) toggleVal(parseInt(row.getAttribute("data-i"), 10));
+    });
+    qvBindKeyNav(dd, {
+      open: function () { qvMenuToggle(dd, buildPanel); },
+      move: function (dir) { qvMoveActive(dd, rows, dir); },
+      commit: function () { if (dd.active >= 0) toggleVal(dd.active); }
+    });
+    syncChips();
+    return {
+      el: dd.root,
+      get: get,
+      set: function (arr) { values = (arr || []).map(String); syncChips(); },
+      update: function (next) {
+        if (next && next.options) { options = next.options; syncChips(); }
+      }
+    };
+  }
+
+  // 兼容形态：接管一组原生 checkbox（模型输入类型/设置项勾选组等）。
+  // 原生 inputs 隐藏保留（保存逻辑读 :checked），组件切换时同步 checked 并派发 change；
+  // 外部程序化赋值（cb.checked=…，如 models.dev 检测回填）经属性拦截同步到组件。
+  qvMulti.wrap = function (inputs, opts) {
+    opts = opts || {};
+    inputs = Array.prototype.filter.call(inputs || [], function (x) { return x && x.type === "checkbox"; });
+    if (!inputs.length) return null;
+    if (inputs[0].__qvqMulti) return inputs[0].__qvqMulti;
+    // checkbox 无 value 属性时 DOM 默认值为 "on"（同组多个会取到相同值）；
+    // 取值优先 data-val（设置勾选组）→ id（模型输入类型等表单控件）→ value
+    function valOf(inp) { return inp.getAttribute("data-val") || inp.id || inp.value || ""; }
+    function labelOf(inp) {
+      var lab = inp.closest ? inp.closest("label") : null;
+      var txt = lab ? (lab.textContent || "").trim() : "";
+      return txt || valOf(inp);
+    }
+    var comp = qvMulti({
+      options: inputs.map(function (inp) {
+        return { value: valOf(inp), label: labelOf(inp), disabled: inp.disabled };
+      }),
+      values: inputs.filter(function (inp) { return inp.checked; }).map(valOf),
+      placeholder: opts.placeholder,
+      small: opts.small,
+      onChange: function (arr) {
+        inputs.forEach(function (inp) {
+          var on = arr.indexOf(String(valOf(inp))) >= 0;
+          if (inp.checked !== on) {
+            inp.checked = on; // 属性拦截会同步组件视觉
+            try { inp.dispatchEvent(new Event("change", { bubbles: true })); } catch (err) {}
+          }
+        });
+        if (opts.onChange) opts.onChange(arr);
+      }
+    });
+    function syncFromInputs() {
+      comp.set(inputs.filter(function (inp) { return inp.checked; }).map(valOf));
+    }
+    inputs.forEach(function (inp) {
+      inp.__qvqMulti = comp;
+      qvHookProp(inp, "checked", syncFromInputs);
+      var host = inp.closest ? inp.closest("label") : null;
+      if (host) host.style.display = "none";
+      else inp.style.display = "none";
+    });
+    var anchor = (inputs[0].closest && inputs[0].closest("label")) || inputs[0];
+    anchor.parentNode.insertBefore(comp.el, anchor);
+    return comp;
+  };
+
+  /* ---- qvSwitch：开关 toggle（纯 CSS 轨道+滑块，状态在 .on 类） ---- */
+  function qvSwitch(opts) {
+    opts = opts || {};
+    var checked = !!opts.checked;
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "qvq-switch qvq-sw" + (opts.small ? " small" : "");
+    btn.setAttribute("role", "switch");
+    btn.appendChild(document.createElement("i"));
+    function render() {
+      btn.classList.toggle("on", checked);
+      btn.setAttribute("aria-checked", checked ? "true" : "false");
+    }
+    function setVal(v, fire) {
+      var changed = !!v !== checked;
+      checked = !!v;
+      render();
+      if (changed && fire && opts.onChange) opts.onChange(checked);
+    }
+    btn.addEventListener("click", function () { setVal(!checked, true); });
+    render();
+    return {
+      el: btn,
+      get: function () { return checked; },
+      set: function (v) { setVal(v, false); }
+    };
+  }
+
+  // 兼容形态：原生 checkbox 原样保留（仍是唯一数据源：.checked 读取、程序化赋值、
+  // 原生 change 监听、label 文字点击全不变），只套上自绘轨道视觉替换为开关
+  qvSwitch.wrap = function (cb, onChange) {
+    if (!cb || cb.type !== "checkbox" || cb.__qvqSwitched) return;
+    cb.__qvqSwitched = true;
+    var span = document.createElement("span");
+    span.className = "qvq-switch" + (cb.classList.contains("qvq-sw-sm") ? " small" : "");
+    cb.parentNode.insertBefore(span, cb);
+    span.appendChild(cb);
+    span.appendChild(document.createElement("i"));
+    if (onChange) cb.addEventListener("change", function () { onChange(cb.checked); });
+  };
 
   function fmtTime(ts) {
     if (!ts) return "-";

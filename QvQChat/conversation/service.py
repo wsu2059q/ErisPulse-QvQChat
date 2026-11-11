@@ -14,6 +14,7 @@ from ..engine.base import TaskSpec
 from ..prompts import CAPABILITY_PROMPT, SKILL_OFFER_NOTE
 from .budget import ContextPacker, SystemPart
 from .compactor import Compactor, context_tokens, estimate_tokens, extract_facts
+from .policy import get_policy
 
 CONV_PREFIX = "QvQChat:conv:"
 ROUTES_KEY = "QvQChat:routes"
@@ -28,6 +29,8 @@ RECALL_LAST_PREFIX = "QvQChat:recall_last:"
 UPLOAD_DIR = Path("data/QvQChat/uploads")
 
 DASHBOARD_PLATFORM = "dashboard"
+# 省钱模式（low_token）单条历史截断字数——人格/TODO 等关键提示不在此列，只削历史
+LOW_TOKEN_CONTENT_CHARS = 300
 
 
 def _translation_values(key: str) -> tuple[str, ...]:
@@ -964,6 +967,11 @@ class ConversationService:
 
         await self.compact_if_needed(chat_key)
         contexts = self.get_contexts(chat_key)
+# 省钱模式：全局 budget_mode 与会话级 low_token 叠加生效——系统提示跳过重组件、
+# 历史窗口收紧；人格与任务连续性部件保留，发言风格不变，省的是输入 token 总量
+        low_token = bool(get_policy(self.sdk, chat_key).get("low_token")) or bool(
+            getattr(self.config, "budget_mode", False)
+        )
 # 发送级轮窗口：只携带最近 N 轮，历史本身不动
         max_turns = int(getattr(self.config, "max_context_turns", 0) or 0)
         if max_turns > 0:
@@ -999,6 +1007,28 @@ class ConversationService:
             if seeded:
                 contexts = self.seed_contexts(chat_key, seeded)
                 seeded_done = bool(contexts)
+# 省钱模式收紧历史：条数减半 + 单条截 300 字（放在 seed 之后，回填的历史一并收紧）
+        if low_token and contexts:
+            half = max(1, len(contexts) // 2)
+            tightened = []
+            for entry in contexts[-half:]:
+                if not isinstance(entry, dict):
+                    tightened.append(entry)
+                    continue
+                content = entry.get("content")
+                if isinstance(content, list):
+# 拷贝再截（storage 读出的对象可能与持久层共享引用）；只截 text part，image_url 结构原样保留
+                    entry = dict(entry)
+                    entry["content"] = [
+                        dict(p, text=str(p.get("text") or "")[:LOW_TOKEN_CONTENT_CHARS])
+                        if isinstance(p, dict) and p.get("type") == "text"
+                        and len(str(p.get("text") or "")) > LOW_TOKEN_CONTENT_CHARS else p
+                        for p in content
+                    ]
+                elif isinstance(content, str) and len(content) > LOW_TOKEN_CONTENT_CHARS:
+                    entry = dict(entry, content=content[:LOW_TOKEN_CONTENT_CHARS])
+                tightened.append(entry)
+            contexts = tightened
         personas = getattr(self.main, "personas", None)
         persona = personas.get(persona_id) if (persona_id and personas) else personas.resolve(chat_key)
         memory = getattr(self.main, "memory", None)
@@ -1020,6 +1050,7 @@ class ConversationService:
             restricted=self._sender_restricted(sender_id, profile_user),
             admin_ids=(self._admin_ids_for(str(profile_user or "").split(":", 1)[0])
                        if self._sender_restricted(sender_id, profile_user) else None),
+            low_token=low_token,
         )
         if recalled:
             lines = "\n".join(f"- {entry.get('content', '')}" for entry in recalled)
@@ -1117,7 +1148,7 @@ class ConversationService:
         platform, detail_type, _ = parse_chat_key(chat_key)
         if platform == DASHBOARD_PLATFORM:
             return "dashboard"
-# 群聊也持久化发言者 uid（此前恒为空串，导致历史消息无法归因）
+# 群聊也持久化发言者 uid（缺失会导致历史消息无法归因）
         return sender_id or (cross_user_id if detail_type != "group" else "")
 
     def finalize(
@@ -1267,8 +1298,13 @@ class ConversationService:
         kb_texts: list[str] | None = None,
         restricted: bool = False,
         admin_ids: list[str] | None = None,
+        low_token: bool = False,
     ) -> list[SystemPart]:
-        """系统提示词按语义拆分为部件（供 ContextPacker 按优先级装填）。"""
+        """系统提示词按语义拆分为部件（供 ContextPacker 按优先级装填）。
+
+        low_token 省钱时跳过 kb/技能清单/画像/名册/技能诱导等重组件，
+        persona/capability/facts/todo/memory/summary 等连续性部件保留。
+        """
 # 首行人格身份认知 + 主人称呼（并入 persona 部件，required 保位）
         persona_text = (
             texts.t("persona_identity", name=str(persona.get("name") or ""), id=str(persona.get("id") or ""))
@@ -1288,7 +1324,8 @@ class ConversationService:
             parts.insert(1, SystemPart("persona_extra", persona_extra))
 # 人格名册感知：注入已定义人格（名字/别名），被提到时能"认出"并自然谈起
         roster = self._persona_roster_text(persona)
-        if roster:
+# 省流取舍：名册是"认出熟人"的锦上添花，非人格连续性必需，省流时不注入
+        if roster and not low_token:
             parts.append(SystemPart("roster", texts.t("persona_roster_note") + "\n" + roster))
         if getattr(self.config, "chat_output_rules", True):
             parts.append(SystemPart("chat_rules", texts.t("chat_output_rules")))
@@ -1300,7 +1337,8 @@ class ConversationService:
                 "permission",
                 texts.t("restricted_mode_note", admins="、".join(admin_ids or []) or "-"),
             ))
-        if getattr(self.config, "skill_induct", True):
+# 省流取舍：技能诱导只是"提醒模型可以用技能"的固定开销，省流时省去
+        if getattr(self.config, "skill_induct", True) and not low_token:
             parts.append(SystemPart("skill_offer", SKILL_OFFER_NOTE))
 # 事件收件箱感知（默认开启）：让模型知道平台事件都在收件箱里、可自主查看
         parts.append(SystemPart("inbox_note", texts.t("inbox_note")))
@@ -1337,8 +1375,13 @@ class ConversationService:
             todo_text = self.todos.render(chat_key)
             if todo_text:
                 parts.append(SystemPart("todo", texts.t("todo_system_note") + "\n" + todo_text))
+            else:
+# 空清单也给一条轻提示：只在"已有清单"时注入会导致 AI 不知道有这个工具族，
+# 多步任务不会主动拆条（模型不知道存在该工具族）
+                parts.append(SystemPart("todo", texts.t("todo_empty_hint")))
 # 跨会话用户画像注入（profile_user = platform:uid；PRIORITY 位于 facts 与 memory 之间）
-        if profile_user and getattr(self.config, "profile_enabled", True):
+# 省流取舍：画像摘要可整体延后一拍，丢它不丢任务上下文，省流时跳过
+        if profile_user and getattr(self.config, "profile_enabled", True) and not low_token:
             lines = self.profile.digest(profile_user)
             if lines:
                 parts.append(SystemPart("profile", texts.t("profile_header") + "\n" + "\n".join(f"- {line}" for line in lines)))
@@ -1357,15 +1400,17 @@ class ConversationService:
                             + "\n</active-skill>",
                         )
                     )
+# 省流取舍：技能全量清单可能很长；显式激活的 skill_full 保留（用户点名要的任务不能丢）
             enabled = [s for s in skills.list_skills() if s.get("enabled")]
-            if enabled:
+            if enabled and not low_token:
                 lines = "\n".join(f"- {s['name']}: {s.get('description') or ''}" for s in enabled)
                 parts.append(SystemPart("skill_list", "<skills>\n" + texts.t("skills_system_note") + "\n" + lines + "\n</skills>"))
         if mcp_tools:
             tools_hint = [str(t) for t in mcp_tools if str(t)]
             if tools_hint:
                 parts.append(SystemPart("extra", texts.t("dashboard_mcp_hint", tools=", ".join(tools_hint))))
-        if getattr(self.config, "kb_auto_inject", True) and kb_query:
+# 省流取舍：kb 命中块最重（每条 1500 字截断，还可能是多条），省流时整段跳过
+        if getattr(self.config, "kb_auto_inject", True) and kb_query and not low_token:
             kb = getattr(self.main, "knowledge", None)
 # 可见域：全局条目 + 本会话/本适配器私有条目（AI 默认写会话级，跨会话共享需显式声明）
             hits = kb.search(kb_query, top_k=int(getattr(self.config, "kb_top_k", 2) or 0), viewer=chat_key) if kb else []

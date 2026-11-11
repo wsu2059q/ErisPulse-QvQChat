@@ -415,7 +415,7 @@ class ModelPool:
                 continue
             row = dict(model)
             if row.get("manual") is True:
-# 智能配置关闭：尊重手工填写的空缺，不再用目录补
+# 智能配置关闭：尊重手工填写的空缺，不用目录补全
                 enriched.append(row)
                 continue
             meta = self._models_dev_lookup(
@@ -614,7 +614,7 @@ class ModelPool:
 # ===== TaskSpec 任务分派 =====
 
     def resolve_task_model(self, spec: TaskSpec) -> dict:
-        """解析任务模型：显式 model > cfg.task_models[kind] > needs 过滤 >
+        """解析任务模型：显式 model > cfg.task_models[kind] > aux_model（非 chat）> needs 过滤 >
         prefer="cheap" 按 cost(input+output) 升序 > 池序。"""
         models = self.list_models()
         if not models:
@@ -624,6 +624,10 @@ class ModelPool:
             task_models = getattr(self.config, "task_models", None)
             if isinstance(task_models, dict):
                 explicit = str(task_models.get(spec.kind) or "")
+# 辅助调用统一模型：判定/播报/压缩等后台任务的 cheap 自动选择会命中"最便宜的池"，
+# 运营方未必想让辅助调用落到那家（用量与成本统计按 provider 分池）——配一个即全部归位
+        if not explicit and str(spec.kind) != "chat":
+            explicit = str(getattr(self.config, "aux_model", "") or "").strip()
         if explicit:
             for model in models:
                 if model["id"] == explicit:
@@ -753,9 +757,11 @@ class ModelPool:
         """
         self._route_chat_spec(spec, request)# 难度感知路由（默认关闭，不改显式约束）
         model = self.resolve_task_model(spec)
-# 简单场景自动降思考：难度路由判为 cheap 且配置了档位时注入 reasoning_effort
-        effort = ""
-        if str(spec.kind) == "chat" and str(spec.prefer or "") == "cheap":
+# 思考强度注入优先级：
+# 1) 全局 reasoning_effort 显式配置——所有请求统一（含辅助调用）
+# 2) 自动降思考：chat 且难度路由判为 cheap 时用 effort_smalltalk（仅 chat 主对话）
+        effort = str(getattr(self.config, "reasoning_effort", "") or "")
+        if not effort and str(spec.kind) == "chat" and str(spec.prefer or "") == "cheap":
             effort = str(getattr(self.config, "effort_smalltalk", "") or "")
         scoped = ChatRequest(
             messages=request.messages,

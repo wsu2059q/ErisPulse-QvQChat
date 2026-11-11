@@ -82,15 +82,7 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
 
     if background:
 # 后台模式：立即返回，跑完经 qvq.subagent_done 事件插回主会话（Main 监听消化）
-        _subjob_probe(main, sub_key, {
-            "sub_key": sub_key,
-            "parent_chat_key": str(ctx.chat_key or ""),
-            "task": utils.truncate(task, 500),
-            "status": "running",
-            "started": time.time(),
-        })
-        spawned = main.spawn(_run_background(main, sub_key, sub_ctx, system, [str(t) for t in (tools or [])], task))
-        register_live_subjob(sub_key, spawned)
+        _launch_background(main, sub_key, sub_ctx, system, [str(t) for t in (tools or [])], task)
         return texts.t("subagent_background_started", session=sub_key)
 
     started = time.monotonic()
@@ -110,6 +102,78 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
     ms = int((time.monotonic() - started) * 1000)
     meta = texts.t("subagent_meta", session=sub_key, tools=len(result.tool_trace), ms=ms)
     return answer + "\n\n" + meta
+
+
+def _launch_background(main, sub_key: str, sub_ctx, system: str, tools: list[str], task: str) -> asyncio.Task:
+    """后台执行公共体：探针写 running + spawn _run_background + 注册进程内可取消任务。
+
+    spawn_agent 的 background 分支与 demote_to_background 共用，保证两条路径的
+    崩溃恢复探针 / qvq.subagent_done 回插 / 取消注册表行为完全一致。
+    """
+    _subjob_probe(main, sub_key, {
+        "sub_key": sub_key,
+# parent_chat_key 存在 sub_ctx 上（它自己的 chat_key 是 sub: 键）——探针与回插都靠它溯源
+        "parent_chat_key": str(getattr(sub_ctx, "parent_chat_key", "") or ""),
+        "task": utils.truncate(task, 500),
+        "status": "running",
+        "started": time.time(),
+    })
+    spawned = main.spawn(_run_background(main, sub_key, sub_ctx, system, tools, task))
+    register_live_subjob(sub_key, spawned)
+    return spawned
+
+
+async def demote_to_background(main, event, chat_key: str, task_prompt: str) -> str:
+    """长任务让路：把被新消息打断的任务转为后台子智能体续跑（auto demote 决策的执行端）。
+
+    与 spawn_agent(background) 的差别：任务文本由调用方拼接（原任务+已有部分输出）、
+    不注入父会话上下文（正被让路的对话对续跑无意义）、无确认器与工具透传。
+    返回 sub_key；子智能体跑完经 qvq.subagent_done 自动插回 chat_key 会话。
+    """
+    chat_key = str(chat_key or "")
+# 防重入：子智能体自己的回合不会再产生 demote（避免 sub 生 sub 无限嵌套）
+    if chat_key.startswith("sub:"):
+        raise ValueError("demote_to_background cannot run inside a sub-agent session")
+    task_prompt = str(task_prompt or "").strip()
+    if not task_prompt:
+        raise ValueError("demote_to_background requires a non-empty task prompt")
+    sub_key = "sub:" + chat_key + ":demote:" + uuid.uuid4().hex[:8]
+    data = vars(main.cfg).copy()
+    data["max_tool_rounds"] = 10
+    sub_cfg = SimpleNamespace(**data)
+# 发送身份与目标完整继承发起会话：platform/detail_type/target_id/user_id/self_id 从事件取，
+# 子智能体汇报（qvq.subagent_done 的插回）与主动发送才落到正确的群/私聊与账户
+    platform = str(event.get_platform() or "")
+    is_group = bool(event.is_group_message())
+    target_id = str(event.get_group_id() or "") if is_group else str(event.get_user_id() or "")
+    self_id = ""
+    try:
+        self_id = str(event.get_self_account_id() or "")
+    except Exception:
+        self_id = ""
+    sub_ctx = ToolContext(
+        main=main,
+        sdk=main.sdk,
+        config=sub_cfg,
+        chat_key=sub_key,
+        session_key=sub_key,
+        platform=platform,
+        detail_type="group" if is_group else "private",
+        target_id=target_id,
+        user_id=str(event.get_user_id() or ""),
+        event=event,
+        origin="chat",
+        confirmer=None,
+        scene_note="",
+        parent_chat_key=chat_key,
+        self_id=self_id,
+    )
+# 不加 _context_block：主会话正要让路给新消息，历史对话塞给续跑任务反而干扰
+    system = texts.t("subagent_system", task=utils.truncate(task_prompt, 500))
+    main.sessions.append(sub_key, "user", task_prompt)
+    main.sessions.set_group_name(sub_key, utils.truncate(task_prompt, 40))
+    _launch_background(main, sub_key, sub_ctx, system, [], task_prompt)
+    return sub_key
 
 
 async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[str], task: str) -> None:
@@ -314,7 +378,7 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="spawn_agent",
         access="admin",
-        description="Spawn a sub-agent with an isolated session/context to explore a task independently and report back its conclusion. Best for long fetch/scrape/research subtasks. Use background=true for slow tasks: it runs unsupervised and its report is automatically delivered back into this chat when done (you keep the conversation free). Before spawning, send the user a short progress line (what you delegated, what happens next). The sub-agent's full process history is kept as its own session (prefix 'sub:') for review.",
+        description="Spawn a sub-agent with an isolated session/context to explore a task independently and report back its conclusion. Best for long fetch/scrape/research subtasks. Use background=true for slow tasks (long-form writing, batch fetching, multi-step research): it runs unsupervised and its report is automatically delivered back into this chat when done (you keep the conversation free). Before spawning, send the user a short progress line (what you delegated, what happens next). The sub-agent's full process history is kept as its own session (prefix 'sub:') for review.",
         parameters=_schema(
             {
                 "task": _s(type="string", description="Self-contained task description for the sub-agent"),
