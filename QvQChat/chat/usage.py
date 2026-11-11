@@ -98,7 +98,7 @@ class UsageMixin:
         days = int(getattr(self.cfg, "usage_retention_days", 14) or 0)
         if days <= 0:
             return
-# 同一天只扫一次（此前每条消息记账后都全库 keys() 扫描）
+# 同一天只扫一次（避免每条消息记账后都全库 keys() 扫描）
         if self.sdk.storage.get(USAGE_LAST_PRUNE_KEY, "") == today:
             return
         try:

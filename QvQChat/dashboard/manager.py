@@ -229,6 +229,11 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("POST", "/api/qvq/session/rewind", self.session_rewind),
             ("POST", "/api/qvq/session/flags", self.session_flags),
             ("POST", "/api/qvq/session/settings", self.session_settings),
+            ("POST", "/api/qvq/session/policy", self.session_policy),
+# 会话 TODO（与 AI 的 todo_* 工具同库 TodoStore），需在路由表注册后前端可用
+            ("GET", "/api/qvq/todo", self.todo_list),
+            ("POST", "/api/qvq/todo/save", self.todo_save),
+            ("POST", "/api/qvq/todo/update", self.todo_update),
             ("POST", "/api/qvq/sessions/delete", self.sessions_delete),
             ("POST", "/api/qvq/sessions/delete-archived", self.sessions_delete_archived),
             ("POST", "/api/qvq/session/compact", self.session_compact),

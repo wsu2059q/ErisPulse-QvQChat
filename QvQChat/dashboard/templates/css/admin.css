@@ -111,7 +111,23 @@
   scrollbar-width: thin;
   scrollbar-color: var(--qvq-bd-h) transparent;
 }
-/* 内容列限宽居中：大屏可读性（成熟管理台布局），窄屏自动全宽 */
+
+/* 全局长文本换行：会话键/模型 ID 等无断点长令牌在 flex 行内断行。
+   1) overflow-wrap:anywhere 在 .qvq-app 根声明，随继承全面板生效；仅对超出行宽的
+      无断点令牌引入断行点，其余排版不变
+   2) 承载文字的 flex/grid 子项显式 min-width:0——默认 auto 不收缩 */
+.qvq-app {
+  overflow-wrap: anywhere;
+}
+.qvq-main .qvq-tool-row > *,
+.qvq-main .qvq-run-head > *,
+.qvq-main .qvq-quick-item > *,
+.qvq-main td,
+.qvq-main th,
+.qvq-main .qvq-chip {
+  min-width: 0;
+}
+/* 内容列限宽 1180px 居中，窄屏全宽 */
 .qvq-main > .qvq-tab.active {
   max-width: 1180px;
   margin: 0 auto;
@@ -432,7 +448,7 @@
   transform: translateY(0);
   box-shadow: none;
 }
-/* 统一焦点环：全部可交互元素（含此前缺席的图标按钮/选项卡/会话行/下拉项/模态关闭） */
+/* 统一焦点环：全部可交互元素（含图标按钮/选项卡/会话行/下拉项/模态关闭） */
 .qvq-btn:focus-visible,
 .qvq-input:focus-visible,
 .qvq-textarea:focus-visible,
@@ -622,9 +638,39 @@ select.qvq-select[data-qvq-dd] {
   padding: 4px;
   max-height: 264px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--qvq-bd-h) transparent;
+  /* 下拉不显示滚动条：scrollbar-width:none，滚轮/键盘/触控滚动照常 ——
+     滚动提示由下方 fade-top/fade-bottom 渐变承担 */
+  scrollbar-width: none;
   animation: qvq-pop 0.16s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  /* 面板挂 body 直下；字体与主应用保持一致 */
+  font-family: var(--qvq-font, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif);
+  line-height: 1.5;
+}
+/* WebKit 内核隐藏滚动条（Chrome/Edge/Safari） */
+.qvq-dd-menu::-webkit-scrollbar {
+  display: none;
+}
+/* 可滚动渐隐提示（代替滚动条语义）：JS 在开合/滚动时按可滚动量切 fade-top/fade-bottom。
+   sticky 伪元素贴在滚动口上下沿，渐变从面板底色到透明 */
+.qvq-dd-menu.fade-top::before,
+.qvq-dd-menu.fade-bottom::after {
+  content: "";
+  position: sticky;
+  display: block;
+  height: 14px;
+  flex: none;
+  pointer-events: none;
+  z-index: 1;
+}
+.qvq-dd-menu.fade-top::before {
+  top: 0;
+  margin: -4px -4px 0;
+  background: linear-gradient(180deg, var(--qvq-surface) 30%, transparent);
+}
+.qvq-dd-menu.fade-bottom::after {
+  bottom: 0;
+  margin: 0 -4px -4px;
+  background: linear-gradient(0deg, var(--qvq-surface) 30%, transparent);
 }
 .qvq-dd-menu.open {
   display: block;
@@ -716,6 +762,132 @@ select.qvq-select[data-qvq-dd] {
 input[type="checkbox"],
 input[type="radio"] {
   accent-color: var(--qvq-accent);
+}
+
+/* ===== 自有组件库（qvSelect / qvMulti / qvSwitch）：接管原生 select/checkbox 的视觉 =====
+   触发钮借 .qvq-select 的输入观感 + .qvq-dd-btn 的 flex 布局；去掉原生 select 的背景
+   caret，改用可旋转 chevron（.open 时旋转 225°）；面板/选项/选中/外点关闭复用
+   .qvq-dd-* 既有体系，配色全部沿用 base.css 的主题 token（深浅色自动跟随） */
+select.qvq-input[data-qvq-dd] {
+  display: none;
+}
+.qvq-dd-wrap .qvq-select.qvq-dd-btn {
+  background-image: none;
+  padding-right: 10px;
+}
+.qvq-select.qvq-input-bad {
+  border-color: var(--qvq-er-c);
+}
+/* 占位态（值为空且非选项）：弱化 */
+.qvq-dd-label.ph {
+  color: var(--qvq-tx-t);
+  font-weight: 400;
+}
+/* 键盘 ↑↓ 活动项高亮（与 hover 同为浅蓝底） */
+.qvq-dd-opt.active {
+  background: var(--qvq-accent-soft);
+}
+/* 选中/勾选打勾：默认隐藏，选中行显示 */
+.qvq-dd-opt .qvq-dd-check {
+  display: none;
+}
+.qvq-dd-opt.sel .qvq-dd-check {
+  display: block;
+}
+/* qvMulti：触发钮内的已选 chips（超过 2 个折叠为 +N） */
+.qvq-multi .qvq-dd-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.qvq-multi-chip {
+  display: inline-block;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.7;
+  padding: 0 8px;
+  border-radius: var(--qvq-r-full);
+  background: var(--qvq-accent-soft);
+  color: var(--qvq-accent);
+  border: 1px solid transparent;
+}
+.qvq-multi-more {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--qvq-tx-t);
+  white-space: nowrap;
+}
+/* qvMulti 接管原生 checkbox 勾选组后的宿主容器：去掉列表框外观 */
+.qvq-list-checks.qvq-multi-host {
+  border: none;
+  padding: 0;
+  max-height: none;
+  overflow: visible;
+}
+/* qvSwitch 的 JS 形态：无内嵌原生 input，状态挂在 .on 类（wrap 形态走既有 input:checked 规则） */
+button.qvq-sw {
+  font: inherit;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+button.qvq-sw:focus-visible {
+  outline: 2px solid var(--qvq-accent);
+  outline-offset: 2px;
+}
+.qvq-sw.on i {
+  background: var(--qvq-accent-fill);
+  border-color: var(--qvq-accent-fill);
+}
+.qvq-sw.on i::after {
+  transform: translateX(18px);
+}
+/* small 变体：触发钮走 .qvq-input-sm 既有约束；开关收紧轨道与滑块 */
+.qvq-switch.small {
+  width: 34px;
+  height: 20px;
+}
+.qvq-switch.small i::after {
+  width: 14px;
+  height: 14px;
+}
+.qvq-switch.small input:checked + i::after,
+.qvq-sw.small.on i::after {
+  transform: translateX(14px);
+}
+/* 移动端（<640px）：下拉/多选面板切换为底部动作面板（bottom sheet，圆角朝上），
+   定位/层复用浮层体系（fixed + z 1300 + qvq-pop 动画曲线），宽全屏不溢出 */
+@media (max-width: 639px) {
+  .qvq-dd-menu.sheet {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: 62vh;
+    border-radius: 14px 14px 0 0;
+    border-bottom: none;
+    padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+    animation: qvq-sheet-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  }
+}
+@keyframes qvq-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .qvq-settings-danger {
@@ -1030,13 +1202,18 @@ input[type="radio"] {
 .qvq-tool-name {
   font-weight: 600;
   color: var(--qvq-tx);
-  white-space: nowrap;
-  overflow-wrap: anywhere;
+  /* 只占内容宽、有上限：flex 基数为内容宽，长名允许换行 ——
+     无断点令牌由 overflow-wrap:anywhere 断行 */
+  flex: 0 1 auto;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .qvq-tool-row .qvq-tool-desc {
+  /* 描述占剩余宽度并左对齐 ——
+     数字列（tabular-nums）右对齐仅用于会话首页数字列 */
+  flex: 1 1 auto;
   min-width: 0;
-  text-align: right;
+  text-align: left;
 }
 .qvq-tool-desc {
   color: var(--qvq-tx-s);

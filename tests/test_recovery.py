@@ -30,7 +30,7 @@ def make_chat_main(fail_run=False):
         "is_admin", "check_tool_permission", "_master_checker",
         "record_usage", "_usage_today", "_prune_usage", "_usage_history",
         "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
-        "_live_conflict", "_auto_interrupt_decide",
+        "_live_conflict", "_auto_interrupt_decide", "_handle_auto_decision",
         "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
         "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice", "_user_quota_allow", "_quota_notice",
         "_maybe_send_opening",

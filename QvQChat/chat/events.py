@@ -1,7 +1,7 @@
 """非消息事件域（Notice/Request）：事件收件箱 + 生态广播 + 受控唤醒。
 
 框架把平台事件归一为 message/notice/request/meta 四类总线（OB12 口径：
-type → detail_type → sub_type），此前本模块只接了 message。这里补齐：
+type → detail_type → sub_type），除 message 外的事件类型也在此统一接入：
 
 - 一律入收件箱：不枚举事件类型，平台私有 detail_type/sub_type 原样保留
   （含平台原始载荷截断），模型用 list_events 工具随时查看
@@ -12,6 +12,7 @@ type → detail_type → sub_type），此前本模块只接了 message。这里
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import traceback
@@ -27,6 +28,113 @@ EVENT_INBOX_KEY = "QvQChat:event_inbox:"
 # 通知唤醒限频：每会话每窗口最多 N 次（防戳一戳刷屏烧 token）
 NOTICE_RATE_LIMIT = 5
 NOTICE_RATE_WINDOW = 60.0
+
+# 入群合并窗口（秒）：同群连续 group_increase 通知合并为一个 AI 回合，一次欢迎
+# 整批新人（一批用户同时进群时每条通知各开一个回合，刷屏且消耗
+# token）。实际生效窗口 = min(JOIN_AGG_WINDOW, aggregate_window)——不比消息聚合
+# 管线更拖（运营方调小 aggregate_window 求快时，入群唤醒同样快）；聚合关（0）
+# 时逐条照旧；cfg.join_agg_window 可显式覆盖（含 0=关闭合并）。
+JOIN_AGG_WINDOW = 8.0
+# 好友申请受理后的私聊静默（秒）：好友申请决策回执发到来源时已经是欢迎，同一
+# 用户随后的 friend_increase 类通知在此窗口内不唤醒（同一新人会被
+# 欢迎两三句）
+FRIEND_GREET_SUPPRESS = 600.0
+
+
+# ===== 入群/加好友通知治理（模块级纯函数）=====
+# 放模块级而不是 mixin 方法：测试宿主（FakeMain）按名单挑选 mixin 方法绑定，
+# 新增实例方法在老宿主上不存在——被绑定方法内部调用会 AttributeError，并被
+# _on_notice 的兜底 try/except 吞掉，表现为"该醒不醒"的静默回归。
+
+
+def _ev_str(event, fn, default: str = "") -> str:
+    try:
+        return str(fn() or "")
+    except Exception:
+        return default
+
+
+def _is_join_notice(event) -> bool:
+    """入群通知判定：detail/sub_type 含 "increase" 词形且确有群 id（OB12 口径
+    detail_type="group_increase"，部分适配器拆成 detail="group" sub="increase"，
+    不硬编码平台私有全名，decrease 不含 increase 不误伤）。friend_increase 这类
+    无群 id 的通知天然不进合并路径。"""
+    if not _ev_str(event, lambda: event.get_group_id()):
+        return False
+    detail = _ev_str(event, lambda: event.get_detail_type())
+    sub = _ev_str(event, lambda: event.get("sub_type"))
+    return "increase" in f"{detail} {sub}".lower()
+
+
+def _join_window(cfg) -> float:
+    """生效入群合并窗口：cfg.join_agg_window 显式覆盖优先（0=关闭合并）；
+    否则取 min(JOIN_AGG_WINDOW, aggregate_window)——不比消息聚合管线更拖
+    （运营方调小 aggregate_window 求快时，入群唤醒同样快），聚合关（0）返回 0。"""
+    override = getattr(cfg, "join_agg_window", None)
+    if override is not None:
+        return max(float(override) or 0.0, 0.0)
+    aggregate = float(getattr(cfg, "aggregate_window", JOIN_AGG_WINDOW) or 0)
+    if aggregate <= 0:
+        return 0.0
+    return min(JOIN_AGG_WINDOW, aggregate)
+
+
+def _friend_greet_hit(main, event) -> bool:
+    """私聊会话：该用户刚被受理过好友申请（FRIEND_GREET_SUPPRESS 内）→ 不唤醒，
+    决策回执已经是欢迎。群聊会话不受影响；未挂账（无状态字典）恒 False。"""
+    if _ev_str(event, lambda: event.get_group_id()):
+        return False
+    store = getattr(main, "_recent_friend_greeted", None)
+    if not store:
+        return False
+    platform = _ev_str(event, lambda: event.get_platform())
+    for uid in (_ev_str(event, lambda: event.get_user_id()),
+                _ev_str(event, lambda: event.get_operator_id())):
+        if not uid:
+            continue
+        stamp = store.get(f"{platform}:{uid}")
+        if stamp is not None and time.time() - float(stamp) < FRIEND_GREET_SUPPRESS:
+            return True
+    return False
+
+
+async def _flush_join_buffer(main, chat_key: str) -> None:
+    """合并窗口到点：整批入群通知合成一个 stimulus（原摘要的群头部 + 合并名单），
+    一次 _batch_message 让 AI 一个回合欢迎所有人（单人同路径，names 只有一个）。
+    self-join 不进缓冲（单独走 notice_self_join），不会在这里混批。"""
+    await asyncio.sleep(_join_window(main.cfg))
+    buffered = (getattr(main, "_join_buffer", None) or {}).pop(chat_key, None)
+    if not buffered:
+        return
+    events = [e for e in (buffered.get("events") or []) if e is not None]
+    if not events:
+        return
+# 限频在 flush 时统一判一次：窗口内多批不逐条计费，超限整批静默（事件已入箱可查）
+    if not main._notice_rate_ok(chat_key):
+        return
+# 名单从各事件的 user/nickname 抽成 "nick(id)"（与摘要口径一致），按 user 去重保序
+    labels: list[str] = []
+    seen: set = set()
+    for ev in events:
+        uid = _ev_str(ev, lambda: ev.get_user_id())
+        if not uid or uid in seen:
+            continue
+        seen.add(uid)
+        nick = _ev_str(ev, lambda: ev.get_user_nickname())
+        labels.append(f"{nick}({uid})" if nick else uid)
+    first = events[0]
+    detail = _ev_str(first, lambda: first.get_detail_type())
+    sub = _ev_str(first, lambda: first.get("sub_type"))
+    head = f"【通知/{detail}" + (f":{sub}" if sub else "") + "】"
+    group_id = _ev_str(first, lambda: first.get_group_id())
+    if group_id:
+        head += f" 群 {group_id}"
+    main._batch_message(
+        first,
+        chat_key,
+        head + " " + texts.t("notice_join_merged", names="、".join(labels)),
+        [],
+    )
 
 
 class EventsMixin:
@@ -279,7 +387,18 @@ class EventsMixin:
         return True
 
     def _maybe_wake_on_notice(self, event, chat_key: str, entry: dict) -> None:
-        """通知唤醒（默认全关）：白名单 + 档位 + 限频三道门，命中才进聊天管线。"""
+        """通知唤醒（默认全关）：白名单 + 档位 + 限频三道门，命中才进聊天管线。
+
+        入群/加好友通知治理：
+        - 自己入群：不发"新人来了"的普通 stimulus，改发 notice_self_join 场景注记
+          （AI 不知情会跟着"欢迎欢迎"，实际是自己进了群）
+        - 他人入群：合并窗口内同群连续通知合并为一个回合，一次欢迎整批（防刷屏）
+        - 好友静默：刚受理过好友申请的用户，10 分钟内私聊通知不再唤醒
+
+        注意：本方法只能调用"既有"的 mixin 方法——测试宿主（FakeMain）按名单挑
+        方法绑定，新增实例方法在老宿主上不存在（AttributeError 会被 _on_notice
+        吞掉、静默不醒）。新逻辑全部放模块级函数（见上方定义）。
+        """
         if not bool(getattr(self.cfg, "notice_listen", False)):
             return
         if not self._notice_type_hit(event):
@@ -290,6 +409,39 @@ class EventsMixin:
 # 被点名的直接互动（如戳的是本账户）视同被 @：at_only 也醒；环境类通知只在 all 醒
         direct = bool(entry.get("target_id")) and entry.get("target_id") == self._event_self_id(event)
         if mode == "at_only" and not direct:
+            return
+        if _friend_greet_hit(self, event):
+            return
+        if _is_join_notice(event):
+            if self._ev_s(event, lambda: event.get_user_id()) == self._event_self_id(event):
+# 自己进群：由人格决定打招呼或安静，绝不能当"新人来了"欢迎
+                if not self._notice_rate_ok(chat_key):
+                    return
+                self._batch_message(event, chat_key, texts.t("notice_self_join"), [])
+                return
+            if _join_window(self.cfg) <= 0:
+# 合并被显式关闭（join_agg_window/aggregate_window 为 0）：逐条照旧，不缓冲
+                if not self._notice_rate_ok(chat_key):
+                    return
+                self._batch_message(
+                    event,
+                    chat_key,
+                    texts.t("notice_stimulus", summary=entry.get("summary") or ""),
+                    [],
+                )
+                return
+# 他人入群：先过门（上面）再入合并缓冲，限频挪到 flush 统一判，一次欢迎整批
+            buffer_map = getattr(self, "_join_buffer", None)
+            if buffer_map is None:
+                buffer_map = self._join_buffer = {}
+            buffered = buffer_map.get(chat_key)
+            if buffered is None:
+                buffer_map[chat_key] = {
+                    "events": [event],
+                    "timer": self.spawn(_flush_join_buffer(self, chat_key)),
+                }
+            else:
+                buffered["events"].append(event)
             return
         if not self._notice_rate_ok(chat_key):
             return
@@ -340,7 +492,7 @@ class EventsMixin:
         """AI 自主处理请求：决策回合以管理员身份跑（handle_request 自带 admin 护栏）。
 
         回执两路：群请求的决策发到**事件来源群**（申请人/邀请人看得到受理进度，
-        此前只私聊管理员，群里无人知道发生了什么）；管理员私聊同步一份询问
+        仅私聊管理员时群里无人知道受理进度）；管理员私聊同步一份询问
         （操作权在管理员，handle_request 有 admin 护栏）。未配置管理员只入箱。
         """
         platform = str(entry.get("platform") or "")
@@ -375,7 +527,7 @@ class EventsMixin:
                 user_id=admin_id,
                 scene=texts.t("scene_request_trigger", summary=summary),
 # persist=True：决策提问进管理员会话历史——否则主人回"同意"时智能体没有上下文，
-# 不知道在同意什么请求（线上实测踩到）
+# 不知道在同意哪个请求
                 persist=True,
             )
         except Exception:
@@ -384,6 +536,21 @@ class EventsMixin:
         reply = str(reply or "").strip()
         if not reply:
             return
+# 好友申请决策回合正常完成 → 记"已打招呼"时刻：handle_request 的受理结果发生在
+# AI 工具回合内部，这里拿不到确切结论，按"正常完成=已处理"挂账（后续拿得到
+# 结果再收紧）。只记好友申请（无群 id；群请求没有这个私聊欢迎面）。随后
+# friend_increase 类通知 10 分钟内不唤醒——决策回执已发到来源，同一新人不再
+# 被欢迎两三句。顺手清掉过期挂账，防字典随时间无限膨胀
+        user_id = str(entry.get("user_id") or "")
+        if not group_id and user_id:
+            if getattr(self, "_recent_friend_greeted", None) is None:
+                self._recent_friend_greeted = {}
+            now = time.time()
+            self._recent_friend_greeted[f"{platform}:{user_id}"] = now
+            self._recent_friend_greeted = {
+                key: stamp for key, stamp in self._recent_friend_greeted.items()
+                if now - float(stamp) < FRIEND_GREET_SUPPRESS
+            }
         if source_chat:
             try:
                 await self.delivery.send_segments(platform, "group", group_id, [(0.0, reply)],

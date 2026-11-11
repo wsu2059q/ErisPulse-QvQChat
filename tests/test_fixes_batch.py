@@ -8,7 +8,7 @@ from fakes import FakeChatEvent, FakeMain, FakeRequestEvent, make_ctx
 
 def _bind_inbox(main):
     """FakeMain 未继承 InboxMixin：绑定本用例用到的方法。"""
-    for name in ("_enqueue_waiting", "_announce_queued"):
+    for name in ("_enqueue_waiting", "_announce_queued", "_handle_auto_decision"):
         setattr(main, name, getattr(Main, name).__get__(main))
     return main
 

@@ -160,7 +160,7 @@ class ErisPulseDocs:
     # ==================== 同步 ====================
 
     async def ensure_synced(self, force: bool = False) -> dict:
-        """保证文档与已安装框架版本一致；网络失败保留旧版（不阻塞启动）。"""
+        """文档与已安装框架版本对齐；网络失败时沿用本地缓存，不阻塞启动。"""
         if not bool(getattr(self.config, "docs_builtin", True)):
             return {"enabled": False}
         if self._local_source_root() is not None:

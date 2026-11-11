@@ -150,7 +150,8 @@ async def test_send_allow_extra_dirs(tmp_path):
     outside = tmp_path / "elsewhere" / "hi.mp3"
     outside.parent.mkdir()
     outside.write_bytes(b"x")
-    with pytest.raises(ValueError, match="escapes"):
+# 发送场景的拒绝文案已改为可操作信息（列出允许目录），不再统一用 "escapes"
+    with pytest.raises(ValueError, match="not sendable"):
         file_tools.sandbox_resolve(c, str(outside), must_exist=False, allow_extra=True)
 # 端到端：send_message audio_path 白名单放行并发出（Voice）
     seen = {}

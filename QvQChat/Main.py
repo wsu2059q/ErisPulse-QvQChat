@@ -160,7 +160,7 @@ def is_admin_user(config, user_id: str, origin: str = "chat", platform: str = ""
             if master_checker(platform, uid):
                 return True
         except Exception as e:
-# 不再静默吞：框架主人判定故障必须可见（限频，避免刷屏）
+# 不静默吞掉：框架主人判定故障必须可见（限频，避免刷屏）
             _warn_once(logger, f"master_checker failed ({platform}/{uid}): {e}")
     if is_framework_master(uid, platform):
         return True
@@ -492,7 +492,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         answer = str(data.get("answer") or "")
         sub_key = str(data.get("sub_key") or "")
         status = str(data.get("status") or "done")
-# 失败/取消也插回：发起者应知道任务黄了（此前只有 done 才回报，失败静默）
+# 失败/取消也插回：发起者应知道任务终止（仅 done 回报会让失败静默）
         if status == "cancelled":
             prompt = texts.t("subagent_cancelled_prompt", task=utils.truncate(task, 200),
                              session=sub_key)
@@ -612,7 +612,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             limit = int(getattr(self.cfg, "audit_limit", 5000) or 0)
             if limit > 0:
                 entries = entries[-limit:]
-# 写回存储（此前组装完 entries 直接丢弃——审计页永远为空）
+# 写回存储（未落库则审计页无数据可查）
             self.sdk.storage.set(AUDIT_KEY, entries)
         except Exception as e:
 # 审计落盘失败不能完全静默
@@ -680,7 +680,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 # 标签只当文本清扫；force 语义丢弃走自动规则
             reply = utils.strip_output_tag(result.text.strip())[0]
             reply = utils.strip_stray_tags(reply)
-            reply = utils.strip_fake_media_prefix(reply) or texts.t("no_reply_content")
+            reply = utils.strip_fake_media_prefix(utils.strip_fake_media_claims(reply)) or texts.t("no_reply_content")
 # persist=True（插回式调用，如后台子智能体汇报消化）：问答双方都落会话，
 # 下轮对话 AI 才记得"汇报过什么、自己怎么消化的"；一次性任务调用保持 False 不留痕
             if persist:
@@ -844,7 +844,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         budget.record(chat_key, "proactive")
 # 主动唤醒场景：明确"没人对你说话"，否则模型会把引导语当成有人在提问
         scene = texts.t("scene_proactive", reason=str(reason or "").strip() or texts.t("scene_proactive_noreason"))
-# 重复话题抑制：列出本会话最近主动发言（30 分钟内），明令不再翻旧账——
+# 重复话题抑制：列出本会话最近主动发言（30 分钟内），提示避免重复——
 # 否则模型从 summary/facts 里捡最显眼的旧话题反复自说自话（自己说的又进上下文，自激循环）
         import time as _time
 

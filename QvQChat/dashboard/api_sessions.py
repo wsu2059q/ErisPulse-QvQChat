@@ -10,6 +10,7 @@ from ..engine.base import ChatRequest
 
 from .. import texts, utils
 from ..chat.events import EVENT_INBOX_KEY
+from ..conversation.policy import get_policy, set_policy
 
 TEMPLATES = Path(__file__).parent / "templates"
 SHARES_KEY = "QvQChat:shares"
@@ -26,6 +27,8 @@ class SessionsApiMixin:
                 session["name"] = texts.t("dashboard_session_name")
             session["members"] = self.main.sessions.members_of(session.get("chat_key") or "")
             session["sources"] = self.main.sessions.routes_into(session.get("chat_key") or "")
+# 会话治理策略随行下发：面板开关直接渲染 muted/low_token/priority 当前值
+            session["policy"] = get_policy(self.sdk, session.get("chat_key") or "")
         try:
             self.main.spawn(self.main.conversations.resolve_session_names(sessions))
         except Exception as e:
@@ -529,11 +532,26 @@ class SessionsApiMixin:
         members = ui.get("members")
         if isinstance(members, list):
             saved["members"] = self.main.sessions.set_members(chat_key, members)
-# 隐私开关：关闭监听后本群消息不再进入旁听/插话/回执事件
+# 隐私开关：关闭监听后本群消息不进入旁听/插话/回执事件
         if "listen_off" in ui:
             self.main.sessions.set_flags(chat_key, {"listen_off": bool(ui["listen_off"])})
             saved["listen_off"] = bool(ui["listen_off"])
         return {"ok": True, "ui": saved}
+
+    async def session_policy(self, request):
+        """会话治理策略（muted/low_token/priority）：只传要改的键，返回更新后的完整策略。
+
+        与 /qvq mute|policy|lowtoken 同一存储（conversation/policy），双入口单事实源。
+        """
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        if not chat_key:
+            return ({"error": "chat_key required"}, 400)
+        updates = {k: body[k] for k in ("muted", "low_token", "priority") if k in body}
+        policy = set_policy(self.sdk, chat_key, **updates)
+# 面板改策略与聊天命令同源，审计留痕（detail 记录本次变更的键值）
+        self.main.audit("session_policy", {"chat_key": chat_key, **updates})
+        return {"ok": True, "policy": policy}
 
     async def session_rename(self, request):
         body = await request.json()

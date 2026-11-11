@@ -113,7 +113,14 @@
   }
 
   // 链序是跨 provider 的全局顺序：取后端 chain，无则按 provider 展平
+  // chain 条目不携带 provider 停用状态，单独记 orchProviderOff
+  var orchProviderOff = {};
+
   function flattenChain(data) {
+    orchProviderOff = {};
+    ((data && data.providers) || []).forEach(function (p) {
+      if (p.enabled === false) orchProviderOff[p.id] = true;
+    });
     if (data && Array.isArray(data.chain) && data.chain.length) {
       return data.chain.map(function (item) {
         return { provider: item.provider, name: item.name, base_url: item.base_url, model: item.model };
@@ -135,17 +142,23 @@
       box.innerHTML = '<div class="qvq-empty">' + esc(t("models_empty")) + "</div>";
       return;
     }
-    var firstEnabled = orchChain.filter(function (x) { return x.model.enabled !== false; })[0];
+    // 链首挑选同样跳过 provider 停用的模型
+    var firstEnabled = orchChain.filter(function (x) {
+      return x.model.enabled !== false && !orchProviderOff[x.provider];
+    })[0];
     var warn = firstEnabled && firstEnabled.model.tool_call !== true
       ? '<div class="qvq-chain-warn">' + esc(t("orch_chain_top_no_tools")) + "</div>"
       : "";
     box.innerHTML = warn + '<div class="qvq-chain-list">' + orchChain.map(function (item, i) {
-      var off = item.model.enabled === false;
-      return '<div class="qvq-chain-row' + (off ? " off" : "") + '" draggable="true" data-ci="' + i + '">' +
+      var pOff = !!orchProviderOff[item.provider];
+      var mOff = item.model.enabled === false;
+      // 停用的 provider/模型灰显，仍可拖拽
+      var offChip = pOff ? esc(t("provider_disabled")) : (mOff ? esc(t("off")) : "");
+      return '<div class="qvq-chain-row' + (offChip ? " off" : "") + '" draggable="true" data-ci="' + i + '">' +
         '<span class="qvq-chain-seq">' + (i + 1) + "</span>" +
         '<span class="qvq-chain-name">' + esc(item.provider + ":" + item.model.id) + "</span>" +
         '<span class="qvq-chain-caps">' + modelsModelChips(item.model) + "</span>" +
-        (off ? "<span class='qvq-chip'>" + esc(t("off")) + "</span>" : "") +
+        (offChip ? "<span class='qvq-chip danger-chip'>" + offChip + "</span>" : "") +
         '<span class="qvq-q-drag" title="⇅">⇅</span></div>';
     }).join("") + "</div>";
     bindChainDrag(box);
@@ -236,8 +249,12 @@
       return;
     }
     box.innerHTML = live.map(function (r) {
-      return '<div class="qvq-tool-row"><span class="qvq-tool-name"><span class="qvq-chip o-eco">' + esc(t("steps_running")) + "</span> " +
-        esc(r.session) + "</span><span class='qvq-tool-desc'>" + esc(r.text_head || "-") + "</span></div>";
+      // 运行项两行布局：
+      // 头行 chip + 会话键（超长省略），摘要独占次行限两行截断
+      return '<div class="qvq-run-item"><div class="qvq-run-head">' +
+        '<span class="qvq-chip o-eco">' + esc(t("steps_running")) + '</span>' +
+        '<span class="qvq-run-session">' + esc(r.session) + '</span></div>' +
+        '<div class="qvq-run-desc">' + esc(r.text_head || "-") + '</div></div>';
     }).join("");
   }
 
@@ -446,7 +463,8 @@
       if (cta) cta.onclick = function () { openModelModal(null); };
       return;
     }
-// 提供商卡片：头部（名称/URL/操作）+ 可折叠模型网格，多模型不糊
+// 提供商卡片：头部（名称/URL/操作 + 右侧 provider 级开关）+ 可折叠模型网格，
+    // 每行模型 chip 右侧内联启停开关（qvSwitch；隐藏原生 checkbox 仍是数据源）
     var cards = providers.map(function (p) {
       var models = p.models || [];
       var enabled = models.filter(function (m) { return m.enabled !== false; });
@@ -455,8 +473,10 @@
       var chips = models.map(function (m) {
         var off = m.enabled === false;
         return "<div class='qvq-model-chip" + (off ? " off" : "") + "' title='" + esc(m.id) + "'>" +
+          "<span class='qvq-model-chip-main'>" +
           "<span class='qvq-model-chip-id'>" + esc(m.id) + (off ? " · " + esc(t("off")) : "") + "</span>" +
-          "<span class='qvq-model-chip-meta'>" + modelsModelChips(m) + "</span></div>";
+          "<span class='qvq-model-chip-meta'>" + modelsModelChips(m) + "</span></span>" +
+          "<input type='checkbox' data-mswitch='" + esc(m.id) + "'" + (off ? "" : " checked") + "/></div>";
       }).join("") || "<span class='qvq-tool-desc'>" + esc(t("model_none")) + "</span>";
       var modelsHtml = collapsible
         ? "<details class='qvq-provider-fold'><summary>" + esc(t("models_id")) + " · " + models.length + "</summary><div class='qvq-model-grid'>" + chips + "</div></details>"
@@ -471,10 +491,11 @@
         "<div class='qvq-actions'>" +
         "<button class='qvq-btn small ghost' data-act='models' data-id='" + esc(p.id) + "'>" + esc(t("model_manage")) + "</button> " +
         "<button class='qvq-btn small ghost' data-act='edit' data-id='" + esc(p.id) + "'>" + esc(t("edit")) + "</button> " +
-        "<button class='qvq-btn small" + (pOff ? "" : " danger") + "' data-act='ptoggle' data-id='" + esc(p.id) + "' data-on='" + (pOff ? "1" : "0") + "'>" + esc(pOff ? t("provider_enable") : t("provider_disable")) + "</button> " +
         (firstModel ? "<button class='qvq-btn small ghost' data-act='test' data-model='" + esc(firstModel) + "'>" + esc(t("test")) + "</button> " : "") +
         "<button class='qvq-btn small danger' data-act='pdel' data-id='" + esc(p.id) + "'>" + esc(t("del")) + "</button>" +
-        "</div></div>" + modelsHtml + "</div>";
+        "</div>" +
+        "<input type='checkbox' data-ptoggle='" + esc(p.id) + "'" + (pOff ? "" : " checked") + "/></div>" +
+        modelsHtml + "</div>";
     }).join("");
     box.innerHTML = "<div class='qvq-provider-list'>" + cards + "</div>";
     box.querySelectorAll("button[data-act]").forEach(function (btn) {
@@ -494,18 +515,51 @@
             if (r && r.ok) toast(t("model_test_ok") + " · " + (r.model || "") + " · " + r.ms + "ms");
             else toast((r && r.error) || t("model_test_fail"), true);
           });
-        } else if (act === "ptoggle") {
-          api("/api/qvq/providers/toggle", "POST", { id: pid, enabled: btn.getAttribute("data-on") === "1" }).then(function (r) {
-            if (r && r.ok) toast(t("saved"));
-            else toast((r && r.error) || "error", true);
-            loadModels();
-          });
         } else if (act === "models") {
           if (provider) openModelsModal(provider);
         } else if (provider) {
           openModelModal(provider);
         }
       };
+    });
+    // provider 级启停：头部右侧 qvSwitch 走 providers/toggle
+    box.querySelectorAll("input[data-ptoggle]").forEach(function (cb) {
+      qvSwitch.wrap(cb);
+      cb.addEventListener("change", function () {
+        api("/api/qvq/providers/toggle", "POST", { id: cb.getAttribute("data-ptoggle"), enabled: cb.checked }).then(function (r) {
+          if (r && r.ok) {
+            toast(t("saved"));
+          } else {
+            cb.checked = !cb.checked; // 失败先拨回，loadModels 重渲染后以缓存为准
+            toast((r && r.error) || "error", true);
+          }
+          loadModels();
+        });
+      });
+    });
+    // 模型快捷开关：chip 行内 qvSwitch，翻转 enabled 后走 providers/save 整卡保存
+    box.querySelectorAll("input[data-mswitch]").forEach(function (cb) {
+      qvSwitch.wrap(cb);
+      cb.addEventListener("change", function () {
+        var card = cb.closest(".qvq-provider-card");
+        var provider = findProvider(card ? card.getAttribute("data-id") : "");
+        if (!provider) return;
+        var mid = cb.getAttribute("data-mswitch");
+        var models = (provider.models || []).slice();
+        for (var i = 0; i < models.length; i++) {
+          if (String(models[i].id) === mid) {
+            var next = {};
+            for (var k in models[i]) next[k] = models[i][k];
+            next.enabled = cb.checked;
+            models[i] = next;
+            break;
+          }
+        }
+        var wanted = cb.checked;
+        saveProviderModels(provider, models, null, function () {
+          cb.checked = !wanted; // 保存失败：开关拨回（缓存未变）
+        });
+      });
     });
     try { cardifyTables(box); } catch (e) {}
   }
@@ -543,7 +597,7 @@
     }
   }
 
-  function saveProviderModels(provider, models, cb) {
+  function saveProviderModels(provider, models, cb, onFail) {
     api("/api/qvq/providers/save", "POST", {
       id: provider.id, name: provider.name, base_url: provider.base_url,
       api_key: "", models: models
@@ -552,6 +606,7 @@
         toast(t("saved"));
         reloadModels(cb);
       } else {
+        if (onFail) try { onFail(); } catch (e) {}
         toast((data && data.error) || "error", true);
       }
     });
@@ -697,6 +752,16 @@
     var body = el("qvq-modal-body");
     var cancel = body.querySelector("[data-form-cancel]");
     if (cancel) cancel.onclick = function () { openModelsModal(provider); };
+    // 自有组件接管：单个布尔勾选 → 开关（qvSwitch.wrap），输入类型多选 → qvMulti.wrap；
+    // 原生控件隐藏保留，保存/detect 回填（setCheck）仍读写同一批控件
+    qvSwitch.wrap(body.querySelector("#qvq-me-tool"));
+    qvSwitch.wrap(body.querySelector("#qvq-me-reason"));
+    qvSwitch.wrap(body.querySelector("#qvq-me-enabled"));
+    qvMulti.wrap([
+      body.querySelector("#qvq-me-image"),
+      body.querySelector("#qvq-me-video"),
+      body.querySelector("#qvq-me-pdf")
+    ]);
     var smart = body.querySelector("#qvq-me-smart");
     function setVal(id, value) {
       var node = body.querySelector(id);
@@ -1846,6 +1911,7 @@
       } else {
       var rows = sessions.map(function (session) {
         var acct = accountOf(session.chat_key);
+        var pol = sessionPolicyOf(session);
         var flags = "";
         if (session.pinned) flags += ' <span class="qvq-chip">' + esc(t("chat_pin_s")) + "</span>";
         if (session.archived) flags += ' <span class="qvq-chip">' + esc(t("chat_archived")) + "</span>";
@@ -1853,7 +1919,8 @@
         var checkCell = sessionsBatchMode
           ? "<td class='qvq-col-check'><input type='checkbox' class='qvq-session-check' data-check-key='" + esc(session.chat_key) + "'/></td>"
           : "";
-        return "<tr>" + checkCell +
+        // muted 会话整行灰化；策略控件（屏蔽/省流/优先级）放操作列最前
+        return "<tr" + (pol.muted ? " class='qvq-sess-muted'" : "") + ">" + checkCell +
           "<td><b>" + esc(sessionDisplayName(session)) + "</b>" +
           (acct ? ' <span class="qvq-acct-badge" title="@' + esc(acct) + '">@' + esc(acct) + "</span>" : "") +
           flags +
@@ -1861,7 +1928,8 @@
           "<td>" + esc(session.persona || "-") + "</td>" +
           "<td>" + esc(session.turns) + "</td><td class='qvq-tool-desc'>" + esc(session.preview || "-") + "</td>" +
           "<td class='qvq-col-time'>" + esc(fmtTime(session.updated)) + "</td>" +
-          "<td><button class='qvq-btn small ghost' data-view='" + esc(session.chat_key) + "'>" + esc(t("sessions_msgs")) + "</button> " +
+          "<td>" + sessPolicyCellHtml(session.chat_key) +
+          "<button class='qvq-btn small ghost' data-view='" + esc(session.chat_key) + "'>" + esc(t("sessions_msgs")) + "</button> " +
           "<button class='qvq-btn small ghost' data-access='" + esc(session.chat_key) + "'>" + esc(t("sess_members")) + "</button> " +
           "<button class='qvq-btn small danger' data-key='" + esc(session.chat_key) + "'>" + esc(t("reset_btn")) + "</button></td></tr>";
       }).join("");
@@ -1882,6 +1950,7 @@
         };
       });
       bindSessionBatch();
+      bindSessionPolicyControls(el("qvq-sessions-list"), sessions);
       el("qvq-sessions-list").querySelectorAll("button[data-key]").forEach(function (btn) {
         btn.onclick = function () {
           confirmDialog(t("confirm_del")).then(function (ok) {
@@ -2882,13 +2951,27 @@
     }
   }
 
+  // 列表勾选组（动态工具注入/权限覆盖等 list 字段）接管为 qvMulti 多选下拉：
+  // 原生 checkbox 隐藏保留在 .qvq-list-checks 容器内，序列化仍读 :checked，change 冒泡照常收草稿
+  function enhanceSettingsChecks(scope) {
+    (scope || el("qvq-settings-form")).querySelectorAll(".qvq-list-checks").forEach(function (div) {
+      if (div.getAttribute("data-qvq-multi")) return;
+      div.setAttribute("data-qvq-multi", "1");
+      div.classList.add("qvq-multi-host");
+      qvMulti.wrap(div.querySelectorAll("input[data-val]"));
+    });
+  }
+
   function refreshSettingsChecks(source) {
     var box = el("qvq-settings-form");
     if (!box) return;
     box.querySelectorAll("[data-checks]").forEach(function (node) {
       var f = settingsSchemaOf(node.getAttribute("data-key"));
       if (f && f.items === source) {
+        // 重绘前先摘 data-qvq-multi 标记，重建后重新接管
+        node.removeAttribute("data-qvq-multi");
         node.innerHTML = settingsChecksHtml(f, settingsDraft[f.key]);
+        enhanceSettingsChecks(); // 全表扫描（node 自身即宿主，后代查询匹配不到）
       }
     });
   }
@@ -3126,6 +3209,7 @@
       html += settingField(f);
     });
     box.innerHTML = html;
+    enhanceSettingsChecks(box);
     settingsUpdateSaveBtn();
   }
 

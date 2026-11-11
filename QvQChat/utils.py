@@ -23,7 +23,7 @@ _WEEKDAY_ZH = ("周一", "周二", "周三", "周四", "周五", "周六", "周�
 OUTPUT_TAG_RE = re.compile(r"^\[\[(转发|直发)\]\]\s*")
 # 模型经常把标签写进正文中间、漏写成单括号，甚至塞进 send_message 内容里——
 # 统一清扫：双括号任意位置 + 单括号行首（独占一行或同行带正文，如 "[直发] xxx"）
-# 同行带正文是线上实测泄露形态：单/双括号判断都命中不了就原样发出去了
+# 标签与正文同行的形态：单/双括号规则都不命中时会原样发出
 STRAY_TAG_RE = re.compile(r"^\s*\[\[?(转发|直发)\]\]?\s*", re.MULTILINE)
 STRAY_TAG_INLINE_RE = re.compile(r"\[\[(转发|直发)\]\]")
 
@@ -49,19 +49,72 @@ def strip_stray_tags(text: str) -> str:
     return text.strip()
 
 
-# 假媒体标记：模型不调 TTS/表情包工具，自己写「[语音] 文字」假装发过语音。
-# 剥掉标记保留正文（用户至少能看到内容）；真语音走 tts_* 工具是唯一正道
-VOICE_PREFIX_RE = re.compile(r"^\s*[\[［](语音|声音|voice|audio)[\]］]\s*[:：]?\s*", re.IGNORECASE)
+# 假媒体标记：模型不调工具，自己写「[语音] 文字」「[表情包]」假装发过媒体。
+# 剥掉标记保留正文（用户至少能看到内容）；真媒体走对应工具发送是唯一正道。
+# 全媒介封闭词表（语音/表情包/图片/视频/文件系）——三类正则共用一份词表保证口径一致。
+# 红线：只处理"括号包裹的标记"形态，且标记内容必须恰为词表词——带正文的普通句子
+# （如"发你个表情包"、"表情包见附件"）没有标记结构，绝不误删
+MEDIA_TAG = r"(?:语音|声音|voice|audio|表情包|贴图|表情|sticker|图片|照片|相片|image|pic|视频|video|文件|file)"
+FAKE_MEDIA_PREFIX_RE = re.compile(
+    rf"^\s*[\[［（(【]\s*{MEDIA_TAG}\s*[\]］）)】]\s*[:：]?\s*", re.IGNORECASE
+)
 
 
 def strip_fake_media_prefix(reply: str) -> str:
-    """剥掉开头的假媒体标记（[语音]/[voice] 等），只处理行首形态。"""
+    """剥掉开头的假媒体标记（[语音]/[表情包]/（图片）等），只处理行首形态。"""
     text = str(reply or "")
     prev = None
     while prev != text:
         prev = text
-        text = VOICE_PREFIX_RE.sub("", text, count=1)
+        text = FAKE_MEDIA_PREFIX_RE.sub("", text, count=1)
     return text.strip()
+
+
+# 假媒体声明行：模型没真发语音/图片，却塞一行「（语音已发）」「（合成语音中）」宣告
+# 已发/将发（用户根本收不到媒体）。必须用封闭词表锚定整行，不能泛化匹配——行内带
+# 正文的（"（语音已发）喵？！"）是用户正文的一部分，误删等于吞消息。只匹配
+# "整行仅为声明"的形态（动词集合与媒介词表相互独立，动词保持最小封闭集）
+FAKE_CLAIM_RE = re.compile(
+    rf"^[（(【\[]?\s*{MEDIA_TAG}?\s*"
+    r"(合成语音后发送|语音合成后发送|合成语音中|语音合成中|稍后语音发送|录好后再发|"
+    r"已发出去|已发送|已发|发送成功|发出去啦|发出去咯|发好了|sent)"
+    r"\s*[！!。~～]?\s*[）)】\]]?$",
+    re.IGNORECASE,
+)
+# 裸标签行：整行只有「[语音]」「[表情包]」「（图片）」「【video】」这类标记、
+# 后面没有任何正文（分段器把"标记+正文"切成独立气泡时，标记就成了孤行）。
+# 与 strip_fake_media_prefix 的分工：prefix 剥"行首标记+同内容"，这里只删
+# "整行仅有标记"的孤行
+FAKE_LABEL_RE = re.compile(
+    rf"^[\[［（(【]\s*{MEDIA_TAG}\s*[\]］）)】]\s*[:：]?[。.!！~～]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def strip_fake_media_claims(reply: str) -> str:
+    """剥掉整行仅为假媒体声明/裸标记的行（（语音已发）/语音合成中！/[表情包] 等），保留其它内容。
+
+    只删"整行就是声明/标记"的行——行内带正文的（"（语音已发）喵"）保留，防止误删用户正文；
+    循环剥到稳定（声明行删除后剩下的仍是声明行时一并清掉）。
+    """
+    text = str(reply or "")
+    prev = None
+    while prev != text:
+        prev = text
+        text = "\n".join(
+            line for line in text.splitlines()
+            if not FAKE_CLAIM_RE.match(line.strip()) and not FAKE_LABEL_RE.match(line.strip())
+        )
+    return text.strip()
+
+
+def collapse_spaces(text: str) -> str:
+    """规范化文本：剥首尾空白 + 连续空白（含换行/制表/全角空格）压成单空格。
+
+    同回合重复发言判定用（阶段发言 vs 阶段发言、阶段发言 vs 最终回复）：
+    只比内容不比排版，换行差异不算新发言。
+    """
+    return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
 # 元叙述开头：模型把"回复策略/分析过程"写进正文首段（随后才是正式回复）
@@ -73,7 +126,7 @@ META_SECTION_RE = re.compile(
 def strip_meta_section(reply: str) -> str:
     """段级元文本剥离：首段是思考/策略/分析过程而后面还有正文时剥掉首段。
 
-    线上实测形态：首段「回复策略：本喵看不到图……保持简短口语化……就这么回。」
+    典型形态：首段「回复策略：……保持简短口语化……就这么回。」
     空行后才是正式回复——分段器把分析段切第一条发出去了。只剥首段、要求
     后面还有内容（防止整条唯一段落被误删）；保守词表锚定，不做泛化判断。
     """

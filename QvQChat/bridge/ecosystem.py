@@ -359,13 +359,18 @@ class EcosystemBridge:
         )
 
     def service_access(self, module: str, service: str, service_meta: dict | None = None) -> str:
-        """服务访问级别：运营方覆盖 > 模块自声明 > 默认 admin。
+        """服务访问级别：运营方覆盖 > 模块自声明 > 条目自带 > 默认档（eco_default_access，默认 safe）。
 
         声明来源（优先级从高到低）：
         1. 运营方配置 eco_admin / eco_safe（「模块:服务」，两侧支持通配）——最终否决权
         2. qvq_access 约定服务返回的 {"服务名": "safe"|"admin"}
         3. 服务条目自带 access 字段（未来框架透传 metadata 时自动生效）
-        4. 默认 admin
+        4. 默认档走 eco_default_access 配置（默认 safe）
+
+        默认 safe 的理由：默认 admin 会把 TTS/表情包这类表达型生态
+        工具对普通成员整体藏起来——模型看不到工具就发不出语音/表情，只能瞎猜
+        方法名或把工具名当正文发出去；模块真有危险服务应由其自声明 admin 或
+        运营方经 eco_admin 否决，而不是靠默认档兜底误伤。
         """
         cfg = self.main.cfg
         if _match_service_rules(module, service, getattr(cfg, "eco_admin", []) or []):
@@ -379,7 +384,7 @@ class EcosystemBridge:
             inline = str(service_meta.get("access") or "").strip().lower()
             if inline in ("safe", "admin"):
                 return inline
-        return "admin"
+        return str(getattr(cfg, "eco_default_access", "safe") or "safe").strip().lower()
 
     def is_safe_service(self, module: str, service: str) -> bool:
         """兼容旧调用名：判定服务是否对所有人开放。"""

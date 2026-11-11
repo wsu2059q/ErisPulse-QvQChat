@@ -4,46 +4,38 @@
 
 <img src="https://raw.githubusercontent.com/ErisPulse/ErisPulse/main/.github/assets/ErisPulseLogo.png" width="180" alt="QvQChat" />
 
-<img src="https://raw.githubusercontent.com/ErisPulse/.github/main/assets/badges/module.svg" alt="ErisPulse Module" />
 </div>
 
 # QvQChat
 
-**ErisPulse 用の汎用エージェントモジュール。ボットがいるチャットプラットフォームで会話し、ツールを呼び出し、コードを書いて実行し、定期タスクを組み、長期メモリを管理します。**
+**ErisPulse 用の汎用エージェントモジュール：ボットが参加しているプラットフォームで会話し、ツールを呼び、コードを書いて実行し、定期タスクを組み、長期記憶を保ちます。**
 
-QvQChat の中心にあるのはツールループです。モデルを接続すると、そのモデルは任意の ErisPulse アダプターを通じてメッセージの送受信を行い、インストール済みの他モジュールのサービスを呼び出し、ファイルを読み書きし、シェルコマンドと Python コードを実行し、定期タスクを作成し、残す価値のあることを長期メモリに保存します。ある時点でどのツールが存在するかは、何をインストールしたかだけで決まり、モジュールの追加や削除に再起動は要りません。
-
-すでに ErisPulse ボットを運用していて、返事をするだけでなく実際に仕事をこなしてほしい人向けに書かれています。モデルプールには任意の OpenAI 互換エンドポイントを登録し、誰がどのツールを使えるかを決めます。あとはエコシステムのモジュールを足すたびに、エージェントの能力が増えていきます。
-
-動作には ErisPulse 2.8.0 以上と、少なくとも 1 つのプラットフォームアダプターが必要です。Dashboard がなくても単独で動くウェブコンソールを同梱しており、チャット側とウェブ側は同じパイプラインを共有します。QQ から始めたタスクはブラウザにリアルタイムで表示され、そこから停止することもできます。
+任意の OpenAI 互換モデルを接続するだけで使えます。インストール済みのアダプターを通じて、メッセージの送受信、他モジュールのサービス呼び出し、ファイルの読み書き、コマンド実行、定期タスクの作成が可能です。使えるツールは導入状況に依存し、モジュールの追加・削除に再起動は不要です。Web コンソールを内蔵し、チャット側と Web 側は同じ実行経路を共有します。
 
 <p>
+
+  <a href="https://github.com/ErisPulse/ErisPulse"><img src="https://raw.githubusercontent.com/ErisPulse/.github/main/assets/badges/module.svg" alt="ErisPulse Module" /></a>
   <a href="https://pypi.org/project/ErisPulse-QvQChat/"><img src="https://img.shields.io/pypi/v/ErisPulse-QvQChat?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI"></a>
   <a href="https://pypi.org/project/ErisPulse-QvQChat/"><img src="https://img.shields.io/badge/Python-3.10+-FFD43B?style=for-the-badge&logo=python&logoColor=blue" alt="Python"></a>
   <a href="https://github.com/wsu2059q/ErisPulse-QvQChat/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/wsu2059q/ErisPulse-QvQChat/ci.yml?style=for-the-badge&label=CI" alt="CI"></a>
   <a href="https://github.com/wsu2059q/ErisPulse-QvQChat/pkgs/container/erispulse-qvqchat"><img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
+
 </p>
 
-<img src=".github/assets/overview.png" width="860" alt="QvQChat ウェブコンソール" />
-
----
+<img src=".github/assets/overview.png" width="860" alt="QvQChat コンソール" />
 
 ## インストール
 
-ErisPulse CLI で:
+Python 3.10+、ErisPulse >= 2.8.0、およびプラットフォームアダプターが 1 つ以上必要です。
 
 ```bash
 epsdk install ErisPulse-QvQChat
-```
-
-または pip で（Python 3.10+、ErisPulse >= 2.8.0、プラットフォームアダプターが 1 つ以上必要です）:
-
-```bash
+# または
 pip install ErisPulse-QvQChat
 ```
 
-または Docker で。イメージは ErisPulse 公式イメージをベースに構築されており、モジュール込みです:
+Docker:
 
 ```bash
 docker run -d --name qvqchat -p 8000:8000 --restart unless-stopped ghcr.io/wsu2059q/erispulse-qvqchat:latest
@@ -51,104 +43,62 @@ docker run -d --name qvqchat -p 8000:8000 --restart unless-stopped ghcr.io/wsu20
 
 ## クイックスタート
 
-1. モジュールとアダプターを少なくとも 1 つインストールします。例: `epsdk install ErisPulse-OneBotAdapter`
-2. Dashboard を開いて QvQChat ビューに入ります。モデルプールページで OpenAI 互換モデルを追加します。名前、Base URL、API キー、モデル ID の 4 項目だけで登録できます。
-3. エージェントに管理者を伝えます。`admins` が空の間はチャット側に管理者権限を持つ人がおらず、コマンド実行などのツールはチャット側で使えません:
+1. モジュールとアダプターをインストールします（例: `epsdk install ErisPulse-OneBotAdapter`）。
+2. Web コンソールを開き、モデルプール画面で OpenAI 互換モデルを追加します（名前、Base URL、API Key、モデル名）。
+3. 管理者を設定します:
 
 ```toml
 [QvQChat]
-admins = ["123456"]   # チャットプラットフォームでのあなたのユーザー ID
+admins = ["123456"]   # チャットプラットフォームでのあなたのユーザー id
 ```
 
-4. `http://<host>:8000/QvQChat/view` で単独のコンソールを開くか、Dashboard サイドバーの QvQChat エントリを使います。Dashboard が入っていればそのログイントークンをそのまま使います。入っていなければ QvQChat が初回起動時にアクセストークンを生成してログに出力します。`QvQChat.view_token` で自分で指定することもできます。
-5. ボットに個チャットを送るか、グループでメンションしてください。ユーザーがすでにいる場所で答えます。
+4. `http://<host>:8000/QvQChat/view` にアクセスするか、Dashboard のサイドバーから開きます。Dashboard 導入時はそのトークンを再利用し、単体動作時はアクセストークンが起動ログに出力されます（設定も可能）。
+5. ボットに DM するか、グループで @ します。
 
-チャットコマンドの本体は `/qvq` です（`/agent` は互換エイリアスとして残っています。各サブコマンドは中国語表記も受け付けます）:
+## コマンド
 
-| コマンド | 動作 |
-|---|---|
-| `/qvq` | コマンドのヘルプを表示 |
-| `/qvq reset` | このセッションの会話をリセット |
-| `/qvq persona [id]` | ペルソナの一覧または切り替え |
-| `/qvq start` | ペルソナの開始メッセージを再送信（管理者） |
-| `/qvq tasks` | 定期タスクの一覧 |
-| `/qvq memories` | メモリ・事実・ユーザープロファイルの確認、管理者はカテゴリ別に消去可能 |
-| `/qvq compact` | このセッションのコンテキストを今すぐ圧縮 |
-| `/qvq status` | モデル・ツール・セッションの概況 |
-| `/qvq takeover [分]` | このセッションを引き継ぎ（管理者）、デフォルト 10 分 |
-| `/qvq release` | 引き継ぎを解除 |
-| `/qvq trigger [モード]` | トリガールールの表示/設定（all/at_only/lurk/off） |
-| `/qvq listen on/off` | このチャットの監視オン/オフ（プライバシー） |
-| `/qvq memories` | セッションの記憶/プロファイル表示 |
-| `/qvq rewind [n]` | 直近 n 件を巻き戻し |
-| `/qvq whoami` | 身元/管理者判定の診断 |
+メインコマンドは `/qvq`（別名 `/qvqchat`）。
 
----
+| コマンド | 権限 | 内容 |
+|---|---|---|
+| `/qvq` | 全員 | インタラクティブメニュー |
+| `/qvq card persona\|tasks\|usage` | 全員 | ペルソナ / タスク / 使用量カードを生成 |
+| `/qvq status` · `/qvq whoami` | 全員 | 稼働状況 · 権限診断 |
+| `/qvq todo` | 全員 | ToDo の確認と完了 |
+| `/qvq quota` | 全員 | 自分の使用量を確認 |
+| `/qvq rewind [n]` | 全員（最大 6） | 直近のメッセージを巻き戻す |
+| `/qvq persona [id]` | 管理者 | ペルソナの確認 / 切り替え |
+| `/qvq reset` · `/qvq compact` | 管理者 | セッションリセット · 即時圧縮 |
+| `/qvq trigger [mode]` | 管理者 | トリガールール: all / at_only / lurk / off |
+| `/qvq listen on\|off` | 管理者 | このチャットの傍聴可否 |
+| `/qvq mute` · `/qvq unmute` | 管理者 | このチャットのミュート / 解除 |
+| `/qvq policy high\|normal\|low` | 管理者 | セッションのリソース優先度 |
+| `/qvq lowtoken on\|off` | 管理者 | セッション単位の節約モード |
+| `/qvq subjobs` · `/qvq health` | 管理者 | バックグラウンドタスク / 即時ヘルスチェック |
+| `/qvq takeover [分]` · `/qvq release` | 管理者 | セッションの引き継ぎ / 解放 |
+| `/qvq memories clear profile\|facts` | オーナー | プロファイル / 事実の消去 |
 
-## エージェントにできること
+## 機能
 
-### 実用的なツールを揃えたツールループ
+- **ツールループ**: メッセージ送受信、プラットフォーム API、ファイル、シェルと Python の実行、長期記憶、知識ベース、定期タスク、ペルソナ。複数ステップの作業は独立セッションのサブエージェントに委任でき、バックグラウンド実行と結果の自動報告に対応します。
+- **モデルプール**: 任意の OpenAI 互換エンドポイントをプロバイダー単位で管理。フェイルオーバー、能力マッチング、視覚モデルへの委任、コスト試算と使用量記録に対応。プロバイダーや個別モデルを一時的に無効化できます。
+- **コンテキスト**: 長いセッションは要約に圧縮され事実も抽出されます。手動圧縮と巻き戻しも可能です。
+- **グループチャット**: トリガールール、ウェイクプレフィックス、分割返信、まとめ転送、引用返信。ペルソナはグループ単位・メンバー単位で紐付けできます。
+- **記憶**: セッション単位の長期記憶と、セッションを跨ぐユーザープロファイル。知識ベースはキーワードトリガーとセマンティック検索（embedding 設定時）に対応。
+- **定期タスク**: 自然言語で作成、cron / at / in / every の 4 形式、実行履歴を確認可能。
+- **拡張**: ErisPulse モジュールが宣言したサービスは自動的にツールになります。
+- **マルチアカウント**: 同一プラットフォームの複数ボットアカウントでセッションを分離できます。
+- **節約モード**: グローバルスイッチ。安価なモデルを優先し入力を圧縮します。
 
-内蔵ツールはメッセージ送受信（`send_message`、`send_dsl`）、プラットフォーム API、ファイルアクセス、シェルと Python の実行、長期メモリ、ナレッジベース、定期タスク、ペルソナをカバーします。`run_python_sdk` はメインプロセス内で Python を実行するため、スクリプトから sdk・アダプター・storage に直接触れます。`spawn_agent` は、単独で探索する価値のあるタスクのために独立したセッションのサブエージェントを派遣し、結論だけを本体の会話に持ち帰ります。同じツールが 2 回連続で失敗すると、エラー要約つきの修正ヒントが注入され、モデルが自分で引数を直して再試行します（`tool_self_heal`、デフォルトで有効）。
+## コンソール
 
-ツールには他に 2 つの由来があります。接続した MCP サーバーはそれぞれ自身のツールを提供し（stdio と Streamable HTTP の両方に対応）、`services` を宣言した ErisPulse モジュールのサービスも自動的に呼び出し可能になります。詳しくは下の [QvQChat を拡張する](#qvqchat-を拡張する) を参照してください。
+<img src=".github/assets/chat.png" width="49%" alt="チャット" /> <img src=".github/assets/models.png" width="49%" alt="モデルプール" />
 
-新しい複数ステップのタスクを終えたあとは、その手順をスキルとして保存するようモデルに頼めます。スキルは `data/QvQChat/skills` 以下のただの Markdown ファイルで、必要なときにシステムプロンプトへ注入されます。`skill_induct` を切ればこの仕組み全体を無効化できます。
+ストリーミング応答とツール呼び出しの段階表示、実行中タスクの停止。セッションのピン留め・アーカイブ・改名・読み取り専用共有に対応。管理画面はモデルプール、ペルソナ、知識ベース、スキル、ツール、MCP、定期タスク、記憶、セッション、監査、ストレージを網羅します。`GET /v1/models` と `POST /v1/chat/completions`（ストリーミング対応）の OpenAI 互換エンドポイントも提供します。
 
-### ウェブコンソール
+## 拡張
 
-<img src=".github/assets/chat.png" width="49%" alt="チャットページ" /> <img src=".github/assets/models.png" width="49%" alt="モデルプールページ" />
-
-`/QvQChat/view` のチャットページは返答をストリーミング表示し、各ツール呼び出しはタイムライン上で 1 ステップを占め、モデルの思考過程は折りたたみブロックで示されます。後で送りたいメッセージを置いておく送信待ちキューと、実行中タスクを止めるボタンもあります。ページを再読み込みしても、あとで戻ってきても、実行中のタスクは続きから追えます。セッションはピン留め・アーカイブ・改名でき、新しいセッションにはモデルが自動で名前を付けます。どのセッションも、有効期限とトークン予算を設定できる臨時の読み取り専用共有リンクで共有できるほか、Markdown に書き出せます。
-
-コンソールは管理ページも兼ねます。モデルプール、ペルソナ、ナレッジベース、監査ログ、タスク実行記録、コスト見積りがあり、設定ページはすべての設定項目を適切なウィジェットで描画し、検証と未保存チェックつきです。プログラムから使うための OpenAI 互換エンドポイント（`GET /v1/models` とストリーミング対応の `POST /v1/chat/completions`）もあり、同じアクセストークンで認証します。
-
-両側が同じパイプラインを共有しているため、エージェントがチャットプラットフォームで始めたタスクは、ツール呼び出しごとにブラウザへリアルタイムに現れ、そこから止めることもできます。
-
-### グループとペルソナ
-
-グループではメンションで起動します。起動ワード（`wake_prefixes`）を追加でき、個チャットはデフォルトで応答します。通常の会話の返答は段落ごとに分割して 1 通ずつ、設定可能な人間らしい間隔で送られます。ツールタスクの結果は、対応プラットフォームでは統合転送カードにまとめられます。`reply_narrate` を有効にすると、エージェントはツールタスクを進めながら実況します。何をするか一言告げ、各結果を短く報告し、最後に簡潔な結論で締め、それぞれ別のメッセージとして送られます。
-
-ペルソナはシステムプロンプト、開始メッセージ、口調パラメータ、会話例を持ち、使えるツールを限定することもできます。グループメンバーにはメンバー単位のペルソナを割り当てられ、グループ単位、そしてグローバルへと段階的にフォールバックします。`group_isolation` を使うと、グループのメンバーごとに独立したコンテキスト・ペルソナ・メモリを持たせられます。メンションなしでグループに自主的に口を挟む機能は、意図的にコアには入れてありません。それは参加判断プラグインに委ねられ、`participation_enabled` を有効にするまでオフのままです（下の QvQStalker を参照）。
-
-<img src=".github/assets/qq.png" width="680" alt="QQ グループで働くエージェント" />
-
-### メモリ、ユーザープロファイル、ナレッジベース
-
-エージェントはセッションごとに長期メモリを持ち（グローバルスコープもあります）、関連するものを毎回のリクエストに注入し、ツールを使って覚えさせる・忘れさせることもできます。好みや取り決めのような事実は会話から自動的に抽出され、あとで注入されます。さらに、同じユーザーの全セッションの事実とメモリは、定期的に（デフォルトでは 6 時間ごと）クロスセッションのプロファイルへ固められます。30 日間新しい事実で強化されないプロファイル項目は自然に消えます。`/qvq memories` とコンソールのメモリページで保存内容を確認でき、カテゴリ別に消去もできます。
-
-ナレッジベースはやや長い文章を置く場所です。項目はチャンク化されてキーワードスコアリングで検索され、関連する断片がシステムプロンプトへ自動注入されます。項目に SillyTavern の世界本（ワールドブック）のようなトリガーキーワードを持たせれば、話題に出たときだけ該当の設定が注入されます。OpenAI 互換の embedding エンドポイントを設定すると検索はコサイン類似度に切り替わり、どこかが使えなければキーワード検索へ自動で戻ります。
-
-### 自分の面倒を見るモデルプール
-
-モデルはプロバイダごとのプールに置かれます。任意の OpenAI 互換エンドポイントが使え、主要プロバイダにはプリセットがあるため追加は短いフォームで済みます。モデル項目は models.dev カタログから能力フラグ（画像、ファイル、ツール呼び出し、推論）と価格で補完され、どちらも手動で上書きできます。リクエストが失敗するとプール順でフェイルオーバーし、3 回連続で失敗したモデルは指数バックオフで冷却されます。フェイルオーバーチェーンは、必要な能力を持たないモデルを飛ばします。メインモデルが画像を見られないときは、ビジョンモデルが内容を説明してテキストを引き渡します。難度判定ルーティングは雑談を安いモデルに、コードや長い分析を強いモデルに振り分けられますが、実験的でデフォルトはオフです。使用量はモデル別・日別に記録されコスト見積り付き、要約やタイトル付けのような裏方は `task_models` で安いモデルに任せられます。許可するなら（`self_config`、デフォルトで有効）、エージェント自身が管理者専用ツールでモデルプール・MCP サーバー・設定を管理することさえできます。
-
-### 長いタスクに耐えるコンテキスト
-
-古いツール出力は絶えず間引きされます。推定コンテキスト量がしきい値（CJK 対応の推定、デフォルト 128000）を超えると、古いターンは捨てられるのではなく早期コンテキストの要約にまとめられます。圧縮は N ターンごとの予防的実行や、`/qvq compact` での手動実行もできます。オプションの予算モードは、選んだモデルのコンテキストウィンドウに合わせてシステムプロンプトの各部位と履歴を優先度付きで詰め込み、あふれると圧縮を起こします。圧縮の際にはエンティティ・好み・やることを事実としても抽出されます。ツール予算は大きく（デフォルトで 50 ラウンド・150 回）、上限に近づくと強制切断ではなく収束のリマインダーが渡されます。
-
-### 再起動に耐える定期タスク
-
-定期タスクは、エージェント自身がツールを通じて自然言語で作成します。`cron:0 9 * * 1-5`、`at:2026-10-17 09:00`、`in:30m`、`every:2h` の 4 形式に対応します。deep 指定のタスクは計画・実行・レビューの 3 段階で走り、レビューで欠落が見つかれば 1 回だけ有界の修正を行います。実行記録は保存されコンソールで見られます。ErisPulse-Cron が入っていれば cron タスクはそちらに委任されます。生成の途中でプロセスが再起動しても、中断された返答は検出されて再実行されます——10 分以内の新しいマークのみ対象で、起動 1 回あたり最大 5 件、古い残骸は破棄されるため、数時間前の話題が勝手に再送されることはありません。送信失敗キューは起動時に再生され、中断されたタスク実行には印が付きます（`recovery_enabled` と関連設定）。
-
-### 安全モデル
-
-コンピューター操作には 3 つのレベルがあります。`strict` はコマンドもコードも実行せず、ホワイトリストのディレクトリ内で読み取りのみ許可します。デフォルトの `standard` では、危険なコマンドはチャット内で確認してから実行され、確認の表示にはコマンド全文が含まれ、ファイルアクセスは `work_dirs` 内に限定されます。`permissive` は制限を外し、代わりにすべての操作を監査ログに記録します。ツールは、誰でも使える基本の安全セット（メッセージング、メモリ、読み取り専用ファイルアクセス、定期タスク）と、管理者専用ツール（実行、ファイル書き込み、サブエージェント、アダプターとモジュールの呼び出し）に分かれます。定期タスクは作成者の権限で動きます。`admins` が管理者を決め、`safe_tools` は特定のツールを全員に開放し、`owner_only` はエージェント全体をオーナー専用にし、`trust_agent` は確認を省略します（監査は残ります）。
-
----
-
-## 姉妹プラグイン
-
-QvQChat を拡張する 2 つの独立モジュールがあり、拡張ポイントで何ができるかの見本にもなっています:
-
-- [ErisPulse-QvQStalker](https://github.com/wsu2059q/ErisPulse-QvQStalker) は、観測チャネルを通じてグループの会話を追いかけ、いつ口を挟むかをエージェント自身に判断させます。話題の熱量トラッキング、5 層の判定、衝動値の組み合わせで発言のタイミングを決め、15 個の挙動パラメータは `qvq_settings` 経由で登録され、設定ページから直接調整できます。
-- [ErisPulse-QvQMemes](https://github.com/wsu2059q/ErisPulse-QvQMemes) はエージェントにスタンプの習慣を与えます。`send_sticker` ツールでモデルが今の場に合う一枚を選び、グループの画像は観測チャネルから自動収集されてビジョンモデルがタグ付けし、鮮度の重み付けで同じ数枚の繰り返しを防ぎます。
-
-グループへの参加は `participation_enabled` を有効にするまでオフです。プラグインを入れること自体ではゲートは開きません。
-
-## QvQChat を拡張する
-
-拡張は普通の ErisPulse モジュールで、専用のインターフェースは要りません。`get_meta()` で `services` を宣言したモジュールは、その各サービスを自動的にエージェントのツールにします。インストールした瞬間に現れ、アンインストールすれば消えます:
+`get_meta()` で `services` を宣言すると、各サービスがツールになります:
 
 ```python
 from ErisPulse.Core.Bases import BaseModule, ModuleMeta
@@ -157,24 +107,23 @@ class Main(BaseModule):
     @staticmethod
     def get_meta() -> ModuleMeta:
         return ModuleMeta(name="Draw", services=[
-            {"name": "draw", "description": "文章から画像を生成して URL を返す"},
+            {"name": "draw", "description": "説明から画像を生成し URL を返す"},
         ])
 
     async def draw(self, prompt: str, size: str = "1024x1024"):
         return {"image_url": "https://..."}
 ```
 
-より深く統合したければ、次の規約サービスのうち任意のものを実装します。QvQChat はエコシステムブリッジでこれらを発見し、モジュールのロードとアンロードで反映します:
+任意の規約サービス: `qvq_personas()`（ペルソナプリセット）、`qvq_schemas()`（パラメータ Schema）、`qvq_settings()`（設定項目）、`qvq_access()`（サービス公開レベル）。`qvq.message`、`qvq.replied`、`qvq.observe` などのライフサイクルイベントも購読できます。
 
-- `qvq_personas()` はペルソナのプリセット（id、名前、システムプロンプト、任意のツールサブセット）を返します;
-- `qvq_schemas()` は自モジュールのサービスに対する明示的な JSON Schema を返し、シグネチャ推論を上書きします;
-- `qvq_settings()` は設定記述子を宣言し、設定ページに表示された値は `plugin_config` サービスと `qvq.plugin_config` イベント経由でプラグインへ戻ります。
+## 関連プラグイン
 
-`qvq.message` や `qvq.replied` などのライフサイクルイベントを購読することもできます。逆方向として、QvQChat 自身も `chat`、`run_prompt`、`get_status` の 3 サービスを他モジュールに提供しています。添付ファイルの扱いや権限モデルを含む完全な取り決めは [docs/inter-module-en.md](docs/inter-module-en.md) にあります。
+- [ErisPulse-QvQStalker](https://github.com/wsu2059q/ErisPulse-QvQStalker): グループ傍聴と参加判断。
+- [ErisPulse-QvQMemes](https://github.com/wsu2059q/ErisPulse-QvQMemes): スタンプライブラリ。自動収集・タグ付け・意味検索。
 
 ## 設定
 
-設定はすべて `QvQChat` セクションにあり、Dashboard の設定ページで編集できます。モデル、トリガー、会話、ツール、エコシステム、MCP、メモリ、ナレッジベース、スキル、タスク、使用量、安全、参加、アクセスのグループに分かれています。このページで触れたすべてのキー、`wake_prefixes` や `user_rate_limit` から `daily_token_limit`、`delivery_profiles` までが、説明つきの普通の設定項目としてそこにあります。最近の変更は [CHANGELOG.md](CHANGELOG.md) を、モジュールの内部構造は [ARCHITECTURE.md](ARCHITECTURE.md) を参照してください。
+すべての設定は `QvQChat` セクションにあり、Dashboard の設定ページでグループ別に編集できます（各項目に説明付き）。
 
 ## 開発
 
@@ -184,6 +133,15 @@ cd ErisPulse-QvQChat
 pip install -e .[test]
 pytest
 ```
+
+変更履歴は [CHANGELOG.md](CHANGELOG.md)、内部構造は [ARCHITECTURE.md](ARCHITECTURE.md) を参照してください。
+
+## コミュニティ
+
+質問・提案は [Issues](https://github.com/wsu2059q/ErisPulse-QvQChat/issues) へ。
+
+- Telegram: <https://t.me/ErisPulse>
+- QQ グループ: <https://qm.qq.com/q/TOwnCmypcy>
 
 ## ライセンス
 

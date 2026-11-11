@@ -65,6 +65,24 @@ def _record_sent(ctx: ToolContext, platform: str, target_type: str, target_id: s
         pass
 
 
+def _required_send_params(chain, method: str) -> list[str]:
+    """探测 Send 链绑定方法的必填参数（无默认值者；self 由绑定消除，兜底再跳一次）。
+
+    返回空列表 = 拿不到签名或没有必填参数（调用方按现状放行，保守不拦截）。
+    """
+    try:
+        params = inspect.signature(getattr(chain, method)).parameters.values()
+    except Exception:
+        return []
+    required: list[str] = []
+    for param in params:
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD) or param.name == "self":
+            continue
+        if param.default is param.empty:
+            required.append(param.name)
+    return required
+
+
 def _platform_not_found_msg(ctx: ToolContext, platform: str) -> str:
     """平台名未注册时的纠错提示：列出全部可用平台 + 模糊建议正确名称。
 
@@ -108,6 +126,10 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
                        as_forward: bool = False) -> str:
     if not text and not image_url and not audio_path and not file_path:
         return texts.t("send_need_content")
+# 工具直发路径同样清扫假媒体标记/声明：模型常在 send_message 的 text 里写
+# "「[语音] 正文」"或单独一行"（语音已发）"来假装发过语音，而语音根本没发出
+    if text:
+        text = utils.strip_fake_media_prefix(utils.strip_fake_media_claims(text))
 # 文件/语音发送：默认只允许本会话工作区内的文件（任意群友都能触发 AI——
 # 放开任意路径等于把机器上的文件外泄给任何人）；file_extra_dirs 白名单目录
 # （如 TTS 缓存）的产物放行发送，写入/删除仍严格限沙箱
@@ -195,6 +217,16 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
         chain = chain.At(at)
 
     if method:
+# 方法签名防护：send_message 只按单文本形态调用（getattr(chain, name)(content)）。
+# 模型猜平台方法名时（如把平台变声接口当 TTS 用），多必填
+# 参数的签名会 TypeError→重试耗尽→文本入待发队列（污染）。这里提前探测绑定方法
+# 签名：除文本外还有必填参数的直接拦截并给出参数清单——不发送、不入待发队列，
+# 引导走 call_adapter_api 补参，语音则走 TTS 工具生成文件再 audio_path 发送
+        if method not in REPLY_PREFERENCE:
+            required = _required_send_params(chain, method)
+            if len(required) > 1:
+                return texts.t("send_method_needs_params", platform=platform, method=method,
+                               params=", ".join(required))
         attempts = [method]
     else:
         attempts = [name for name in REPLY_PREFERENCE if not sends or name in sends]
@@ -328,7 +360,7 @@ def _resolve_account_name(adapter, account_id: str) -> str:
     适配器对配置名是第一优先级精确匹配；数字 id 依赖 bot_id 回填——那是
     运行时态（连接后识别），重启后未活动的账户没有。数字在框架三层匹配
     失配时会静默回落第一个启用账户：请求受理/空间操作从错误账户发出
-    （线上实测：对第二账户的邀请同意操作从第一账户发出）。
+    （多账户场景下同意操作需绑定来源账户发出）。
     """
     acct = str(account_id or "").strip()
     if not acct:
@@ -460,6 +492,38 @@ async def call_module(ctx: ToolContext, module: str, service: str, args: dict | 
     return utils.to_text(result)
 
 
+# 单平台 sends 清单总长上限：冷门适配器可能暴露几十个方法，防 token 爆炸
+SEND_SIG_LIMIT = 600
+
+
+def _send_signatures(adapter, sends: list) -> list[str]:
+    """给 Send 方法名补上签名（如 AIRecord(character, text)），探测失败只留名字。
+
+    Send 是链式工厂，发送方法绑定在链实例上（getattr(adapter.Send, name) 即绑定态）。
+    只渲染具名参数——*args/**kwargs 的通用转发壳渲染出来只是噪音，留裸名即可。
+    总长超 SEND_SIG_LIMIT 时截断剩余方法（模型主要需要的是"哪些方法要额外参数"）。
+    """
+    out: list[str] = []
+    total = 0
+    for name in sends:
+        label = str(name)
+        try:
+            named = [
+                p.name
+                for p in inspect.signature(getattr(adapter.Send, label)).parameters.values()
+                if p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD) and p.name != "self"
+            ]
+            if named:
+                label = f"{label}({', '.join(named)})"
+        except Exception:
+            pass
+        total += len(label) + 2
+        if total > SEND_SIG_LIMIT:
+            break
+        out.append(label)
+    return out
+
+
 async def list_platforms(ctx: ToolContext) -> str:
     platforms: list[dict] = []
     try:
@@ -469,9 +533,10 @@ async def list_platforms(ctx: ToolContext) -> str:
     for name in names:
         info: dict = {"platform": name}
         try:
-            info["sends"] = ctx.sdk.adapter.list_sends(name)
+            sends = list(ctx.sdk.adapter.list_sends(name))
         except Exception:
-            info["sends"] = []
+            sends = []
+        info["sends"] = _send_signatures(ctx.sdk.adapter.get(name), sends)
         platforms.append(info)
     return utils.to_text(platforms)
 
@@ -613,7 +678,7 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="send_message",
         access="safe",
-        description="Send a message to a user/group on ANY platform (cross-platform outreach). The send method is chosen by platform capability automatically (Markdown > Html > Text, with plain-text fallback); pass method to force one. DEFAULT TARGET = the CURRENT session: omit platform/target_type/target_id entirely to reply here. Fill them ONLY for a different destination — the platform name MUST be the exact 'platform' value returned by list_platforms, never guessed from the user's wording (a user mentioning a website name still needs the registered platform name). If the user asks to reach someone elsewhere but the exact platform/id is unclear, ASK the user instead of guessing.",
+        description="Send a message to a user/group on ANY platform (cross-platform outreach). The send method is chosen by platform capability automatically (Markdown > Html > Text, with plain-text fallback); pass method to force one. DEFAULT TARGET = the CURRENT session: omit platform/target_type/target_id entirely to reply here. Fill them ONLY for a different destination — the platform name MUST be the exact 'platform' value returned by list_platforms, never guessed from the user's wording (a user mentioning a website name still needs the registered platform name). If the user asks to reach someone elsewhere but the exact platform/id is unclear, ASK the user instead of guessing. Forced methods are signature-checked before sending: a method needing extra parameters is rejected up-front with its required list (nothing is sent or queued) — check list_platforms for signatures.",
         parameters=_schema(
             {
                 "platform": _s(type="string", description="Exact platform name as returned by list_platforms; see list_platforms for valid values. OMIT to use the current session's platform. Not the website name the user mentioned — verify with list_platforms when unsure."),
@@ -621,11 +686,11 @@ def register(registry: ToolRegistry, main) -> None:
                 "target_id": _s(type="string", description="Target id. OMIT to use the current session's id."),
                 "text": _s(type="string", description="Text content (markdown allowed; downgraded to plain text automatically when the platform only supports Text)"),
                 "image_url": _s(type="string", description="Image URL or local path"),
-                "audio_path": _s(type="string", description="Path to an EXISTING audio file (sandbox workspace, or an output dir of an installed voice-synthesis tool). Produce audio with that voice tool first, then send its returned file path here - that is the whole two-step voice flow."),
+                "audio_path": _s(type="string", description="Path to an EXISTING audio file (output of a speech-synthesis tool) to deliver as a voice message. The file must live in this chat's sandbox workspace or a file_extra_dirs whitelist directory."),
                 "file_path": _s(type="string", description="Send a local file as a document. MUST be a path inside this chat's work sandbox (list_files to browse; write_file/download_file/zip_files to produce one). Paths outside the sandbox are rejected."),
                 "at": _s(type="string", description="User id to mention"),
                 "reply_to": _s(type="string", description="Message id to quote"),
-                "method": _s(type="string", description="Force a specific send method (e.g. Markdown, EmojiFace); empty for auto"),
+                "method": _s(type="string", description="Force a specific send method (e.g. Markdown, EmojiFace); empty for auto. Single-text methods only — methods needing extra parameters are rejected before sending, with the required params listed in the result"),
                 "as_forward": _s(type="boolean", description="Send as a merged-forward card (only on platforms that support MergeForward; see list_platforms); long text converts automatically anyway"),
             },
             [],
@@ -726,7 +791,7 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="list_platforms",
         access="safe",
-        description="List online platform adapters and their supported send methods.",
+        description="List online platform adapters and their supported send methods (with signatures, e.g. SendMethod(param1, param2), so you can see which methods need extra parameters and cannot be used via send_message).",
         parameters=OBJECT_PARAMS,
         handler=list_platforms,
     ))

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import mimetypes
 import random
 import re
@@ -17,14 +18,35 @@ from pathlib import Path
 
 from .. import texts, utils
 from ..agent.tools import ToolContext
+from ..conversation.policy import apply_priority, get_policy, listen_allowed
 from ..conversation.service import DASHBOARD_PLATFORM, make_chat_key, parse_chat_key, strip_isolation
 from ..dashboard.live import bind as live_bind
 from ..utils import strip_stray_tags
 from ..conversation.delivery import strip_output_tag
 from ..engine.base import ChatRequest, TaskSpec
+from ..tools_builtin.agent import demote_to_background
 from .recovery import INFLIGHT_KEY_PREFIX, RecoveryMixin
 
 CONFIRM_WORDS = {"确认", "確認", "确定", "確定", "是", "confirm", "yes", "y", "ok"}
+
+# cheap 模型的思考链常混在正文里（含多行）：回执/判定解析前必须先剥掉，
+# 否则整段思考原样回发到群里就是思考泄露事故
+_THINK_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
+
+
+def _json_line_of(raw: str) -> str:
+    """剥思考链后从响应里提取 JSON 的 line 字段；拿不到返回空串（调用方走模板回退）。"""
+    cleaned = _THINK_RE.sub("", str(raw or ""))
+    m = re.search(r"\{[\s\S]*\}", cleaned)
+    if not m:
+        return ""
+    try:
+        data = json.loads(m.group(0))
+    except Exception:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    return str(data.get("line") or "").strip()
 
 # 触发规则严格度排序（数值越大越严）：会话级只能收紧不能放宽——全局 at_only 时会话最多 at_only
 TRIGGER_RANK = {"all": 0, "at_only": 1, "lurk": 2, "off": 3}
@@ -708,6 +730,12 @@ class InboxMixin(RecoveryMixin):
             routed = self.sessions.resolve_route(chat_key)
             if routed:
                 chat_key = routed
+# mute/白名单早闸：屏蔽会话与白名单外会话整条消息丢弃（回复+旁听都不做）。
+# 放在路由解析之后：策略键跟随的是最终会话键；命令消息已在更早的 _is_command_message
+# 让路（/qvq unmute 仍可用），走到这里的不会是命令
+            if not listen_allowed(self.cfg, self.sdk, chat_key):
+                self.logger.debug(f"listen blocked by policy ({chat_key})")
+                return
 # H3 硬打断：本会话还有未发完的分段时，新消息命中强信号 → 丢弃剩余段
             try:
                 await self._maybe_interrupt(event, chat_key, text)
@@ -941,12 +969,13 @@ class InboxMixin(RecoveryMixin):
             self.sessions.set_group_name(chat_key, name)
         return name
 
-    async def _auto_interrupt_decide(self, chat_key: str, old_live, new_text: str) -> tuple[str, str]:
-        """auto 模式的中止/排队判定：cheap 模型结合当前任务与新消息给出决定。
+    async def _auto_interrupt_decide(self, chat_key: str, old_live, new_text: str) -> tuple[str, str, str]:
+        """auto 模式的三选判定：cheap 模型结合当前任务与新消息给出决定。
 
-        返回 (decision, 理由, 人设化话术)；话术给用户看（"先回你这个，那个任务排着"），
-        机制术语不外露；任何失败回退 ("queue", "fallback", "")——
-        宁可排队也不要误杀正在跑的任务。
+        返回 (decision, 理由, 人设化话术)。decision 三选：
+        demote=旧任务转后台子智能体续跑、新消息立即处理 / interrupt=旧任务作废 / queue=跑完再处理。
+        话术给用户看（"先回你这个，那个排着"），机制术语不外露；queue 的话术留空（完全静默）。
+        任何失败回退 ("queue", "fallback", "")——宁可排队也不要误杀正在跑的任务。
         """
 # 高负载降载：并发满载时不发判定调用（它本身也是一次模型请求），直接排队——
 # 排队本就是安全默认，把并发槽位留给正在跑的任务与用户直答
@@ -955,6 +984,10 @@ class InboxMixin(RecoveryMixin):
             if bool(getattr(self.cfg, "log_debug", False)):
                 self.logger.debug("background skip: interrupt-decide (saturated) -> queue")
             return "queue", "saturated-skip", ""
+# 省钱模式：判定也是一次模型调用——直接静默入队（旧任务继续跑，忙完合并处理），
+# 少一次请求、少一条回执；需要抢救旧任务的用户用 /qvq 命令或直接说停
+        if bool(getattr(self.cfg, "budget_mode", False)):
+            return "queue", "budget-skip", ""
         try:
             current = utils.truncate(str(old_live.text or "").strip(), 500) or "（工具执行中，暂无输出）"
             incoming = utils.truncate(str(new_text or "").strip(), 400)
@@ -991,15 +1024,20 @@ class InboxMixin(RecoveryMixin):
                     {
                         "role": "system",
                         "content": (
-                            "A bot is mid-task when a NEW user message arrives. Decide: interrupt the "
-                            "running task and handle the new message now, or queue it? "
-                            "Interrupt when the new message is clearly urgent, corrects/cancels the "
-                            "running task, asks the bot to stop, answers a question the bot asked (e.g. "
-                            "agreeing to a pending confirmation), or is a direct question that the running "
-                            "task cannot answer. Queue when it is casual chat or belongs to the running "
-                            "task. Use <recent-chat> to tell what the new message is replying to. "
-                            'Reply ONLY with JSON: {"decision":"interrupt"|"queue",'
-                            '"line":"one short in-persona sentence telling the user what happens to their message (and to the old task if stopped), no jargon"}'
+                            "A bot is mid-task when a NEW user message arrives. Decide ONE of three: "
+                            "demote — the new message is an independent request/question unrelated to the "
+                            "running task and the task still needs a while: move the old task to a "
+                            "background sub-agent and handle the new message right now; "
+                            "interrupt — the new message corrects/cancels/asks to stop the running task, "
+                            "or answers a question the bot asked (e.g. agreeing to a pending confirmation): "
+                            "discard the old task; "
+                            "queue — casual chat or something that belongs to the running task itself: "
+                            "handle it after the task finishes, no receipt needed. "
+                            "Use <recent-chat> to tell what the new message is replying to. "
+                            'Reply ONLY with JSON: {"decision":"demote"|"interrupt"|"queue",'
+                            '"reason":"short why",'
+                            '"line":"one short in-persona sentence telling the user what happens (only for '
+                            'demote/interrupt; leave empty for queue, no jargon)"}'
                         ),
                     },
                     {
@@ -1013,30 +1051,41 @@ class InboxMixin(RecoveryMixin):
                 ],
                 tools=None,
                 temperature=0.0,
-                max_tokens=120,
+                max_tokens=160,
             )
             response = await self.pool.dispatch(TaskSpec(kind="compact", prefer="cheap"), request)
             import json as _json
             import re as _re
 
-            m = _re.search(r"\{[\s\S]*\}", response.content or "")
+# 先剥思考链再提 JSON：cheap 模型的思考混在正文里，直接正则会捞到思考里的花括号
+            cleaned = _THINK_RE.sub("", response.content or "")
+            m = _re.search(r"\{[\s\S]*\}", cleaned)
             if m:
                 data = _json.loads(m.group(0))
                 decision = str(data.get("decision") or "").lower()
-                if decision in ("interrupt", "queue"):
+                if decision in ("demote", "interrupt", "queue"):
                     self.logger.info(f"auto interrupt decision ({chat_key}): {decision} — {data.get('reason', '')}")
                     return decision, str(data.get("reason") or ""), str(data.get("line") or "").strip()
         except Exception as e:
             self.logger.debug(f"auto interrupt decide failed, fallback queue: {e}")
         return "queue", "fallback", ""
 
-    def _enqueue_waiting(self, chat_key: str, event, items: list) -> None:
+    def _enqueue_waiting(self, chat_key: str, event, items: list, announce: bool = True) -> None:
         queue = self._waiting.setdefault(chat_key, [])
+# 回执合一：每条新消息至多一条回执。auto 路径回执由判定话术承担（announce=False 全静默入队）；
+# queue 模式只在队列为空的第一条播报（后续静默，反正任务结束后会被合并处理），say_mode=off 也不播
+        first = not queue
         queue.append((event, items))
         self.logger.info(f"chat busy, message queued ({chat_key}, {len(queue)} waiting)")
-        self.spawn(self._announce_queued(chat_key, event, items))
+        if announce and first and str(getattr(self.cfg, "interrupt_say_mode", "persona") or "persona") != "off":
+            self.spawn(self._announce_queued(chat_key, event, items))
 
     async def _announce_queued(self, chat_key: str, event, items: list) -> None:
+        """排队回执（仅 queue 模式第一条）：cheap 模型生成一句人设化话术。
+
+        只认 JSON 输出并先剥思考链——直接回发响应原文会把 cheap 模型的
+        整段思考跟着进了群（思考泄露事故根因）；line 一律截到 80 字，失败回退固定模板。
+        """
         incoming = " ".join(str(i.get("text") or "") for i in items if i.get("text"))
         registry = getattr(self, "live_registry", None)
         current = ""
@@ -1044,28 +1093,28 @@ class InboxMixin(RecoveryMixin):
         if live is not None:
             current = str(live.text or "")[-300:]
         prompt = (
-            "机器人正在执行一个未完成的长任务。任务最近的输出摘要是："
-            + (current or "（尚无输出）")
-            + "。此时收到新消息：" + incoming[:150] + "。"
-            "请以机器人自己的口吻输出一句话：简单说明当前在做什么，并告诉对方这条新消息已排入队列、"
-            "任务完成后就会处理。只输出这一句话，不要调用任何工具。"
+            "机器人正在执行一个未完成的长任务，这条新消息已排入队列、任务完成后就会处理。"
+            "任务最近的输出摘要是：" + (current or "（尚无输出）")
+            + "。新消息：" + incoming[:150] + "。"
+            'Reply ONLY with JSON: {"line":"以机器人自己的口吻写一句话：简单说明正在做什么，'
+            '并告知消息已排上、忙完就处理；不调用任何工具"}'
         )
-        reply = ""
+        line = ""
         try:
 # A2: 排队播报迁 TaskSpec 分派（kind=announce，成本偏好 cheap），池无 dispatch 时回退 pool.chat
-            request = ChatRequest(messages=[{"role": "user", "content": prompt}], max_tokens=80, temperature=0.7)
+            request = ChatRequest(messages=[{"role": "user", "content": prompt}], max_tokens=120, temperature=0.7)
             dispatch = getattr(self.pool, "dispatch", None)
             if callable(dispatch):
                 response = await dispatch(TaskSpec(kind="announce", prefer="cheap"), request)
             else:
                 response = await self.pool.chat(request)
-            reply = (response.content or "").strip()
+            line = _json_line_of(response.content or "")
         except Exception as e:
             self.logger.warning(f"queue announce failed: {e}")
-        if not reply:
-            return
+        if not line:
+            line = texts.t("interrupt_auto_queue")
         try:
-            await event.reply(reply)
+            await event.reply(line[:80])
         except Exception as e:
             self.logger.warning(f"queue announce reply failed: {e}")
 
@@ -1074,7 +1123,7 @@ class InboxMixin(RecoveryMixin):
         queue = self._waiting.pop(chat_key, None)
         if not queue:
             return
-# 队列整体合并为一个回合：条目预构建带各自发言人归属（此前逐条 _batch_message
+# 队列整体合并为一个回合：条目预构建并保留各自发言人归属（逐条 _batch_message
 # 会开 N 个连续回合逐条作答——正是"短时多条每条都回"的来源之一）
         merged_items: list = []
         last_event = queue[-1][0]
@@ -1149,7 +1198,7 @@ class InboxMixin(RecoveryMixin):
         entry.setdefault("ts", time.time())
         if items is not None:
 # 预构建条目（等待队列合并回灌）：各自保留发言人归属，整批进同一回合，
-# 已在首次入箱时做过短窗去重，不再重复检查
+# 首次入箱时已做短窗去重，此处不重复检查
             entry["items"].extend(dict(i) for i in items if isinstance(i, dict))
             entry["event"] = event
         else:
@@ -1215,17 +1264,71 @@ class InboxMixin(RecoveryMixin):
                 self.logger.info(f"reply merge window holding ({chat_key}, {len(queue)} waiting, {remain:.1f}s left)")
                 return
 # 长任务冲突判定必须在锁外：per-chat 锁被运行中的任务整轮持有，
-# 锁内再看 live 已经等任务跑完了（此前 auto 判定等于失效）
+# 锁内再看 live 已等任务跑完，auto 判定会失效
         if not await self._live_conflict(chat_key, entry["event"], entry["items"]):
             return
 # per-chat 锁真正生效——聚合触发与定时任务/面板并发互斥，防止交错写上下文
         async with self._lock_for(chat_key):
             await self._process_locked(entry["event"], entry["items"], chat_key, origin)
 
-    async def _live_conflict(self, chat_key: str, event, items: list) -> bool:
-        """任务运行中收到新消息：按 interrupt_mode 决定排队还是中断插入。
+    async def _handle_auto_decision(self, chat_key: str, event, items: list, old_live,
+                                    decision: str, line: str, labeled: str = "") -> bool:
+        """auto 三选判定（demote/interrupt/queue）的统一收尾：回执 + 旧任务去向。
 
-        返回 True = 现在就该处理这条消息（无任务或已中断旧任务）；
+        返回 True = 现在处理新消息（demote/interrupt）；False = 已静默入队（queue）。
+        回执合一：decide 的话术就是唯一回执——queue 完全静默（line 即便非空也丢弃，
+        不再叠加排队播报二连发）；demote/interrupt 按 say_mode 决定人设话术还是固定模板。
+        """
+        if decision == "queue":
+# 闲聊或属于任务本身：跑完合并处理即可，静默入队不打扰
+            self._enqueue_waiting(chat_key, event, items, announce=False)
+            return False
+        say_style = str(getattr(self.cfg, "interrupt_say_mode", "persona") or "persona")
+        if decision == "demote":
+# 让路后台：任务文本取发起时的原始 prompt（live.prompt），缺失才兜底已有输出开头
+            task_text = utils.truncate(str(getattr(old_live, "prompt", "") or "").strip(), 800)
+            if not task_text:
+                task_text = (
+                    utils.truncate(str(old_live.text or "").strip(), 200)
+                    + "（原任务文本缺失，以下是已产生输出）"
+                )
+            partial = utils.truncate(str(old_live.text or "").strip(), 1500)
+            old_live.cancel()
+            try:
+                await demote_to_background(
+                    main=self, event=event, chat_key=chat_key,
+                    task_prompt=texts.t("demote_task_prompt", task=task_text, partial=partial or "（尚无输出）"),
+                )
+            except Exception as e:
+# 降级失败不阻断新消息处理：旧任务已取消，日志留痕便于排查
+                self.logger.warning(f"demote to background failed ({chat_key}): {e}")
+        else:
+# interrupt：中断上下文留给即将开始的新回合（模型知道上一轮做到哪被叫停了）
+            current = str(getattr(old_live, "text", "") or "").strip()
+            if current:
+                if not hasattr(self, "_interrupted_notes"):
+                    self._interrupted_notes = {}
+                self._interrupted_notes[chat_key] = texts.t(
+                    "interrupted_note", content=utils.truncate(current, 500)
+                )
+            old_live.cancel()
+            self.logger.info(f"live task interrupted for new message ({chat_key}): mode=auto")
+# 回执（demote/interrupt 才发）：off 静默 / plain 固定模板 / persona 优先话术、空则回退模板
+        if say_style != "off":
+            reply = line if (say_style != "plain" and line) else texts.t(
+                "interrupt_auto_demote" if decision == "demote" else "interrupt_auto_stop"
+            )
+            if reply:
+                try:
+                    await event.reply(reply)
+                except Exception:
+                    pass
+        return True
+
+    async def _live_conflict(self, chat_key: str, event, items: list) -> bool:
+        """任务运行中收到新消息：按 interrupt_mode 决定让路（demote/interrupt）还是排队。
+
+        返回 True = 现在就该处理这条消息（无任务或已让路）；
         返回 False = 已排入等待队列，等当前任务结束后合并处理。
         """
         registry = getattr(self, "live_registry", None)
@@ -1239,31 +1342,8 @@ class InboxMixin(RecoveryMixin):
         if mode == "auto":
             incoming = " ".join(str(i.get("text") or "") for i in items if isinstance(i, dict) and i.get("text"))
             decision, _why, line = await self._auto_interrupt_decide(chat_key, live, incoming)
-# 用户回执：默认用人设化话术（判定模型顺手生成），机制术语不外露；
-# interrupt_say_mode=plain 回退旧机制文案（运维修复期排查用）
-            say_style = str(getattr(self.cfg, "interrupt_say_mode", "persona") or "persona")
-            if say_style == "off":
-                pass  # 完全静默：用户消息直接进队/插队，不播报
-            elif say_style == "plain":
-                try:
-                    await event.reply(texts.t("interrupt_auto_queue" if decision != "interrupt" else "interrupt_auto_stop"))
-                except Exception:
-                    pass
-            else:
-                if line:
-                    try:
-                        await event.reply(line)
-                    except Exception:
-                        pass
-                elif decision != "interrupt":
-                    try:
-                        await event.reply(texts.t("interrupt_auto_queue"))
-                    except Exception:
-                        pass
-            if decision != "interrupt":
-                self._enqueue_waiting(chat_key, event, items)
-                return False
-# 中断上下文留给即将开始的新回合（模型知道上一轮做到哪被叫停了）
+            return await self._handle_auto_decision(chat_key, event, items, live, decision, line, labeled=incoming)
+# interrupt 模式（纯中断）：cancel + interrupted_note，语义保持现状
         current = str(getattr(live, "text", "") or "").strip()
         if current:
             if not hasattr(self, "_interrupted_notes"):
@@ -1420,30 +1500,13 @@ class InboxMixin(RecoveryMixin):
                         self._enqueue_waiting(chat_key, event, items)
                         return
                     if mode == "auto":
-# AI 判定：结合当前任务与新消息，cheap 模型决定中止还是排队（失败回退排队）
-                        decision, why, line = await self._auto_interrupt_decide(
-                            chat_key, old_live, labeled
-                        )
-                        say_style = str(getattr(self.cfg, "interrupt_say_mode", "persona") or "persona")
-                        if say_style != "off":
-                            if say_style == "plain" or not line:
-                                try:
-                                    await event.reply(texts.t("interrupt_auto_queue" if decision != "interrupt" else "interrupt_auto_stop"))
-                                except Exception:
-                                    pass
-                            elif line:
-                                try:
-                                    await event.reply(line)
-                                except Exception:
-                                    pass
-                        if decision != "interrupt":
-                            self._enqueue_waiting(chat_key, event, items)
+# AI 三选判定：回执与旧任务去向统一走 _handle_auto_decision（与锁外 _live_conflict 同一套逻辑）
+                        decision, _why, line = await self._auto_interrupt_decide(chat_key, old_live, labeled)
+                        if not await self._handle_auto_decision(chat_key, event, items, old_live, decision, line, labeled):
                             return
-                        old_live.cancel()
-                        interrupted_note = texts.t(
-                            "interrupted_note",
-                            content=utils.truncate(old_live.text.strip(), 500),
-                        )
+# 中断注记由 helper 写入 _interrupted_notes（与锁外路径同一条管道），这里取回直用
+                        if getattr(self, "_interrupted_notes", None):
+                            interrupted_note = self._interrupted_notes.pop(chat_key, "") or interrupted_note
                     else:
                         old_live.cancel()
                         interrupted_note = texts.t(
@@ -1452,6 +1515,8 @@ class InboxMixin(RecoveryMixin):
                         )
                 live = registry.start(chat_key)
                 live.task = asyncio.current_task()
+# 任务发起时的原始文本：auto demote 让路时靠它把旧任务转交后台续跑
+                live.prompt = labeled
                 on_delta, on_reset, on_tool_event, on_reasoning = live_bind(live)
             else:
                 on_delta = on_reset = on_tool_event = on_reasoning = None
@@ -1487,16 +1552,28 @@ class InboxMixin(RecoveryMixin):
                 await event.reply(texts.t("processing_notice", tools="、".join(labels) + suffix))
 
             speech_sent = False
+            last_speech = ""# 最近一条已投递阶段发言的规范化文本（同回合去重：复述跳过/双胞胎跳过）
 
             async def on_intermediate(speech):
 # 对话风格：off 静默 / first_last 只投第一句开场（其后阶段发言静默，最终结论走正常回复）/
 # brief 及以上全部投递。speech_sent 防重：同一轮多次发言只算一次
-                nonlocal speech_sent
+                nonlocal speech_sent, last_speech
                 mode = getattr(self.cfg, "tool_notice_mode", "brief")
                 if mode == "off" or (mode == "first_last" and speech_sent):
                     return
                 text = utils.truncate(str(speech).strip(), 1200)
+# 阶段发言同样不能带假媒体：模型写「[语音] 喵？…」「[表情包]」假装发过媒体、
+# 「（语音已发）」假宣告会从这里原样发出，先清扫再投递
+                try:
+                    text = utils.strip_fake_media_prefix(utils.strip_fake_media_claims(text))
+                except Exception as e:
+                    self.logger.debug(f"fake media strip failed: {e}")
                 if not text:
+                    return
+# 同回合去重：规范化后与上一条已投递阶段发言相同 → 跳过（模型每轮工具重试
+# 都复述同一句话时，brief 档会连发 N 遍）
+                normalized = utils.collapse_spaces(text)
+                if normalized and normalized == last_speech:
                     return
                 try:
 # 走投递层单条发送（方法降级+重试链）：裸 event.reply 在部分适配器上不生效，
@@ -1504,6 +1581,7 @@ class InboxMixin(RecoveryMixin):
                     ok = await self.delivery._send_plain(event, text)
                     if ok:
                         speech_sent = True
+                        last_speech = normalized
                     if bool(getattr(self.cfg, "log_debug", False)):
                         self.logger.debug(f"intermediate speech delivered={ok} ({len(text)} chars, mode={mode})")
                 except Exception as e:
@@ -1518,9 +1596,11 @@ class InboxMixin(RecoveryMixin):
             )
             try:
                 try:
-# 并发闸门优先级：插话让位于用户直接提问（0=直答 / 6=插话）
+# 会话策略叠加闸门优先级：插话让位于用户直接提问（0=直答 / 6=插话），
+# mute 之外还有 low/high 档会话在满载时的让位/抢先（数值小者先拿并发空位）
 # 人格级覆盖：prefill 开场白 + temperature/max_tokens（聊天链路无显式参数，人格即覆盖层）
-                    result = await self.runner.run(
+                    policy = get_policy(self.sdk, chat_key)
+                    run_coro = self.runner.run(
                         system=system,
                         messages=contexts + [user_msg],
                         ctx=ctx,
@@ -1531,11 +1611,14 @@ class InboxMixin(RecoveryMixin):
                         on_reset=on_reset,
                         on_tool_event=on_tool_event,
                         on_reasoning=on_reasoning,
-                        priority=6 if origin == "plugin" else 0,
+                        priority=apply_priority(policy, 6 if origin == "plugin" else 0),
                         prefill=str(persona.get("prefill") or ""),
                         temperature=p_temp,
                         max_tokens=int(p_maxtok) if p_maxtok else None,
                     )
+# 回合超时（0=关闭）：卡死任务到点收束放行会话，别让整轮锁被永远占着
+                    _turn_timeout = float(getattr(self.cfg, "turn_timeout", 0) or 0)
+                    result = await asyncio.wait_for(run_coro, timeout=_turn_timeout or None)
                 except asyncio.CancelledError:
                     if live is not None:
                         partial, partial_trace, partial_rounds = live.partial_record()
@@ -1545,6 +1628,21 @@ class InboxMixin(RecoveryMixin):
                         live.status = "done"
                         live.publish("done", {"reply": partial, "session": chat_key})
                         live.publish("end", {"status": live.status})
+                    raise
+                except asyncio.TimeoutError:
+# 超时与中断同路收束：部分输出落库、live 置终态（stale 护栏不再判其"忙碌"），
+# 异常继续上抛由外层 except 给 chat 来源回错误提示
+                    saved = False
+                    if live is not None:
+                        partial, partial_trace, partial_rounds = live.partial_record()
+                        if partial:
+                            self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
+                            saved = True
+                        live.reply = partial or None
+                        live.status = "done"
+                        live.publish("done", {"reply": partial, "session": chat_key})
+                        live.publish("end", {"status": live.status})
+                    self.logger.warning(f"turn timeout after {_turn_timeout}s ({chat_key}), partial saved={saved}")
                     raise
                 finally:
                     if live is not None:
@@ -1580,7 +1678,7 @@ class InboxMixin(RecoveryMixin):
                                 ctx=ctx,
                                 persona_tools=persona.get("tools"),
                             )
-# 重 roll 输出同样要清扫残留标签（此前漏了，[[直发]]/单括号形态原样发出去）
+# 重 roll 输出同样清扫残留标签（[[直发]]/单括号形态不能原样发出）
                             retry_reply, _ = strip_output_tag(retry.text.strip())
                             retry_reply = utils.strip_stray_tags(retry_reply)
                             retry_reply, _2 = filter_reply(
@@ -1597,11 +1695,16 @@ class InboxMixin(RecoveryMixin):
                         reply = utils.strip_meta_section(reply)
                     except Exception as e:
                         self.logger.debug(f"meta strip failed: {e}")
-# 假媒体标记：模型不调 TTS 工具自己写「[语音] xxx」假装发过语音——剥标记留正文
+# 假媒体标记：模型不调 TTS 工具自己写「[语音] xxx」假装发过语音——剥标记留正文；
+# 「（语音已发）」这类整行假声明一并剥掉（语音没真发出去却宣告已发）
                 try:
                     reply = utils.strip_fake_media_prefix(reply)
+                    reply = utils.strip_fake_media_claims(reply)
                 except Exception as e:
                     self.logger.debug(f"fake media strip failed: {e}")
+# 同回合去重：最终回复与最后一条已投递阶段发言规范化后相同 → 阶段发言已代表过它，
+# 不重复投递最终条（"阶段发言+最终回复"双胞胎）；会话历史与回执广播照常
+                duplicate_final = bool(last_speech) and utils.collapse_spaces(reply) == last_speech
                 reply = reply or texts.t("no_reply_content")
                 self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), user_id=sender_id)
                 try:
@@ -1613,7 +1716,11 @@ class InboxMixin(RecoveryMixin):
                         )
                 except Exception as e:
                     self.logger.debug(f"emit qvq.replied failed: {e}")
-                await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None), origin=origin)
+                if duplicate_final:
+# 内容已随阶段发言发到群里：跳过最终投递（pending 重放顺延到下一条回复，无碍）
+                    self.logger.debug("final reply duplicates last intermediate speech, skipped")
+                else:
+                    await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None), origin=origin)
 # 记录回复时间：回复合并窗口的起点（窗口内后续消息合并为一次后续回复）
                 self._last_reply_ts[chat_key] = time.time()
                 self._drain_waiting(chat_key)
@@ -1634,7 +1741,14 @@ class InboxMixin(RecoveryMixin):
             if origin == "plugin" and not bool(getattr(self.cfg, "notify_on_passive_failure", False)):
                 return
             try:
-                await event.reply(texts.t("run_failed", error=utils.truncate(str(e), 200)))
+# 回合超时的 str(e) 是空串，直接套 run_failed 会回一条近空消息——用专用文案
+                if isinstance(e, asyncio.TimeoutError):
+                    await event.reply(texts.t(
+                        "run_timeout",
+                        seconds=int(float(getattr(self.cfg, "turn_timeout", 0) or 0)),
+                    ))
+                else:
+                    await event.reply(texts.t("run_failed", error=utils.truncate(str(e), 200)))
             except Exception as inner:
                 self.logger.debug(f"run_failed notice reply failed: {inner}")
 
