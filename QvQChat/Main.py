@@ -624,6 +624,18 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                          temperature: float | None = None, persist: bool = False) -> str:
         from .conversation.service import strip_account as _strip_account
 
+# 超限态下主动来源（speak 主动发言/插件插话）的语义：
+# 未开 budget_auto_on_limit → 直接跳过（不是用户触发的，执行了白花钱，
+# 回"到达上限"更莫名其妙）；开了 → 不跳过，转入低token链路继续（budget_effective）。
+# task/dashboard 来源（定时任务/面板操作）不受限，属运营方的 deliberate 行为
+        if origin in ("plugin", "proactive") and not bool(getattr(self.cfg, "budget_auto_on_limit", False)):
+            try:
+                checker = getattr(type(self), "_over_token_limit", None)
+                if checker is not None and checker(self, chat_key):
+                    self.logger.info(f"over token limit, {origin} run_prompt skipped ({chat_key})")
+                    return ""
+            except Exception:
+                pass
         platform, detail_type, target_id = parse_chat_key(_strip_account(strip_isolation(chat_key)))
 # 多账户：会话键 @账户 后缀还原出发送账户（工具主动发送要绑对 bot）
         self_id = ""
@@ -662,6 +674,13 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             persona = prepared["persona"]
             p_temp = _num_or_none(persona.get("temperature")) if temperature is None else temperature
             p_maxtok = _int_or_none(persona.get("max_tokens"))
+# 低token生效态（显式开关或超限自动）下 chat 类任务显式 prefer cheap
+            try:
+                from .conversation.policy import budget_effective as _budget_eff
+
+                budget_pref = "cheap" if (task_kind == "chat" and _budget_eff(self.sdk, self.cfg, chat_key)) else ""
+            except Exception:
+                budget_pref = ""
             result = await self.runner.run(
                 system=prepared["system"],
                 messages=messages,
@@ -671,6 +690,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 temperature=p_temp,
                 max_tokens=p_maxtok,
                 task_kind=task_kind,
+                prefer=budget_pref,
 # 并发闸门让步：用户直答(0) > 插话(6) > 定时/后台任务(8)——
 # 任务永远排队不丢失，但饱和时绝不和用户的直接提问抢槽位
                 priority=(6 if origin in ("plugin", "proactive") else (8 if origin in ("task", "dashboard", "rpc") else 0)),

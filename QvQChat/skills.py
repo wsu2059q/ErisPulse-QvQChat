@@ -81,9 +81,14 @@ search_erispulse_docs / read_erispulse_doc instead of guessing — the docs are 
 
 ## Module settings — manage_config
 - action="get": all QvQChat settings, or one key.
-- action="set" with updates={key: value}: valid QvQChat config keys only (unknown keys are rejected, values are type-checked). Covers every section: triggers, aggregate_window, forward behaviour (forward_external_reply / forward_args_chars / forward_output_chars), reply_quote, tool_select*, web_*, docs_*, eco_*, context_compress_tokens, participation_*, etc.
+- action="set" with updates={key: value}: valid QvQChat config keys only (unknown keys are rejected, values are type-checked). Covers every section: triggers, aggregate_window, forward behaviour (forward_external_reply / forward_args_chars / forward_output_chars), reply_quote, tool_select*, web_*, docs_*, eco_*, context_compress_tokens, participation_*, plus the token/effort knobs: budget_mode, budget_auto_on_limit, daily_token_limit, user_daily_budget, reasoning_effort, aux_model, max_context_turns, turn_timeout.
 - Examples: turn off auto-forwarding outside the card (`forward_external_reply=false`), widen the process summary (`forward_output_chars=800`), disable quoting (`reply_quote="off"`), let members use a module's service (`eco_safe=["Mod:service"]`) or veto a module's safe self-declaration (`eco_admin=["Mod:*"]`).
 - Eco access is normally self-declared by the module via its `qvq_access` service; `eco_safe`/`eco_admin` are operator overrides only.
+
+## Session policy & usage — session_settings
+- action="get" (chat_key optional, default = current chat): trigger_mode, listen_off, ui overrides (model/effort/density), muted, low_token, priority, session_budget, plus `low_token_active` (whether low-token mode is really in effect, including auto-on-limit) and `usage_today` (session tokens vs session_budget; global tokens vs daily_token_limit).
+- action="set" with settings={...}: trigger_mode, listen_off, model, effort, density, muted (true = that chat goes FULLY silent — confirm before self-muting), low_token (lean prompt + tightened history for token saving), priority (high/normal/low — concurrency slot preference), session_budget (daily token cap for that chat, 0 = unlimited).
+- Scope: ONE chat per key; the global equivalents live in manage_config (budget_mode, daily_token_limit).
 
 Rules: never read back or repeat api keys in your replies; sanity-check a changed model pool with a quick ping if the user asks; settings that affect safety (security_level, trust_agent, owner_only, admin lists, eco_admin) deserve an explicit confirmation even from an admin.""",
     },

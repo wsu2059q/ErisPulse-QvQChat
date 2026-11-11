@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 
 from .. import utils
 from ..agent.tools import Tool
@@ -345,7 +346,19 @@ class EcosystemBridge:
             index += 1
 
         async def handler(ctx, **kwargs):
-            result = await self.sdk.module.call(module_name, service_name, **kwargs)
+# 调用超时（caller 侧 wait_for，不占服务参数名）：eco 服务卡死时工具必须
+# 诚实失败——否则模型拿不到结果只能每轮编"马上就好"式进度话术刷屏
+            timeout = float(getattr(self.main.cfg, "eco_call_timeout", 90) or 0)
+            try:
+                result = await asyncio.wait_for(
+                    self.sdk.module.call(module_name, service_name, **kwargs),
+                    timeout=timeout if timeout > 0 else None,
+                )
+            except asyncio.TimeoutError:
+                return utils.to_text({
+                    "ok": False,
+                    "error": f"service {module_name}.{service_name} timed out after {int(timeout)}s; report this honestly, do not claim the task is still progressing",
+                })
             return utils.to_text(result)
 
         return Tool(
@@ -356,7 +369,16 @@ class EcosystemBridge:
             origin="eco",
             access=self.service_access(module_name, service_name, service),
             meta={"module": module_name, "service": service_name},
+# 服务名嗅探副作用动作：发送/发布/点赞类重复执行有害，启用同回合去重闸
+            dedupe_success=self._is_side_effect_service(service_name),
         )
+
+    @staticmethod
+    def _is_side_effect_service(service_name: str) -> bool:
+        return bool(re.match(
+            r"^(send|post|publish|create|delete|del|remove|recall|like|follow|favorite|reply|forward|kick|ban|mute)_",
+            str(sanitize_name(service_name) or "").lower(),
+        ))
 
     def service_access(self, module: str, service: str, service_meta: dict | None = None) -> str:
         """服务访问级别：运营方覆盖 > 模块自声明 > 条目自带 > 默认档（eco_default_access，默认 safe）。

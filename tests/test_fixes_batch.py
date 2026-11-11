@@ -221,6 +221,26 @@ def test_is_tool_name_text():
     assert not AgentRunner._is_tool_name_text("普通回复", names)
 
 
+def test_is_tool_call_form():
+    from QvQChat.agent.runner import AgentRunner
+
+    names = {"eco_QvQMemes_send_sticker", "send_message"}
+# 调用书写形态：kw-args / JSON / 空参 / 前置空格（线上事故：eco_QvQMemes_send_sticker(query=...) 发进群）
+    assert AgentRunner._is_tool_call_form("eco_QvQMemes_send_sticker(query=猫猫傲娇得意喵)", names)
+    assert AgentRunner._is_tool_call_form('send_message({"text": "喵"})', names)
+    assert AgentRunner._is_tool_call_form("eco_QvQMemes_send_sticker()", names)
+    assert AgentRunner._is_tool_call_form("eco_QvQMemes_send_sticker (query=猫)", names)
+# 整段判定：调用形态整条拦截；参数跨行折断拼回一行也能认出
+    assert AgentRunner._is_tool_name_text("eco_QvQMemes_send_sticker(query=猫猫傲娇得意喵)", names)
+    assert AgentRunner._is_tool_name_text("eco_QvQMemes_send_sticker(\n  query=猫猫傲娇得意喵\n)", names)
+# 正文里带调用片段/前缀文字的不整条拦（保留正文语义，只挡纯调用退化）
+    assert not AgentRunner._is_tool_name_text("我来发个表情包 eco_QvQMemes_send_sticker(query=猫)", names)
+    assert not AgentRunner._is_tool_name_text("eco_QvQMemes_send_sticker(query=猫) 这个怎么样", names)
+# 前缀名误吃防护：rest 不是直接跟 "(" 不命中
+    assert not AgentRunner._is_tool_call_form("send_message_text(x)", names)
+    assert not AgentRunner._is_tool_call_form("send_message 好了", names)
+
+
 def test_strip_fake_media_prefix():
     from QvQChat import utils
 

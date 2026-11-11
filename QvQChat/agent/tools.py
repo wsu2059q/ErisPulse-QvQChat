@@ -50,6 +50,10 @@ class Tool:
     danger: bool = False
     meta: dict = field(default_factory=dict)
     access: str = "admin"
+# 同回合重复调用去重闸：True 的工具（发送/撤回这类有副作用的）在"同工具+同参数
+# 且上次成功"时被 runner 短路——防模型找不到通道时把同一条消息发三遍的刷屏事故。
+# 默认 False：结果会变的调用（轮询/随机/列表）必须允许重复执行
+    dedupe_success: bool = False
 
 
 def _allowed(name: str, whitelist: list[str] | None) -> bool:

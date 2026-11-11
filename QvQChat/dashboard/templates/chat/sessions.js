@@ -189,6 +189,7 @@
 
   // ===== 事件收件箱面板：通知/请求一览（聚合多账户），类型过滤 + 删除 + 清空 =====
   var inboxKind = ""; // 当前过滤类型（""=全部 / notice / request）
+  var inboxOffset = 0; // 收件箱分页偏移（每页 200）
   function toggleInboxBox() {
     var box = el("qvq-inbox-box");
     if (!box) return;
@@ -200,10 +201,11 @@
   function renderInboxBox() {
     var box = el("qvq-inbox-box");
     if (!box) return;
-    api("/api/qvq/inbox?kind=" + encodeURIComponent(inboxKind) + "&limit=200").then(function (data) {
+    api("/api/qvq/inbox?kind=" + encodeURIComponent(inboxKind) + "&limit=200&offset=" + (inboxOffset || 0)).then(function (data) {
       if (!box || !data || data.__http >= 400) return;
       var events = (data && data.events) || [];
       var unread = (data && data.unread) || 0;
+      var total = (data && data.total) || 0;
       var kindOpts = [
         '<option value="">' + esc(t("inbox_filter_all")) + "</option>",
         '<option value="notice"' + (inboxKind === "notice" ? " selected" : "") + ">" + esc(t("inbox_kind_notice")) + "</option>",
@@ -237,10 +239,23 @@
         "</div>" +
         (rows
           ? "<table class='qvq-table'><thead><tr><th>" + esc(t("col_time")) + "</th><th>" + esc(t("acct_filter_all")) +
-            "</th><th>" + esc(t("col_tool")) + "</th><th>" + esc(t("col_detail")) + "</th><th></th><th></th></tr></thead><tbody>" + rows + "</tbody></table>"
+            "</th><th>" + esc(t("col_tool")) + "</th><th>" + esc(t("col_detail")) + "</th><th></th><th></th></tr></thead><tbody>" + rows + "</tbody></table>" +
+            (total > events.length
+              ? "<div class='qvq-actions' data-inbox-pager style='justify-content:center;gap:16px'>" +
+                "<button class='qvq-btn small' data-pg='prev'" + (inboxOffset <= 0 ? " disabled" : "") + ">‹</button>" +
+                "<span class='qvq-tool-desc'>" + (inboxOffset + 1) + "-" + (inboxOffset + events.length) + " / " + total + "</span>" +
+                "<button class='qvq-btn small' data-pg='next'" + (inboxOffset + events.length >= total ? " disabled" : "") + ">›</button></div>"
+              : "")
           : "<div class='qvq-tool-desc'>" + esc(t("inbox_empty")) + "</div>");
       var kindSel = box.querySelector("#inbox-kind");
-      if (kindSel) kindSel.onchange = function () { inboxKind = kindSel.value; renderInboxBox(); };
+      if (kindSel) kindSel.onchange = function () { inboxKind = kindSel.value; inboxOffset = 0; renderInboxBox(); };
+      var pager = box.querySelector("[data-inbox-pager]");
+      if (pager) {
+        var pgPrev = pager.querySelector("[data-pg=prev]");
+        var pgNext = pager.querySelector("[data-pg=next]");
+        if (pgPrev) pgPrev.onclick = function () { inboxOffset = Math.max(0, inboxOffset - 200); renderInboxBox(); };
+        if (pgNext) pgNext.onclick = function () { inboxOffset = inboxOffset + 200; renderInboxBox(); };
+      }
       var refresh = box.querySelector("#inbox-refresh");
       if (refresh) refresh.onclick = renderInboxBox;
       var clear = box.querySelector("#inbox-clear");
@@ -1030,9 +1045,11 @@
   }
 
   function sessPolicyWrapHtml(pol) {
+    var budget = Number(pol.session_budget || 0);
     return '<button type="button" class="qvq-chip-btn qvq-pol-btn' + (pol.muted ? " on" : "") + '" data-pol-act="muted" title="' + esc(t("sess_policy_muted")) + '">' + esc(t("sess_policy_muted")) + "</button>" +
       '<button type="button" class="qvq-chip-btn qvq-pol-btn' + (pol.low_token ? " on" : "") + '" data-pol-act="low_token" title="' + esc(t("sess_policy_low_token")) + '">' + esc(t("sess_policy_low_token")) + "</button>" +
-      '<button type="button" class="qvq-chip-btn qvq-pol-btn' + (pol.priority !== "normal" ? " on" : "") + '" data-pol-act="priority" title="' + esc(t("sess_policy_priority")) + '">' + esc(sessPolicyPriorityLabel(pol.priority)) + "</button>";
+      '<button type="button" class="qvq-chip-btn qvq-pol-btn' + (pol.priority !== "normal" ? " on" : "") + '" data-pol-act="priority" title="' + esc(t("sess_policy_priority")) + '">' + esc(sessPolicyPriorityLabel(pol.priority)) + "</button>" +
+      '<button type="button" class="qvq-chip-btn qvq-pol-btn' + (budget > 0 ? " on" : "") + '" data-pol-act="budget" title="' + esc(t("sess_policy_budget")) + '">' + (budget > 0 ? esc(budget) : esc(t("sess_policy_budget"))) + "</button>";
   }
 
   function bindPolicyWrap(wrap, session) {
@@ -1045,7 +1062,14 @@
         var pol = sessionPolicyOf(session);
         // 优先级 chip 循环点击：high → normal → low → high
         if (act === "priority") pol.priority = SESS_POLICY_PRIORITIES[(SESS_POLICY_PRIORITIES.indexOf(pol.priority) + 1) % SESS_POLICY_PRIORITIES.length];
-        else pol[act] = !pol[act];
+        else if (act === "budget") {
+          // 预算 chip 点击 → 弹输入框填每日 token 数（空串 = 取消，0 = 不限）
+          var input = window.prompt(t("sess_policy_budget_prompt"), Number(sessionPolicyOf(session).session_budget || 0));
+          if (input == null) return;
+          var n = parseInt(input, 10);
+          if (isNaN(n) || n < 0) return;
+          pol.session_budget = n;
+        } else pol[act] = !pol[act];
         var body = { chat_key: key };
         body[act] = pol[act];
         var row = btn.closest("tr");

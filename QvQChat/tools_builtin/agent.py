@@ -344,7 +344,7 @@ def _context_block(main, ctx) -> str:
     except Exception:
         contexts = []
     lines: list[str] = []
-    for message in list(contexts or [])[-6:]:
+    for message in list(contexts or [])[-5:]:
         if not isinstance(message, dict):
             continue
         role = str(message.get("role") or "")

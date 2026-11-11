@@ -33,6 +33,24 @@ CONFIRM_WORDS = {"确认", "確認", "确定", "確定", "是", "confirm", "yes"
 # 否则整段思考原样回发到群里就是思考泄露事故
 _THINK_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
 
+# 显式停止指令（打断免判定）：任务运行中来一条纯停止词消息，直接作废旧任务，
+# 不发三选判定调用（省一次调用，也免得被预算/满载降级吞进队列——"说停"必须是可靠的
+# 抢救通道）。整条消息只是停止词的短句才命中，长句里带"停"字不误伤。
+_STOP_PHRASE_RE = re.compile(
+    r"^[\s，,。！!？?~～*@·]*(?:"
+    r"停+|停止|停下|住手|住口|住嘴|闭嘴|打住|"
+    r"别说了|别发了|别弄了|别做了|别搞了|"
+    r"取消|算了|算了算了|够了|"
+    r"stop|cancel|quit"
+    r")[\s，,。！!？?~～*·吧啊呀啦嘛哦]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_stop_phrase(text: str) -> bool:
+    """是否为纯停止指令（用于任务运行中的免判定硬中断）。"""
+    return bool(_STOP_PHRASE_RE.match(str(text or "").strip()))
+
 
 def _json_line_of(raw: str) -> str:
     """剥思考链后从响应里提取 JSON 的 line 字段；拿不到返回空串（调用方走模板回退）。"""
@@ -542,6 +560,27 @@ class InboxMixin(RecoveryMixin):
         if wants_recall and bool(getattr(self.cfg, "humanize_recall_message", True)):
             await delivery.recall_last(chat_key)
 
+    def _over_token_limit(self, chat_key: str) -> bool:
+        """会话是否处于超限态（全局日上限或会话级日限额，任一命中即超）。
+
+        供插话问询、主动发言等可选模型调用的前置闸：超限态下这些"可省调用"
+        一律跳过。管理员豁免只作用于用户触发回合的拦截与提示，这里不做身份判断。
+        """
+        today = time.strftime("%Y-%m-%d")
+        data = self.sdk.storage.get(f"QvQChat:usage:{today}", {})
+        if not isinstance(data, dict):
+            data = {}
+        global_limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
+        if global_limit > 0 and int(data.get("tokens", 0) or 0) >= global_limit:
+            return True
+        session_limit = int(get_policy(self.sdk, chat_key).get("session_budget") or 0)
+        if session_limit > 0:
+            by_chat = data.get("by_chat")
+            used = int((by_chat or {}).get(chat_key, 0) or 0) if isinstance(by_chat, dict) else 0
+            if used >= session_limit:
+                return True
+        return False
+
     def _user_quota_allow(self, chat_key: str, sender_id: str, event) -> bool:
         """用户级每日 token 配额：超限拒绝并至多提示一次（管理员豁免）。
 
@@ -826,6 +865,12 @@ class InboxMixin(RecoveryMixin):
 # 高负载降载：并发闸门满载或本会话正在处理时跳过问询——
 # 插话是可选行为，绝不能和用户的直接提问抢资源
                     and not self._interject_overloaded(chat_key)
+# 超限且未开自动低token时跳过问询：decide 本身是一次模型调用，
+# 插话回合反正会被限额拦截，问询就白花了（开了超限自动进低token则照常问询、插话走便宜链路）
+                    and not (
+                        self._over_token_limit(chat_key)
+                        and not bool(getattr(self.cfg, "budget_auto_on_limit", False))
+                    )
                 ):
                     decision = await manager.decide(chat_key, event, text)
                     if isinstance(decision, dict):
@@ -984,7 +1029,7 @@ class InboxMixin(RecoveryMixin):
             if bool(getattr(self.cfg, "log_debug", False)):
                 self.logger.debug("background skip: interrupt-decide (saturated) -> queue")
             return "queue", "saturated-skip", ""
-# 省钱模式：判定也是一次模型调用——直接静默入队（旧任务继续跑，忙完合并处理），
+# 低token模式：判定也是一次模型调用——直接静默入队（旧任务继续跑，忙完合并处理），
 # 少一次请求、少一条回执；需要抢救旧任务的用户用 /qvq 命令或直接说停
         if bool(getattr(self.cfg, "budget_mode", False)):
             return "queue", "budget-skip", ""
@@ -995,7 +1040,7 @@ class InboxMixin(RecoveryMixin):
 # 只看当前任务输出+新消息会把"同意/停/不是这个"之类短回复判错
             recent_lines: list[str] = []
             try:
-                for msg in list(self.sessions.get_contexts(chat_key) or [])[-8:]:
+                for msg in list(self.sessions.get_contexts(chat_key) or [])[-5:]:
                     if not isinstance(msg, dict):
                         continue
                     role = str(msg.get("role") or "")
@@ -1335,6 +1380,20 @@ class InboxMixin(RecoveryMixin):
         live = registry.get(chat_key) if registry is not None else None
         if live is None or live.status != "running":
             return True
+# 显式停止词最先判定：任何 interrupt_mode（含 queue）下"停停停"都必须打断——
+# 队列模式把停止词也排进队等于没有停止通道；免判定还省一次模型调用
+        incoming_text = " ".join(str(i.get("text") or "") for i in items if isinstance(i, dict) and i.get("text"))
+        if _is_stop_phrase(incoming_text):
+            current = str(getattr(live, "text", "") or "").strip()
+            if current:
+                if not hasattr(self, "_interrupted_notes"):
+                    self._interrupted_notes = {}
+                self._interrupted_notes[chat_key] = texts.t(
+                    "interrupted_note", content=utils.truncate(current, 500)
+                )
+            live.cancel()
+            self.logger.info(f"live task interrupted by stop phrase ({chat_key})")
+            return True
         mode = str(getattr(self.cfg, "interrupt_mode", "auto") or "auto")
         if mode == "queue":
             self._enqueue_waiting(chat_key, event, items)
@@ -1481,10 +1540,29 @@ class InboxMixin(RecoveryMixin):
                 if converted
             ]
             limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
-            if limit:
+            session_budget = int(get_policy(self.sdk, chat_key).get("session_budget") or 0)
+            if limit or session_budget:
                 used_today = int(self._usage_today().get("tokens", 0) or 0)
-                if used_today >= limit and not self.is_admin(sender_id, "chat", event.get_platform() or ""):
-                    await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
+                by_chat_today = (self._usage_today().get("by_chat") or {})
+                used_session = int(by_chat_today.get(chat_key, 0) or 0)
+                admin = self.is_admin(sender_id, "chat", event.get_platform() or "")
+                global_over = limit > 0 and used_today >= limit and not admin
+                session_over = session_budget > 0 and used_session >= session_budget and not admin
+                auto_budget = bool(getattr(self.cfg, "budget_auto_on_limit", False))
+                if (global_over or session_over) and not auto_budget:
+# 语义分档：插件插话（origin=plugin）是智能体主动发起的——超限态下静默跳过，
+# 既不消耗也不给群友回"到达上限"；用户自己触发的回合才拦截并提示（每天每会话至多一次）。
+# budget_auto_on_limit 开启时不拦截：超限自动转入低token模式继续对话（见 budget_effective）
+                    if origin == "plugin":
+                        self.logger.info(f"over token limit, plugin turn skipped ({chat_key})")
+                        return
+                    notice_key = f"QvQChat:usage:limit_noticed:{time.strftime('%Y-%m-%d')}:{chat_key}"
+                    if not self.sdk.storage.get(notice_key, False):
+                        self.sdk.storage.set(notice_key, True)
+                        if session_over and not global_over:
+                            await event.reply(texts.t("session_limit_reached", used=used_session, limit=session_budget))
+                        else:
+                            await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
                     return
 # 锁外中断判定留下的上下文（旧任务被叫停时做到哪）
             interrupted_note = ""
@@ -1600,6 +1678,12 @@ class InboxMixin(RecoveryMixin):
 # mute 之外还有 low/high 档会话在满载时的让位/抢先（数值小者先拿并发空位）
 # 人格级覆盖：prefill 开场白 + temperature/max_tokens（聊天链路无显式参数，人格即覆盖层）
                     policy = get_policy(self.sdk, chat_key)
+# 低token生效态（会话 low_token / 超限自动进入）→ chat 回合显式 prefer cheap：
+# runner 内只认全局 budget_mode，会话级与自动态在此传入（显式档位不被自动档覆盖）
+                    budget_pref = "cheap" if (
+                        policy.get("low_token")
+                        or (bool(getattr(self.cfg, "budget_auto_on_limit", False)) and self._over_token_limit(chat_key))
+                    ) else ""
                     run_coro = self.runner.run(
                         system=system,
                         messages=contexts + [user_msg],
@@ -1612,6 +1696,7 @@ class InboxMixin(RecoveryMixin):
                         on_tool_event=on_tool_event,
                         on_reasoning=on_reasoning,
                         priority=apply_priority(policy, 6 if origin == "plugin" else 0),
+                        prefer=budget_pref,
                         prefill=str(persona.get("prefill") or ""),
                         temperature=p_temp,
                         max_tokens=int(p_maxtok) if p_maxtok else None,
@@ -1738,6 +1823,20 @@ class InboxMixin(RecoveryMixin):
             # 失败通知按来源区分：用户主动触发（chat/dashboard 等才收完整错误）；
             # 被动触发（plugin 插话等）用户没有发起消息，默认静默只记日志，避免错误刷屏
             self.logger.warning(f"process failed (origin={origin}): {e}")
+# 中止现场落库：取消/超时分支已各自落部分输出，这里兜住其余异常（模型连坏/
+# 基础设施炸）——把已产生的输出与工具轨迹存进会话，下一轮模型与面板都看得到
+# "上一回合走到哪、为什么断"；无输出时也留一条中止标记（用户消息已由 prepare 落库，
+# 缺 assistant 侧会让下一轮历史缺半边）
+            failed_live = locals().get("live")
+            if failed_live is not None and chat_key:
+                try:
+                    partial, partial_trace, partial_rounds = failed_live.partial_record()
+                    if partial or partial_trace:
+                        self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
+                    else:
+                        self.sessions.append(chat_key, "assistant", texts.t("turn_aborted_note", error=utils.truncate(str(e), 120)))
+                except Exception as save_err:
+                    self.logger.debug(f"partial save on failure failed: {save_err}")
             if origin == "plugin" and not bool(getattr(self.cfg, "notify_on_passive_failure", False)):
                 return
             try:

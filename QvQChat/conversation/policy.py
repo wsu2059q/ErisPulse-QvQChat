@@ -1,10 +1,10 @@
-"""会话级策略存储：屏蔽（muted）/ 省钱（low_token）/ 资源优先级（priority）。
+"""会话级策略存储：屏蔽（muted）/ 低token（low_token）/ 资源优先级（priority）。
 
 键 ``QvQChat:chatcfg:{chat_key}`` 单 KV / 会话，值为
 ``{"muted": bool, "low_token": bool, "priority": "high"|"normal"|"low"}``。
 
 - ``muted``：消息完全不触发回复与旁听（_on_message 最前早闸，省资源也保隐私）。
-- ``low_token``：省钱模式——系统提示词瘦身（跳过 kb/技能/画像等重组件）、
+- ``low_token``：低token模式——系统提示词瘦身（跳过 kb/技能/画像等重组件）、
   历史窗口与单条长度收紧（service.prepare 消费）。
 - ``priority``：并发闸门优先级偏移（engine/gate 数值越小越先拿到空位），
   high=-2（满载时先于其它直答）/ normal=0（不干预）/ low=+5（让位）。
@@ -23,7 +23,7 @@ PRIORITY_OFFSET = {"high": -2, "normal": 0, "low": 5}
 
 
 def get_policy(sdk: Any, chat_key: str) -> dict:
-    """读会话策略；缺省 {muted: False, low_token: False, priority: "normal"}。"""
+    """读会话策略；缺省 {muted: False, low_token: False, priority: "normal", session_budget: 0}。"""
     raw = {}
     try:
         raw = sdk.storage.get(POLICY_PREFIX + str(chat_key or ""), {})
@@ -34,10 +34,15 @@ def get_policy(sdk: Any, chat_key: str) -> dict:
     priority = str(raw.get("priority") or "normal")
     if priority not in PRIORITY_LEVELS:
         priority = "normal"
+    try:
+        session_budget = max(0, int(raw.get("session_budget") or 0))
+    except (TypeError, ValueError):
+        session_budget = 0
     return {
         "muted": bool(raw.get("muted", False)),
         "low_token": bool(raw.get("low_token", False)),
         "priority": priority,
+        "session_budget": session_budget,
     }
 
 
@@ -51,6 +56,11 @@ def set_policy(sdk: Any, chat_key: str, **updates) -> dict:
     if "priority" in updates:
         priority = str(updates["priority"] or "normal").lower()
         current["priority"] = priority if priority in PRIORITY_LEVELS else "normal"
+    if "session_budget" in updates:
+        try:
+            current["session_budget"] = max(0, int(updates["session_budget"] or 0))
+        except (TypeError, ValueError):
+            current["session_budget"] = 0
     sdk.storage.set(POLICY_PREFIX + str(chat_key or ""), current)
     return current
 
@@ -67,6 +77,30 @@ def listen_allowed(config: Any, sdk: Any, chat_key: str) -> bool:
         return False
 # 前缀匹配：填平台段（如 "onebot11:"）即可放行该平台全部会话
     return any(chat_key.startswith(entry) for entry in entries if entry)
+
+
+def budget_effective(sdk: Any, config: Any, chat_key: str) -> bool:
+    """低token模式是否对该会话生效：显式开关（会话 low_token / 全局 budget_mode）
+    或超限自动进入（daily_token_limit / 会话日限额命中且配置了 budget_auto_on_limit）。"""
+    policy = get_policy(sdk, chat_key)
+    if policy.get("low_token") or bool(getattr(config, "budget_mode", False)):
+        return True
+    if not bool(getattr(config, "budget_auto_on_limit", False)):
+        return False
+    today_key = "QvQChat:usage:" + __import__("time").strftime("%Y-%m-%d")
+    data = sdk.storage.get(today_key, {}) if hasattr(sdk, "storage") else {}
+    if not isinstance(data, dict):
+        return False
+    global_limit = int(getattr(config, "daily_token_limit", 0) or 0)
+    if global_limit > 0 and int(data.get("tokens", 0) or 0) >= global_limit:
+        return True
+    session_limit = int(policy.get("session_budget") or 0)
+    if session_limit > 0:
+        by_chat = data.get("by_chat")
+        used = int((by_chat or {}).get(chat_key, 0) or 0) if isinstance(by_chat, dict) else 0
+        if used >= session_limit:
+            return True
+    return False
 
 
 def priority_offset(chat_key_policy: dict) -> int:

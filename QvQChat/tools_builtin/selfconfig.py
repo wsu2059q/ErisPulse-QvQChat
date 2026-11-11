@@ -275,18 +275,46 @@ async def manage_identity(ctx: ToolContext, action: str = "list", source: str = 
     return f"unknown action: {action} (list / migrate / remove)"
 
 
+def _as_bool(value) -> bool:
+    """工具入参布尔归一：模型常把布尔写成 "true"/"false" 字符串，
+    直接 bool("false") 是 True——字符串按词面判，其余走真值。"""
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "on")
+    return bool(value)
+
+
 async def session_settings(ctx: ToolContext, action: str = "get", chat_key: str = "",
                            settings: dict | None = None) -> str:
-    """会话级覆盖自管理：触发规则/模型/思考强度/密度/隐私开关（只作用于单个会话）。"""
+    """会话级覆盖自管理：触发规则/模型/思考强度/密度/隐私 + 会话策略
+    （静音/低token/优先级/日限额）与当日用量读回（只作用于单个会话）。"""
     main = ctx.main
     key = str(chat_key or "").strip() or str(ctx.chat_key or "")
     action = str(action or "get").strip().lower()
     if action == "get":
+        from ..conversation.policy import budget_effective, get_policy
+
+        policy = get_policy(ctx.sdk, key)
+        usage = main._usage_today() if hasattr(main, "_usage_today") else {}
+        if not isinstance(usage, dict):
+            usage = {}
+        by_chat = usage.get("by_chat")
+        session_tokens = int((by_chat or {}).get(key, 0) or 0) if isinstance(by_chat, dict) else 0
         return utils.to_text({
             "chat_key": key,
             "trigger_mode": main.sessions.trigger_mode_of(key),
             "listen_off": bool(main.sessions.get_flag(key, "listen_off")),
             "ui": (main.sessions._state(key).get("ui") or {}),
+            "muted": policy.get("muted"),
+            "low_token": policy.get("low_token"),
+            "priority": policy.get("priority"),
+            "session_budget": policy.get("session_budget"),
+            "low_token_active": budget_effective(ctx.sdk, ctx.config, key),
+            "usage_today": {
+                "session_tokens": session_tokens,
+                "session_budget": policy.get("session_budget"),
+                "global_tokens": int(usage.get("tokens", 0) or 0),
+                "daily_token_limit": int(getattr(ctx.config, "daily_token_limit", 0) or 0),
+            },
         })
     if action == "set":
         if not isinstance(settings, dict) or not settings:
@@ -299,8 +327,22 @@ async def session_settings(ctx: ToolContext, action: str = "get", chat_key: str 
             main.sessions.set_ui(key, ui_patch)
             applied.extend(sorted(ui_patch))
         if "listen_off" in settings:
-            main.sessions.set_flags(key, {"listen_off": bool(settings["listen_off"])})
+            main.sessions.set_flags(key, {"listen_off": _as_bool(settings["listen_off"])})
             applied.append("listen_off")
+# 会话策略与 chatcfg（policy.set_policy）同源：静音/低token/优先级/会话日限额
+        from ..conversation.policy import set_policy
+
+        policy_patch: dict = {}
+        for name in ("muted", "low_token"):
+            if name in settings:
+                policy_patch[name] = _as_bool(settings[name])
+        if "priority" in settings:
+            policy_patch["priority"] = str(settings["priority"])
+        if "session_budget" in settings:
+            policy_patch["session_budget"] = settings["session_budget"]
+        if policy_patch:
+            set_policy(ctx.sdk, key, **policy_patch)
+            applied.extend(sorted(policy_patch))
         return utils.to_text({"ok": True, "applied": applied, "chat_key": key})
     return f"unknown action: {action} (get / set)"
 
@@ -433,15 +475,19 @@ def register(registry: ToolRegistry, main) -> None:
         name="session_settings",
         access="admin",
         description=(
-            "Per-session overrides (single chat only, unlike manage_config which is global): read or set "
-            "trigger_mode (all/at_only/lurk/off), listen_off privacy flag, model, effort level, density "
-            "for ONE chat. Falls back to the current chat when chat_key is omitted."
+            "Per-session overrides (single chat only, unlike manage_config which is global): read or set, "
+            "for ONE chat — trigger_mode (all/at_only/lurk/off), listen_off privacy flag, model, effort "
+            "level, density, muted (true silences ALL responses in that chat), low_token (lean prompt + "
+            "tightened history), priority (high/normal/low concurrency slot), session_budget (daily token "
+            "cap for that chat, 0 = unlimited). get also returns today's usage (this session vs budget, "
+            "global vs daily_token_limit) and low_token_active (whether low-token mode is currently in "
+            "effect, including auto-on-limit). Falls back to the current chat when chat_key is omitted."
         ),
         parameters=_schema(
             {
                 "action": _s(type="string", description="get / set"),
                 "chat_key": _s(type="string", description="Target chat key; omit for the current chat"),
-                "settings": _s(type="object", description="set: {trigger_mode?, listen_off?, model?, effort?, density?}"),
+                "settings": _s(type="object", description="set: {trigger_mode?, listen_off?, model?, effort?, density?, muted?, low_token?, priority? (high/normal/low), session_budget? (daily tokens, 0=unlimited)}"),
             },
             [],
         ),

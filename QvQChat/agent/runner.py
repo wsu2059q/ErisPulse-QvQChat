@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import re
 import time
@@ -17,6 +18,28 @@ from .tools import ToolContext, ToolRegistry
 # 线上模型把工具名写成 `eco_TTS_tts_speak`。这类带包裹/标点的形态，精确等值比对会漏拦
 _TOOL_NAME_STRIP_EDGE = "`'\"「」『』“”‘’"
 _TOOL_NAME_STRIP_TAIL = "。．."
+
+# 中间发言近重复比对：剥空白/标点后小写（只用于比对，不动原文）
+_PROGRESS_STRIP_RE = re.compile(r"[\s，,。！!？?~～*·、；;：:,.!?～—\-]+")
+
+
+def _progress_signature(text: str) -> str:
+    return _PROGRESS_STRIP_RE.sub("", str(text or "")).lower()
+
+
+def _is_near_duplicate(speech: str, seen: list[str]) -> bool:
+    """与最近说过的中间发言近似相同（归一化相等或相似度≥0.6）——
+    工具循环里模型每轮复读"马上就好喵"式进度话术就是线上刷屏事故的形态。"""
+    signature = _progress_signature(speech)
+    if not signature:
+        return False
+    for prior in seen:
+        if signature == prior:
+            return True
+        ratio = difflib.SequenceMatcher(None, signature, prior).ratio()
+        if ratio >= 0.6:
+            return True
+    return False
 
 
 @dataclass
@@ -83,6 +106,44 @@ class AgentRunner:
             return True
         return utils.match_pattern(name, list(getattr(self.config, "safe_tools", []) or []))
 
+    def _reinforce_advertised_tools(self, schemas: list, system: str, ctx, persona_tools,
+                                    hidden_by_select: list) -> list[str]:
+        """广告即通道：系统提示词点名（eco_ 前缀工具名）但 schema 缺位时补回。
+
+        根因闭环：eco_prompt（模块广告位）无条件注入工具用法，而 schema 要过
+        权限过滤与 toolselect 裁剪两道闸——被裁后模型"看见工具名却没有调用
+        通道"，只能把调用文本化（线上事故：eco_QvQMemes_send_sticker 以 JSON
+        正文发进群）。点名即意味着本回合要用，从注册表把 schema 补回来；
+        已卸载/无权限的补不了，等 eco_prompt 随 refresh 收敛。
+        返回补回的工具名列表（写入日志供排查"tools 有没有发出去"）。
+        """
+        present = {str(s.get("function", {}).get("name") or "") for s in schemas}
+        mentioned = set(re.findall(r"eco_[A-Za-z0-9_]+", str(system or "")))
+        wanted = sorted(name for name in mentioned - present if name)
+        if not wanted:
+            return []
+        admin = self._ctx_is_admin(ctx)
+        known = self._all_tool_names()
+        reinforced: list[str] = []
+        for name in wanted:
+            if name not in known:
+                continue
+            if not admin and not self._tool_visible_nonadmin(name):
+                continue
+            entry = next(
+                (s for s in self.registry.llm_schemas(
+                    whitelist=persona_tools,
+                    disabled=list(getattr(self.config, "disabled_tools", []) or []),
+                ) if s.get("function", {}).get("name") == name),
+                None,
+            )
+            if entry is not None:
+                schemas.append(entry)
+                reinforced.append(name)
+                if name in hidden_by_select:
+                    hidden_by_select.remove(name)
+        return reinforced
+
 
     def _assistant_message(self, content: str | None, tool_calls: list) -> dict:
         message: dict = {"role": "assistant", "content": content or ""}
@@ -102,13 +163,38 @@ class AgentRunner:
             message["tool_calls"] = serialized
         return message
 
-    async def _run_tool(self, tool_call, ctx: ToolContext, trace: list, on_tool_event=None, step_id: str = "") -> tuple[str, bool]:
+    async def _run_tool(self, tool_call, ctx: ToolContext, trace: list, on_tool_event=None, step_id: str = "",
+                        call_memo: dict | None = None) -> tuple[str, bool]:
         """执行一次工具调用。返回 (输出文本, 是否失败)；失败判定来自 registry.invoke 的 meta["error"]。"""
         arguments_text = (
             tool_call.arguments
             if isinstance(tool_call.arguments, str)
             else json.dumps(tool_call.arguments or {}, ensure_ascii=False)
         )
+# 同回合重复调用短路（声明式）：只有 dedupe_success 的工具（发送/撤回等有副作用的）
+# 才在"同工具+同参数且上次成功"时短路——结果会变的调用（轮询/flaky 重试）必须放行。
+# memo 先占位防并发重复；上次失败/error 的允许重试（可能是瞬时故障）
+        memo_key = ""
+        if call_memo is not None:
+            tool_entry = self.registry.get(tool_call.name)
+            if tool_entry is not None and getattr(tool_entry, "dedupe_success", False):
+                memo_key = tool_call.name + "\x00" + arguments_text
+        if memo_key and memo_key in call_memo:
+            prior = call_memo[memo_key]
+            if prior:
+                duplicate_note = (
+                    "duplicate call: this tool was already called with identical arguments in this run. "
+                    "Do NOT repeat it — act on the previous result below or change the arguments. "
+                    "Previous output: " + truncate(prior, 300)
+                )
+                trace.append({"tool": tool_call.name, "arguments": truncate(arguments_text, 300),
+                              "output": truncate(duplicate_note, 300), "ms": 0})
+                return duplicate_note, False
+            trace.append({"tool": tool_call.name, "arguments": truncate(arguments_text, 300),
+                          "output": "duplicate call already in flight this run", "ms": 0})
+            return "duplicate call already in flight this run", False
+        if memo_key:
+            call_memo[memo_key] = ""
         if on_tool_event is not None:
             try:
                 result = on_tool_event(
@@ -137,6 +223,12 @@ class AgentRunner:
             output = f"error: {e}"
             meta["error"] = True
         ms = int((time.monotonic() - started) * 1000)
+        if memo_key:
+            if meta.get("error"):
+# 失败清占位：允许后续重试（瞬时故障），不留"已执行"假记忆
+                call_memo.pop(memo_key, None)
+            else:
+                call_memo[memo_key] = str(output or "")
         trace.append(
             {
                 "tool": tool_call.name,
@@ -227,16 +319,37 @@ class AgentRunner:
                 return text
 
     @staticmethod
-    def _is_tool_name_text(text: str, tool_names: set) -> bool:
+    def _is_tool_call_form(line: str, tool_names: set) -> bool:
+        """一行是否是已知工具的调用书写形态：name(args=...) / name({"k": "v"})。
+        清洗后的行以已知名开头、其余部分成对括号包裹即命中（参数内容不校验，
+        模型把调用写进正文时参数格式五花八门）；已知名只作前缀匹配，
+        rest 首字符必须直接是 "("，防止 web 误吃 web_fetch(...)。"""
+        text = str(line or "").strip()
+        if not text or "(" not in text:
+            return False
+        for name in tool_names:
+            if not text.startswith(name):
+                continue
+            rest = text[len(name):].strip()
+            if len(rest) >= 2 and rest.startswith("(") and rest.endswith(")"):
+                return True
+        return False
+
+    @classmethod
+    def _is_tool_name_text(cls, text: str, tool_names: set) -> bool:
         """整段文本是否只有工具名（单行命中或多行每行都是，判定前先清洗每行的
         包裹符/句末标点）——模型把调用意图写成文字的退化形态，不该作为
-        回复/中间发言发给用户。"""
+        回复/中间发言发给用户。裸名之外兼容调用书写形态（含名与参数跨行
+        折断的退化排版，拼回一行再认一次）。"""
         stripped = str(text or "").strip()
         if not stripped or not tool_names:
             return False
-        lines = [AgentRunner._clean_tool_name_line(line) for line in stripped.splitlines()]
+        lines = [cls._clean_tool_name_line(line) for line in stripped.splitlines()]
         lines = [line for line in lines if line]
-        return bool(lines) and all(line in tool_names for line in lines)
+        if lines and all(line in tool_names or cls._is_tool_call_form(line, tool_names) for line in lines):
+            return True
+        joined = cls._clean_tool_name_line(" ".join(stripped.split()))
+        return bool(joined) and cls._is_tool_call_form(joined, tool_names)
 
     def _all_tool_names(self) -> set:
         """全注册表工具名（含 eco 桥接注入的动态工具）：模型复述的是会话历史/
@@ -293,7 +406,7 @@ class AgentRunner:
         """pool 支持 TaskSpec 分派时走 dispatch(kind)，否则退回 pool.chat（兼容老式池对象）。
 
         priority：并发闸门优先级（用户直答 0 / 插话 6 / 后台任务 8）。"""
-# 省钱模式：chat 回合统一按实际成本升序挑模型（便宜优先、贵的垫底）——
+# 低token模式：chat 回合统一按实际成本升序挑模型（便宜优先、贵的垫底）——
 # 显式 prefer/model 与能力过滤不受影响；难度路由也会因 prefer 已占位而短路
         if (
             str(kind) == "chat" and not str(prefer or "") and not model
@@ -386,7 +499,7 @@ class AgentRunner:
             lines.append(f"... ({len(trace) - limit} more)")
         return "\n".join(lines)
 
-    async def _critique_phase(self, plan: str, task_text: str, result: AgentResult) -> str:
+    async def _critique_phase(self, plan: str, task_text: str, result: AgentResult, prefer: str = "") -> str:
         """阶段三 CRITIQUE：给计划+最终回复+工具 trace 摘要，要求输出 DONE 或 FIX: 修正点。"""
         payload = (
             "<task>\n" + truncate(task_text, 2000) + "\n</task>\n\n"
@@ -425,7 +538,7 @@ class AgentRunner:
 
     async def _fix_round(self, system: str, contexts: list, result: AgentResult, fix_points: str, *,
                          model=None, temperature=None, on_delta=None, on_reset=None, on_reasoning=None,
-                         chat_key: str = "") -> None:
+                         chat_key: str = "", prefer: str = "") -> None:
         """有界 1 次的无工具修正收尾：修正点作为追加 user 消息，就地更新 result。"""
         contexts.append({"role": "assistant", "content": result.text})
         contexts.append({"role": "user", "content": texts.t("deep_fix_note", fixes=truncate(fix_points, 2000))})
@@ -435,7 +548,7 @@ class AgentRunner:
             model=model,
             temperature=temperature,
         )
-        final = await self._dispatch("chat", request, model=model,
+        final = await self._dispatch("chat", request, model=model, prefer=prefer,
                                      on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
                                      chat_key=chat_key)
         self._merge_usage(result.usage, final)
@@ -465,6 +578,7 @@ class AgentRunner:
         task_kind: str = "chat",
         priority: int = 0,
         prefill: str = "",
+        prefer: str = "",
     ) -> AgentResult:
         contexts = self._sanitize_contexts(list(messages))
         session_block = self._session_block(ctx)
@@ -482,6 +596,7 @@ class AgentRunner:
         task_text = self._last_user_text(contexts)
 # 阶段二 EXECUTE：工具循环（含工具自愈）
         result = await self._run_loop(
+            prefer=prefer,
             system=system,
             contexts=contexts,
             ctx=ctx,
@@ -503,11 +618,12 @@ class AgentRunner:
             return result
 # 阶段三 CRITIQUE：审查后 FIX 时有界 1 次无工具修正
         result.plan = plan
-        critique = await self._critique_phase(plan, task_text, result)
+        critique = await self._critique_phase(plan, task_text, result, prefer=prefer)
         result.critique = critique
         fix_points = self._parse_critique_fix(critique)
         if fix_points:
             await self._fix_round(system, contexts, result, fix_points, model=model, temperature=temperature,
+                                       prefer=prefer,
                                   on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
                                   chat_key=ctx.chat_key)
         return result
@@ -518,6 +634,7 @@ class AgentRunner:
         system: str,
         contexts: list,
         ctx: ToolContext,
+        prefer: str = "",
         persona_tools: list | None = None,
         on_tool_round=None,
         on_intermediate=None,
@@ -558,11 +675,32 @@ class AgentRunner:
                 kept = {str(s.get("function", {}).get("name") or "") for s in selected}
                 hidden_by_select = sorted(visible_names - kept)
                 schemas = selected
+# 广告即通道：系统提示词点名的工具若被裁掉，补回 schema（防"广告在、通道不在"的文本化调用）
+        reinforced = self._reinforce_advertised_tools(schemas, system, ctx, persona_tools, hidden_by_select)
         max_rounds = int(getattr(self.config, "max_tool_rounds", 50) or 50)
         max_calls = int(getattr(self.config, "max_tool_calls", 150) or 150)
         total_calls = 0
         rounds: list = []
         nudged = False  # 空最终回复重问已用过（限一次）
+# 思考块按轮捕获：reasoning 只走回调（live 流）不进 rounds——历史里没有思考块、
+# 刷新后"已思考"消失（前端链路显示不完整的根因之一）。包一层回调边透传边收集，
+# 正文落轮时写入该轮 think
+        round_think: list[str] = []
+        base_on_reasoning = on_reasoning
+
+        async def on_reasoning_capture(piece):
+            if piece:
+                round_think.append(str(piece))
+            if base_on_reasoning is not None:
+                cb_result = base_on_reasoning(piece)
+                if asyncio.iscoroutine(cb_result):
+                    await cb_result
+
+        on_reasoning = on_reasoning_capture
+# 中间发言近重复抑制的窗口：本轮运行内最近说过的进度话术签名
+        progress_seen: list[str] = []
+# 同回合工具调用记忆：name+args → 上次成功输出（重复调用短路，失败不记可重试）
+        call_memo: dict[str, str] = {}
 # tool_call 能力闭环（schemas 非空且未显式指定模型时）
         raw_tool_names = {str(s.get("name") or "") for s in schemas if isinstance(s, dict)}
         raw_tool_names.discard("")
@@ -571,6 +709,16 @@ class AgentRunner:
         raw_tool_names |= self._all_tool_names()
         raw_tool_names |= self._eco_names_from_contexts(contexts)
         schemas, system, chat_needs = self._apply_tools_fallback(schemas, system, model)
+# 可观测性："请求到底带没带 tools / 带了哪些"是排障第一问（eco 工具文本化
+# 事故的定位起点）；debug 级别逐次列出最终清单与回灌名单
+        if bool(getattr(self.config, "log_debug", False)):
+            main_logger = getattr(getattr(ctx, "main", None), "logger", None)
+            if main_logger is not None:
+                final_names = sorted(str(s.get("function", {}).get("name") or "") for s in schemas if isinstance(s, dict))
+                main_logger.debug(
+                    f"request tools ({len(final_names)}): {', '.join(final_names) or 'none'}"
+                    + (f"; reinforced: {', '.join(reinforced)}" if reinforced else "")
+                )
         delivery_hint: bool | None = None
 # 预填充（人格级口语开场白）：只在首轮请求以 assistant 结尾消息注入，模型从这里续写。
 # 不写进 contexts——工具轮的后续请求与累积对话都不受污染。
@@ -609,7 +757,7 @@ class AgentRunner:
             )
             if use_prefill:
                 try:
-                    response = await self._dispatch("chat", request, needs=chat_needs, model=model,
+                    response = await self._dispatch("chat", request, needs=chat_needs, model=model, prefer=prefer,
                                                     on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
                                                     chat_key=ctx.chat_key, priority=priority)
                 except Exception:
@@ -623,11 +771,11 @@ class AgentRunner:
                         max_tokens=max_tokens,
                         needs=chat_needs,
                     )
-                    response = await self._dispatch("chat", request, needs=chat_needs, model=model,
+                    response = await self._dispatch("chat", request, needs=chat_needs, model=model, prefer=prefer,
                                                     on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
                                                     chat_key=ctx.chat_key, priority=priority)
             else:
-                response = await self._dispatch("chat", request, needs=chat_needs, model=model,
+                response = await self._dispatch("chat", request, needs=chat_needs, model=model, prefer=prefer,
                                                 on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
                                                 chat_key=ctx.chat_key, priority=priority)
 # 引擎剥图重试过 → 模型本轮没看见图：补一份视觉描述，避免它装作看过
@@ -657,12 +805,18 @@ class AgentRunner:
                 if not final_text.strip() and not nudged:
                     nudged = True
                     contexts.append({"role": "user", "content": texts.t("empty_final_nudge")})
+# 该轮不落条目：思考缓存同步清掉，别把本轮思考串到重问轮
+                    round_think.clear()
                     continue
 # 最终回复自身的标签优先级最高（覆盖过程中声明的意图）
                 if tag_hint is not None:
                     delivery_hint = tag_hint
                 final_text = self._with_prefill(final_text, prefill)
-                rounds.append({"text": final_text, "tools": []})
+                final_entry: dict = {"text": final_text, "tools": []}
+                if round_think:
+                    final_entry["think"] = "".join(round_think)
+                    round_think.clear()
+                rounds.append(final_entry)
                 return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds,
                                    model=used_model, delivery_hint=delivery_hint)
             trace_before = len(trace)
@@ -672,9 +826,21 @@ class AgentRunner:
 # 工具名文本同样不作为中间发言发出（模型把调用意图写成了文字）
             if speech and self._is_tool_name_text(speech, raw_tool_names):
                 speech = ""
+# 近重复进度话术不再外发（工具多轮循环里"马上就好喵"式复读是线上刷屏事故
+# 形态）；rounds/contexts 照记——模型自己的叙述连贯性不受影响，只是用户不再看
+            if speech and _is_near_duplicate(speech, progress_seen):
+                speech = ""
+            elif speech:
+                progress_seen.append(_progress_signature(speech))
+                if len(progress_seen) > 8:
+                    del progress_seen[:-8]
             if delivery_hint is None and tag_hint is not None:
                 delivery_hint = tag_hint
-            rounds.append({"text": speech, "tools": []})
+            speech_entry: dict = {"text": speech, "tools": []}
+            if round_think:
+                speech_entry["think"] = "".join(round_think)
+                round_think.clear()
+            rounds.append(speech_entry)
             contexts.append(self._assistant_message(response.content, response.tool_calls))
             if on_intermediate is not None:
                 if speech:
@@ -705,7 +871,7 @@ class AgentRunner:
             ctx.on_tool_event = on_tool_event
             outputs = await asyncio.gather(
                 *[
-                    self._run_tool(tc, ctx, trace, on_tool_event=on_tool_event, step_id=f"s{step_counter['n'] + i}")
+                    self._run_tool(tc, ctx, trace, on_tool_event=on_tool_event, step_id=f"s{step_counter['n'] + i}", call_memo=call_memo)
                     for i, tc in enumerate(response.tool_calls)
                 ]
             )
@@ -753,9 +919,14 @@ class AgentRunner:
             for hint in heal_hints:
                 contexts.append({"role": "user", "content": hint})
             if pending_images:
-                if self._pool_has_vision():
+                if self._model_accepts_images(model or used_model):
+# 本地路径必须转 data URL：厂商拉不到部署机文件，静默丢图 → 模型
+# "看不到图→反复 view_image"死循环（线上事故形态）
                     image_parts: list = [{"type": "text", "text": texts.t("tool_image_note")}]
-                    image_parts += [{"type": "image_url", "image_url": {"url": url}} for url in pending_images[:3]]
+                    image_parts += [
+                        {"type": "image_url", "image_url": {"url": utils.image_data_url(url)}}
+                        for url in pending_images[:3]
+                    ]
                     contexts.append({"role": "user", "content": image_parts})
                 else:
                     described = await self.pool.describe_images(pending_images)
@@ -776,7 +947,7 @@ class AgentRunner:
             temperature=temperature,
             needs=chat_needs,
         )
-        final = await self._dispatch("chat", final_request, needs=chat_needs, model=model,
+        final = await self._dispatch("chat", final_request, needs=chat_needs, model=model, prefer=prefer,
                                      on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,
              chat_key=ctx.chat_key, priority=priority)
         for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
@@ -787,7 +958,11 @@ class AgentRunner:
         if tag_hint is not None:
             delivery_hint = tag_hint
         final_text = self._with_prefill(final_text, prefill)
-        rounds.append({"text": final_text, "tools": []})
+        final_entry: dict = {"text": final_text, "tools": []}
+        if round_think:
+            final_entry["think"] = "".join(round_think)
+            round_think.clear()
+        rounds.append(final_entry)
         return AgentResult(text=final_text, tool_trace=trace, usage=usage_total, rounds=rounds,
                            model=used_model or final.model, delivery_hint=delivery_hint)
 
@@ -827,3 +1002,22 @@ class AgentRunner:
         except Exception:
             return True
         return caps.get("vision") is not False
+
+    def _model_accepts_images(self, model_id: str | None) -> bool:
+        """当前回合模型能否直接吃图：pool 有视觉模型 ≠ 本回合路由到的模型支持。
+
+        池里有视觉模型但 chat 用的是纯文本模型时，附 image_url 会被厂商拒
+        （或静默丢）——该走 describe_images 文字转述而不是硬塞。"""
+        listing = getattr(self.pool, "list_models", None)
+        if model_id and callable(listing):
+            try:
+                for entry in listing() or []:
+                    if entry.get("id") == model_id:
+                        caps = entry.get("capabilities")
+                        vision = caps.get("vision") if isinstance(caps, dict) else None
+                        if vision is not None:
+                            return bool(vision)
+                        break
+            except Exception:
+                pass
+        return self._pool_has_vision()
