@@ -138,6 +138,7 @@ class QvQConfig(BaseConfig):
     no_forward_platforms: list[str] = field(default_factory=list, metadata=_desc("no_forward_platforms", "禁止合并转发的平台黑名单（命中即使支持也不合并，优先级高于白名单）", "chat", 20, "list"))
     forward_min_messages: int = field(default=3, metadata=_desc("forward_min_messages", "合并转发的最小 AI 发言段数：本次运行中 AI 的回复达到该段数才打包合并卡（0 关闭自动合并，仍可用 [[转发]] 强制）", "chat", 21, "number"))
     forward_threshold: int = field(default=600, metadata=_desc("forward_threshold", "send_message 工具发送的文本超过该字符数自动打包合并转发（0 关闭）；回复是否打包不看长度，看 AI 发言段数", "chat", 22, "number"))
+    forward_reply_chars: int = field(default=0, metadata=_desc("forward_reply_chars", "主回复长度打包阈值（字符）：AI 最终回复达到该长度时整条打包为合并转发卡（0 关闭）。独立于 forward_threshold（仅约束 send_message 工具发送）；触发时无视 forward_min_messages 与 forward_structure_aware，结论保留在卡内、不按 forward_external_reply 直发卡外", "chat", 86, "number"))
     reply_split: str = field(default="paragraph", metadata=_desc("reply_split", "纯对话分段回复：paragraph 按空行/段落切段连发模拟真人节奏 / off 单条发送；工具任务始终合并转发不分段", "chat", 31, "select", ["paragraph", "off"]))
     split_min_length: int = field(default=120, metadata=_desc("split_min_length", "分段回复的最小触发长度（字符），低于此值单条发送", "chat", 32, "number"))
     split_delay: float = field(default=1.2, metadata=_desc("split_delay", "分段回复每段之间的间隔秒数", "chat", 33, "number"))
