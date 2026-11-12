@@ -1,6 +1,7 @@
 import asyncio
 import io
 import json
+import os
 import zipfile
 from types import SimpleNamespace
 
@@ -35,7 +36,7 @@ async def test_export_zip_sanitized_masks_keys(tmp_path):
     try:
         main, manager = make_manager(view_token="tok-x")
         main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1",
-                                 "api_key": "sk-super-secret", "models": [{"id": "m", "enabled": True}]})
+                                 "api_key": os.environ.get("QVQCHAT_TEST_KEY_1", "masked-key-sanitized"), "models": [{"id": "m", "enabled": True}]})
         response = await manager.export_data(FakeQp(format="zip", sanitize="1"))
         assert response.media_type == "application/zip"
         zf = zipfile.ZipFile(io.BytesIO(response.body))
@@ -55,12 +56,12 @@ async def test_export_zip_sanitized_masks_keys(tmp_path):
 async def test_export_zip_full_keeps_keys():
     main, manager = make_manager(view_token="tok-x")
     main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1",
-                             "api_key": "sk-keep-me", "models": [{"id": "m", "enabled": True}]})
+                             "api_key": os.environ.get("QVQCHAT_TEST_KEY_2", "kept-key-full"), "models": [{"id": "m", "enabled": True}]})
     response = await manager.export_data(FakeQp(format="zip"))
     zf = zipfile.ZipFile(io.BytesIO(response.body))
     data = json.loads(zf.read("data.json").decode("utf-8"))
     assert data["sanitize"] is False
-    assert data["providers"][0]["api_key"] == "sk-keep-me"
+    assert data["providers"][0]["api_key"] == os.environ.get("QVQCHAT_TEST_KEY_2", "kept-key-full")
 
 
 def test_sanitize_value_masks_sensitive_keys_recursively():
