@@ -244,6 +244,54 @@ async def test_deliver_reply_external_reply_disabled_sends_nothing():
     assert sent == []
 
 
+async def test_reply_length_threshold_forwards_plain_chat():
+    """forward_reply_chars：纯文本主回复达到阈值 → 整条进卡（无视无工具轮次）。"""
+    harness = make_harness(forward_reply_chars=50)
+    event = FakeForwardEvent()
+    reply = "纯文本回复" * 20
+    assert await Delivery(harness)._try_forward(event, reply, [], rounds=[{"text": reply, "tools": []}], keep_conclusion_inside=True) is True
+    calls = forward_calls(harness)
+    texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
+    assert any("纯文本回复" in t for t in texts)
+
+
+async def test_reply_length_threshold_below_stays_plain():
+    harness = make_harness(forward_reply_chars=50)
+    event = FakeForwardEvent()
+    assert await Delivery(harness)._try_forward(event, "短回复", [], rounds=[{"text": "短回复", "tools": []}]) is False
+    assert forward_calls(harness) == []
+
+
+async def test_reply_length_threshold_overrides_structure_aware():
+    """structure_aware 豁免纯寒暄 → 长度阈值仍强制进卡。"""
+    harness = make_harness(forward_reply_chars=50, forward_structure_aware=True)
+    event = FakeForwardEvent()
+    reply = "纯寒暄内容" * 20
+    assert await Delivery(harness)._try_forward(event, reply, [], rounds=[{"text": reply, "tools": []}], keep_conclusion_inside=True) is True
+    assert forward_calls(harness)
+
+
+async def test_reply_length_threshold_zero_disables():
+    harness = make_harness(forward_reply_chars=0)
+    event = FakeForwardEvent()
+    reply = "纯文本回复" * 40
+    assert await Delivery(harness)._try_forward(event, reply, [], rounds=[{"text": reply, "tools": []}]) is False
+    assert forward_calls(harness) == []
+
+
+async def test_deliver_reply_length_threshold_keeps_conclusion_inside():
+    """长度阈值打包：结论进卡，不按 external_reply 再直发卡外。"""
+    sent = []
+    harness = make_harness(forward_reply_chars=20)
+    delivery = Delivery(harness)
+    reply = "这段回复足够长超过阈值会进卡。" * 3
+    await delivery.deliver_reply(_split_event(sent), reply, [], force=None)
+    assert sent == []
+    calls = forward_calls(harness)
+    texts = [n["data"]["content"][0]["data"]["text"] for n in calls[0][0]]
+    assert any("超过阈值会进卡" in t for t in texts)
+
+
 async def test_structure_aware_forwards_structured_report():
     harness = make_harness(forward_structure_aware=True)
     event = FakeForwardEvent()

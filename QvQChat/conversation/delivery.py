@@ -62,7 +62,7 @@ def match_platform(pattern: str, platform: str) -> bool:
 def delivery_profile(config, platform: str) -> dict:
     """D2 平台投递 profile：全局配置默认值 + delivery_profiles 通配命中项覆盖。
 
-    覆盖键覆盖 D1 节奏参数与 reply_split/max_parts/forward_min_messages/forward_threshold。
+    覆盖键覆盖 D1 节奏参数与 reply_split/max_parts/forward_min_messages/forward_threshold/forward_reply_chars。
     """
     profile: dict = {
         "sentence_split": bool(getattr(config, "sentence_split", False)),
@@ -80,6 +80,7 @@ def delivery_profile(config, platform: str) -> dict:
         "reply_split": str(getattr(config, "reply_split", "paragraph")),
         "forward_min_messages": as_int(getattr(config, "forward_min_messages", 2), 2),
         "forward_threshold": as_int(getattr(config, "forward_threshold", 600), 600),
+        "forward_reply_chars": as_int(getattr(config, "forward_reply_chars", 0), 0),
         "forward_args_chars": as_int(getattr(config, "forward_args_chars", 140), 140) or 140,
         "forward_output_chars": as_int(getattr(config, "forward_output_chars", 500), 500) or 500,
     }
@@ -422,7 +423,7 @@ class Delivery:
         return segments
 
     async def _try_forward(self, event, reply: str, tool_trace: list, force: bool | None = None,
-                           rounds: list | None = None) -> bool:
+                           rounds: list | None = None, keep_conclusion_inside: bool = False) -> bool:
         if force is False:
             return False
         platform = event.get_platform() or ""
@@ -438,31 +439,33 @@ class Delivery:
         if force is not True:
             if not self.merges(platform):
                 return False
-            if not tool_trace and not structure_aware:
+            if not keep_conclusion_inside and not tool_trace and not structure_aware:
                 return False
         sections, text_segments = build_sections(
             rounds, reply, tool_trace,
             include_trace=not bool(getattr(self.config, "forward_exclude_trace", False)),
 # 卡外直发结论开启时，最终结论不进卡（剔除后卡内只剩过程与中间发言；
 # 剔空则下方 not sections 兜底放弃转发，整体回退直发）
-            exclude_final_reply=bool(getattr(self.config, "forward_external_reply", True))
+            exclude_final_reply=(not keep_conclusion_inside)
+            and bool(getattr(self.config, "forward_external_reply", True))
             and bool(str(reply or "").strip()),
             args_chars=as_int(profile.get("forward_args_chars"), 140) or None,
             output_chars=as_int(profile.get("forward_output_chars"), 180) or None,
         )
         if force is not True:
             min_messages = as_int(profile.get("forward_min_messages"), 2)
-            if structure_aware:
+            if not keep_conclusion_inside:
+                if structure_aware:
 # D3 结构感知：结构化占比达标、或多段且含代码块/表格才转发；纯寒暄多段直发
-                sig = structure_signals(rounds, reply)
-                structured = (
-                    sig["score"] >= STRUCTURE_FORWARD_RATIO
-                    or (min_messages and text_segments >= min_messages and (sig["has_code"] or sig["has_table"]))
-                )
-                if not structured:
+                    sig = structure_signals(rounds, reply)
+                    structured = (
+                        sig["score"] >= STRUCTURE_FORWARD_RATIO
+                        or (min_messages and text_segments >= min_messages and (sig["has_code"] or sig["has_table"]))
+                    )
+                    if not structured:
+                        return False
+                elif min_messages and text_segments < min_messages:
                     return False
-            elif min_messages and text_segments < min_messages:
-                return False
         if not sections:
             return False
         detail_type = "group" if event.is_group_message() else "user"
@@ -496,6 +499,11 @@ class Delivery:
             self.main.logger.warning(f"forward send failed, fallback to normal reply: {e}")
             return False
         return bool(used)
+
+    def _reply_over_length(self, event, reply: str) -> bool:
+        """主回复长度阈值：达到 forward_reply_chars 时整条打包，结论留在卡内。"""
+        limit = as_int(self.profile_for(str(event.get_platform() or "")).get("forward_reply_chars"), 0)
+        return limit > 0 and len(str(reply or "")) >= limit
 
     async def _send_plain(self, event, reply: str, quote: bool = False) -> bool:
         """单条发送：方法降级 -> 重试 -> 最终失败入待发队列（D4）。返回是否发送成功。
@@ -583,10 +591,13 @@ class Delivery:
                 and str(origin or "chat") in ("chat", "plugin")
                 and bool(getattr(self.config, "rhythm_humanize", True))
             )
-            if await self._try_forward(event, reply, tool_trace, force=force, rounds=rounds):
+            over_length = self._reply_over_length(event, reply)
+            if await self._try_forward(event, reply, tool_trace, force=force, rounds=rounds,
+                                       keep_conclusion_inside=over_length):
 # 卡外直发结论：转发卡只装过程与中间发言，最终结论以普通消息直发到卡外
-# （结论仍在卡内重复时可关闭 forward_external_reply）
-                if bool(getattr(self.config, "forward_external_reply", True)) and str(reply or "").strip():
+# （结论仍在卡内重复时可关闭 forward_external_reply；长度阈值触发的打包结论已在卡内，不再外发）
+                if (not over_length) \
+                        and bool(getattr(self.config, "forward_external_reply", True)) and str(reply or "").strip():
                     profile = self.profile_for(str(event.get_platform() or ""))
                     if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
                         await self._send_split(event, reply, quote=quote, allow_short_burst=allow_burst)
