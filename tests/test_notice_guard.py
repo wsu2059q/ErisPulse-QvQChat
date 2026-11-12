@@ -188,19 +188,19 @@ async def test_recent_friend_greet_suppresses_private_notice_wake():
     main = make_main(notice_listen=True, notice_types=["friend_increase", "poke"], trigger_mode="all")
     calls = install_batch_recorder(main)
     main._recent_friend_greeted = {"onebot11:u7": time.time()}
-    private_key = "onebot11:private:u7"
+    session_key = "onebot11:private:u7"
 
     main._maybe_wake_on_notice(
         FakeNoticeEvent(detail_type="friend_increase", sub_type="", group_id="",
                         user_id="u7", account="bot"),
-        private_key, {"summary": "好友已添加", "target_id": ""})
+        session_key, {"summary": "好友已添加", "target_id": ""})
     assert calls == []  # 决策回执已经是欢迎，不再唤醒
 
     main._recent_friend_greeted = {"onebot11:u7": time.time() - 601}  # 过了静默期
     main._maybe_wake_on_notice(
         FakeNoticeEvent(detail_type="friend_increase", sub_type="", group_id="",
                         user_id="u7", account="bot"),
-        private_key, {"summary": "好友已添加", "target_id": ""})
+        session_key, {"summary": "好友已添加", "target_id": ""})
     assert len(calls) == 1
     assert calls[0]["text"] == texts.t("notice_stimulus", summary="好友已添加")
 

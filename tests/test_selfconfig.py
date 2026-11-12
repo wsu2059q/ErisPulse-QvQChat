@@ -1,4 +1,5 @@
 import json
+import os
 
 from QvQChat import texts
 from QvQChat.Main import Main
@@ -38,13 +39,13 @@ async def test_manage_models_roundtrip():
         ctx,
         action="save",
         provider={"id": "p1", "name": "P1", "base_url": "https://api.p1/v1",
-                  "api_key": "sk-secret", "models": [{"id": "m1", "enabled": True}]},
+                  "api_key": os.environ.get("QVQCHAT_TEST_KEY_3", "cfg-key-selfconfig"), "models": [{"id": "m1", "enabled": True}]},
     ))
     assert out["ok"] is True
-    assert out["provider"]["api_key"].endswith("cret") and "sk-secret" not in out
+    assert out["provider"]["api_key"].endswith("nfig") and "cfg-key-selfconfig" not in out
 
     listing = json.loads(await selfconfig.manage_models(ctx, action="list"))
-    assert listing["providers"][0]["api_key"].endswith("cret")
+    assert listing["providers"][0]["api_key"].endswith("nfig")
     assert listing["providers"][0]["enabled_models"] == ["m1"]
 
     assert json.loads(await selfconfig.manage_models(ctx, action="set_default", model_id="p1:m1"))["ok"] is True
@@ -54,7 +55,7 @@ async def test_manage_models_roundtrip():
 # api_key 留空保留原值
     await selfconfig.manage_models(ctx, action="save", provider={"id": "p1", "base_url": "https://api.p1/v1"})
     stored = ctx.main.pool.get_provider("p1")
-    assert stored["api_key"] == "sk-secret"
+    assert stored["api_key"] == os.environ.get("QVQCHAT_TEST_KEY_3", "cfg-key-selfconfig")
     assert stored["models"][0]["id"] == "m1"
 
     assert json.loads(await selfconfig.manage_models(ctx, action="delete", provider_id="p1"))["ok"] is True
