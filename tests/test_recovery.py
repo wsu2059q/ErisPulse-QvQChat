@@ -7,6 +7,7 @@ import inspect
 import time
 
 from QvQChat.Main import Main
+from QvQChat.chat.inbox import INBOX_BOUND_METHODS
 from QvQChat.chat.recovery import INFLIGHT_KEY_PREFIX, RecoveryMixin
 from QvQChat.conversation.delivery import PENDING_KEY_PREFIX
 from QvQChat.scheduler import TASK_RUN_STATE_PREFIX, Scheduler
@@ -24,18 +25,7 @@ def make_chat_main(fail_run=False):
     main._chat_locks = {}
     main._rate_window = {}
     main._rate_notice_shown = {}
-    for name in (
-        "_process_locked", "_chat_ctx", "_sender_name", "_resolve_group_name",
-        "_seed_history", "_transcript_rows", "_label_seed_rows", "_group_nicknames",
-        "is_admin", "check_tool_permission", "_master_checker",
-        "record_usage", "_usage_today", "_prune_usage", "_usage_history",
-        "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
-        "_live_conflict", "_auto_interrupt_decide", "_handle_auto_decision",
-        "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
-        "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice", "_user_quota_allow", "_quota_notice",
-        "_maybe_send_opening",
-        "_is_command_message", "_command_yields", "_drain_waiting", "_enqueue_waiting", "_trigger_mode_of", "_is_direct_address", "_dup_delivery_gate", "_is_sibling_bot", "_quote_content", "_has_reply_segment", "_quote_targets_me",
-    ):
+    for name in INBOX_BOUND_METHODS:
         static_attr = inspect.getattr_static(Main, name)
         if isinstance(static_attr, staticmethod):
             setattr(main, name, static_attr.__func__)

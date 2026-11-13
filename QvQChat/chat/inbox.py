@@ -268,6 +268,24 @@ def _seed_dedupe(rows, contexts) -> list:
     return out
 
 
+# 测试绑定清单：测试把收件箱/命令行 mixin 的方法绑到轻量宿主（FakeMain）上驱动管线。
+# 单一来源——新增这类方法时在这里补名字，各测试文件统一引用本常量
+INBOX_BOUND_METHODS = (
+    "_process_locked", "_chat_ctx", "_sender_name", "_resolve_group_name",
+    "_seed_history", "_transcript_rows", "_label_seed_rows", "_group_nicknames",
+    "is_admin", "check_tool_permission", "_master_checker",
+    "record_usage", "_usage_today", "_prune_usage", "_usage_history",
+    "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
+    "_live_conflict", "_auto_interrupt_decide", "_handle_auto_decision",
+    "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
+    "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice", "_user_quota_allow", "_quota_notice",
+    "_maybe_send_opening",
+    "_is_command_message", "_command_yields", "_drain_waiting", "_enqueue_waiting", "_trigger_mode_of", "_is_direct_address", "_dup_delivery_gate", "_is_sibling_bot", "_quote_content", "_has_reply_segment", "_quote_targets_me",
+    "_sender_muted", "_mutes_note",
+    "_on_message", "_announce_queued", "_cmd_agent", "_cmd_persona",
+)
+
+
 class InboxMixin(RecoveryMixin):
     """Main 的消息入口 mixin（组合 RecoveryMixin：实例重启恢复方法随本链挂到 Main）。
     依赖宿主提供 self.sdk / self.cfg / self.logger /
@@ -750,6 +768,31 @@ class InboxMixin(RecoveryMixin):
                     return True
         return False
 
+    def _sender_muted(self, chat_key: str, event) -> bool:
+        """用户级屏蔽早闸：管理员豁免；屏蔽中的用户整条消息直接丢弃。"""
+        sender_id = str(event.get_user_id() or "")
+        if not sender_id:
+            return False
+        if self.is_admin(sender_id, "chat", event.get_platform() or ""):
+            return False
+        store = getattr(self.sessions, "user_mutes", None)
+        if store is None:
+            return False
+        return store.get(chat_key, sender_id) is not None
+
+    def _mutes_note(self, chat_key: str) -> str:
+        """活跃屏蔽的场景告知：让模型知道哪些人被自己屏蔽、收不到 TA 的消息。"""
+        store = getattr(self.sessions, "user_mutes", None)
+        if store is None:
+            return ""
+        entries = store.active(chat_key)
+        if not entries:
+            return ""
+        items = "、".join(
+            f"{e.get('user_id')}（{(e.get('reason') or '未记录原因')}）" for e in entries[:8]
+        )
+        return texts.t("scene_user_mutes", items=items)
+
     async def _on_message(self, event) -> None:
         try:
             if event.get("replayed"):
@@ -774,6 +817,11 @@ class InboxMixin(RecoveryMixin):
 # 让路（/qvq unmute 仍可用），走到这里的不会是命令
             if not listen_allowed(self.cfg, self.sdk, chat_key):
                 self.logger.debug(f"listen blocked by policy ({chat_key})")
+                return
+# 用户级屏蔽：被 AI/管理员屏蔽的用户整条丢弃——不旁听、不进 observe、不触发、不进历史。
+# 管理员永不被屏蔽；命令消息已在更早的 _is_command_message 让路
+            if self._sender_muted(chat_key, event):
+                self.logger.debug(f"sender muted by user-mute ({chat_key})")
                 return
 # H3 硬打断：本会话还有未发完的分段时，新消息命中强信号 → 丢弃剩余段
             try:
@@ -1483,6 +1531,10 @@ class InboxMixin(RecoveryMixin):
             else:
                 if sender_name:
                     scene = texts.t("scene_private", name=sender_name, id=sender_id)
+# 活跃屏蔽告知（群/私聊都注入）：模型知道自己屏蔽了谁，且收不到 TA 的消息
+            mutes_note = self._mutes_note(chat_key)
+            if mutes_note:
+                scene += mutes_note
 # 非消息事件来源注记（通知/请求唤醒的回合）：让模型知道这不是用户发言
             ev_type = ""
             try:

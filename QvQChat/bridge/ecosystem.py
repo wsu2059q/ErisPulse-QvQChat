@@ -122,6 +122,13 @@ class EcosystemBridge:
                 await participation.discover()
             except Exception as e:
                 self.main.logger.debug(f"participation discover failed: {e}")
+# 媒体标记供方随模块装卸重发现（qvq_media 声明优先，服务名兜底）
+        media_router = getattr(getattr(self.main, "delivery", None), "media", None)
+        if media_router is not None:
+            try:
+                await media_router.refresh()
+            except Exception as e:
+                self.main.logger.debug(f"media provider refresh failed: {e}")
         return dict(self.info)
 
     async def _call_optional(self, module: str, service: str):

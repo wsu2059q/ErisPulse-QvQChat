@@ -36,6 +36,7 @@ PRIORITY: dict[str, float] = {
     "inbox_note": 8.4,
     "eco_hint": 8.5,
     "eco_prompt": 8.6,
+    "media_markers": 8.55,
     "roster": 8.7,
     "extra": 9,
 }

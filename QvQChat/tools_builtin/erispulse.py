@@ -130,6 +130,10 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
 # "「[语音] 正文」"或单独一行"（语音已发）"来假装发过语音，而语音根本没发出
     if text:
         text = utils.strip_fake_media_prefix(utils.strip_fake_media_claims(text))
+# 工具直发不做媒体转换，但内联标记不能原样送到用户面前：语音保留文字内容，表情省略
+        from ..conversation.media import strip_markers
+
+        text = strip_markers(text)
 # 文件/语音发送：默认只允许本会话工作区内的文件（任意群友都能触发 AI——
 # 放开任意路径等于把机器上的文件外泄给任何人）；file_extra_dirs 白名单目录
 # （如 TTS 缓存）的产物放行发送，写入/删除仍严格限沙箱

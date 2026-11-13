@@ -533,6 +533,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "導入済みエコシステムモジュールが提供する機能（一般メンバーの会話でも利用可）：",
         "ru": "Установленные экосистемные модули дают эти возможности (доступны в обычных чатах):",
     },
+    "media_sticker_note": {
+        "zh-CN": "表情包：想发表情时直接在回复里写 [表情:关键词]（如 [表情:得意的猫]），投递层会替换成真实表情包，不要为此调用工具；只在闲聊里偶尔用，一条回复最多一个，正式内容和任务结果里不用。",
+        "zh-TW": "表情包：想發表情時直接在回覆裡寫 [表情:關鍵詞]（如 [表情:得意的貓]），投遞層會替換成真實表情包，不要為此呼叫工具；只在閒聊裡偶爾用，一條回覆最多一個，正式內容和任務結果裡不用。",
+        "en": "Stickers: when a sticker fits, write [sticker:keyword] (e.g. [sticker:smug cat]) right in the reply — the delivery layer swaps in a real sticker, do not call a tool for it; use it occasionally in casual chat only, at most one per reply, never in serious content or task results.",
+        "ja": "スタンプ：表情を送りたいときは返信に [表情:キーワード]（例：[表情:得意な猫]）と書くだけで、配信層が本物のスタンプに置き換えます。そのためのツール呼び出しは不要。雑談でたまに使い、1返信につき最大1個。真面目な内容やタスク結果には使わない。",
+        "ru": "Стикеры: если уместен стикер, напишите [sticker:ключевое слово] (например, [sticker:довольный кот]) прямо в ответе — слой доставки подставит настоящий стикер, инструмент для этого не нужен. Используйте изредка в непринуждённой беседе, не больше одного на ответ; в серьёзных сообщениях и результатах задач — никогда.",
+    },
+    "media_voice_note": {
+        "zh-CN": "语音：想发语音时写 [语音:要说的话]，投递层会合成并发出；适合短句口语、寒暄调侃、角色扮演，代码/表格/长文和任务结果保持文字。合成失败会自动改发文字，不用你重试。",
+        "zh-TW": "語音：想發語音時寫 [語音:要說的話]，投遞層會合成並發出；適合短句口語、寒暄調侃、角色扮演，程式碼/表格/長文和任務結果保持文字。合成失敗會自動改發文字，不用你重試。",
+        "en": "Voice: to send a voice message, write [voice:what to say]; the delivery layer synthesizes and sends it. Best for short spoken lines, banter and role-play; keep code, tables, long text and task results in writing. If synthesis fails the text is sent instead — no retry needed.",
+        "ja": "音声：音声を送りたいときは [voice:話す内容] と書き、配信層が合成して送ります。短い口語・軽いやり取り・ロールプレイ向け。コード・表・長文・タスク結果は文字のまま。合成に失敗したら自動で文字として送られるので、再試行は不要。",
+        "ru": "Голос: чтобы отправить голосовое, напишите [voice:что сказать] — слой доставки синтезирует и отправит. Подходит для коротких устных реплик, шуток и ролевой игры; код, таблицы, длинные тексты и результаты задач оставляйте текстом. Если синтез не удался, текст уйдёт сообщением — повторять не нужно.",
+    },
     "cmd_whoami": {
         "zh-CN": "你在 QvQChat 眼中的样子\n身份：{identity}（判定来源：{source}）\n账号：{uid}（平台 {platform}）\n可用：{scope}",
         "zh-TW": "你在 QvQChat 眼中的樣子\n身份：{identity}（判定來源：{source}）\n帳號：{uid}（平台 {platform}）\n可用：{scope}",
@@ -951,6 +965,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "\n[This group's speaking style] {style} (blend in naturally; no need to copy every joke)",
         "ja": "\n〔このグループの話し方〕{style}（自然に馴染ませる。個々のネタを再現する必要はない）",
         "ru": "\n[Стиль общения этой группы] {style} (вливайся естественно; не обязательно копировать каждую шутку)",
+    },
+    "scene_user_mutes": {
+        "zh-CN": "\n〔已屏蔽用户〕{items}——这些人的消息你完全收不到，也无法触发你；他们不会知道被屏蔽。若想解除或追加，用 user_mute 工具。",
+        "zh-TW": "\n〔已封鎖使用者〕{items}——這些人的訊息你完全收不到，也無法觸發你；他們不會知道被封鎖。若想解除或追加，用 user_mute 工具。",
+        "en": "\n[Muted users] {items} — their messages never reach you and they cannot trigger you; they are not told. Use the user_mute tool to unmute or add more.",
+        "ja": "\n〔ミュート済みユーザー〕{items}——これらの人のメッセージは一切届かず、あなたをトリガーすることもできません。ミュートされたことは通知されません。解除や追加は user_mute ツールで。",
+        "ru": "\n[Заблокированные пользователи] {items} — их сообщения до вас вообще не доходят и вызвать вас они не могут; им об этом не сообщают. Снять или добавить блокировку можно инструментом user_mute.",
     },
     "subagent_system": {
         "zh-CN": "你是主智能体派出的子智能体，独立完成给定任务后汇报结论。任务：{task}\n要求：不向用户追问澄清；需要的探索、试错都在本会话内完成；最终回复只给结论与关键结果。",

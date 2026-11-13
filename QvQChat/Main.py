@@ -34,7 +34,7 @@ from .engine.base import TaskSpec
 from .engine.pool import ModelPool
 from .scheduler import Scheduler
 from .skills import SkillManager
-from .tools_builtin import agent, code, computer, erispulse, knowledge, memory, schedule, selfconfig, skilltools, takumi, todo
+from .tools_builtin import agent, code, computer, erispulse, knowledge, memory, schedule, selfconfig, skilltools, takumi, todo, usermute
 from .version import __version__
 
 AUDIT_KEY = "QvQChat:audit"
@@ -378,6 +378,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         knowledge.register(self.registry, self)
         schedule.register(self.registry, self)
         todo.register(self.registry, self)
+        usermute.register(self.registry, self)
         skilltools.register(self.registry, self)
         agent.register(self.registry, self)
         selfconfig.register(self.registry, self)

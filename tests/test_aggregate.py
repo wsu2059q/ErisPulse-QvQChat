@@ -17,22 +17,10 @@ def make_main(**overrides):
     main._rate_window = {}
     main._rate_notice_shown = {}
 # 短窗去重是模块级全局（进程内跨实例共享）：测试间清空防同文本跨用例误丢
-    from QvQChat.chat.inbox import _RECENT_MSGS
+    from QvQChat.chat.inbox import INBOX_BOUND_METHODS, _RECENT_MSGS
 
     _RECENT_MSGS.clear()
-    for name in (
-        "_process_locked", "_chat_ctx", "_sender_name", "_resolve_group_name",
-        "_seed_history", "_transcript_rows", "_label_seed_rows", "_group_nicknames",
-        "is_admin", "check_tool_permission", "_master_checker",
-        "record_usage", "_usage_today", "_prune_usage", "_usage_history",
-        "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
-        "_live_conflict", "_auto_interrupt_decide", "_handle_auto_decision",
-        "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
-        "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice",
-        "_user_quota_allow", "_quota_notice",
-        "_maybe_send_opening",
-        "_is_command_message", "_command_yields", "_drain_waiting", "_enqueue_waiting", "_trigger_mode_of", "_is_direct_address", "_dup_delivery_gate", "_is_sibling_bot", "_quote_content", "_has_reply_segment", "_quote_targets_me",
-    ):
+    for name in INBOX_BOUND_METHODS:
         static_attr = inspect.getattr_static(Main, name)
         if isinstance(static_attr, staticmethod):
             setattr(main, name, static_attr.__func__)
