@@ -1,7 +1,8 @@
 import asyncio
+import time as _time
 
 from QvQChat.conversation.service import ConversationService, make_chat_key, parse_chat_key
-from QvQChat.conversation.memory import MemoryStore
+from QvQChat.conversation.memory import FORGET_PRUNE_KEY, MemoryStore
 
 from fakes import FakeMain, make_ctx
 
@@ -280,10 +281,6 @@ def test_skills_merge_external_and_builtin_wins():
 
 
 # ---------- 遗忘曲线 / 压缩沉淀 / 记忆分页 / 群语气学习 ----------
-
-import time as _time
-
-from QvQChat.conversation.memory import FORGET_PRUNE_KEY
 
 
 def test_forgetting_curve_spares_user_and_importance5():
