@@ -115,6 +115,15 @@ class ConversationService:
             self._todos = TodoStore(self.sdk, self.config)
         return self._todos
 
+    @property
+    def user_mutes(self):
+        """用户级屏蔽（UserMuteStore，懒构造；实现在 conversation/usermute.py）。"""
+        if getattr(self, "_user_mutes", None) is None:
+            from .usermute import UserMuteStore
+
+            self._user_mutes = UserMuteStore(self.sdk, self.config)
+        return self._user_mutes
+
 
     def _state(self, chat_key: str) -> dict:
         return self._normalize_state(self.sdk.storage.get(CONV_PREFIX + chat_key, None))
@@ -861,6 +870,7 @@ class ConversationService:
         self._index_remove(chat_key)
         self.main.memory.clear(chat_key)
         self.todos.clear(chat_key)
+        self.user_mutes.clear(chat_key)
         personas = getattr(self.main, "personas", None)
         if personas is not None:
             personas.bind(chat_key, None)
@@ -1410,6 +1420,15 @@ class ConversationService:
                     "eco_prompt",
                     texts.t("eco_prompt_note") + "\n" + "\n".join(f"- {line}" for line in advice),
                 ))
+# 内联媒体标记说明：只列当前真能落地的标记（供方缺失时模型不该写）
+        media_router = getattr(getattr(self.main, "delivery", None), "media", None)
+        if media_router is not None:
+            try:
+                media_note = media_router.prompt_note()
+            except Exception:
+                media_note = ""
+            if media_note:
+                parts.append(SystemPart("media_markers", media_note))
         if scene:
             parts.append(SystemPart("scene", scene))
         if chat_key:

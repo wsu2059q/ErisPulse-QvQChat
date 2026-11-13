@@ -2,6 +2,8 @@
 import asyncio
 import time
 
+import pytest
+
 from QvQChat import texts
 from QvQChat.chat.cli import CliMixin
 from QvQChat.conversation.budget import PRIORITY
@@ -291,20 +293,22 @@ class CliHost(CliMixin, FakeMain):
         return f"{event.get_platform()}:private:{event.get_user_id()}"
 
 
-def _cli_host(**cfg) -> CliHost:
-    host = CliHost(**cfg)
+@pytest.fixture
+def cli_host(monkeypatch):
+    """主人级动作测试：u1 兼任框架主人（monkeypatch 框架主人表，用例结束自动还原）。"""
+    import importlib
+
+    _main_mod = importlib.import_module("QvQChat.Main")  # import as 会被包属性遮蔽成类
+
+    monkeypatch.setattr(_main_mod, "framework_masters", lambda: ({"u1"}, {}))
+    host = CliHost()
     host.cfg.admins = ["u1"]
     host.scheduler = Scheduler(host)
-    # 主人级动作测试：u1 兼任框架主人（monkeypatch 框架主人表）
-    import importlib as _importlib
-
-    _main_mod = _importlib.import_module("QvQChat.Main")
-    _main_mod.framework_masters = lambda: ({"u1"}, {})
     return host
 
 
-async def test_qvq_memories_displays_overview():
-    host = _cli_host()
+async def test_qvq_memories_displays_overview(cli_host):
+    host = cli_host
     chat_key = "onebot11:group:1"
     host.conversations.append_facts(chat_key, ["ENTITY|张三"])
     host.memory.remember(chat_key, "用户喜欢蓝色")
@@ -320,8 +324,8 @@ async def test_qvq_memories_displays_overview():
     assert "onebot11:u1" in reply
 
 
-async def test_qvq_memories_clear_requires_admin_and_confirm():
-    host = _cli_host()
+async def test_qvq_memories_clear_requires_admin_and_confirm(cli_host):
+    host = cli_host
     _put_profile(host, "onebot11:u1", traits=["a"], preferences=["b"], facts=["c"])
     host.conversations.append_facts("onebot11:group:1", ["ENTITY|张三"])
     host.memory.remember("onebot11:group:1", "m")
@@ -343,8 +347,8 @@ async def test_qvq_memories_clear_requires_admin_and_confirm():
     assert texts.t("memories_clear_usage") in event.replies[0][1]
 
 
-async def test_qvq_memories_clear_graded():
-    host = _cli_host()
+async def test_qvq_memories_clear_graded(cli_host):
+    host = cli_host
     chat_key = "onebot11:group:1"
     _put_profile(host, "onebot11:u1", traits=["a"], preferences=["b"], facts=["c"])
     host.conversations.append_user(chat_key, "(u1): hi", sender_id="u1")

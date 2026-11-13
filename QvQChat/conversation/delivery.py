@@ -8,6 +8,8 @@ import time
 from .. import texts, utils
 from ..tools_builtin.erispulse import REPLY_PREFERENCE
 from ..utils import OUTPUT_TAG_RE, strip_output_tag
+from . import media
+from .media import MediaRouter
 from .rhythm import STRUCTURE_FORWARD_RATIO, as_float, as_int, plan_segments, structure_signals
 from .visual import build_sections
 
@@ -204,6 +206,8 @@ class Delivery:
         self._identity: dict = {}
         self._rng = rng or random
         self._replay_tried: set[str] = set()
+# 内联媒体标记：表情/语音的供方发现与投递（[表情:关键词]/[语音:文本]）
+        self.media = MediaRouter(main)
 # H3 响应预算：chat_key → 生成开始时间戳（None=无预算约束）
         self._budget_start: dict[str, float] = {}
 # H3 硬打断：chat_key 集合，分段发送循环在段间检查并丢弃未发段
@@ -577,10 +581,73 @@ class Delivery:
                     enqueue_pending(self.sdk, self.config, queue["chat_key"], entry)
             break
 
+    async def _send_media_reply(self, event, parts, quote: bool = False,
+                                allow_short_burst: bool = False) -> None:
+        """带内联媒体标记的回复：文本按段切分，媒体按原顺序插入发送。
+
+        媒体回复走闲聊语境，不进转发卡；语音发送失败降级为文字（内容不丢），
+        表情失败直接省略——标记本身绝不原样发给用户。
+        """
+        profile = self.profile_for(str(event.get_platform() or ""))
+        queue = self._event_queue(event)
+        chat_key = str((queue or {}).get("chat_key") or self._event_chat_key(event))
+        left = self.budget_left(chat_key)
+        first_text = True
+        for kind, value in parts:
+            if kind != "text":
+                sent = await self.media.send(event, kind, value)
+                if not sent:
+                    if kind == "voice" and str(value).strip():
+                        self._dbg("voice marker degraded to text")
+                        sent = await self._send_plain(event, value, quote=quote and first_text)
+                        first_text = False
+                    else:
+                        self._dbg(f"{kind} marker skipped (no provider or send failed)")
+                continue
+            if not str(value).strip():
+                continue
+            segments = plan_segments(value, profile, rng=self._rng, allow_short_burst=allow_short_burst)
+            if not segments:
+                segments = [(value, 0.0)]
+            segments = await self._emit_deliver_hook(event, segments)
+# H3 响应预算与 _send_split 同口径：延迟减半 → 归零 → 合并一条
+            if left is not None:
+                needed = sum(max(0.0, d) for _, d in segments)
+                if left <= 0:
+                    segments = [("\n\n".join(t for t, _ in segments), 0.0)]
+                elif needed > left:
+                    segments = [(t, d / 2 if d > 0 else 0.0) for t, d in segments]
+            for index, (text, delay) in enumerate(segments):
+                if delay > 0:
+                    await self._sleep_interruptible(chat_key, delay)
+                if self.take_interrupt(chat_key):
+                    self.main.logger.info("reply interrupted, dropped remaining media reply")
+                    return
+                if await self._send_plain(event, text, quote=quote and first_text):
+                    first_text = False
+                    continue
+# D4：失败段已入队，剩余文本段一并入队（媒体不重放）
+                if queue is not None:
+                    for rest, _ in segments[index + 1:]:
+                        entry = dict(queue)
+                        entry.update({"text": rest, "ts": time.time()})
+                        enqueue_pending(self.sdk, self.config, queue["chat_key"], entry)
+                return
+
     async def deliver_reply(self, event, reply: str, tool_trace: list, force: bool | None = None,
                             rounds: list | None = None, origin: str = "chat") -> None:
         try:
-            if self._is_recap(reply, tool_trace):
+            limit = as_int(getattr(self.config, "media_marker_max", 3), 3)
+            if bool(getattr(self.config, "media_markers", True)):
+                parts = media.split_reply(reply, limit=limit)
+                text_reply = reply if not media.has_media(parts) else media.text_of(parts)
+            else:
+                text_reply = media.strip_markers(reply)
+                parts = [("text", text_reply)]
+# 只剩被剥掉的标记（或本身为空）：没有可发送内容，避免发出空气泡
+            if not media.has_media(parts) and not str(text_reply or "").strip():
+                return
+            if self._is_recap(text_reply, tool_trace):
                 self.main.logger.info("reply suppressed as send recap")
                 return
             await self._replay_pending(self._event_chat_key(event))
@@ -591,24 +658,27 @@ class Delivery:
                 and str(origin or "chat") in ("chat", "plugin")
                 and bool(getattr(self.config, "rhythm_humanize", True))
             )
-            over_length = self._reply_over_length(event, reply)
-            if await self._try_forward(event, reply, tool_trace, force=force, rounds=rounds,
+            if media.has_media(parts):
+                await self._send_media_reply(event, parts, quote=quote, allow_short_burst=allow_burst)
+                return
+            over_length = self._reply_over_length(event, text_reply)
+            if await self._try_forward(event, text_reply, tool_trace, force=force, rounds=rounds,
                                        keep_conclusion_inside=over_length):
 # 卡外直发结论：转发卡只装过程与中间发言，最终结论以普通消息直发到卡外
 # （结论仍在卡内重复时可关闭 forward_external_reply；长度阈值触发的打包结论已在卡内，不再外发）
                 if (not over_length) \
-                        and bool(getattr(self.config, "forward_external_reply", True)) and str(reply or "").strip():
+                        and bool(getattr(self.config, "forward_external_reply", True)) and str(text_reply or "").strip():
                     profile = self.profile_for(str(event.get_platform() or ""))
                     if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
-                        await self._send_split(event, reply, quote=quote, allow_short_burst=allow_burst)
+                        await self._send_split(event, text_reply, quote=quote, allow_short_burst=allow_burst)
                     else:
-                        await self._send_plain(event, reply, quote=quote)
+                        await self._send_plain(event, text_reply, quote=quote)
                 return
             profile = self.profile_for(str(event.get_platform() or ""))
             if force is not True and profile.get("reply_split", "paragraph") == "paragraph":
-                await self._send_split(event, reply, quote=quote, allow_short_burst=allow_burst)
+                await self._send_split(event, text_reply, quote=quote, allow_short_burst=allow_burst)
                 return
-            await self._send_plain(event, reply, quote=quote)
+            await self._send_plain(event, text_reply, quote=quote)
         finally:
             self.end_budget(self._event_chat_key(event))
 
