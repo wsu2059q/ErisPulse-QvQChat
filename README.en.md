@@ -93,6 +93,7 @@ The main command is `/qvq` (alias `/qvqchat`).
 ## Web console
 
 <img src=".github/assets/chat.png" width="49%" alt="Chat" /> <img src=".github/assets/models.png" width="49%" alt="Models" />
+<img src=".github/assets/tools.png" width="49%" alt="Tools" /> <img src=".github/assets/audit.png" width="49%" alt="Audit" />
 
 Streaming replies with per-tool steps and the ability to stop a running task; sessions can be pinned, archived, renamed and shared read-only. Management pages cover model pool, personas, knowledge base, skills, tools, MCP, scheduled tasks, memory, sessions, audit and storage. OpenAI-compatible endpoints `GET /v1/models` and `POST /v1/chat/completions` (streaming included) are also available.
 

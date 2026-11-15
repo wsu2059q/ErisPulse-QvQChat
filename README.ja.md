@@ -93,6 +93,7 @@ admins = ["123456"]   # チャットプラットフォームでのあなたの�
 ## コンソール
 
 <img src=".github/assets/chat.png" width="49%" alt="チャット" /> <img src=".github/assets/models.png" width="49%" alt="モデルプール" />
+<img src=".github/assets/tools.png" width="49%" alt="ツール" /> <img src=".github/assets/audit.png" width="49%" alt="監査" />
 
 ストリーミング応答とツール呼び出しの段階表示、実行中タスクの停止。セッションのピン留め・アーカイブ・改名・読み取り専用共有に対応。管理画面はモデルプール、ペルソナ、知識ベース、スキル、ツール、MCP、定期タスク、記憶、セッション、監査、ストレージを網羅します。`GET /v1/models` と `POST /v1/chat/completions`（ストリーミング対応）の OpenAI 互換エンドポイントも提供します。
 
