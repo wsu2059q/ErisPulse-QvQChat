@@ -981,6 +981,7 @@ class ConversationService:
         cross_user_id: str = "",
         sender_id: str = "",
         profile_user: str = "",
+        user_mem_key: str = "",
         persist: bool = True,
     ) -> dict:
 
@@ -1075,7 +1076,20 @@ class ConversationService:
         )
         if recalled:
             lines = "\n".join(f"- {entry.get('content', '')}" for entry in recalled)
-            parts.append(SystemPart("memory", texts.t("memory_header") + "\n" + lines))# H6 记忆回捞钩子：相关记忆命中且距上次提及超过冷却时，允许自然带一句「记得你」；
+            parts.append(SystemPart("memory", texts.t("memory_header") + "\n" + lines))
+# 用户级跨会话记忆（仅私聊传入 user_mem_key）：同一个人在所有会话里记住的
+# "关于 TA 的事"——群聊绝不注入（私聊内容在群里被抖出来的社死风险归零）
+        if memory is not None and user_mem_key:
+            try:
+                user_recalled = memory.recall(
+                    user_mem_key, query=self._text_of(text), limit=int(getattr(self.config, "memory_recall", 6)) or 6
+                ) or []
+            except Exception:
+                user_recalled = []
+            if user_recalled:
+                ulines = "\n".join(f"- {entry.get('content', '')}" for entry in user_recalled)
+                parts.append(SystemPart("user_memory", texts.t("user_memory_header") + "\n" + ulines))
+# H6 记忆回捞钩子：相关记忆命中且距上次提及超过冷却时，允许自然带一句「记得你」；
 # 冷却内/非对方先开口的回合不提旧事（禁止沉默期主动翻旧账）
         if recalled and self._recall_hint_allowed(chat_key, text, sender_id or cross_user_id):
             parts.append(SystemPart("recall_hint", texts.t("recall_hint_note")))
