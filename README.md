@@ -1,29 +1,39 @@
 <div align="center">
 
-简体中文 | [繁體中文](README.zh-TW.md) | [English](README.en.md) | [日本語](README.ja.md) | [Русский](README.ru.md)
+<img src="https://raw.githubusercontent.com/ErisPulse/ErisPulse/main/.github/assets/ErisPulseLogo.png" width="180" alt="ErisPulse-QvQChat" />
 
-<img src="https://raw.githubusercontent.com/ErisPulse/ErisPulse/main/.github/assets/ErisPulseLogo.png" width="180" alt="QvQChat" />
+# ErisPulse-QvQChat
 
-</div>
-
-# QvQChat
-
-**ErisPulse 的通用智能体模块：在机器人所在的平台上聊天、调用工具、写代码并执行、安排定时任务、维护长期记忆。**
-
-接上任意 OpenAI 兼容模型即可使用。模型可经已安装的适配器收发消息、调用其它模块的服务、读写文件、执行命令、创建定时任务。可用工具取决于安装了什么，模块装卸无需重启。自带网页控制台，聊天侧与网页侧共用同一条执行链路。
+**给 bot 装个 AI 智能体 —— 自然语言聊天 / 工具循环 / 代码执行 / 长期记忆 / 定时任务。**
 
 <p>
-
-  <a href="https://github.com/ErisPulse/ErisPulse"><img src="https://raw.githubusercontent.com/ErisPulse/.github/main/assets/badges/module.svg" alt="ErisPulse Module" /></a>
   <a href="https://pypi.org/project/ErisPulse-QvQChat/"><img src="https://img.shields.io/pypi/v/ErisPulse-QvQChat?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI"></a>
   <a href="https://pypi.org/project/ErisPulse-QvQChat/"><img src="https://img.shields.io/badge/Python-3.10+-FFD43B?style=for-the-badge&logo=python&logoColor=blue" alt="Python"></a>
   <a href="https://github.com/wsu2059q/ErisPulse-QvQChat/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/wsu2059q/ErisPulse-QvQChat/ci.yml?style=for-the-badge&label=CI" alt="CI"></a>
   <a href="https://github.com/wsu2059q/ErisPulse-QvQChat/pkgs/container/erispulse-qvqchat"><img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="License"></a>
-
+  <a href="https://github.com/ErisPulse/ErisPulse"><img src="https://img.shields.io/badge/Powered_by-ErisPulse-FF6B9D?style=for-the-badge&logo=bookstack&logoColor=white" alt="ErisPulse"></a>
 </p>
 
-<img src=".github/assets/overview.png" width="860" alt="QvQChat 网页控制台" />
+</div>
+
+---
+
+## 界面
+
+<img src=".github/assets/chat.png" width="860" alt="对话" />
+
+<img src=".github/assets/overview.png" width="49%" alt="概览" /> <img src=".github/assets/models.png" width="49%" alt="模型池" />
+
+<img src=".github/assets/tools.png" width="49%" alt="工具" /> <img src=".github/assets/audit.png" width="49%" alt="审计" />
+
+## 简介
+
+ErisPulse 的智能体模块：装上之后 bot 就是个带工具的 AI。对话页流式输出，工具调用逐步展示，可中止运行中的任务；管理页覆盖模型池、人格、知识库、技能、工具、MCP、定时任务、记忆、会话、审计与存储。另提供 OpenAI 兼容端点 `GET /v1/models` 与 `POST /v1/chat/completions`（含流式）。
+
+生态模块只要声明 ErisPulse 的 service，就会自动注册为智能体工具——比如 [MyServer](https://github.com/wsu2059q/ErisPulse-MyServer) 开放了服务器管理功能，装上后直接说人话就能管你的 VPS（查状态、跑命令、收告警）：
+
+<img src=".github/assets/fleet-demo.png" width="620" alt="AI 查状态" />
 
 ## 安装
 
@@ -90,12 +100,6 @@ admins = ["123456"]   # 你在聊天平台上的用户 id
 - **多账户**：平台的多个 bot 账户可独立隔离会话。
 - **低token模式**：全局开关或会话级叠加，也可超限自动进入；系统提示与历史轻量化、辅助调用走便宜链路，适合高流量场景。
 
-## 网页控制台
-
-<img src=".github/assets/chat.png" width="49%" alt="对话页" /> <img src=".github/assets/models.png" width="49%" alt="模型池页" />
-
-对话页流式输出，工具调用逐步展示，可中止运行中的任务；会话支持置顶、归档、改名与只读分享链接。管理页覆盖模型池、人格、知识库、技能、工具、MCP、定时任务、记忆、会话、审计与存储。另提供 OpenAI 兼容端点 `GET /v1/models` 与 `POST /v1/chat/completions`（含流式）。
-
 ## 扩展
 
 模块在 `get_meta()` 里声明 `services`，每个服务自动成为工具：
@@ -140,9 +144,6 @@ pytest
 
 问题与建议请提 [Issue](https://github.com/wsu2059q/ErisPulse-QvQChat/issues)。
 
-- Telegram：<https://t.me/ErisPulse>
-- QQ 群：<https://qm.qq.com/q/TOwnCmypcy>
-
 ## 许可证
 
-[MIT](LICENSE)
+MIT

@@ -224,3 +224,5 @@ data/
 
 # 本地分析文档（不入库）
 docs/optimization-*.md
+.mimosa/
+my_erispulse_project/

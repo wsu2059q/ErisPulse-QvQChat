@@ -93,6 +93,7 @@ admins = ["123456"]   # 你在聊天平台上的使用者 id
 ## 網頁控制台
 
 <img src=".github/assets/chat.png" width="49%" alt="對話頁" /> <img src=".github/assets/models.png" width="49%" alt="模型池頁" />
+<img src=".github/assets/tools.png" width="49%" alt="工具" /> <img src=".github/assets/audit.png" width="49%" alt="稽核" />
 
 對話頁串流輸出，工具呼叫逐步展示，可中止執行中的任務；會話支援置頂、封存、改名與唯讀分享連結。管理頁涵蓋模型池、人格、知識庫、技能、工具、MCP、定時任務、記憶、會話、審計與儲存。另提供 OpenAI 相容端點 `GET /v1/models` 與 `POST /v1/chat/completions`（含串流）。
 
