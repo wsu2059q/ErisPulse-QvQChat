@@ -333,6 +333,8 @@ class QvQConfig(BaseConfig):
     handover_enabled: bool = field(default=True, metadata=_desc("handover_enabled", "会话让渡：允许主智能体把对话窗口让渡给一个全新上下文的智能体（扮演病人/临时人格/剧本主持等场景），让渡期间用户消息由它直接回复，主会话上下文完全不动；关闭即下线 handover_session 工具与 /qvq handover 命令", "chat", 91, "switch"))
     handover_max_turns: int = field(default=30, metadata=_desc("handover_max_turns", "会话让渡单场最大轮数（每次用户消息计一轮）：到顶自动收场并在主会话留一行注记；工具/命令可按场覆盖（工具钳制 2-100）", "chat", 92, "number", minimum=2, maximum=200))
     handover_idle_minutes: float = field(default=15.0, metadata=_desc("handover_idle_minutes", "会话让渡空闲超时（分钟）：超过该时长没有新消息自动收场并在主会话留一行注记；0 关闭（仅靠轮数上限与手动结束收场）", "chat", 93, "number"))
+    handover_turn_timeout: float = field(default=180.0, metadata=_desc("handover_turn_timeout", "让渡回合专属超时（秒）：卡死/流口水的让渡回合到点中止，远短于主回合的 turn_timeout（900s）——让渡占锁曾让整群假死一刻钟；0 跟随全局 turn_timeout", "chat", 94, "number"))
+    handover_think_cap: int = field(default=24000, metadata=_desc("handover_think_cap", "让渡单轮思考流字符上限：推理模型对着收场守则反复纠结（思考无限复读）时，单轮思考超过该量直接中止并收场，防止整群假死；0 关闭", "chat", 95, "number"))
 
 # 群聊参与决策（插件化扩展点；默认关闭：装插件≠放行）
     participation_enabled: bool = field(default=False, metadata=_desc("participation_enabled", "群聊参与决策：未被 @/前缀命中时问询生态插件的 qvq_decision 服务判断是否插话（默认关闭，需自行开启）", "participation", 1, "switch", dangerous=True))

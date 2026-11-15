@@ -294,6 +294,90 @@ async def test_service_wrappers():
     assert await Main.handover_status(main, KEY) == {"active": False}
 
 
+async def test_exit_phrase_ends_handover_without_model_call():
+    """整句退出指令免模型调用直接收场——把它丢给角色"理解再决定"曾让推理型
+    模型对着退出守则纠结流口水、回合挂死占锁整群假死。"""
+    main = make_main()
+    handover.start(main.sdk, main.cfg, KEY, setup="你扮演病人", listen="all")
+    captured_calls = []
+
+    class CountingRunner:
+        async def run(self, **kwargs):
+            captured_calls.append(kwargs)
+            return type("R", (), {"text": "好喵", "usage": {}, "tool_trace": [], "rounds": []})()
+
+    main.runner = CountingRunner()
+    ev = await drive(main, "退出会话让渡")
+    assert handover.get_state(main.sdk, KEY) is None
+# 让渡模型全程零调用（唯一的 runner 调用是主链路接手本条消息）
+    assert len(captured_calls) == 1
+    assert captured_calls[0]["persona_tools"] is None
+# 落回主链路：注记先行、本条消息由主智能体正常处理
+    contexts = main.sessions.get_contexts(KEY)
+    assert contexts and contexts[0]["role"] == "user"
+    assert "你扮演病人" in contexts[0]["content"]
+    assert "你扮演病人" not in (captured_calls[0]["system"] or "")  # 主链路 system 不带角色守则
+
+
+async def test_exit_phrase_variants():
+    main = make_main()
+    for phrase in ("结束扮演", "不玩了", "会话让渡结束！", "退出扮演吧"):
+        handover.start(main.sdk, main.cfg, KEY, setup="角色")
+        await drive(main, phrase)
+        assert handover.get_state(main.sdk, KEY) is None, phrase
+# 普通对话里含词组的句子不误伤
+    handover.start(main.sdk, main.cfg, KEY, setup="角色")
+    await drive(main, "我们之前说的那个扮演游戏后来怎么样了")
+    assert handover.get_state(main.sdk, KEY) is not None
+    await drive(main, "退出会话让渡")
+
+
+async def test_drool_watchdog_aborts_and_ends(monkeypatch):
+    """推理模型对着收场守则纠结流口水：单轮思考流超量 → 哨兵 cancel → 收场保群活。"""
+    main = make_main(handover_think_cap=50, handover_turn_timeout=0, turn_timeout=0)
+    released = []
+
+    class DroolingRunner:
+        async def run(self, **kwargs):
+            hook = kwargs.get("on_reasoning")
+            for _ in range(200):
+                if hook is not None:
+                    hook("思考片段" * 3)
+                await asyncio.sleep(0.05)
+            released.append(True)
+            return type("R", (), {"text": "答案", "usage": {}, "tool_trace": [], "rounds": []})()
+
+    main.runner = DroolingRunner()
+    state = handover.start(main.sdk, main.cfg, KEY, setup="你扮演病人")
+    ev = await drive(main, "随便聊聊")
+    assert handover.get_state(main.sdk, KEY) is None     # 收场
+    assert not released                                   # runner 被中止
+    sent = "".join(str(c) for _, c in ev.replies)
+    assert "中止" in sent or "aborted" in sent.lower()
+    await drain(main)
+
+
+async def test_handover_turn_timeout(monkeypatch):
+    """让渡回合专属超时（默认 180s，测试压到 1s）：中止回合但不收场。"""
+    main = make_main(handover_turn_timeout=1.0)
+    gate = asyncio.Event()
+
+    class SlowRunner:
+        async def run(self, **kwargs):
+            await gate.wait()
+            return type("R", (), {"text": "答案", "usage": {}, "tool_trace": [], "rounds": []})()
+
+    main.runner = SlowRunner()
+    state = handover.start(main.sdk, main.cfg, KEY, setup="你扮演病人")
+    ev = await drive(main, "慢慢答")
+    assert handover.get_state(main.sdk, KEY) is not None  # 超时只中止回合，不收场
+    sent = "".join(str(c) for _, c in ev.replies)
+    lowered = sent.lower()
+    assert "timeout" in lowered or "too long" in lowered or "超时" in sent or "秒" in sent
+    gate.set()
+    await drain(main)
+
+
 async def test_chat_service_model_passthrough():
     main = make_main()
     calls = []

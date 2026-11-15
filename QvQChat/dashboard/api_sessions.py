@@ -255,14 +255,17 @@ class SessionsApiMixin:
         """多账户概览：各平台在线 bot + 每个已隔离账户（chat_key 的 @account 后缀）的会话数。
 
         单账户平台不产生后缀，不进 accounts；账户仍出现在 sessions 里说明历史隔离数据在。
+        子会话（sub: 前缀：spawn/demote/让渡的隔离键）跳过——它们继承父键的 @account
+        中段，rpartition 会切出 "643319481:demote:xxxx" 这种假账户，编排页离线
+        账户区曾被它们刷满。
         """
         counts: dict[str, dict] = {}
         for s in sessions:
             key = str(s.get("chat_key") or "")
-            if "@" not in key:
+            if "@" not in key or key.startswith("sub:"):
                 continue
             base, _, acct = key.rpartition("@")
-            if not acct:
+            if not acct or base.startswith("sub:"):
                 continue
             platform = base.split(":", 1)[0] or "?"
             entry = counts.setdefault(acct, {"account": acct, "platforms": set(), "sessions": 0})
