@@ -170,6 +170,22 @@ async def test_sessions_get_accounts_overview():
     assert sorted(resp["accounts"]["adapters"][0]["bots"]) == ["bot_a", "bot_b"]
 
 
+async def test_accounts_overview_skips_sub_sessions():
+    """子会话（spawn/demote/让渡的 sub: 键）不进账户聚合——它们继承父键的
+    @account 中段，rpartition 会切出 "acct:demote:hex" 假账户刷满编排页。"""
+    main, manager = make_manager()
+    store = main.sdk.storage
+    store.set("QvQChat:conv:onebot11:group:1@bot_a", {"contexts": []})
+    store.set("QvQChat:conv:sub:onebot11:group:1@bot_a:demote:abcdef12", {"contexts": []})
+    store.set("QvQChat:conv:sub:handover:onebot11:group:1@bot_a:feaccc38", {"contexts": []})
+    main.sdk.adapter.add("onebot11", [])
+    main.sdk.adapter.bots = {"bot_a": {}}
+    resp = await manager.sessions_get(_Req())
+    accts = resp["accounts"]["accounts"]
+    assert len(accts) == 1 and accts[0]["account"] == "bot_a"
+    assert accts[0]["sessions"] == 1  # 仅真会话计数，两个子会话不计
+
+
 async def test_session_rewind_drops_message_and_after():
     """编辑并重发：删除目标消息及其之后所有内容，返回原文。"""
     main, manager = make_manager()

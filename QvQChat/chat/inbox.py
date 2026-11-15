@@ -54,6 +54,29 @@ _HANDOVER_EXIT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# 让渡退出短语：用户整句说"退出会话让渡/结束扮演"等——这是明确的收场指令，
+# 免模型调用直接收场（让给角色去"理解再决定"曾让推理型模型对着退出守则
+# 反复纠结流口水，回合挂死占锁、整群假死）。只在让渡进行中评估，整句匹配
+# 防误伤普通对话里偶然出现的词组
+_HANDOVER_EXIT_PHRASE_RE = re.compile(
+    r"^[\s，,。！!？?~～*@·]*(?:"
+    r"(?:退出|结束)(?:会话让渡|让渡|扮演|角色扮演|扮演游戏|游戏)|"
+    r"(?:会话让渡|让渡|扮演|游戏)(?:结束|退出)|停止扮演|不玩了"
+    r")[\s，,。！!？?~～*·吧啊呀啦嘛哦]*$",
+)
+
+# 让渡哨兵中止原因 → 看门狗在思考流超量/回合超时后 cancel runner 协程时写入
+_HANDOVER_ABORT_DROOL = "drool"
+_HANDOVER_ABORT_TIMEOUT = "timeout"
+
+
+class _HandoverAbort(Exception):
+    """让渡哨兵中止（drool=思考流口水 / timeout=回合超时），区别于外部取消。"""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = str(reason)
+
 
 def _is_stop_phrase(text: str) -> bool:
     """是否为纯停止指令（用于任务运行中的免判定硬中断）。"""
@@ -291,7 +314,7 @@ INBOX_BOUND_METHODS = (
     "_is_command_message", "_command_yields", "_drain_waiting", "_enqueue_waiting", "_trigger_mode_of", "_is_direct_address", "_dup_delivery_gate", "_is_sibling_bot", "_quote_content", "_has_reply_segment", "_quote_targets_me",
     "_sender_muted", "_mutes_note",
     "_handover_state", "_handover_state_invalidate", "_end_handover",
-    "_summarize_handover", "_handover_partial_save", "_process_handover",
+    "_summarize_handover", "_handover_partial_save", "_process_handover", "_guarded_run",
     "_on_message", "_announce_queued", "_cmd_agent", "_cmd_persona",
 )
 
@@ -1677,18 +1700,25 @@ class InboxMixin(RecoveryMixin):
 # 让渡（轮数尽/空闲超时）当场收场并落回主链路处理本条消息
             ho_state = self._handover_state(chat_key)
             if ho_state is not None:
-                reason = handover.expired_reason(ho_state)
-                if reason:
+                if _HANDOVER_EXIT_PHRASE_RE.match(labeled):
+# 明确的收场指令：免模型调用直接收场（把退出请求丢给角色"理解再决定"曾让
+# 推理型模型对着退出守则纠结流口水、回合挂死占锁整群假死）。注记先行落主
+# 上下文，随后落回主链路由主智能体自然回应这条消息
                     self._end_handover(chat_key, ho_state)
-                    self.logger.info(f"handover auto-ended ({reason}) ({chat_key})")
+                    self.logger.info(f"handover ended by exit phrase ({chat_key})")
                 else:
-                    await self._process_handover(
-                        event, chat_key, ho_state, ctx, labeled, sender_id, origin,
-                        live=live,
-                        on_delta=on_delta, on_reset=on_reset,
-                        on_tool_event=on_tool_event, on_reasoning=on_reasoning,
-                    )
-                    return
+                    reason = handover.expired_reason(ho_state)
+                    if reason:
+                        self._end_handover(chat_key, ho_state)
+                        self.logger.info(f"handover auto-ended ({reason}) ({chat_key})")
+                    else:
+                        await self._process_handover(
+                            event, chat_key, ho_state, ctx, labeled, sender_id, origin,
+                            live=live,
+                            on_delta=on_delta, on_reset=on_reset,
+                            on_tool_event=on_tool_event, on_reasoning=on_reasoning,
+                        )
+                        return
             prepared = await self.sessions.prepare(
                 chat_key,
                 labeled,
@@ -2053,6 +2083,41 @@ class InboxMixin(RecoveryMixin):
         live.publish("done", {"reply": partial, "session": sub_key})
         live.publish("end", {"status": live.status})
 
+    async def _guarded_run(self, coro, *, timeout: float, think_cap: int, box: dict):
+        """让渡回合守门：独立任务 + 哨兵轮询，超时或思考流超量都 cancel。
+
+        钩子在 engine 层被吞异常（_emit_reasoning 的 except Exception: pass），
+        看门狗没法借回调抛错中止——只能由哨兵 observe 计数后 cancel 任务。
+        box["reason"] 记录中止原因；外部取消（live.cancel 等）原样传播并连带
+        取消 runner 任务，不留孤儿协程。
+        """
+        task = asyncio.ensure_future(coro)
+
+        async def _sentinel():
+            deadline = time.time() + timeout if timeout and timeout > 0 else None
+            while not task.done():
+                if think_cap and think_cap > 0 and int(box.get("think_chars", 0)) > int(think_cap):
+                    box["reason"] = _HANDOVER_ABORT_DROOL
+                    task.cancel()
+                    return
+                if deadline and time.time() > deadline:
+                    box["reason"] = _HANDOVER_ABORT_TIMEOUT
+                    task.cancel()
+                    return
+                await asyncio.sleep(1.0)
+
+        sentinel = asyncio.ensure_future(_sentinel())
+        try:
+            return await task
+        except asyncio.CancelledError:
+            reason = box.get("reason")
+            if reason:
+                raise _HandoverAbort(str(reason)) from None
+            task.cancel()
+            raise
+        finally:
+            sentinel.cancel()
+
     async def _process_handover(self, event, chat_key: str, state: dict, ctx, labeled: str,
                                 sender_id: str, origin: str, live=None,
                                 on_delta=None, on_reset=None, on_tool_event=None, on_reasoning=None) -> None:
@@ -2082,7 +2147,20 @@ class InboxMixin(RecoveryMixin):
                 or str(getattr(self.cfg, "handover_model", "") or "")
                 or None
             )
-            _turn_timeout = float(getattr(self.cfg, "turn_timeout", 0) or 0)
+# 让渡回合双守门：专属超时（默认 180s，远短于主回合的 900s——卡死回合占锁
+# 曾让整群假死一刻钟）+ 思考流口水看门狗（推理模型对着退出守则反复纠结的
+# 单轮思考流超量即中止）。0 = 跟随全局 turn_timeout / 关闭
+            _turn_timeout = float(getattr(self.cfg, "handover_turn_timeout", 180.0) or 0)
+            if _turn_timeout <= 0:
+                _turn_timeout = float(getattr(self.cfg, "turn_timeout", 0) or 0)
+            think_cap = int(getattr(self.cfg, "handover_think_cap", 24000) or 0)
+            think_box: dict = {"think_chars": 0}
+            orig_reasoning = on_reasoning
+
+            def counting_reasoning(piece):
+                think_box["think_chars"] += len(str(piece or ""))
+                return orig_reasoning(piece) if orig_reasoning is not None else None
+
             try:
                 run_coro = self.runner.run(
                     system=str(state.get("role_prompt") or ""),
@@ -2093,21 +2171,36 @@ class InboxMixin(RecoveryMixin):
                     on_delta=on_delta,
                     on_reset=on_reset,
                     on_tool_event=on_tool_event,
-                    on_reasoning=on_reasoning,
+                    on_reasoning=counting_reasoning,
                     priority=apply_priority(get_policy(self.sdk, chat_key), 6 if origin == "plugin" else 0),
                 )
-                result = await asyncio.wait_for(run_coro, timeout=_turn_timeout or None)
+                result = await self._guarded_run(
+                    run_coro, timeout=_turn_timeout, think_cap=think_cap, box=think_box,
+                )
+            except _HandoverAbort as abort:
+                self._handover_partial_save(sub_key, live)
+                if abort.reason == _HANDOVER_ABORT_DROOL:
+# 流口水是明确病态：收场保群活（不收场的话下一轮大概率再挂）
+                    self.logger.warning(
+                        f"handover turn aborted: reasoning exceeded {think_cap} chars ({chat_key}), ending handover"
+                    )
+                    cur = handover.get_state(self.sdk, chat_key)
+                    if cur is not None:
+                        self._end_handover(chat_key, cur)
+                    try:
+                        await event.reply(texts.t("handover_drool_stopped", cap=think_cap))
+                    except Exception as inner:
+                        self.logger.debug(f"handover drool notice failed: {inner}")
+                else:
+                    self.logger.warning(f"handover turn timeout after {_turn_timeout}s ({chat_key})")
+                    try:
+                        await event.reply(texts.t("run_timeout", seconds=int(_turn_timeout)))
+                    except Exception as inner:
+                        self.logger.debug(f"handover timeout notice failed: {inner}")
+                return
             except asyncio.CancelledError:
                 self._handover_partial_save(sub_key, live)
                 raise
-            except asyncio.TimeoutError:
-                self._handover_partial_save(sub_key, live)
-                self.logger.warning(f"handover turn timeout after {_turn_timeout}s ({chat_key})")
-                try:
-                    await event.reply(texts.t("run_timeout", seconds=int(_turn_timeout)))
-                except Exception as inner:
-                    self.logger.debug(f"handover timeout notice failed: {inner}")
-                return
             except Exception as e:
                 self._handover_partial_save(sub_key, live)
                 self.logger.warning(f"handover turn failed: {e}")
