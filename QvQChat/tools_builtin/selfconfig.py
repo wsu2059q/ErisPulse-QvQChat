@@ -259,6 +259,108 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
     return f"unknown action: {action} (get / set)"
 
 
+def _plugin_config_class(sdk, module: str):
+    """插件 ConfigClass 解析（与 Dashboard 插件设置端点同源：模块注册名 → 模块类）。"""
+    classes = getattr(getattr(sdk, "module", None), "_module_classes", None) or {}
+    cls = classes.get(str(module))
+    return getattr(cls, "ConfigClass", None) if cls is not None else None
+
+
+def _plugin_field_meta(config_class) -> dict:
+    """ConfigClass → {field: {type, description, secret}}（描述经框架 i18n 解析）。"""
+    from ErisPulse.runtime.config_schema import resolve_config_schema
+
+    schema = resolve_config_schema(config_class) or {}
+    fields = {}
+    for name, meta in (schema.get("fields") or {}).items():
+        fields[str(name)] = {
+            "type": str((meta or {}).get("type") or "string"),
+            "description": str((meta or {}).get("description") or ""),
+            "secret": bool((meta or {}).get("secret")),
+        }
+    return fields
+
+
+async def manage_plugin_config(ctx: ToolContext, action: str = "list", module: str = "",
+                               key: str = "", values: dict | None = None) -> str:
+    """读写其他插件模块的声明式配置（仅限声明了 qvq_settings 的模块，admin 档）。
+
+    与 Dashboard 插件设置页同一套框架管线：resolve_config_schema 出表单 →
+    dict_to_dataclass + validate_config 校验 → 逐键 sdk.config.setConfig（触发
+    目标模块 on_config_update 热更新）→ emit qvq.plugin_config 通知热加载。
+    框架对 config 写入不设权限墙——本工具的 admin 档就是唯一闸门。
+    """
+    main = ctx.main
+    action = str(action or "list").lower()
+    catalog = dict(getattr(main, "plugin_settings_catalog", {}) or {})
+    if action == "list":
+        rows = []
+        for name in sorted(catalog):
+            config_class = _plugin_config_class(ctx.sdk, name)
+            rows.append({
+                "module": name,
+                "title": str(catalog.get(name) or name),
+                "fields": _plugin_field_meta(config_class) if config_class is not None else {},
+            })
+        return utils.to_text({"plugins": rows}, limit=20000)
+    module = str(module or "").strip()
+    if not module:
+        return "module is required (see action=list)"
+    if module not in catalog:
+        return f"unknown plugin module: {module} (only modules exposing qvq_settings are manageable; see action=list)"
+    config_class = _plugin_config_class(ctx.sdk, module)
+    if config_class is None:
+        return f"module {module} has no declarative ConfigClass; nothing to manage"
+    try:
+        from ErisPulse.runtime.config_schema import dict_to_dataclass, validate_config
+    except Exception as e:
+        return f"framework config schema unavailable: {type(e).__name__}: {e}"
+    current = ctx.sdk.config.getConfig(module)
+    current = dict(current) if isinstance(current, dict) else {}
+    fields = _plugin_field_meta(config_class)
+    if action == "get":
+        if key:
+            name = str(key)
+            value = current.get(name)
+            if (fields.get(name) or {}).get("secret") and value:
+                value = "***"
+            return utils.to_text({module: {name: value}})
+        masked = {
+            str(name): ("***" if (fields.get(str(name)) or {}).get("secret") and value else value)
+            for name, value in current.items()
+        }
+        return utils.to_text({module: masked}, limit=20000)
+    if action == "set":
+        if not isinstance(values, dict) or not values:
+            return "set needs a values object of {config_key: value}"
+        unknown = [str(k) for k in values if str(k) not in fields]
+        if unknown:
+            return utils.to_text({"ok": False, "rejected": {k: "unknown config key" for k in unknown}})
+# 与 Dashboard 保存端点同管线：整节合并出实例校验（类型/必填/枚举/区间），
+# 错误原样返回不写任何值；通过后逐键写入（config.set 事件自动通知目标模块）
+        merged = {**current, **values}
+        try:
+            instance = dict_to_dataclass(config_class, merged)
+            errors = validate_config(instance)
+        except Exception as e:
+            return f"validation failed: {type(e).__name__}: {e}"
+        if errors:
+            return utils.to_text({"ok": False, "errors": errors})
+        applied = []
+        for name in values:
+            ctx.sdk.config.setConfig(f"{module}.{name}", values[name])
+            applied.append(str(name))
+        try:
+            await ctx.sdk.lifecycle.emit(
+                "qvq.plugin_config",
+                {"module": module, "values": {str(k): merged.get(k) for k in values}},
+            )
+        except Exception:
+            pass
+        return utils.to_text({"ok": True, "module": module, "applied": applied})
+    return f"unknown action: {action} (list / get / set)"
+
+
 async def manage_identity(ctx: ToolContext, action: str = "list", source: str = "",
                           target: str = "", mode: str = "alias") -> str:
     """身份迁移自管理：换平台/换号后把旧会话身份映射到新身份，历史/人格/记忆跟随。"""
@@ -447,6 +549,29 @@ def register(registry: ToolRegistry, main) -> None:
             [],
         ),
         handler=manage_config,
+        danger=True,
+    ))
+    registry.register(Tool(
+        name="manage_plugin_config",
+        access="admin",
+        description=(
+            "Read or change OTHER plugin modules' settings through the framework's declarative config "
+            "API. Only modules that expose qvq_settings are manageable (same pipeline as the Dashboard "
+            "plugin settings page: schema from ConfigClass, type/range validation, per-key hot update, "
+            "qvq.plugin_config event). list = manageable catalog with field schemas; get = current "
+            "values (secrets masked); set = {module, values} key-value updates. Use this when the user "
+            "asks to tweak a companion plugin's behaviour instead of guessing file paths. Admin only."
+        ),
+        parameters=_schema(
+            {
+                "action": _s(type="string", description="list / get / set"),
+                "module": _s(type="string", description="get/set: target module registration name (from list)"),
+                "key": _s(type="string", description="get: single config key; omit for all"),
+                "values": _s(type="object", description="set: {config_key: value} pairs, validated against the module's schema (unknown keys rejected)"),
+            },
+            [],
+        ),
+        handler=manage_plugin_config,
         danger=True,
     ))
     registry.register(Tool(

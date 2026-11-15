@@ -16,6 +16,12 @@ def _schema(properties: dict, required: list[str]) -> dict:
 
 
 def _scope_key(ctx: ToolContext, scope: str) -> str:
+# user 维度：跨会话共享的"关于这个人"记忆库（同一 platform 同一 user_id 全会话可见；
+# 仅在与其的私聊中自动注入，群聊不注入）。platform/user_id 缺失时退回本会话。
+    if scope == "user":
+        if ctx.user_id and ctx.platform:
+            return f"usermem:{ctx.platform}:{ctx.user_id}"
+        return ctx.chat_key
     return GLOBAL_SCOPE if scope == "global" else ctx.chat_key
 
 
@@ -73,13 +79,13 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="remember",
         access="safe",
-        description="Store a long-term memory. DEFAULT scope is THIS session; use scope=global ONLY when the user explicitly asks to remember it bot-wide (e.g. \"帮我全局记住\"). Use for stable facts, preferences, ongoing matters.",
+        description="Store a long-term memory. DEFAULT scope is THIS session; scope=user stores it about the CURRENT USER (cross-session: shared across every chat you have with them, injected in private chats — use for stable facts about the person, not group-specific topics); use scope=global ONLY when the user explicitly asks to remember it bot-wide (e.g. \"帮我全局记住\").",
         parameters=_schema(
             {
                 "content": _s(type="string", description="The fact to remember"),
                 "category": _s(type="string", description="Category like preference / fact / todo"),
                 "importance": _s(type="integer", description="1-5, higher survives longer; default 3"),
-                "scope": _s(type="string", description="chat (default) / global — global requires the user's explicit request"),
+                "scope": _s(type="string", description="chat (default) / user (about this person, cross-session) / global — global requires the user's explicit request"),
             },
             ["content"],
         ),
@@ -88,12 +94,12 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="recall",
         access="safe",
-        description="Search long-term memories relevant to a query for the current chat (or global scope).",
+        description="Search long-term memories relevant to a query for the current chat (user scope = this person's cross-session memories, global scope = bot-wide).",
         parameters=_schema(
             {
                 "query": _s(type="string", description="Search keywords; empty returns the newest ones"),
                 "limit": _s(type="integer", description="Max entries, default from config"),
-                "scope": _s(type="string", description="chat (default) / global — global requires the user's explicit request"),
+                "scope": _s(type="string", description="chat (default) / user / global"),
             },
             [],
         ),
@@ -102,11 +108,11 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="forget",
         access="safe",
-        description="Delete long-term memories matching a query for the current chat (or global scope).",
+        description="Delete long-term memories matching a query for the current chat (user scope = this person's cross-session memories, global scope = bot-wide).",
         parameters=_schema(
             {
                 "query": _s(type="string", description="Text that the memories to delete contain"),
-                "scope": _s(type="string", description="chat (default) / global — global requires the user's explicit request"),
+                "scope": _s(type="string", description="chat (default) / user / global"),
             },
             ["query"],
         ),
@@ -115,10 +121,10 @@ def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="list_memory",
         access="safe",
-        description="Browse long-term memories of the current chat (or global scope), newest first, 40 per page. Filter by category or keyword; the header shows total and page position. Auto memories (injected by context compaction) decay over time; user memories never expire.",
+        description="Browse long-term memories, newest first, 40 per page (chat = this session; user = this person's cross-session memories; global = bot-wide). Filter by category or keyword; the header shows total and page position. Auto memories (injected by context compaction) decay over time; user memories never expire.",
         parameters=_schema(
             {
-                "scope": _s(type="string", description="chat or global"),
+                "scope": _s(type="string", description="chat (default) / user / global"),
                 "page": _s(type="integer", description="Page number, 1-based"),
                 "category": _s(type="string", description="Filter by exact category (e.g. auto / preference / fact)"),
                 "q": _s(type="string", description="Keyword filter inside content"),

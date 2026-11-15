@@ -18,6 +18,7 @@ from .chat.events import EventsMixin
 from .chat.inbox import InboxMixin, _int_or_none, _num_or_none
 from .chat.usage import UsageMixin
 from .conversation.delivery import Delivery
+from .conversation import handover
 from .conversation.memory import MemoryStore
 from .conversation.service import ConversationService, account_of as _account_of, make_chat_key, parse_chat_key, strip_isolation
 from .dashboard.live import bind as live_bind# noqa: F401 — 兼容引用（本体在 chat/inbox 使用）
@@ -34,7 +35,7 @@ from .engine.base import TaskSpec
 from .engine.pool import ModelPool
 from .scheduler import Scheduler
 from .skills import SkillManager
-from .tools_builtin import agent, code, computer, erispulse, knowledge, memory, schedule, selfconfig, skilltools, takumi, todo, usermute
+from .tools_builtin import agent, code, computer, erispulse, handover as handover_tools, knowledge, memory, schedule, selfconfig, skilltools, takumi, todo, usermute
 from .version import __version__
 
 AUDIT_KEY = "QvQChat:audit"
@@ -263,8 +264,11 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             group="智能",
             tags=["agent", "ai", "llm"],
             services=[
-                {"name": "chat", "description": "与智能体对话（只返回文本），session_id 为 platform:detail_type:target_id"},
+                {"name": "chat", "description": "与智能体对话（只返回文本），session_id 为 platform:detail_type:target_id", "signature": "(session_id: str, prompt: str, persona: str = '', model: str = '') -> str"},
                 {"name": "run_prompt", "description": "运行一段提示词并可将结果发送到目标会话"},
+                {"name": "handover_start", "description": "会话让渡：把该会话的对话窗口让渡给全新上下文的智能体（设定角色直接回复用户，主会话不沾内容），返回状态 dict", "signature": "(chat_key: str, setup: str, model: str = '', listen: str = 'inherit', max_turns: int = 0, scene: str = '') -> dict"},
+                {"name": "handover_stop", "description": "结束会话让渡并给主会话写注记，返回是否有进行中的让渡", "signature": "(chat_key: str) -> bool"},
+                {"name": "handover_status", "description": "查询会话让渡状态，无让渡返回 {active: False}", "signature": "(chat_key: str) -> dict"},
                 {"name": "get_status", "description": "获取运行状态摘要"},
                 {"name": "speak", "description": "主动向会话发言（插件主动开口唯一出口，先过输出预算护栏），返回发送文本或拒绝原因", "signature": "(chat_key: str, reason: str = '', prompt: str = '', persona_id: str = '') -> str"},
                 {"name": "describe_image", "description": "用视觉模型描述一张图片（表情包收录打标签等场景），返回描述文本", "signature": "(url: str, prompt: str = '') -> str"},
@@ -381,6 +385,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         usermute.register(self.registry, self)
         skilltools.register(self.registry, self)
         agent.register(self.registry, self)
+        handover_tools.register(self.registry, self)
         selfconfig.register(self.registry, self)
         takumi.register(self.registry, self)
         from .tools_builtin import dev as dev_tools, docs as docs_tools, web as web_tools, files as file_tools
@@ -816,8 +821,42 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             task_kind=str(task.get("task_kind") or "chat"),
         )
 
-    async def chat(self, session_id: str, prompt: str, persona: str = "") -> str:
-        return await self.run_prompt(session_id, prompt, persona_id=persona, origin="rpc", send=False)
+    async def chat(self, session_id: str, prompt: str, persona: str = "", model: str = "") -> str:
+        return await self.run_prompt(session_id, prompt, persona_id=persona, origin="rpc", send=False, model=str(model or ""))
+
+    async def handover_start(self, chat_key: str, setup: str, model: str = "",
+                             listen: str = "inherit", max_turns: int = 0,
+                             scene: str = "", **_) -> dict:
+        """会话让渡（编程入口）：把 chat_key 的对话窗口让渡给全新上下文的智能体。
+
+        让渡期间该会话的用户消息由设定角色直接回复（sub: 隔离会话，主会话不沾内容）；
+        结束后主会话自动注入一行注记与剧情摘要。scene 可传场景定向文本（群名/当前
+        说话人等，注入角色 system 帮其入戏）。返回让渡状态 dict。
+        """
+        state = handover.start(
+            self.sdk, self.cfg, str(chat_key or ""),
+            setup=str(setup or ""), model=str(model or ""),
+            listen=str(listen or "inherit"), max_turns=int(max_turns or 0),
+            scene_note=str(scene or ""),
+        )
+        self._handover_state_invalidate(str(chat_key or ""))
+        return state
+
+    async def handover_stop(self, chat_key: str, **_) -> bool:
+        """结束会话让渡并给主会话写注记；无进行中的让渡返回 False。"""
+        chat_key = str(chat_key or "")
+        state = handover.get_state(self.sdk, chat_key)
+        if state is None:
+            return False
+        self._end_handover(chat_key, state)
+        return True
+
+    async def handover_status(self, chat_key: str, **_) -> dict:
+        """查询会话让渡状态：无让渡返回 {"active": False}。"""
+        state = handover.get_state(self.sdk, str(chat_key or ""))
+        if state is None:
+            return {"active": False}
+        return dict(state)
 
     async def describe_image(self, url: str, prompt: str = "") -> str:
         """用视觉模型描述一张图片（表情包收录打标签等），无视觉能力时返回空串。"""

@@ -97,6 +97,7 @@ class QvQConfig(BaseConfig):
     routing_ttl: int = field(default=300, metadata=_desc("routing_ttl", "难度分级结果的会话内缓存秒数：同会话短时间连续消息复用上次分级（0 表示不缓存，每条独立分级）", "model", 8, "number"))
     reasoning_effort: str = field(default="", metadata=_desc("reasoning_effort", "全局思考强度：留空不干预（跟随模型默认与 effort_smalltalk 自动降思考）/ off 尝试关闭思考（Qwen/GLM 系 extra_body，非思考模型自动忽略）/ low · medium · high 推理档位（OpenAI o 系等）；对所有模型请求统一生效", "model", 9, "select", ["", "off", "low", "medium", "high"]))
     aux_model: str = field(default="", metadata=_desc("aux_model", "辅助调用统一模型（池内 id：provider:model）：中止判定/排队播报/上下文压缩/标题/工具筛选等后台调用统一用它，留空按成本自动选最便宜。防止辅助调用被自动路由到不想用的便宜模型池（用量统计会区分记录）", "model", 10, "text", placeholder="provider:model"))
+    handover_model: str = field(default="", metadata=_desc("handover_model", "会话让渡默认模型（池内 id：provider:model）：主智能体把对话窗口让渡给新智能体（扮演/临时人格等）后，由它使用该模型继续对话；留空跟随主会话/池默认。工具与 handover_start 服务可按次覆盖", "model", 11, "text", placeholder="provider:model"))
 
     trigger_mode: str = field(default="all", metadata=_desc("trigger_mode", "主动发言触发规则（全局默认，可被会话设置覆盖）：all 全部（@/唤醒词/私聊等默认规则）/ at_only 仅艾特（群里只响应 @ 与唤醒词，私聊照常）/ lurk 窥屏（只旁听记录，不回复不插话）/ off 关闭（不响应聊天，命令仍可用）", "trigger", 6, "select", ["all", "at_only", "lurk", "off"]))
     reply_private: bool = field(default=True, metadata=_desc("reply_private", "私聊消息触发智能体", "trigger", 1, "switch"))
@@ -329,6 +330,9 @@ class QvQConfig(BaseConfig):
     budget_mode: bool = field(default=False, metadata=_desc("budget_mode", "低token模式（全局）：chat 回合按实际成本升序优先便宜模型，任务冲突判定跳过 AI 直接入队，记忆语义检索降级为词面匹配，系统提示词轻量瘦身（kb/技能清单跳过，人格保留）——不改变发言风格，省单价也省调用量", "chat", 62, "switch"))
     budget_auto_on_limit: bool = field(default=False, metadata=_desc("budget_auto_on_limit", "超限自动低token：全局日上限（daily_token_limit）或会话日限额触发后，该会话自动进入低token模式直到次日（只影响之后的回合，不改写会话策略存储；默认关闭）", "chat", 63, "switch"))
     join_agg_window: float = field(default=0.0, metadata=_desc("join_agg_window", "入群欢迎合并窗口（秒）：窗口内多人先后进群合并为一次欢迎回合，0 按消息聚合窗口（aggregate_window）取值；负数或显式 0.5-60 之间可覆盖", "chat", 30, "number"))
+    handover_enabled: bool = field(default=True, metadata=_desc("handover_enabled", "会话让渡：允许主智能体把对话窗口让渡给一个全新上下文的智能体（扮演病人/临时人格/剧本主持等场景），让渡期间用户消息由它直接回复，主会话上下文完全不动；关闭即下线 handover_session 工具与 /qvq handover 命令", "chat", 91, "switch"))
+    handover_max_turns: int = field(default=30, metadata=_desc("handover_max_turns", "会话让渡单场最大轮数（每次用户消息计一轮）：到顶自动收场并在主会话留一行注记；工具/命令可按场覆盖（工具钳制 2-100）", "chat", 92, "number", minimum=2, maximum=200))
+    handover_idle_minutes: float = field(default=15.0, metadata=_desc("handover_idle_minutes", "会话让渡空闲超时（分钟）：超过该时长没有新消息自动收场并在主会话留一行注记；0 关闭（仅靠轮数上限与手动结束收场）", "chat", 93, "number"))
 
 # 群聊参与决策（插件化扩展点；默认关闭：装插件≠放行）
     participation_enabled: bool = field(default=False, metadata=_desc("participation_enabled", "群聊参与决策：未被 @/前缀命中时问询生态插件的 qvq_decision 服务判断是否插话（默认关闭，需自行开启）", "participation", 1, "switch", dangerous=True))

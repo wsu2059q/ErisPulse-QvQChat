@@ -55,15 +55,19 @@ async def qvq_schemas(self, **_):
 
 ## 二、让普通成员也能用（权限）
 
-eco 工具默认 **仅管理员** 可用。要让所有成员使用，运营方在 QvQChat 设置里把服务加入
-`eco_safe`（`模块:服务`，两侧支持通配）：
+eco 工具默认 **safe（所有成员可用）**，由 QvQChat 配置 `eco_default_access` 控制。
+模块可用 `qvq_access()` 按服务自声明权限档（`"safe"` / `"admin"`，声明优先于默认值），
+把涉及写操作/发消息的服务收归管理员：
 
-```toml
-[QvQChat]
-eco_safe = ["QvQMemes:send_sticker", "QvQBili:*"]
+```python
+def qvq_access() -> dict:
+    return {"bili_video": "safe", "bili_comment_post": "admin"}
 ```
 
-只读类站点解析通常适合放进来；涉及写操作/发消息的服务保持默认（仅管理员）。
+注意：`qvq_access`/`qvq_schemas` 等约定服务必须同时登记进 `get_meta().services`
+白名单（框架 RPC 白名单强校验，漏登记则生态桥调用被静默吞掉）。运营方也可用
+`eco_admin`（强制仅管理员）/ `eco_safe`（强制放开，`模块:服务`，两侧支持通配）
+覆盖模块的声明。
 
 ## 三、QvQChat 的能力边界（为什么不由主模块实现）
 

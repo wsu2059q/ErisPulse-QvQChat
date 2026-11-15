@@ -5,6 +5,7 @@ import random
 import time
 
 from .. import texts, utils
+from ..conversation import handover
 from ..conversation.policy import get_policy, set_policy
 from ..engine.base import ChatRequest
 from ..tools_builtin import erispulse
@@ -115,6 +116,7 @@ class CliMixin:
             ("subjobs", "menu_subjobs", True),
             ("takeover", "menu_takeover", True),
             ("release", "menu_release", True),
+            ("handover", "menu_handover", False),
         ]),
         ("cmd_menu_g_sys", [
             ("status", "menu_status", False),
@@ -420,6 +422,8 @@ class CliMixin:
             elif sub in ("release", "释放", "釋放"):
                 result = await erispulse.release_takeover(self._chat_ctx(event, chat_key))
                 await event.reply(result)
+            elif sub in ("handover", "让渡", "讓渡"):
+                await self._cmd_handover(event, chat_key, tokens)
             else:
                 await event.reply(texts.t("cmd_unknown"))
         except Exception as e:
@@ -441,6 +445,52 @@ class CliMixin:
         )
         await event.reply(text)
         self.sessions.set_flags(chat_key, {"opening_sent": True})
+
+    async def _cmd_handover(self, event, chat_key: str, tokens: list) -> None:
+        """/qvq handover：会话让渡管理——查看/开启人人可用，结束也不设管理员门槛
+        （谁都能开的游戏谁都能收场）。"""
+        action = tokens[1].strip().lower() if len(tokens) >= 2 else ""
+        if action in ("off", "结束", "結束", "stop"):
+            state = self._handover_state(chat_key)
+            if state is None:
+                await event.reply(texts.t("handover_not_active"))
+                return
+            self._end_handover(chat_key, state)
+            await event.reply(texts.t("handover_off_done"))
+            return
+        if not action or action in ("status", "状态", "狀態"):
+            state = self._handover_state(chat_key)
+            if state is None:
+                await event.reply(texts.t("handover_usage_hint"))
+                return
+            await event.reply(texts.t(
+                "handover_status_line",
+                setup=str(state.get("setup") or "-"),
+                turns=int(state.get("turns") or 0),
+                max_turns=int(state.get("max_turns") or 0),
+                model=str(state.get("model") or "-"),
+                listen=str(state.get("listen") or "inherit"),
+                idle=str(int(float(state.get("idle_minutes") or 0))),
+            ))
+            return
+        if not bool(getattr(self.cfg, "handover_enabled", True)):
+            await event.reply(texts.t("handover_disabled"))
+            return
+        setup_text = " ".join(str(t) for t in tokens[1:]).strip()
+        if not setup_text:
+            await event.reply(texts.t("handover_usage_hint"))
+            return
+        existing = self._handover_state(chat_key)
+        if existing is not None:
+            await event.reply(texts.t("handover_already_active", setup=str(existing.get("setup") or "-")))
+            return
+        state = handover.start(self.sdk, self.cfg, chat_key, setup=setup_text)
+        self._handover_state_invalidate(chat_key)
+        await event.reply(texts.t(
+            "handover_started_user",
+            model=str(state.get("model") or "-"),
+            listen=str(state.get("listen") or "inherit"),
+        ))
 
     async def _cmd_persona(self, event, chat_key: str, tokens: list) -> None:
         if len(tokens) >= 2:

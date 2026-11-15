@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .. import texts, utils
 from ..agent.tools import ToolContext
+from ..conversation import handover
 from ..conversation.policy import apply_priority, get_policy, listen_allowed
 from ..conversation.service import DASHBOARD_PLATFORM, make_chat_key, parse_chat_key, strip_isolation
 from ..dashboard.live import bind as live_bind
@@ -43,6 +44,13 @@ _STOP_PHRASE_RE = re.compile(
     r"取消|算了|算了算了|够了|"
     r"stop|cancel|quit"
     r")[\s，,。！!？?~～*·吧啊呀啦嘛哦]*$",
+    re.IGNORECASE,
+)
+
+# 让渡退出标签：角色输出 [[交还]]（含繁体/单括号形态）或 [[HANDOVER-END]] 表示把窗口
+# 交还主智能体。守则文案按语言教其中一种写法，这里两种都收（模型偶尔也会换着写）
+_HANDOVER_EXIT_RE = re.compile(
+    r"\[{1,2}\s*(?:交還|交还|handover[\s_-]?end|hand[\s_-]?back)\s*\]{1,2}",
     re.IGNORECASE,
 )
 
@@ -282,6 +290,8 @@ INBOX_BOUND_METHODS = (
     "_maybe_send_opening",
     "_is_command_message", "_command_yields", "_drain_waiting", "_enqueue_waiting", "_trigger_mode_of", "_is_direct_address", "_dup_delivery_gate", "_is_sibling_bot", "_quote_content", "_has_reply_segment", "_quote_targets_me",
     "_sender_muted", "_mutes_note",
+    "_handover_state", "_handover_state_invalidate", "_end_handover",
+    "_summarize_handover", "_handover_partial_save", "_process_handover",
     "_on_message", "_announce_queued", "_cmd_agent", "_cmd_persona",
 )
 
@@ -895,13 +905,21 @@ class InboxMixin(RecoveryMixin):
             quoted_me = False
             if event.is_group_message() and not event.is_at_message() and self._has_reply_segment(event):
                 quoted_me = await self._quote_targets_me(event)
-# 触发规则（会话级覆盖全局）：off 不响应 / lurk 只旁听（observe 已发出）/ at_only 群里仅点名
+# 触发规则（会话级覆盖全局）：off 不响应 / lurk 只旁听（observe 已发出）/ at_only 群里仅点名。
+# 让渡 listen=all：扮演/游戏期间全场接话——放宽 at_only 与群 @/唤醒门槛；
+# off/lurk 是隐私硬闸，不因让渡放行
             mode = self._trigger_mode_of(chat_key)
             if mode in ("off", "lurk"):
                 return
-            if mode == "at_only" and event.is_group_message() and not self._is_direct_address(event, text, quoted_me):
+            ho_all = bool(
+                getattr(self.cfg, "handover_enabled", True)
+                and (self._handover_state(chat_key) or {}).get("listen") == "all"
+            )
+            if mode == "at_only" and event.is_group_message() and not (
+                self._is_direct_address(event, text, quoted_me) or ho_all
+            ):
                 return
-            if not self._should_trigger(event, chat_key, text, quoted_me):
+            if not ho_all and not self._should_trigger(event, chat_key, text, quoted_me):
 #  扩展点 B：未被 @/前缀命中时问询参与决策提供者（默认关闭），
 # speak 则过输出预算后以 origin="plugin" 进入聚合回复，不消耗发送者限频
                 manager = getattr(self, "participation", None)
@@ -1654,6 +1672,23 @@ class InboxMixin(RecoveryMixin):
                 on_delta, on_reset, on_tool_event, on_reasoning = live_bind(live)
             else:
                 on_delta = on_reset = on_tool_event = on_reasoning = None
+# 会话让渡路由：主智能体已把窗口让渡给 sub: 隔离会话的新智能体——本轮改走
+# _process_handover（上下文/人格/记忆全部绕开，让渡内容不进主会话）。到期的
+# 让渡（轮数尽/空闲超时）当场收场并落回主链路处理本条消息
+            ho_state = self._handover_state(chat_key)
+            if ho_state is not None:
+                reason = handover.expired_reason(ho_state)
+                if reason:
+                    self._end_handover(chat_key, ho_state)
+                    self.logger.info(f"handover auto-ended ({reason}) ({chat_key})")
+                else:
+                    await self._process_handover(
+                        event, chat_key, ho_state, ctx, labeled, sender_id, origin,
+                        live=live,
+                        on_delta=on_delta, on_reset=on_reset,
+                        on_tool_event=on_tool_event, on_reasoning=on_reasoning,
+                    )
+                    return
             prepared = await self.sessions.prepare(
                 chat_key,
                 labeled,
@@ -1663,6 +1698,11 @@ class InboxMixin(RecoveryMixin):
                 cross_user_id=("" if is_group else sender_id),
                 sender_id=sender_id,
                 profile_user=(f"{event.get_platform()}:{sender_id}" if sender_id else ""),
+# 用户级跨会话记忆：仅私聊注入（群聊不注入——私聊记住的事在群里被抖出来是社死现场）
+                user_mem_key=(
+                    f"usermem:{event.get_platform()}:{sender_id}"
+                    if (not is_group and sender_id) else ""
+                ),
             )
             system = prepared["system"]
             contexts = prepared["contexts"]
@@ -1920,6 +1960,211 @@ class InboxMixin(RecoveryMixin):
                     await event.reply(texts.t("run_failed", error=utils.truncate(str(e), 200)))
             except Exception as inner:
                 self.logger.debug(f"run_failed notice reply failed: {inner}")
+
+# ===== 会话让渡（handover）：触发放行 / 路由 / 收场，状态见 conversation/handover.py =====
+
+    def _handover_state(self, chat_key: str) -> dict | None:
+        """让渡状态（带 5s 进程内缓存）：每条消息都要过一遍触发判定，KV 读不能每条都打。
+        start/stop/touch 后由调用方失效/回填缓存。"""
+        cache = getattr(self, "_handover_cache", None)
+        if cache is None:
+            cache = {}
+            self._handover_cache = cache
+        now = time.time()
+        hit = cache.get(chat_key)
+        if hit and now - hit[0] < 5.0:
+            return hit[1]
+        state = handover.get_state(self.sdk, chat_key)
+        cache[chat_key] = (now, state)
+        return state
+
+    def _handover_state_invalidate(self, chat_key: str) -> None:
+        cache = getattr(self, "_handover_cache", None)
+        if cache:
+            cache.pop(chat_key, None)
+
+    def _end_handover(self, chat_key: str, state: dict) -> None:
+        """收场：清让渡状态 + 主会话注记一行发生过的事实，随后异步补剧情摘要。
+
+        两段式：事实注记同步落库（模型调用再慢主智能体也知道发生过），
+        摘要（aux 便宜模型把 sub: 会话压成 ≤3 句汇报）异步追加——失败/满载
+        静默跳过，不让锦上添花的部分阻塞或报错。
+        """
+        handover.stop(self.sdk, chat_key)
+        self._handover_state_invalidate(chat_key)
+        note = texts.t(
+            "handover_note",
+            setup=str(state.get("setup") or "-"),
+            turns=int(state.get("turns") or 0),
+        )
+        try:
+            self.sessions.append(chat_key, "user", note)
+        except Exception as e:
+            self.logger.warning(f"handover note append failed: {e}")
+        if int(state.get("turns") or 0) >= 1 and str(state.get("sub_key") or ""):
+            self.spawn(self._summarize_handover(chat_key, state))
+
+    async def _summarize_handover(self, chat_key: str, state: dict) -> None:
+        """让渡剧情摘要：aux 模型把让渡会话转写压成 ≤3 句汇报，追加进主会话。
+
+        让渡过程不进主上下文是硬承诺，但主智能体需要知道"演了什么、怎么收场"
+        才能自然接话——用独立转写+cheap 模型汇报，而不是把原文塞给它。
+        """
+        sub_key = str(state.get("sub_key") or "")
+        pool = getattr(self, "pool", None)
+        blocked = getattr(pool, "background_blocked", None)
+        if pool is None or not callable(getattr(pool, "dispatch", None)) or (callable(blocked) and blocked()):
+            return
+        try:
+            transcript = handover.transcript_of(self.sessions.get_contexts(sub_key))
+        except Exception:
+            transcript = ""
+        if not transcript.strip():
+            return
+        try:
+            response = await asyncio.wait_for(
+                pool.dispatch(
+                    TaskSpec(kind="compact", prefer="cheap", priority=8, chat_key=sub_key),
+                    ChatRequest(messages=[
+                        {"role": "user", "content": texts.t("handover_summary_prompt", transcript=transcript)}
+                    ]),
+                ),
+                timeout=60.0,
+            )
+            summary = strip_stray_tags(str(getattr(response, "text", "") or "").strip())
+            if not summary:
+                return
+            self.sessions.append(
+                chat_key, "user",
+                texts.t("handover_summary_note", summary=utils.truncate(summary, 500)),
+            )
+        except Exception as e:
+            self.logger.debug(f"handover summary failed: {e}")
+
+    def _handover_partial_save(self, sub_key: str, live) -> None:
+        """让渡回合中止：部分输出归 sub: 会话（绝不写主会话），live 置终态放行会话。"""
+        if live is None:
+            return
+        partial, partial_trace, partial_rounds = live.partial_record()
+        if partial:
+            self.sessions.append(sub_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
+        live.reply = partial or None
+        live.status = "done"
+        live.publish("done", {"reply": partial, "session": sub_key})
+        live.publish("end", {"status": live.status})
+
+    async def _process_handover(self, event, chat_key: str, state: dict, ctx, labeled: str,
+                                sender_id: str, origin: str, live=None,
+                                on_delta=None, on_reset=None, on_tool_event=None, on_reasoning=None) -> None:
+        """让渡回合：sub: 会话 + 角色设定直答，主链路的上下文工程全部绕开。
+
+        与主链路的差异（故意收窄）：无工具（persona_tools=[]，None 是全放行）、
+        无记忆召回/知识库/事实注入（干净上下文正是让渡的意义）、无 humanize 重 roll、
+        图片暂不进入让渡会话（v1 文本场景）。用量记在主会话名下（限额照常生效）。
+        异常/取消/超时全部在本方法内收束，不落入 _process_locked 的外层
+        except（那里会把部分输出写进主会话，污染主上下文）。
+        """
+        sub_key = str(state.get("sub_key") or "")
+        if not sub_key:
+            self._end_handover(chat_key, state)
+            return
+# 悬空标记与主链路同键同语义：崩溃重启后按主 chat_key 重跑，让渡状态在 KV
+# 中存活，重放仍会被路由进本方法
+        self.sdk.storage.set(
+            INFLIGHT_KEY_PREFIX + chat_key,
+            {"text": labeled, "origin": origin, "ts": time.time()},
+        )
+        try:
+            self.sessions.append(sub_key, "user", labeled)
+            contexts = self.sessions.get_contexts(sub_key)
+            model = (
+                str(state.get("model") or "")
+                or str(getattr(self.cfg, "handover_model", "") or "")
+                or None
+            )
+            _turn_timeout = float(getattr(self.cfg, "turn_timeout", 0) or 0)
+            try:
+                run_coro = self.runner.run(
+                    system=str(state.get("role_prompt") or ""),
+                    messages=contexts,
+                    ctx=ctx,
+                    persona_tools=[],
+                    model=model,
+                    on_delta=on_delta,
+                    on_reset=on_reset,
+                    on_tool_event=on_tool_event,
+                    on_reasoning=on_reasoning,
+                    priority=apply_priority(get_policy(self.sdk, chat_key), 6 if origin == "plugin" else 0),
+                )
+                result = await asyncio.wait_for(run_coro, timeout=_turn_timeout or None)
+            except asyncio.CancelledError:
+                self._handover_partial_save(sub_key, live)
+                raise
+            except asyncio.TimeoutError:
+                self._handover_partial_save(sub_key, live)
+                self.logger.warning(f"handover turn timeout after {_turn_timeout}s ({chat_key})")
+                try:
+                    await event.reply(texts.t("run_timeout", seconds=int(_turn_timeout)))
+                except Exception as inner:
+                    self.logger.debug(f"handover timeout notice failed: {inner}")
+                return
+            except Exception as e:
+                self._handover_partial_save(sub_key, live)
+                self.logger.warning(f"handover turn failed: {e}")
+                try:
+                    await event.reply(texts.t("run_failed", error=utils.truncate(str(e), 200)))
+                except Exception as inner:
+                    self.logger.debug(f"handover failure notice failed: {inner}")
+                return
+            reply, _force = strip_output_tag(result.text.strip())
+            reply = strip_stray_tags(reply)
+            try:
+                reply = utils.strip_fake_media_prefix(utils.strip_fake_media_claims(reply))
+            except Exception as e:
+                self.logger.debug(f"fake media strip failed: {e}")
+            ended = bool(_HANDOVER_EXIT_RE.search(reply))
+            if ended:
+                reply = _HANDOVER_EXIT_RE.sub("", reply).strip()
+            skip = utils.is_skip_reply(reply)
+            if not skip and reply.strip():
+                self.sessions.append(sub_key, "assistant", reply)
+                try:
+                    await self.delivery.deliver_reply(event, reply, [], origin=origin)
+                    self._last_reply_ts[chat_key] = time.time()
+                except Exception as e:
+                    self.logger.warning(f"handover reply deliver failed: {e}")
+            elif ended:
+                pass  # 角色只交还标签没给告别语：照常收场，不补发占位消息
+            else:
+                self.logger.warning(
+                    f"handover empty reply (model={getattr(result, 'model', '')}), skipped ({chat_key})"
+                )
+            usage = getattr(result, "usage", None)
+            if usage:
+                try:
+                    self.record_usage(chat_key, usage, getattr(result, "model", ""))
+                except Exception as e:
+                    self.logger.debug(f"handover usage record failed: {e}")
+            handover.touch(self.sdk, state, chat_key)
+            self._handover_state_invalidate(chat_key)
+            if live is not None:
+                live.reply = reply
+                live.status = "done"
+                live.publish("done", {"reply": reply, "session": chat_key})
+                live.publish("end", {"status": live.status})
+            new_state = handover.get_state(self.sdk, chat_key)
+            if new_state is not None and (ended or handover.expired_reason(new_state)):
+                self._end_handover(chat_key, new_state)
+        finally:
+# 删除失败当场暴露并重试：残留标记会被恢复例程重放成"自动重发"（与主链路同因）
+            try:
+                self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+            except Exception as e:
+                self.logger.warning(f"inflight marker delete failed ({chat_key}): {e}")
+                try:
+                    self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+                except Exception as e2:
+                    self.logger.error(f"inflight marker delete retry failed ({chat_key}): {e2}")
 
     async def _maybe_send_opening(self, event, chat_key: str, prepared: dict, persona: dict) -> None:
         """首次接触开场白：prepare 标记 first_contact 且未发过 → 随机一条 await 直发。
