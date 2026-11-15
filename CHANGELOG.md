@@ -1,3 +1,16 @@
+## 4.7.0（2026-11-15）
+
+### 新增
+
+- **会话让渡（handover）**：主智能体把对话窗口让渡给一个全新上下文的智能体——扮演病人/医生、临时人格陪聊、剧本主持等场景，让渡期间用户消息由设定角色直接回复，主会话上下文完全不沾让渡内容。三条进入路径：对话中说"你来扮演病人"模型自动调 `handover_session` 工具（safe 人人可用） / `/qvq handover <设定>` 手动开、`off` 收场 / `handover_start|stop|status` 服务供外部模块编排。接手即注入场景定向（群名/说话人/最近对话，明确告知别回应旧话题）；退出协议四条：角色输出 `[[交还]]`、`/qvq handover off`、轮数上限（`handover_max_turns`，默认 30）、空闲超时（`handover_idle_minutes`，默认 15 分钟）——到期自动收场。结束后主会话先注记一行事实（发生过什么），随后 aux 便宜模型把让渡剧情压成 ≤3 句摘要另行注入（满载/失败静默跳过），原文永不进主上下文。`listen=all` 可全场接话（off/lurk 隐私硬闸不越）；`handover_model` 给扮演专门配模型（留空跟主会话），工具/服务可按次覆盖；总开关 `handover_enabled`
+- **对话式插件配置** `manage_plugin_config` 工具（仅管理员）：读改其他插件的声明式配置——与 Dashboard 插件设置页同一套框架管线（`resolve_config_schema` 出字段表 → 整节校验 → 逐键 `setConfig` 热更新 → `qvq.plugin_config` 事件）。仅限声明了 `qvq_settings` 的模块；secret 字段读取打码；未知键与校验失败拒绝写入
+- **用户级跨会话记忆**：memory 工具 `scope` 新增 `user`——"关于这个人"的记忆落 `usermem:{platform}:{uid}` 合成键，同一人在所有会话共享（A 群记住的 B 群私聊也认得）；**仅私聊注入**系统提示（独立 `user_memory` 段，注明"只在相关且自然时使用"），群聊绝不注入——私聊内容在群里被抖出来的社死风险归零。facts/上下文保持 per-chat 不变；`platform/user_id` 缺失自动退回本会话键
+- **chat 服务支持 model 参数**：`sdk.module.call("QvQChat", "chat", session_id=..., prompt=..., model="provider:xxx")`——调用方不再需要 TypeError 降级试探（QvQStalker 的兼容补丁随之移除）
+
+### 修复
+
+- **生态权限文档过时**：`docs/ecosystem-web.md` 原文写"eco 工具默认仅管理员"，实际 `eco_default_access` 默认已是 `safe`——改为如实描述默认值、`qvq_access` 声明优先级与 services 白名单登记陷阱，避免插件作者漏声明导致深集成被静默吞掉
+
 ## 4.6.7（2026-11-13）
 
 ### 新增
