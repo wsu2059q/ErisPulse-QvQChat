@@ -316,7 +316,9 @@ async def test_exit_phrase_ends_handover_without_model_call():
     contexts = main.sessions.get_contexts(KEY)
     assert contexts and contexts[0]["role"] == "user"
     assert "你扮演病人" in contexts[0]["content"]
-    assert "你扮演病人" not in (captured_calls[0]["system"] or "")  # 主链路 system 不带角色守则
+# 主链路 system 是能力契约（含让渡段），但绝不带角色守则（收场规则是守则独有词）
+    assert "handover_session" in (captured_calls[0]["system"] or "")
+    assert "收场规则" not in (captured_calls[0]["system"] or "")
 
 
 async def test_exit_phrase_variants():

@@ -423,8 +423,9 @@ def test_capability_prompt_chinese_and_slim():
 # 关键契约仍在
     for token in ("[[直发]]", "[[转发]]", "spawn_agent", "search_erispulse_docs", "web_search", "scene"):
         assert token in CAPABILITY_PROMPT, token
-# 不超过 1100 字符（原英文版 ~6100，中文重写后约 1/6）
-    assert len(CAPABILITY_PROMPT) <= 1100, len(CAPABILITY_PROMPT)
+# 不超过 1300 字符（原英文版 ~6100，中文重写后约 1/6；4.7.x 新增让渡段后放宽，
+# 再加能力段时同步精简旧段——契约越短，人格的声音越大）
+    assert len(CAPABILITY_PROMPT) <= 1300, len(CAPABILITY_PROMPT)
 
 
 def test_budget_priority_keeps_human_parts():
