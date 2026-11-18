@@ -959,6 +959,27 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "このグループチャットから話し方のスタイルを抽出してください：メンバー同士の呼び方、口癖、流行っているネタ、テンションの高さ。1文（40語以内）でまとめ、前置きなしで本文のみ出力。",
         "ru": "Выделите из этой групповой переписки стиль общения: как обращаются друг к другу, типичные фразы, шутки, тон (оживлённый или сдержанный). Одно предложение (до 40 слов), выведите только сам текст.",
     },
+    "scene_multi_speakers": {
+        "zh-CN": "\n〔本条合并了 {n} 个人的消息〕逐人回应：每人单独一段，段首带上对该人的回应；没有共通答案的问题不要混在一段里一起答",
+        "zh-TW": "\n〔本條合併了 {n} 個人的訊息〕逐人回應：每人單獨一段，段首帶上對該人的回應；沒有共通答案的問題不要混在一段裡一起答",
+        "en": "\n[This batch merges messages from {n} people] Answer per person: one paragraph each, addressing them directly; do not blend unrelated questions into one blob",
+        "ja": "\n〔このまとめは {n} 人分のメッセージ〕一人ずつ返答：人ごとに段落を分け、冒頭でその人に応答。共通の回答しかない場合を除き混ぜない",
+        "ru": "\n[В этой пачке сообщения от {n} человек] Отвечай каждому отдельно: по абзацу на человека; не смешивай разные вопросы в один абзац",
+    },
+    "scene_recall_note": {
+        "zh-CN": "\n〔刚刚〕{who}撤回了一条消息——别装没看见，也别引用已撤回的内容；想接话可以自然调侃一句",
+        "zh-TW": "\n〔剛剛〕{who}撤回了一條訊息——別裝沒看見，也別引用已撤回的內容；想接話可以自然調侃一句",
+        "en": "\n[Just now] {who} recalled a message — do not pretend you missed it, and never quote the recalled content; a light tease is fine",
+        "ja": "\n〔たった今〕{who}がメッセージを送信取り消した——見て見ぬふりをせず、取消済みの内容を引用しない。軽くツッコむのはOK",
+        "ru": "\n[Только что] {who} отозвал сообщение — не делай вид, что не заметил, и не цитируй отозванное; лёгкая подколка уместна",
+    },
+    "scene_reunion": {
+        "zh-CN": "\n〔距上次对话已 {dur}〕自然承接就好——可以自然带一句久违/上次话题的衔接，不要刻意复述历史",
+        "zh-TW": "\n〔距上次對話已 {dur}〕自然承接就好——可以自然帶一句久違/上次話題的銜接，不要刻意複述歷史",
+        "en": "\n[Time since last chat: {dur}] Pick up naturally — it is fine to acknowledge the gap, no need to recap history",
+        "ja": "\n〔前回の会話から {dur} 経過〕自然に続けて。久しぶりに一言添えてもよいが、履歴の再説明はしない",
+        "ru": "\n[С прошлого диалога: {dur}] Продолжай естественно — можно отметить разрыв, но не пересказывай историю",
+    },
     "scene_roster": {
         "zh-CN": "\n〔本群成员（部分）〕{roster}（提及这些人时你知道是谁；不在名单里的人以 sender 标注为准）",
         "zh-TW": "\n〔本群成員（部分）〕{roster}（提及這些人時你知道是誰；不在名單裡的人以 sender 標註為準）",
@@ -2156,6 +2177,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Hourly speech limit reached for this chat ({limit} per hour)",
         "ja": "このチャットの1時間あたり発言上限に達しました（{limit} 件）",
         "ru": "Достигнут часовой лимит сообщений для этого чата ({limit} в час)",
+    },
+    "participate_quiet_hours": {
+        "zh-CN": "深夜静默时段（{window}）——这个点不该主动说话，安心睡觉",
+        "zh-TW": "深夜靜默時段（{window}）——這個點不該主動說話，安心睡覺",
+        "en": "Quiet hours ({window}) — no proactive speaking at this hour",
+        "ja": "夜間サイレントタイム（{window}）——この時間は自発的に話さない",
+        "ru": "Тихие часы ({window}) — в это время не говорим без запроса",
     },
     "participate_budget_cooldown": {
         "zh-CN": "发言冷却中（剩余约 {seconds} 秒）",
