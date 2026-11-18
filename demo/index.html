@@ -282,6 +282,17 @@ html[data-theme="light"] .qvq-bg-layer.qvq-bg-fallback {
   stroke-linejoin: round;
 }
 
+.qvq-drawer-x {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--qvq-tx-t);
+  font-size: 16px;
+  cursor: pointer;
+}
+.qvq-drawer-x:hover { color: var(--qvq-tx); background: var(--qvq-bg-s); }
 @media (max-width: 760px) {
   .qvq-shell {
     gap: 10px;
@@ -329,16 +340,7 @@ html[data-theme="light"] .qvq-bg-layer.qvq-bg-fallback {
     justify-content: space-between;
     padding: 14px 12px 6px;
   }
-  .qvq-drawer-x {
-    width: 28px;
-    height: 28px;
-    border: 0;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--qvq-tx-t);
-    font-size: 16px;
-    cursor: pointer;
-  }
+
   /* 移动端窄屏去玻璃：backdrop-filter 在部分移动内核不渲染，半透明底会直接漏出背景层 */
   .qvq-main {
     padding: 16px 14px 20px;
