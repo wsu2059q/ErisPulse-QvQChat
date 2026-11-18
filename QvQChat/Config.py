@@ -110,6 +110,7 @@ class QvQConfig(BaseConfig):
     request_auto_handle: bool = field(default=False, metadata=_desc("request_auto_handle", "AI 自主处理好友请求/群邀请（危险）：收到请求跑决策回合，可用 handle_request 通过/拒绝，决定与理由汇报到管理员私聊；关闭时仅入收件箱并广播 qvq.request", "trigger", 9, "switch", dangerous=True))
 
     admins: list[str] = field(default_factory=list, metadata=_desc("admins", "管理员用户 id 列表；为空时聊天侧无人拥有管理员权限（Dashboard/本地来源除外）", "security", 1, "list", dangerous=True))
+    notify_admins: list[str] = field(default_factory=list, metadata=_desc("notify_admins", "决策管理员：请求上报/求助通知只发给这些人（按配置顺序，全部都会收到）；留空回落 admins 第一个。普通挂名管理员不收上报、也不会在权限提示里暴露", "security", 2, "list", dangerous=True))
     admin_tools: list[str] = field(default_factory=list, metadata=_desc("admin_tools", "强制仅管理员的工具覆盖名单（支持 eco_*/mcp_* 前缀通配）：写在这里的工具即便本身标记为 safe 也仅限管理员", "security", 2, "list", items="tools"))
     safe_tools: list[str] = field(default_factory=list, metadata=_desc("safe_tools", "在基础安全集之外追加给所有人的工具（支持前缀通配，如让所有人可用生图扩展）", "security", 3, "list", items="tools"))
     safe_commands: list[str] = field(default_factory=lambda: ["ping *"], metadata=_desc("safe_commands", "非管理员也允许执行的简单命令（通配匹配，如 ping *）", "security", 4, "list"))

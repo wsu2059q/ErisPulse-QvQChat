@@ -802,7 +802,7 @@ class ConfigApiMixin:
                 "dangerous": bool(ui.get("dangerous")),
                 "items": ui.get("items"),
             }
-            if f.name == "admins":
+            if f.name in ("admins", "notify_admins"):
                 field["choices"] = sorted(set(master_choices) | {str(x) for x in (value or []) if str(x).strip()})
             elif f.name in list_choices:
                 field["choices"] = list_choices[f.name]

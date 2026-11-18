@@ -125,3 +125,18 @@ def test_budget_quiet_hours():
     t_early = time.mktime(time.strptime(time.strftime("%Y-%m-%d") + " 01:00", "%Y-%m-%d %H:%M"))
     ok_early, _ = b.allow("s:q:2", "interject", now=t_early)
     assert not ok_early
+
+
+def test_notify_admins_tier_and_restricted_single_id():
+    """分级管理员：上报只发 notify_admins；受限提示只露负责管理员一个。"""
+    main = FakeMain()
+    main.cfg.admins = ["挂名A", "决策B", "主人C"]
+    main.cfg.notify_admins = ["决策B"]
+    # 框架主人表兜底进 _admin_ids_for（fake 里 framework_masters 可能报错，try 内吞）
+    assert main.sessions.notify_admin_ids_for("snowluma") == ["决策B"]
+    # notify 留空回落第一个（配置原序，不是字典序）
+    main.cfg.notify_admins = []
+    assert main.sessions.notify_admin_ids_for("snowluma") == ["挂名A"]
+    # 受限提示只带一个负责管理员
+    ids = main.sessions.notify_admin_ids_for("snowluma")[:1]
+    assert ids == ["挂名A"] and len(ids) == 1
