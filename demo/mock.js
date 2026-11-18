@@ -493,8 +493,20 @@
         case "/api/qvq/trash/list": return json({ items: [] });
         case "/api/qvq/export": return json({ exported: true, note: "演示环境不导出真实数据" });
         case "/api/qvq/settings/defaults": return json({ density: "detail" });
-        case "/api/qvq/onboarding": return json({ modules: [] });
-        case "/api/qvq/participation": return json({ rules: [] });
+        case "/api/qvq/onboarding": return json({ modules: [
+          { module: "QvQMemes", count: 2, preview: "用户发图时自动收录新梗图", injected: true },
+          { module: "QvQStalker", count: 1, preview: "有新发布时主动播报", injected: false },
+        ] });
+        case "/api/qvq/participation": return json({
+          enabled: true, strategy: "first_speak",
+          providers: [{ name: "cheap" }],
+          budget: { limits: { hourly_limit: 6, cooldown_seconds: 300, proactive_daily_limit: 8 }, chats: {}, proactive_today: 2, proactive_date: NOW && new Date(NOW * 1000).toISOString().slice(0, 10) },
+          decisions: [
+            { chat_key: "onebot11:group:1049", decision: "speak", reason: "budget", provider: "cheap", score: 0.82, ts: NOW - 1800 },
+            { chat_key: "onebot11:group:8871", decision: "silent", reason: "cooldown", provider: "cheap", score: 0.31, ts: NOW - 3600 },
+            { chat_key: "onebot11:group:2210", decision: "speak", reason: "mention", provider: "cheap", score: 0.91, ts: NOW - 7200 },
+          ],
+        });
         case "/api/qvq/session/share": return json({ url: "/share?token=demo-token" });
         default:
           if (path.indexOf("/api/qvq/") === 0) return json({ ok: true });

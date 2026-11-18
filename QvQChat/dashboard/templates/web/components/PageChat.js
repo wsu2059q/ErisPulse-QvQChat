@@ -45,6 +45,7 @@ window.PageChat = {
       shareOpen: false,
       shareForm: { hours: 24, tokens: 4000, rounds: 0, chat_tokens: 20000 },
       shareUrl: "",
+      shareToken: "",
       confirmOpen: false,
       confirmText: "",
       confirmCmd: "",
@@ -405,6 +406,7 @@ window.PageChat = {
       }
       if (key === "share") {
         this.shareUrl = "";
+        this.shareToken = "";
         this.shareOpen = true;
       }
     },
@@ -475,6 +477,21 @@ window.PageChat = {
         self.cfgBusy = false;
         self.cfgHint = personaChanged ? t("settings_saved") : t("sess_policy_saved");
         self.loadSessions();
+      });
+    },
+    saveCfgDefaults() {
+      // 把当前会话的密度/模型/力度存为全局默认（新会话继承）
+      var self = this;
+      this.cfgBusy = true;
+      api("/api/qvq/settings/defaults", "POST", {
+        settings: {
+          density: this.cfgSet.density,
+          model: this.cfgSet.model,
+          effort: this.cfgSet.effort,
+        },
+      }).then(function (r) {
+        self.cfgBusy = false;
+        self.cfgHint = (r && !r.error) ? t("defaults_saved") : ((r && r.error) || "error");
       });
     },
     doConfirm() {
@@ -556,7 +573,21 @@ window.PageChat = {
         rounds: Number(this.shareForm.rounds) || 0,
         chat_tokens: Number(this.shareForm.chat_tokens) || 20000,
       }).then(function (r) {
-        if (r && r.url) self.shareUrl = location.origin + r.url;
+        if (r && r.url) {
+          self.shareUrl = location.origin + r.url;
+          self.shareToken = r.token || "";
+        }
+      });
+    },
+    revokeShare() {
+      var self = this;
+      if (!this.shareToken) return;
+      api("/api/qvq/session/share/revoke", "POST", { token: this.shareToken }).then(function (r) {
+        if (r && !r.error) {
+          QvQ.toast(t("share_revoked"));
+          self.shareUrl = "";
+          self.shareToken = "";
+        }
       });
     },
 
@@ -1254,6 +1285,7 @@ window.PageChat = {
     '      </div>',
     '      <template #footer>',
     '        <div class="qvq-modal-foot">',
+    '          <n-button size="small" :disabled="cfgBusy" @click="saveCfgDefaults">{{ t("save_as_default") }}</n-button>',
     '          <n-button size="small" :loading="cfgBusy" type="primary" @click="saveCfg">{{ t("save") }}</n-button>',
     '        </div>',
     '      </template>',
@@ -1289,6 +1321,7 @@ window.PageChat = {
     '    <template #footer>',
     '      <div class="qvq-modal-foot">',
     '        <n-button v-if="shareUrl" size="small" @click="copyText(shareUrl)">{{ t("chat_copy") }}</n-button>',
+    '        <n-button v-if="shareUrl" size="small" type="error" @click="revokeShare">{{ t("share_revoke") }}</n-button>',
     '        <n-button v-if="!shareUrl" size="small" type="primary" @click="createShare">',
     '          {{ t("share_create") }}</n-button>',
     '        <n-button v-else size="small" type="primary" @click="shareOpen = false">{{ t("confirm_yes") }}</n-button>',

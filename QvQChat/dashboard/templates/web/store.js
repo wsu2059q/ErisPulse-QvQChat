@@ -10,11 +10,25 @@ QvQ.store = Vue.reactive({
   drawerOpen: false,
   busy: false,
   status: {},
+  toast: "",
 });
 
 QvQ.setLang = function (lang) {
   QvQ.store.lang = lang;
   try { localStorage.setItem("qvq_lang", lang); } catch (e) {}
+};
+
+/* 全局轻提示：任意页面 QvQ.toast("...")，4s 自动消失 */
+QvQ.toastTimer = null;
+QvQ.toast = function (msg) {
+  QvQ.store.toast = String(msg || "");
+  if (QvQ.toastTimer) clearTimeout(QvQ.toastTimer);
+  QvQ.toastTimer = setTimeout(function () { QvQ.store.toast = ""; }, 4000);
+};
+QvQ.fill = function (key, vars) {
+  var s = t(key);
+  Object.keys(vars || {}).forEach(function (k) { s = s.replace("{" + k + "}", vars[k]); });
+  return s;
 };
 
 

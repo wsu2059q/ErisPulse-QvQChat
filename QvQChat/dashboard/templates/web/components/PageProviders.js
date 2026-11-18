@@ -24,6 +24,7 @@ window.PageProviders = {
       remoteErr: "",
       modelDrawer: false,
       modelForm: null,
+      detectBusy: false,
       modelProviderId: "",
       testState: {},
       brokenLogo: {},
@@ -235,6 +236,33 @@ window.PageProviders = {
     },
     dropModel(index) {
       this.form.models.splice(index, 1);
+    },
+    detectMeta() {
+      // 探测模型元数据（context_length/max_output_tokens）回填表单；密钥用当前供应商
+      var self = this;
+      var provider = this.providers.filter(function (p) { return p.id === self.modelProviderId; })[0];
+      if (!provider || !this.modelForm || !this.modelForm.id) return;
+      this.detectBusy = true;
+      api("/api/qvq/models/detect", "POST", {
+        model: this.modelForm.id,
+        provider: { base_url: provider.base_url, api_key: provider.api_key },
+      }).then(function (r) {
+        self.detectBusy = false;
+        if (!r || r.error) {
+          QvQ.toast(QvQ.fill("organize_fail", { error: (r && r.error) || "?" }));
+          return;
+        }
+        var m = r.meta || {};
+        if (m.context_length) self.modelForm.context_length = m.context_length;
+        if (m.max_output_tokens) self.modelForm.max_output_tokens = m.max_output_tokens;
+        if (m.reasoning === true || m.reasoning === false) self.modelForm.reasoning = m.reasoning;
+        if (m.vision === true || m.vision === false) self.modelForm.vision = m.vision;
+        if (m.tool_call === true || m.tool_call === false) self.modelForm.tool_call = m.tool_call;
+        QvQ.toast(t("models_detect_done"));
+      }).catch(function () {
+        self.detectBusy = false;
+        QvQ.toast(QvQ.fill("organize_fail", { error: "network" }));
+      });
     },
     openModel(p, m) {
       var copy = JSON.parse(JSON.stringify(m));
@@ -491,7 +519,9 @@ window.PageProviders = {
     '           :title="t(\'model_edit_title\')" :bordered="false">',
     '    <div class="prov-form" v-if="modelForm">',
     '      <div class="prov-field">',
-    '        <label>{{ t("prov_model_id") }}</label>',
+    '        <label>{{ t("prov_model_id") }}',
+    '          <n-button size="tiny" :loading="detectBusy" style="margin-left:8px" @click="detectMeta">',
+    '            {{ t("models_detect") }}</n-button></label>',
     '        <n-input v-model:value="modelForm.id"/>',
     '      </div>',
     '      <div class="prov-field row">',

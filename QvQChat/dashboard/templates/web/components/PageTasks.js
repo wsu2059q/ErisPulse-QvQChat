@@ -7,6 +7,11 @@ window.PageTasks = {
       runs: [],
       drawer: false,
       isNew: true,
+      schedMode: "cron",
+      schedTime: "09:00",
+      schedWeekday: 1,
+      schedEvery: 30,
+      schedUnit: "minute",
       form: {
         id: "", name: "", schedule: "", platform: "dashboard", target_type: "private",
         target_id: "web", prompt: "", persona: "", model: "",
@@ -15,6 +20,25 @@ window.PageTasks = {
       busy: false,
       loading: false,
     };
+  },
+  computed: {
+    weekdayOptions() {
+      return [
+        { label: t("sched_mon"), value: 1 },
+        { label: t("sched_tue"), value: 2 },
+        { label: t("sched_wed"), value: 3 },
+        { label: t("sched_thu"), value: 4 },
+        { label: t("sched_fri"), value: 5 },
+        { label: t("sched_sat"), value: 6 },
+        { label: t("sched_sun"), value: 0 },
+      ];
+    },
+    unitOptions() {
+      return [
+        { label: t("sched_unit_min"), value: "minute" },
+        { label: t("sched_unit_hour"), value: "hour" },
+      ];
+    },
   },
   mounted() {
     this.load();
@@ -30,12 +54,57 @@ window.PageTasks = {
         self.runs = ((d && d.runs) || []).slice(0, 20);
       });
     },
+    /* cron 双向友好化：每天/每周/每 N 单位 三种常见模式 ⇄ 表达式；识别不了回退 Cron 手填 */
+    parseSchedule(raw) {
+      var parts = String(raw || "").trim().split(/\s+/);
+      if (parts.length !== 5) { this.schedMode = "cron"; return; }
+      var m = parts;
+      var star = function (x) { return x === "*" || x === "*/1"; };
+      var pad = function (x) { return x.length < 2 ? "0" + x : x; };
+      if (/^\d+$/.test(m[0]) && /^\d+$/.test(m[1]) && star(m[2]) && star(m[3]) && star(m[4])) {
+        this.schedMode = "daily";
+        this.schedTime = pad(m[1]) + ":" + pad(m[0]);
+        return;
+      }
+      if (/^\d+$/.test(m[0]) && /^\d+$/.test(m[1]) && star(m[2]) && star(m[3]) && /^\d+$/.test(m[4])) {
+        this.schedMode = "weekly";
+        this.schedWeekday = Number(m[4]) % 7;
+        this.schedTime = pad(m[1]) + ":" + pad(m[0]);
+        return;
+      }
+      if (star(m[0]) && star(m[1]) && star(m[2]) && star(m[3]) && m[4].indexOf("*/") === 0) {
+        this.schedMode = "every";
+        this.schedEvery = Number(m[4].slice(2)) || 30;
+        this.schedUnit = "minute";
+        return;
+      }
+      if (star(m[0]) && star(m[1]) && star(m[2]) && m[3].indexOf("*/") === 0 && star(m[4])) {
+        this.schedMode = "every";
+        this.schedEvery = Number(m[3].slice(2)) || 2;
+        this.schedUnit = "hour";
+        return;
+      }
+      this.schedMode = "cron";
+    },
+    buildSchedule() {
+      if (this.schedMode === "every") {
+        return this.schedUnit === "minute"
+          ? "*/" + Math.max(1, this.schedEvery) + " * * * *"
+          : "0 */" + Math.max(1, this.schedEvery) + " * * *";
+      }
+      var hm = String(this.schedTime || "09:00").split(":");
+      var hh = parseInt(hm[0], 10) || 0, mm = parseInt(hm[1], 10) || 0;
+      if (this.schedMode === "daily") return mm + " " + hh + " * * *";
+      if (this.schedMode === "weekly") return mm + " " + hh + " * * " + ((Number(this.schedWeekday) + 1) % 7);
+      return String(this.form.schedule || "").trim();
+    },
     openNew() {
       this.isNew = true;
       this.form = {
         id: "", name: "", schedule: "0 9 * * *", platform: "dashboard",
         target_type: "private", target_id: "web", prompt: "", persona: "", model: "",
       };
+      this.parseSchedule("0 9 * * *");
       this.formErr = "";
       this.drawer = true;
     },
@@ -52,12 +121,14 @@ window.PageTasks = {
         persona: task.persona || "",
         model: task.model || "",
       };
+      this.parseSchedule(task.schedule_raw || "");
       this.formErr = "";
       this.drawer = true;
     },
     save() {
       var self = this;
       this.busy = true;
+      this.form.schedule = this.buildSchedule();
       api("/api/qvq/tasks/save", "POST", this.form).then(function (r) {
         self.busy = false;
         if (r && r.error) {
@@ -126,6 +197,33 @@ window.PageTasks = {
     '          <n-input v-model:value="form.name"/>',
     '        </div>',
     '        <div class="prov-field">',
+    '          <label>{{ t("sched_label") }}</label>',
+    '          <n-radio-group v-model:value="schedMode" size="small">',
+    '            <n-radio-button value="daily">{{ t("sched_daily") }}</n-radio-button>',
+    '            <n-radio-button value="weekly">{{ t("sched_weekly") }}</n-radio-button>',
+    '            <n-radio-button value="every">{{ t("sched_every") }}</n-radio-button>',
+    '            <n-radio-button value="cron">Cron</n-radio-button>',
+    '          </n-radio-group>',
+    '        </div>',
+    '        <div class="prov-field" v-if="schedMode === \'daily\' || schedMode === \'weekly\'">',
+    '          <label>{{ t("sched_time") }}</label>',
+    '          <n-input v-model:value="schedTime" placeholder="09:00" style="width:140px"/>',
+    '        </div>',
+    '        <div class="prov-field" v-if="schedMode === \'weekly\'">',
+    '          <label>{{ t("sched_weekday") }}</label>',
+    '          <n-select v-model:value="schedWeekday" :options="weekdayOptions" style="width:140px"/>',
+    '        </div>',
+    '        <div class="prov-grid2" v-if="schedMode === \'every\'">',
+    '          <div class="prov-field">',
+    '            <label>{{ t("sched_interval") }}</label>',
+    '            <n-input-number v-model:value="schedEvery" :min="1" style="width:100%"/>',
+    '          </div>',
+    '          <div class="prov-field">',
+    '            <label>{{ t("sched_unit") }}</label>',
+    '            <n-select v-model:value="schedUnit" :options="unitOptions" style="width:100%"/>',
+    '          </div>',
+    '        </div>',
+    '        <div class="prov-field" v-if="schedMode === \'cron\'">',
     '          <label>Cron</label>',
     '          <n-input v-model:value="form.schedule" placeholder="0 9 * * *"/>',
     '        </div>',
