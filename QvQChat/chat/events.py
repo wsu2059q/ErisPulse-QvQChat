@@ -503,7 +503,7 @@ class EventsMixin:
         """
         platform = str(entry.get("platform") or "")
         try:
-            admin_ids = [str(a) for a in (self.sessions._admin_ids_for(platform) or [])]
+            admin_ids = [str(a) for a in (self.sessions.notify_admin_ids_for(platform) or [])]
         except Exception:
             admin_ids = []
         if not admin_ids:
@@ -568,3 +568,13 @@ class EventsMixin:
                                               from_tools=False, chat_key=admin_chat)
         except Exception as e:
             self.logger.debug(f"request report send failed: {e}")
+# 其余决策管理员同步一份（决策回合只跑主通知对象的会话，避免多人重复决策）
+        for extra_id in admin_ids[1:]:
+            if str(extra_id) == str(admin_id):
+                continue
+            extra_chat = make_chat_key(platform, "private", extra_id) + suffix
+            try:
+                await self.delivery.send_segments(platform, "private", extra_id, [(0.0, reply)],
+                                                  from_tools=False, chat_key=extra_chat)
+            except Exception as e:
+                self.logger.debug(f"request report extra send failed: {e}")

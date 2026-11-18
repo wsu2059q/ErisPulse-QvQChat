@@ -1073,7 +1073,7 @@ class ConversationService:
             kb_texts=kb_texts,
             profile_user=profile_user,
             restricted=self._sender_restricted(sender_id, profile_user),
-            admin_ids=(self._admin_ids_for(str(profile_user or "").split(":", 1)[0])
+            admin_ids=(self.notify_admin_ids_for(str(profile_user or "").split(":", 1)[0])[:1]
                        if self._sender_restricted(sender_id, profile_user) else None),
             low_token=low_token,
         )
@@ -1370,17 +1370,38 @@ class ConversationService:
             return False
 
     def _admin_ids_for(self, platform: str) -> list[str]:
-        """当前平台的管理员 id 集（配置 admins + 框架主人表），供受限模式提示展示"该找谁"。"""
-        ids = {str(x) for x in (getattr(self.config, "admins", []) or []) if str(x).strip()}
+        """当前平台的管理员 id（配置 admins 原序在前 + 框架主人表追加）。
+
+        原序保留：admins 是运营方排好的权限名单，字典序重排会让"第一个"漂移
+        到别人身上（请求上报/受限提示的"负责管理员"都依赖首元素）。
+        """
+        ids: list[str] = []
+        seen: set[str] = set()
+        for x in (getattr(self.config, "admins", []) or []):
+            uid = str(x).strip()
+            if uid and uid not in seen:
+                ids.append(uid)
+                seen.add(uid)
         try:
             from ..Main import framework_masters
 
             g, p = framework_masters()
-            ids |= {str(x) for x in g}
-            ids |= {str(x) for x in (p.get(platform) or set())}
+            extra = {str(x) for x in g} | {str(x) for x in (p.get(platform) or set())}
+            for uid in sorted(extra):
+                if uid not in seen:
+                    ids.append(uid)
+                    seen.add(uid)
         except Exception:
             pass
-        return sorted(ids)
+        return ids
+
+    def notify_admin_ids_for(self, platform: str) -> list[str]:
+        """上报/求助通知的目标：notify_admins 配置优先（保序、全部通知）；
+        留空回落 admins+主人的第一个——挂名管理员不收上报也不在权限提示里暴露。"""
+        notify = [str(x).strip() for x in (getattr(self.config, "notify_admins", []) or []) if str(x).strip()]
+        if notify:
+            return notify
+        return self._admin_ids_for(platform)[:1]
 
     def build_system_parts(
         self,

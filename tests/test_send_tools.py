@@ -131,7 +131,7 @@ async def test_send_message_auto_forwards_long_text():
     )
     names = [name for name, _, _ in chain.calls]
     assert "MergeForward" in names
-    assert "[已作为合并转发消息发送]" in out
+    assert out.startswith("[已作为合并转发消息发送：")
     node_arg = [a for name, a, _ in chain.calls if name == "MergeForward"][0][0]
     assert isinstance(node_arg, list) and len(node_arg) >= 2
     assert not any(name == "Markdown" for name in names)
@@ -172,7 +172,7 @@ async def test_send_message_as_forward_forces():
     )
     names = [name for name, _, _ in chain.calls]
     assert "MergeForward" in names
-    assert "[已作为合并转发消息发送]" in out
+    assert out.startswith("[已作为合并转发消息发送：")
 
 
 async def test_send_message_as_forward_without_forward_method_falls_back():
@@ -196,7 +196,7 @@ async def test_send_message_forward_splits_before_strip_on_text_only():
     out = await erispulse.send_message(
         make_ctx(main), platform="onebot11", target_type="user", target_id="1", text=text
     )
-    assert "[已作为合并转发消息发送]" in out
+    assert out.startswith("[已作为合并转发消息发送：")
     nodes = [a for name, a, _ in chain.calls if name == "MergeForward"][0][0]
     texts_ = [n["data"]["content"][0]["data"]["text"] for n in nodes]
     assert len(texts_) >= 2
