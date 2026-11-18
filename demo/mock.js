@@ -422,10 +422,12 @@
             { content: "主人常用 Windows + uv，跑测试用 uv run pytest", ts: NOW - 86400 },
             { content: "喜欢回复带点猫娘语气，但技术内容要准确", ts: NOW - 172800 },
           ],
-          profile: [
-            { text: "主语言 Python，技术栈 ErisPulse 生态", ts: NOW - 259200 },
-            { text: "偏好简洁直接的回复风格", ts: NOW - 172800 },
-          ],
+          profile: {
+            traits: [{ text: "夜猫子，凌晨三点还醒着", ts: NOW - 259200 }],
+            preferences: [{ text: "偏好简洁直接的回复风格", ts: NOW - 172800 }],
+            facts: [{ text: "主语言 Python，在做 ErisPulse 生态模块", ts: NOW - 259200 }],
+            updated: NOW - 86400,
+          },
         });
         case "/api/qvq/config": return json(window.GENERATED_CONFIG || { fields: CONFIG_FIELDS, groups: CONFIG_GROUPS });
         case "/api/qvq/plugin_settings": return json({ modules: [
@@ -511,6 +513,8 @@
             ] },
           system: "你正以人格「小樱」(id=sakura) 的身份发言。……（调试预览全文，dry-run 不落库）",
         });
+        case "/api/qvq/profile/clear": return json({ ok: true });
+        case "/api/qvq/profile/edit": return json({ ok: true, profile: { traits: [{ text: "夜猫子（已纠正）", ts: NOW }], preferences: [], facts: [], updated: NOW } });
         case "/api/qvq/settings/defaults": return json({ density: "detail" });
         case "/api/qvq/onboarding": return json({ modules: [
           { module: "QvQMemes", count: 2, preview: "用户发图时自动收录新梗图", injected: true },
