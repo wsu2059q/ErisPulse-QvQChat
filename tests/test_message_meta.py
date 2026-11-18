@@ -87,3 +87,20 @@ def test_profile_edit_replaces_section():
     data = profile.get("snowluma:10001")
     assert data["traits"][0]["text"] == "夜猫子（凌晨三点还醒着）"
     assert any(a["tool"] == "profile_edit" for a in main.audits)
+
+
+def test_task_model_type_tier_group_vs_private():
+    """类型级模型：chat_group / chat_private 优先于 task_models.chat。"""
+    import sys
+    sys.path.insert(0, "tests")
+    from test_model_dispatch import make_pool
+    from QvQChat.engine.base import TaskSpec
+
+    pool = make_pool()
+    pool.config.task_models = {"chat": "p1:plain", "chat_group": "p1:cheap", "chat_private": "p1:smart"}
+    got_group = pool.resolve_task_model(TaskSpec(kind="chat", chat_key="snowluma:group:871"))
+    got_private = pool.resolve_task_model(TaskSpec(kind="chat", chat_key="snowluma:private:10001"))
+    assert got_group["id"] == "p1:cheap"
+    assert got_private["id"] == "p1:smart"
+    # 无 chat_key 回落 chat 档
+    assert pool.resolve_task_model(TaskSpec(kind="chat"))["id"] == "p1:plain"

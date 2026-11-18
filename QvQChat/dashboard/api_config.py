@@ -795,7 +795,7 @@ class ConfigApiMixin:
                 field["choices"] = model_choices
             elif f.name == "task_models":
                 field["widget"] = "model_map"
-                field["items"] = ["chat", "compact", "title", "vision", "toolselect", "announce"]
+                field["items"] = ["chat", "chat_group", "chat_private", "compact", "title", "vision", "toolselect", "announce"]
                 field["choices"] = model_choices
             fields.append(field)
         return {"fields": fields, "groups": QvQConfig.groups()}

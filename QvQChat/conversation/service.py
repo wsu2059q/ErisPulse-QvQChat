@@ -1192,7 +1192,7 @@ class ConversationService:
         if not callable(resolver):
             return None
         try:
-            return resolver(TaskSpec(kind="chat"))
+            return resolver(TaskSpec(kind="chat", chat_key=chat_key))
         except Exception:
             return None
 
