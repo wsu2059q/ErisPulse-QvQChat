@@ -985,6 +985,7 @@ class ConversationService:
         profile_user: str = "",
         user_mem_key: str = "",
         persist: bool = True,
+        debug: bool = False,
     ) -> dict:
 
 
@@ -1142,6 +1143,7 @@ class ConversationService:
             pack_enabled = False
             context_length = 0
         overflow = False
+        pack_stats: dict = {}
         if pack_enabled:
             packed = self.packer.pack(
                 context_length=context_length,
@@ -1155,6 +1157,7 @@ class ConversationService:
             contexts = packed.messages[:-1]
             user_msg = packed.messages[-1]
             overflow = bool(packed.stats.get("overflow_turns") or packed.stats.get("dropped"))
+            pack_stats = packed.stats
         else:
             system = "\n".join(p.text for p in parts if p.text)
         if persist:
@@ -1170,6 +1173,16 @@ class ConversationService:
             "model": (model_info or {}).get("id", "") if isinstance(model_info, dict) else "",
             "first_contact": first_contact,
             "seeded": seeded_done,
+            "debug": {
+                "parts": [
+                    {"kind": p.kind, "chars": len(p.text or ""), "required": p.required, "preview": str(p.text or "")[:120]}
+                    for p in parts if p.text
+                ],
+                "packer": pack_stats,
+                "pack_enabled": pack_enabled,
+                "model_length": model_length,
+                "low_token": low_token,
+            } if debug else {},
         }
 
     def _resolve_chat_model(self) -> dict | None:

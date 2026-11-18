@@ -2422,6 +2422,32 @@ body::-webkit-scrollbar,
   font-size: 11.5px;
 }
 .partic-chip.on { border-color: var(--qvq-ok); color: var(--qvq-ok); }
+
+/* 提示词调试器 */
+.prompt-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.prompt-parts { margin-bottom: 10px; border: 1px solid var(--qvq-bd); border-radius: 10px; overflow: hidden; }
+.prompt-part {
+  display: grid;
+  grid-template-columns: 110px 76px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px;
+  border-bottom: 1px dashed var(--qvq-bd);
+  font-size: 12px;
+}
+.prompt-part:last-child { border-bottom: 0; }
+.prompt-part code {
+  color: var(--qvq-accent);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11.5px;
+}
+.prompt-prev {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prompt-full textarea { font-size: 11.5px !important; line-height: 1.5 !important; }
+
 .ov-onboard-mod i {
   display: block;
   font-style: normal;

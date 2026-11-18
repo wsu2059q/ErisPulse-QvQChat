@@ -299,32 +299,14 @@ def _seed_dedupe(rows, contexts) -> list:
     return out
 
 
-# 测试绑定清单：测试把收件箱/命令行 mixin 的方法绑到轻量宿主（FakeMain）上驱动管线。
-# 单一来源——新增这类方法时在这里补名字，各测试文件统一引用本常量
-INBOX_BOUND_METHODS = (
-    "_process_locked", "_chat_ctx", "_sender_name", "_resolve_group_name",
-    "_seed_history", "_transcript_rows", "_label_seed_rows", "_group_nicknames",
-    "is_admin", "check_tool_permission", "_master_checker",
-    "record_usage", "_usage_today", "_prune_usage", "_usage_history",
-    "_lock_for", "_batch_message", "_flush_later", "_flush_pending",
-    "_live_conflict", "_auto_interrupt_decide", "_handle_auto_decision",
-    "_extract_images", "_to_model_image", "_cleanup_takeovers", "_should_trigger",
-    "_chat_key_of", "_chat_confirmer", "_rate_allow", "_rate_notice", "_user_quota_allow", "_quota_notice",
-    "_maybe_send_opening",
-    "_is_command_message", "_command_yields", "_drain_waiting", "_enqueue_waiting", "_trigger_mode_of", "_is_direct_address", "_dup_delivery_gate", "_is_sibling_bot", "_quote_content", "_has_reply_segment", "_quote_targets_me",
-    "_sender_muted", "_mutes_note",
-    "_handover_state", "_handover_state_invalidate", "_end_handover",
-    "_summarize_handover", "_handover_partial_save", "_process_handover", "_guarded_run",
-    "_on_message", "_announce_queued", "_cmd_agent", "_cmd_persona",
-)
-
-
 class InboxMixin(RecoveryMixin):
     """Main 的消息入口 mixin（组合 RecoveryMixin：实例重启恢复方法随本链挂到 Main）。
     依赖宿主提供 self.sdk / self.cfg / self.logger /
     self.sessions / self.pool / self.runner / self.delivery / self.takeover /
     self._pending / self._waiting / self._chat_locks / self._rate_window /
     self._rate_notice_shown / self.spawn / self.is_admin / self._chat_confirmer 等。"""
+
+
 
     @staticmethod
     def _to_model_image(url: str, max_bytes: int = 5 * 1024 * 1024) -> str:
@@ -1566,6 +1548,10 @@ class InboxMixin(RecoveryMixin):
                 group_style = self.sessions.group_style_of(chat_key)
                 if group_style:
                     scene += texts.t("scene_group_style", style=group_style)
+# 成员名册：模型"认识"这个群的常客（最近发言者反查昵称；API 名单有权限时更全）
+                roster = await self._group_roster(chat_key, str(event.get_platform() or ""), str(group_id or ""))
+                if roster:
+                    scene += texts.t("scene_roster", roster=roster)
                 if getattr(self.cfg, "group_isolation", False):
                     scene += texts.t("scene_isolation_note")
             else:
@@ -2405,6 +2391,61 @@ class InboxMixin(RecoveryMixin):
                 seeded.append({"role": "assistant", "content": text})
         return seeded
 
+    async def _group_roster(self, chat_key: str, platform: str, group_id: str) -> str:
+        """群成员名册文本：供 scene 注入，让模型认出群友。
+
+        首选适配器 get_group_member_list（部分平台需要管理权限，失败静默退回）；
+        退路：本会话上下文里的最近发言者（sender 已随消息持久化）反查群昵称。
+        上限 scene_roster_max，0 关闭。
+        """
+        max_n = int(getattr(self.cfg, "scene_roster_max", 20) or 0)
+        if not max_n or not platform or not group_id:
+            return ""
+        entries: list[tuple[str, str]] = []  # (uid, name) 有名在前
+# 首选：群成员列表 API
+        adapter = self.sdk.adapter.get(platform)
+        if adapter is not None:
+            try:
+                raw = await asyncio.wait_for(
+                    adapter.call_api("get_group_member_list", group_id=group_id), 5
+                )
+                payload = raw if isinstance(raw, dict) else {}
+                data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+                members = data.get("list") if isinstance(data, dict) else None
+                if isinstance(members, list):
+                    for m in members[:max_n]:
+                        if not isinstance(m, dict):
+                            continue
+                        uid = str(m.get("user_id") or "")
+                        name = str(m.get("card") or m.get("nickname") or "")
+                        if uid:
+                            entries.append((uid, name))
+            except Exception:
+                entries = []
+# 退路：会话历史最近发言者（去重，新在前）
+        if not entries:
+            try:
+                contexts = self.sessions.get_contexts(chat_key)
+            except Exception:
+                contexts = []
+            seen: list[str] = []
+            for c in reversed(contexts):
+                if len(seen) >= max_n:
+                    break
+                if not isinstance(c, dict) or c.get("role") != "user":
+                    continue
+                uid = str(c.get("sender") or "")
+                if uid and uid not in seen:
+                    seen.append(uid)
+            nick = await self._group_nicknames(platform, group_id, seen)
+            entries = [(uid, nick.get(uid, "")) for uid in seen]
+        if not entries:
+            return ""
+        parts = []
+        for uid, name in entries[:max_n]:
+            parts.append(name if name else f"({uid})")
+        return "、".join(parts)
+
     async def _group_nicknames(self, platform: str, group_id: str, uids: list) -> dict:
         """uid→群昵称批量反查，storage 缓存 7 天；失败返回空（标注退化为 (uid):）。"""
         if not platform or not group_id or not uids:
@@ -2457,3 +2498,11 @@ class InboxMixin(RecoveryMixin):
         except Exception as e:
             self.logger.warning(f"confirm failed: {e}")
             return False
+
+# 测试绑定清单：自动发现 InboxMixin（含 RecoveryMixin 基类）全部可调用方法——
+# 新增方法零同步，各测试文件统一引用本常量把方法绑到轻量宿主（FakeMain）上
+INBOX_BOUND_METHODS = tuple(
+    name
+    for name in dir(InboxMixin)
+    if name.startswith("_") and not name.startswith("__") and callable(getattr(InboxMixin, name, None))
+)

@@ -331,3 +331,21 @@ def test_schedule_tool_defaults_account_from_ctx():
         target_type="group", target_id="42", prompt="写日报"))
     task = next(t for t in main.scheduler.list() if t.get("name") == "日报")
     assert task.get("account") == "Amer"
+
+
+def test_manage_config_groups_discovers_all_fields():
+    """groups 动作：按组返回全部配置字段（新字段自动出现，无需同步工具描述）。"""
+    import asyncio
+    import json as _json
+    from fakes import make_ctx
+    from QvQChat.Config import QvQConfig
+    from dataclasses import fields as _dcf
+
+    ctx = make_ctx()
+    out = asyncio.run(selfconfig.manage_config(ctx, action="groups"))
+    data = _json.loads(out)
+    groups = data["groups"]
+    all_names = {k for g in groups.values() for k in g}
+    expected = {f.name for f in _dcf(QvQConfig)}
+    assert expected <= all_names, f"groups 漏字段: {expected - all_names}"
+    assert data.get("hint")

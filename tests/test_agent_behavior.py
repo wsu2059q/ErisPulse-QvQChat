@@ -8,6 +8,7 @@ from QvQChat.prompts import CRITIQUE_PROMPT, REFLEXION_PLAN_PROMPT
 from QvQChat.tools_builtin import skilltools
 
 from fakes import FakeMain, make_ctx
+from test_aggregate import make_main
 
 
 def make_tool(name, handler=None):
@@ -490,3 +491,21 @@ async def test_think_prefill_dropped_after_prefill_reject():
     assert runner._prefill_blocked("p:m")
 # 重跑请求不带尾部 assistant
     assert pool.requests[-1].messages[-1]["role"] == "user"
+
+
+async def test_group_roster_injects_recent_speakers():
+    """群成员名册：API 无名单时退路取会话最近发言者，注入 scene_roster 文本。"""
+    main = make_main()
+    # _group_roster 定义在 InboxMixin：unbound 补绑到 fake 实例
+    from QvQChat.chat.inbox import InboxMixin
+    main._group_roster = InboxMixin._group_roster.__get__(main)
+    main._group_nicknames = InboxMixin._group_nicknames.__get__(main)
+    key = "snowluma:group:871684833"
+    main.sessions.append_user(key, "hello", sender_id="10001")
+    main.sessions.append_user(key, "hi", sender_id="10002")
+    roster = await main._group_roster(key, "snowluma", "871684833")
+    # fake 适配器无 get_group_member_list → 退路生效；无昵称 → (uid) 形态
+    assert "10001" in roster and "10002" in roster
+    # 注入 scene：roster 非空时应带上名册行
+    scene = texts.t("scene_roster", roster=roster)
+    assert roster in scene and ("[Group members" in scene or "〔本群成员" in scene)

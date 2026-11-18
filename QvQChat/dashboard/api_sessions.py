@@ -532,6 +532,31 @@ class SessionsApiMixin:
                 failed.append({"chat_key": key, "error": summary.get("error")})
         return {"ok": not failed, "migrated": migrated, "failed": failed}
 
+    async def prompt_preview(self, request):
+        """提示词调试器：dry-run 整条组装链，返回部件明细与全文（不落库、无副作用）。"""
+        chat_key = self._query(request, "chat_key")
+        if not chat_key:
+            return ({"error": "chat_key required"}, 400)
+        try:
+            prepared = await self.main.sessions.prepare(
+                chat_key,
+                "(调试预览：此处将替换为用户本次消息)",
+                persist=False,
+                debug=True,
+            )
+        except Exception as e:
+            self.main.logger.debug(f"prompt preview failed: {e}")
+            return ({"error": str(e)}, 500)
+        return {
+            "chat_key": chat_key,
+            "model": prepared.get("model") or "",
+            "persona": (prepared.get("persona") or {}).get("name") or "",
+            "system_chars": len(prepared.get("system") or ""),
+            "history_turns": len(prepared.get("contexts") or []),
+            "debug": prepared.get("debug") or {},
+            "system": prepared.get("system") or "",
+        }
+
     async def session_messages(self, request):
         chat_key = self._query(request, "chat_key")
         if not chat_key:

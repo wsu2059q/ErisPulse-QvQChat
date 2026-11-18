@@ -492,6 +492,25 @@
         case "/api/qvq/storage/entry": return json({ key: query.key || "QvQChat:demo", value: "{\"demo\": true}", truncated: false, bytes: 15 });
         case "/api/qvq/trash/list": return json({ items: [] });
         case "/api/qvq/export": return json({ exported: true, note: "演示环境不导出真实数据" });
+        case "/api/qvq/prompt/preview": return json({
+          chat_key: "dashboard:private:web", model: "deepseek-chat", persona: "小樱",
+          system_chars: 2416, history_turns: 12,
+          debug: { pack_enabled: false, model_length: 65536, low_token: false,
+            parts: [
+              { kind: "persona", chars: 386, required: true, preview: "你正以人格「小樱」(id=sakura) 的身份发言。元气猫娘……" },
+              { kind: "persona_extra", chars: 154, required: false, preview: "角色细节扩展：说话习惯、口癖……" },
+              { kind: "capability", chars: 512, required: true, preview: "你可以使用工具、派发子智能体、进行会话让渡……" },
+              { kind: "roster", chars: 96, required: false, preview: "你认识这些同伴：小樱（sakura）……" },
+              { kind: "chat_rules", chars: 220, required: false, preview: "回复规范：段落短句、不书面腔……" },
+              { kind: "summary", chars: 260, required: false, preview: "【对话摘要】此前你们讨论过周报自动化……" },
+              { kind: "facts", chars: 118, required: false, preview: "【已确认事实】ENTITY|用户在做 ErisPulse 框架……" },
+              { kind: "todo", chars: 84, required: false, preview: "【任务清单】- [x] 整理发布清单……" },
+              { kind: "profile", chars: 176, required: false, preview: "【用户画像】特质：夜猫子；偏好：直接给结论……" },
+              { kind: "memory", chars: 132, required: false, preview: "【相关记忆】- 上次聊过 bilibili 直连测试……" },
+              { kind: "skill_list", chars: 210, required: false, preview: "<skills>周报生成：抓取仓库动态……</skills>" },
+            ] },
+          system: "你正以人格「小樱」(id=sakura) 的身份发言。……（调试预览全文，dry-run 不落库）",
+        });
         case "/api/qvq/settings/defaults": return json({ density: "detail" });
         case "/api/qvq/onboarding": return json({ modules: [
           { module: "QvQMemes", count: 2, preview: "用户发图时自动收录新梗图", injected: true },

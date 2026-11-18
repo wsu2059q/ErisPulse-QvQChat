@@ -212,6 +212,8 @@ class QvQConfig(BaseConfig):
     meta_strip: bool = field(default=True, metadata=_desc("meta_strip", "元文本剥离：回复首段是思考/策略/分析过程（如「回复策略：…」）而后面还有正文时自动剥掉首段再发送（默认开；失败不阻塞发送）", "humanize", 5, "switch"))
     humanize_filter_max_sentences: int = field(default=3, metadata=_desc("humanize_filter_max_sentences", "输出过滤器：单次回复句数上限，超出按句号边界截断（0 关闭句数与复述检测）", "humanize", 5, "number"))
     humanize_recall_interval_hours: int = field(default=72, metadata=_desc("humanize_recall_interval_hours", "「记得你」记忆回捞提示的最小间隔（小时/用户，0 关闭该提示；相关记忆本身仍正常注入）", "humanize", 6, "number"))
+    scene_roster_enabled: bool = field(default=True, metadata=_desc("scene_roster_enabled", "群聊场景注入成员名册（最近发言者，供模型认出群友）", "chat", 98, "switch"))
+    scene_roster_max: int = field(default=20, metadata=_desc("scene_roster_max", "成员名册最多注入人数（0 关闭）", "chat", 99, "number"))
     humanize_recall_on_cold_only: bool = field(default=True, metadata=_desc("humanize_recall_on_cold_only", "回捞提示仅在对方先发起对话的回合出现，任务/定时触发的回合不提旧事", "humanize", 7, "switch"))
     humanize_budget_seconds: float = field(default=7.0, metadata=_desc("humanize_budget_seconds", "单次回复总响应预算（秒，防抖+生成+打字延迟）：超时按 延迟减半→归零→多条合并为一条 降级，话一定说完只是放弃节奏；0 关闭", "humanize", 8, "number", minimum=0, maximum=60))
     humanize_interrupt: bool = field(default=True, metadata=_desc("humanize_interrupt", "硬打断：上一轮回复还没发完时，收到强信号立即丢弃未发短句，新消息优先处理（已发出的句子不撤）", "humanize", 9, "switch"))

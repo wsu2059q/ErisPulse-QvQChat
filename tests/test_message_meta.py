@@ -43,3 +43,22 @@ def test_append_meta_passthrough():
     manager.append(key, "assistant", "带出处的回复", meta={"model": "glm-5"})
     entry = manager.get_contexts(key)[-1]
     assert entry["meta"] == {"model": "glm-5"}
+
+
+def test_prepare_debug_returns_parts_without_persist():
+    """提示词调试器：debug=True 回传部件明细；persist=False 不落库。"""
+    main = FakeMain()
+    manager = ConversationService(main)
+    key = "s-dbg"
+    manager.append_user(key, "早")
+    import asyncio
+    prepared = asyncio.run(manager.prepare(key, "调试预览", persist=False, debug=True))
+    kinds = [p["kind"] for p in prepared["debug"]["parts"]]
+    assert "persona" in kinds and "capability" in kinds
+    assert prepared["system"], "system 全文应返回"
+    # persist=False：用户消息未落库
+    roles = [c["role"] for c in manager.get_contexts(key)]
+    assert roles.count("user") == 1, "dry-run 不得追加 user 消息"
+    # 非 debug 时无该字段
+    prepared2 = asyncio.run(manager.prepare(key, "再次", persist=False))
+    assert prepared2["debug"] == {}
