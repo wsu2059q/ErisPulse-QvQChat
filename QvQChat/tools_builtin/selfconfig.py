@@ -232,6 +232,22 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
 
     valid = {f.name for f in dc_fields(QvQConfig)}
     action = str(action or "get").lower()
+    if action == "groups":
+# 配置组目录：AI 的自发现入口——新增配置项/新能力组无需手动同步任何工具描述，
+# AI 调一次 groups 就能看到当前全部字段（按组整理 + 一句话说明）
+        groups: dict[str, dict] = {}
+        for f in dc_fields(QvQConfig):
+            meta = f.metadata or {}
+            desc = meta.get("description") or {}
+            text = str(desc.get("default") or "") if isinstance(desc, dict) else str(desc)
+            ui = meta.get("ui") or {}
+            g = str(ui.get("group") or "other")
+            entry = groups.setdefault(g, {})
+            title = text.split("：")[0].split(":")[0].split("，")[0].split(",")[0]
+            entry[f.name] = (title or f.name)[:40] + ("（敏感）" if ui.get("secret") else "")
+        order = {gid: i for i, gid in enumerate(g["id"] for g in QvQConfig.groups())}
+        ordered = {gid: groups[gid] for gid in sorted(groups, key=lambda x: order.get(x, 99))}
+        return utils.to_text({"groups": ordered, "hint": "set 用 manage_config(action=set, updates={key: value})；类型校验失败会带原因拒收"}, limit=20000)
     if action == "get":
         if key:
             if key not in valid:
@@ -256,7 +272,7 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
             else:
                 rejected[str(config_key)] = err
         return utils.to_text({"ok": not rejected, "applied": applied, "rejected": rejected})
-    return f"unknown action: {action} (get / set)"
+    return f"unknown action: {action} (get / set / groups)"
 
 
 def _plugin_config_class(sdk, module: str):
@@ -551,7 +567,7 @@ def register(registry: ToolRegistry, main) -> None:
         description="Read or change this module's own settings: get all fields or one key, set key-value updates (valid QvQChat config keys only; values are type-checked and invalid ones are rejected with a reason). Covers triggers, aggregate window, forward behaviour, notice modes, etc. Admin only.",
         parameters=_schema(
             {
-                "action": _s(type="string", description="get or set"),
+                "action": _s(type="string", description="get / set / groups (grouped field catalog with one-line descriptions; call groups first to discover what is configurable)"),
                 "key": _s(type="string", description="get: a single config key; omit for all"),
                 "updates": _s(type="object", description="set: {config_key: value} pairs"),
             },

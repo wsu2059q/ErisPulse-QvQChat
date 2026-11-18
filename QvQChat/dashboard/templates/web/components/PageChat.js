@@ -45,6 +45,9 @@ window.PageChat = {
       shareOpen: false,
       shareForm: { hours: 24, tokens: 4000, rounds: 0, chat_tokens: 20000 },
       shareUrl: "",
+      promptOpen: false,
+      promptData: null,
+      promptBusy: false,
       shareToken: "",
       confirmOpen: false,
       confirmText: "",
@@ -478,6 +481,22 @@ window.PageChat = {
         self.cfgHint = personaChanged ? t("settings_saved") : t("sess_policy_saved");
         self.loadSessions();
       });
+    },
+    loadPromptPreview() {
+      // 提示词调试器：dry-run 组装链（不落库、无副作用），部件明细 + 全文
+      var self = this;
+      if (!this.activeKey) return;
+      this.promptBusy = true;
+      this.promptOpen = true;
+      api("/api/qvq/prompt/preview?chat_key=" + encodeURIComponent(this.activeKey))
+        .then(function (r) {
+          self.promptBusy = false;
+          if (r && r.error) { self.promptData = { error: r.error }; return; }
+          self.promptData = r || { error: "?" };
+        }).catch(function (e) {
+          self.promptBusy = false;
+          self.promptData = { error: String(e) };
+        });
     },
     saveCfgDefaults() {
       // 把当前会话的密度/模型/力度存为全局默认（新会话继承）
@@ -1285,12 +1304,34 @@ window.PageChat = {
     '      </div>',
     '      <template #footer>',
     '        <div class="qvq-modal-foot">',
+    '          <n-button size="small" :disabled="cfgBusy" @click="loadPromptPreview">{{ t("prompt_preview") }}</n-button>',
     '          <n-button size="small" :disabled="cfgBusy" @click="saveCfgDefaults">{{ t("save_as_default") }}</n-button>',
     '          <n-button size="small" :loading="cfgBusy" type="primary" @click="saveCfg">{{ t("save") }}</n-button>',
     '        </div>',
     '      </template>',
     '    </n-drawer-content>',
     '  </n-drawer>',
+    '  <n-modal v-model:show="promptOpen" preset="card" class="qvq-modal-card" style="max-width:720px"',
+    '           :title="t(\'prompt_preview\')" :bordered="false">',
+    '    <div v-if="promptData && promptData.error" class="cf-error">{{ promptData.error }}</div>',
+    '    <template v-else-if="promptData">',
+    '      <div class="prompt-meta">',
+    '        <span class="partic-chip">{{ promptData.persona || "-" }}</span>',
+    '        <span class="partic-chip">{{ promptData.model || t("model_s_auto") }}</span>',
+    '        <span class="partic-chip">{{ promptData.system_chars }} {{ t("prompt_chars") }}</span>',
+    '        <span class="partic-chip">{{ promptData.history_turns }} {{ t("prompt_turns") }}</span>',
+    '      </div>',
+    '      <div class="prompt-parts">',
+    '        <div v-for="(p, i) in (promptData.debug && promptData.debug.parts) || []" :key="i" class="prompt-part">',
+    '          <code>{{ p.kind }}</code>',
+    '          <span class="qvq-meta-line">{{ p.chars }} ch{{ p.required ? " · " + t("prompt_required") : "" }}</span>',
+    '          <span class="qvq-meta-line prompt-prev">{{ p.preview }}</span>',
+    '        </div>',
+    '      </div>',
+    '      <n-input :value="promptData.system" type="textarea" :rows="14" readonly class="cf-mono prompt-full"/>',
+    '      <div class="qvq-meta-line" style="margin-top:6px">{{ t("prompt_scene_note") }}</div>',
+    '    </template>',
+    '  </n-modal>',
     '  <n-modal v-model:show="shareOpen" preset="card" class="qvq-modal-card"',
     '           style="max-width:460px" :title="t(\'chat_share\')" :bordered="false">',
     '    <div class="prov-form" v-if="!shareUrl">',
