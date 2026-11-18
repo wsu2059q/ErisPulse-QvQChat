@@ -143,6 +143,7 @@ window.AppShell = {
     '        </transition>',
     '      </main>',
     '    </div>',
+    '    <div class="chat-toast qvq-toast" v-if="st.toast" @click="st.toast = \'\'">{{ st.toast }}</div>',
     '  </n-message-provider>',
     '</n-config-provider>',
   ].join(""),

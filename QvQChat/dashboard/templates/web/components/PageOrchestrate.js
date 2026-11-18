@@ -10,14 +10,29 @@ window.PageOrchestrate = {
       tasks: [],
       runs: [],
       subjobs: [],
+      particip: null,
       dragIndex: -1,
       savedHint: "",
     };
   },
   mounted() {
     this.load();
+    this.loadParticip();
   },
   methods: {
+    /* 参与决策观测：预算现状 + 最近决策环形日志（后端环形缓冲 100 条） */
+    loadParticip() {
+      var self = this;
+      api("/api/qvq/participation").then(function (d) {
+        self.particip = d || null;
+      });
+    },
+    participText(d) {
+      if (!d) return "";
+      var what = d.decision === "speak" ? t("partic_speak") : t("partic_silent");
+      var prov = d.provider ? " · " + d.provider : "";
+      return what + prov + (d.reason ? " · " + d.reason : "");
+    },
     load() {
       var self = this;
       api("/api/qvq/models").then(function (d) {
@@ -152,6 +167,26 @@ window.PageOrchestrate = {
     '      <span class="nm">{{ taskLabel(r) }}</span>',
     '      <span class="qvq-meta-line">{{ r.at_formatted }} · {{ r.error || "ok" }}</span>',
     '    </div>',
+    '  </n-card>',
+    '  <n-card size="small" class="qvq-glass-card">',
+    '    <div class="qvq-card-head">',
+    '      <span class="qvq-card-title">{{ t("partic_title") }}</span>',
+    '      <button type="button" class="qvq-link" @click="loadParticip">{{ t("tools_refresh") }}</button>',
+    '    </div>',
+    '    <div class="qvq-meta-line" v-if="!particip">{{ t("loading") }}</div>',
+    '    <template v-else>',
+    '      <div class="partic-stats">',
+    '        <span class="partic-chip" :class="{ on: particip.enabled }">{{ particip.enabled ? t("partic_on") : t("partic_off") }}</span>',
+    '        <span class="partic-chip">{{ t("partic_strategy") }}: {{ particip.strategy }}</span>',
+    '        <span class="partic-chip">{{ t("partic_hourly") }} {{ (particip.budget.limits || {}).hourly_limit ?? "-" }}</span>',
+    '        <span class="partic-chip">{{ t("partic_today") }} {{ particip.budget.proactive_today ?? 0 }}/{{ (particip.budget.limits || {}).proactive_daily_limit ?? "-" }}</span>',
+    '      </div>',
+    '      <div v-for="(d, i) in (particip.decisions || []).slice(0, 12)" :key="i" class="trash-row">',
+    '        <span class="nm">{{ d.chat_key }}</span>',
+    '        <span class="qvq-meta-line">{{ participText(d) }}</span>',
+    '      </div>',
+    '      <div v-if="!(particip.decisions || []).length" class="qvq-empty">{{ t("partic_empty") }}</div>',
+    '    </template>',
     '  </n-card>',
     '</div>',
   ].join(""),

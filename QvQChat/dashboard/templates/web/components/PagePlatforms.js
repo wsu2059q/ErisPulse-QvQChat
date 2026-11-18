@@ -15,11 +15,18 @@ window.PagePlatforms = {
       allKeys: [],
       showOffAdapters: false,
       showOffAccounts: false,
+      mergeOpen: false,
+      merge: { platform: "", from: "", to: "", mode: "merge" },
+      mergeBusy: false,
+      mergeResult: null,
     };
   },
   computed: {
     keyOptions() {
       return this.allKeys.map(function (k) { return { label: k, value: k }; });
+    },
+    accountOptions() {
+      return this.accounts.map(function (a) { return { label: a.account, value: a.account }; });
     },
     adapterCount() {
       var n = 0;
@@ -156,6 +163,21 @@ window.PagePlatforms = {
     unbindKey(key) {
       this.bindKey(key, null);
     },
+    openMerge(a) {
+      this.merge = { platform: (a.platforms && a.platforms[0]) || "", from: a.account, to: "", mode: "merge" };
+      this.mergeResult = null;
+      this.mergeOpen = true;
+    },
+    runMerge() {
+      var self = this;
+      if (!this.merge.platform || !this.merge.from || !this.merge.to || this.merge.from === this.merge.to) return;
+      this.mergeBusy = true;
+      api("/api/qvq/identity/merge_account", "POST", this.merge).then(function (r) {
+        self.mergeBusy = false;
+        self.mergeResult = r || { error: "network" };
+        if (r && !r.error && r.ok) self.load();
+      });
+    },
     openMig(pair) {
       this.mig = {
         source: (pair && pair.source) || "",
@@ -269,6 +291,37 @@ window.PagePlatforms = {
     '      </div>',
     '    </div>',
     '  </n-card>',
+    '  <n-modal v-model:show="mergeOpen" preset="card" class="qvq-modal-card" style="max-width:440px"',
+    '           :title="t(\'merge_account\')" :bordered="false">',
+    '    <div class="prov-form">',
+    '      <div class="qvq-meta-line">{{ t("merge_account_hint") }}</div>',
+    '      <div class="prov-field">',
+    '        <label>{{ t("identity_source") }}</label>',
+    '        <n-select v-model:value="merge.from" tag filterable :options="accountOptions"/>',
+    '      </div>',
+    '      <div class="prov-field">',
+    '        <label>{{ t("identity_target") }}</label>',
+    '        <n-select v-model:value="merge.to" tag filterable :options="accountOptions"/>',
+    '      </div>',
+    '      <div class="prov-field">',
+    '        <label>{{ t("identity_mode") }}</label>',
+    '        <n-radio-group v-model:value="merge.mode">',
+    '          <n-radio value="merge">{{ t("ident_merge") }}</n-radio>',
+    '          <n-radio value="overwrite">{{ t("ident_overwrite") }}</n-radio>',
+    '        </n-radio-group>',
+    '      </div>',
+    '      <div class="cf-error" v-if="mergeResult && mergeResult.error">{{ mergeResult.error }}</div>',
+    '      <div class="qvq-meta-line" v-if="mergeResult && mergeResult.ok !== undefined">',
+    '        {{ t("merge_done").replace("{n}", String(mergeResult.migrated)) }}',
+    '      </div>',
+    '    </div>',
+    '    <template #footer>',
+    '      <div class="qvq-modal-foot">',
+    '        <n-button size="small" @click="mergeOpen = false">{{ t("cancel") }}</n-button>',
+    '        <n-button size="small" type="primary" :loading="mergeBusy" @click="runMerge">{{ t("ident_run") }}</n-button>',
+    '      </div>',
+    '    </template>',
+    '  </n-modal>',
     '  <n-modal v-model:show="migOpen" preset="card" class="qvq-modal-card" style="max-width:440px"',
     '           :title="t(\'ident_title\')" :bordered="false">',
     '    <div class="prov-form">',

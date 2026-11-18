@@ -18,6 +18,8 @@ window.PageOverview = {
       flagsLoaded: false,
       savedHint: "",
       auditTotal: 0,
+      onboard: null,
+      onboardOpen: true,
       runningCount: 0,
       runningRows: [],
       coolingCount: 0,
@@ -152,8 +154,39 @@ window.PageOverview = {
   },
   mounted() {
     this.load();
+    this.loadOnboarding();
   },
   methods: {
+    /* 首启引导：生态模块的「使用建议」注入开关（localStorage 只记折叠，不记选择） */
+    loadOnboarding() {
+      var self = this;
+      try {
+        if (localStorage.getItem("qvq_onboard_done")) { this.onboardOpen = false; }
+      } catch (e) {}
+      api("/api/qvq/onboarding").then(function (d) {
+        var mods = (d && d.modules) || [];
+        if (!mods.length) { self.onboard = null; return; }
+        self.onboard = {
+          modules: mods.map(function (m) {
+            return { module: m.module, count: m.count || 0, preview: m.preview || "", injected: !!m.injected };
+          }),
+        };
+      });
+    },
+    onboardToggle(m) { m.injected = !m.injected; },
+    onboardSave() {
+      var choices = {};
+      this.onboard.modules.forEach(function (m) { choices[m.module] = m.injected; });
+      api("/api/qvq/onboarding", "POST", { choices: choices }).then(function () {
+        QvQ.toast(t("settings_saved"));
+      });
+      try { localStorage.setItem("qvq_onboard_done", "1"); } catch (e) {}
+      this.onboardOpen = false;
+    },
+    onboardDismiss() {
+      try { localStorage.setItem("qvq_onboard_done", "1"); } catch (e) {}
+      this.onboardOpen = false;
+    },
     loadFlags() {
       var self = this;
       api("/api/qvq/config").then(function (d) {
@@ -383,6 +416,26 @@ window.PageOverview = {
     '    <div class="ov-brand">QvQ<i>.</i></div>',
     '    <div class="ov-brand-sub">{{ t("home_sub") }}</div>',
     '  </div>',
+    '  <n-card v-if="onboard && onboardOpen" size="small" class="qvq-glass-card ov-onboard">',
+    '    <div class="ov-onboard-head">',
+    '      <div>',
+    '        <div class="ov-onboard-title">{{ t("onboard_title") }}</div>',
+    '        <div class="qvq-meta-line">{{ t("onboard_desc") }}</div>',
+    '      </div>',
+    '      <button type="button" class="qvq-drawer-x" @click="onboardDismiss">×</button>',
+    '    </div>',
+    '    <div v-for="m in onboard.modules" :key="m.module" class="ov-onboard-row">',
+    '      <div class="ov-onboard-mod">',
+    '        <b>{{ m.module }}</b>',
+    '        <i>{{ m.count }} prompt · {{ m.preview }}</i>',
+    '      </div>',
+    '      <n-switch size="small" :value="m.injected" @update:value="onboardToggle(m)"/>',
+    '    </div>',
+    '    <div class="qvq-modal-foot" style="margin-top:10px">',
+    '      <n-button size="small" @click="onboardDismiss">{{ t("onboard_skip") }}</n-button>',
+    '      <n-button size="small" type="primary" @click="onboardSave">{{ t("save") }}</n-button>',
+    '    </div>',
+    '  </n-card>',
     '  <div class="qvq-hero">',
     '    <button type="button" class="qvq-hero-face" @click="poke" :title="t(\'home_sub\')">',
     '      <Mascot :size="30" :mood="mascotMood || baseMood"/>',
