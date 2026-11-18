@@ -856,6 +856,25 @@ class SessionsApiMixin:
             return ("", {"traits": [], "preferences": [], "facts": [], "updated": 0.0})
         return (user_key, profile.get(user_key))
 
+    async def profile_edit(self, request):
+        """画像纠错：整段替换 traits/preferences/facts 之一（前端逐条编辑后保存）。"""
+        body = await request.json()
+        user_key = str((body or {}).get("user_key") or "")
+        section = str((body or {}).get("section") or "")
+        items = (body or {}).get("items")
+        if not user_key or section not in ("traits", "preferences", "facts") or not isinstance(items, list):
+            return ({"error": "user_key/section/items required"}, 400)
+        profile = getattr(self.main.conversations, "profile", None)
+        if profile is None:
+            return ({"error": "profile store unavailable"}, 500)
+        data = profile.get(user_key)
+        texts = [profile._clean_item(x) for x in items]
+        texts = [x for x in texts if x]
+        data[section] = [{"text": x, "ts": utils.now_ts()} for x in texts]
+        profile._save(user_key, data)
+        self.main.audit("profile_edit", {"user_key": user_key, "section": section, "count": len(texts)})
+        return {"ok": True, "profile": data}
+
     async def memory_get(self, request):
         chat_key = self._query(request, "chat_key")
         if not chat_key:

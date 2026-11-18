@@ -11,6 +11,8 @@ window.PageMemory = {
       entries: [],
       profile: null,
       profileUser: "",
+      editSec: null,
+      editItems: [],
       loading: false,
     };
   },
@@ -62,6 +64,29 @@ window.PageMemory = {
       if (!this.profileUser) return;
       api("/api/qvq/profile/clear", "POST", { user_key: this.profileUser }).then(function () {
         self.reload();
+      });
+    },
+    startEdit(sec) {
+      // 画像纠错：整段进入编辑（每行一条），保存走 profile/edit 整段替换
+      var items = this.profile && this.profile[sec] ? this.profile[sec] : [];
+      this.editSec = sec;
+      this.editItems = this.profileItems(items).map(function (x) { return x.text; });
+    },
+    cancelEdit() { this.editSec = null; this.editItems = []; },
+    addEditRow() { this.editItems.push(""); },
+    rmEditRow(i) { this.editItems.splice(i, 1); },
+    saveEdit() {
+      var self = this;
+      var sec = this.editSec;
+      api("/api/qvq/profile/edit", "POST", {
+        user_key: this.profileUser, section: sec, items: this.editItems,
+      }).then(function (r) {
+        if (r && r.error) { QvQ.toast(r.error); return; }
+        if (r && r.ok) {
+          QvQ.toast(t("settings_saved"));
+          self.profile = r.profile || self.profile;
+          self.cancelEdit();
+        }
       });
     },
     profileItems(list) {
@@ -123,26 +148,71 @@ window.PageMemory = {
     '        </div>',
     '        <div class="prov-field" v-if="profile">',
     '          <label>{{ t("mem_profile") }} <code class="mem-user">{{ profileUser }}</code></label>',
-    '          <div class="mem-sec" v-if="profileItems(profile.traits).length">',
-    '            <b>{{ t("mem_traits") }}</b>',
-    '            <div v-for="(x, i) in profileItems(profile.traits)" :key="\'t\' + i" class="mem-pitem">',
-    '              <div class="mem-ptx">{{ x.text }}</div>',
-    '              <div class="qvq-meta-line" v-if="x.ts">{{ fmtTs(x.ts) }}</div>',
+    '          <div class="mem-sec" v-if="profileItems(profile.traits).length || editSec === \'traits\'">',
+    '            <div class="mem-sec-head"><b>{{ t("mem_traits") }}</b>',
+    '              <button type="button" class="prov-act" v-if="editSec !== \'traits\'" @click="startEdit(\'traits\')">{{ t("edit") }}</button>',
     '            </div>',
+    '            <template v-if="editSec !== \'traits\'">',
+    '              <div v-for="(x, i) in profileItems(profile.traits)" :key="\'t\' + i" class="mem-pitem">',
+    '                <div class="mem-ptx">{{ x.text }}</div>',
+    '                <div class="qvq-meta-line" v-if="x.ts">{{ fmtTs(x.ts) }}</div>',
+    '              </div>',
+    '            </template>',
+    '            <template v-else>',
+    '              <div v-for="(x, i) in editItems" :key="\'et\' + i" class="mem-editrow">',
+    '                <n-input v-model:value="editItems[i]" size="small" :placeholder="t(\'mem_profile_item_ph\')"/>',
+    '                <button type="button" class="prov-act danger" @click="rmEditRow(i)">×</button>',
+    '              </div>',
+    '              <div class="mem-edit-acts">',
+    '                <n-button size="tiny" @click="addEditRow">{{ t("mem_profile_add") }}</n-button>',
+    '                <n-button size="tiny" @click="cancelEdit">{{ t("cancel") }}</n-button>',
+    '                <n-button size="tiny" type="primary" @click="saveEdit">{{ t("save") }}</n-button>',
+    '              </div>',
+    '            </template>',
     '          </div>',
-    '          <div class="mem-sec" v-if="profileItems(profile.preferences).length">',
-    '            <b>{{ t("mem_prefs") }}</b>',
-    '            <div v-for="(x, i) in profileItems(profile.preferences)" :key="\'p\' + i" class="mem-pitem">',
-    '              <div class="mem-ptx">{{ x.text }}</div>',
-    '              <div class="qvq-meta-line" v-if="x.ts">{{ fmtTs(x.ts) }}</div>',
+    '          <div class="mem-sec" v-if="profileItems(profile.preferences).length || editSec === \'preferences\'">',
+    '            <div class="mem-sec-head"><b>{{ t("mem_prefs") }}</b>',
+    '              <button type="button" class="prov-act" v-if="editSec !== \'preferences\'" @click="startEdit(\'preferences\')">{{ t("edit") }}</button>',
     '            </div>',
+    '            <template v-if="editSec !== \'preferences\'">',
+    '              <div v-for="(x, i) in profileItems(profile.preferences)" :key="\'p\' + i" class="mem-pitem">',
+    '                <div class="mem-ptx">{{ x.text }}</div>',
+    '                <div class="qvq-meta-line" v-if="x.ts">{{ fmtTs(x.ts) }}</div>',
+    '              </div>',
+    '            </template>',
+    '            <template v-else>',
+    '              <div v-for="(x, i) in editItems" :key="\'ep\' + i" class="mem-editrow">',
+    '                <n-input v-model:value="editItems[i]" size="small" :placeholder="t(\'mem_profile_item_ph\')"/>',
+    '                <button type="button" class="prov-act danger" @click="rmEditRow(i)">×</button>',
+    '              </div>',
+    '              <div class="mem-edit-acts">',
+    '                <n-button size="tiny" @click="addEditRow">{{ t("mem_profile_add") }}</n-button>',
+    '                <n-button size="tiny" @click="cancelEdit">{{ t("cancel") }}</n-button>',
+    '                <n-button size="tiny" type="primary" @click="saveEdit">{{ t("save") }}</n-button>',
+    '              </div>',
+    '            </template>',
     '          </div>',
-    '          <div class="mem-sec" v-if="profileItems(profile.facts).length">',
-    '            <b>{{ t("mem_facts") }}</b>',
-    '            <div v-for="(x, i) in profileItems(profile.facts)" :key="\'f\' + i" class="mem-pitem">',
-    '              <div class="mem-ptx">{{ x.text }}</div>',
-    '              <div class="qvq-meta-line" v-if="x.ts">{{ fmtTs(x.ts) }}</div>',
+    '          <div class="mem-sec" v-if="profileItems(profile.facts).length || editSec === \'facts\'">',
+    '            <div class="mem-sec-head"><b>{{ t("mem_facts") }}</b>',
+    '              <button type="button" class="prov-act" v-if="editSec !== \'facts\'" @click="startEdit(\'facts\')">{{ t("edit") }}</button>',
     '            </div>',
+    '            <template v-if="editSec !== \'facts\'">',
+    '              <div v-for="(x, i) in profileItems(profile.facts)" :key="\'f\' + i" class="mem-pitem">',
+    '                <div class="mem-ptx">{{ x.text }}</div>',
+    '                <div class="qvq-meta-line" v-if="x.ts">{{ fmtTs(x.ts) }}</div>',
+    '              </div>',
+    '            </template>',
+    '            <template v-else>',
+    '              <div v-for="(x, i) in editItems" :key="\'ef\' + i" class="mem-editrow">',
+    '                <n-input v-model:value="editItems[i]" size="small" :placeholder="t(\'mem_profile_item_ph\')"/>',
+    '                <button type="button" class="prov-act danger" @click="rmEditRow(i)">×</button>',
+    '              </div>',
+    '              <div class="mem-edit-acts">',
+    '                <n-button size="tiny" @click="addEditRow">{{ t("mem_profile_add") }}</n-button>',
+    '                <n-button size="tiny" @click="cancelEdit">{{ t("cancel") }}</n-button>',
+    '                <n-button size="tiny" type="primary" @click="saveEdit">{{ t("save") }}</n-button>',
+    '              </div>',
+    '            </template>',
     '          </div>',
     '          <n-button size="tiny" type="error" style="margin-top:10px" @click="clearProfile">',
     '            {{ t("mem_profile_clear") }}</n-button>',

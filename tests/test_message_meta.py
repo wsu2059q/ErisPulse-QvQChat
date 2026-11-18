@@ -62,3 +62,28 @@ def test_prepare_debug_returns_parts_without_persist():
     # 非 debug 时无该字段
     prepared2 = asyncio.run(manager.prepare(key, "再次", persist=False))
     assert prepared2["debug"] == {}
+
+
+def test_profile_edit_replaces_section():
+    """画像纠错：整段替换 + 其它段保留 + 审计留痕。"""
+    main = FakeMain()
+    profile = main.conversations.profile
+    profile._save("snowluma:10001", {"traits": [{"text": "夜猫子", "ts": 0}], "facts": [{"text": "在做框架", "ts": 0}]})
+    from QvQChat.dashboard.api_sessions import SessionsApiMixin
+    import asyncio
+
+    api = SessionsApiMixin.__new__(SessionsApiMixin)
+    api.main = main
+    api.sdk = main.sdk
+
+    class Req:
+        async def json(self):
+            return {"user_key": "snowluma:10001", "section": "traits",
+                    "items": ["夜猫子（凌晨三点还醒着）", "  ", "咖啡续命"]}
+
+    r = asyncio.run(api.profile_edit(Req()))
+    assert r["ok"] and len(r["profile"]["traits"]) == 2
+    assert r["profile"]["facts"][0]["text"] == "在做框架", "其它段保留"
+    data = profile.get("snowluma:10001")
+    assert data["traits"][0]["text"] == "夜猫子（凌晨三点还醒着）"
+    assert any(a["tool"] == "profile_edit" for a in main.audits)

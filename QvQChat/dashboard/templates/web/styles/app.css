@@ -2448,6 +2448,13 @@ body::-webkit-scrollbar,
 }
 .prompt-full textarea { font-size: 11.5px !important; line-height: 1.5 !important; }
 
+/* 画像编辑：段落头 + 行编辑器 */
+.mem-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.mem-editrow { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.mem-editrow .n-input { flex: 1 1 auto; }
+.mem-edit-acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+
+
 .ov-onboard-mod i {
   display: block;
   font-style: normal;
