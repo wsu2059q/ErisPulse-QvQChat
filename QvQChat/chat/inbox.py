@@ -54,10 +54,7 @@ _HANDOVER_EXIT_RE = re.compile(
     re.IGNORECASE,
 )
 
-# 让渡退出短语：用户整句说"退出会话让渡/结束扮演"等——这是明确的收场指令，
-# 免模型调用直接收场（让给角色去"理解再决定"曾让推理型模型对着退出守则
-# 反复纠结流口水，回合挂死占锁、整群假死）。只在让渡进行中评估，整句匹配
-# 防误伤普通对话里偶然出现的词组
+# 让渡退出短语：整句命中即免模型调用直接收场
 _HANDOVER_EXIT_PHRASE_RE = re.compile(
     r"^[\s，,。！!？?~～*@·]*(?:"
     r"(?:退出|结束)(?:会话让渡|让渡|扮演|角色扮演|扮演游戏|游戏)|"
@@ -71,7 +68,10 @@ _HANDOVER_ABORT_TIMEOUT = "timeout"
 
 
 class _HandoverAbort(Exception):
-    """让渡哨兵中止（drool=思考流口水 / timeout=回合超时），区别于外部取消。"""
+    """
+    {!--< internal-use >!--}
+    让渡哨兵中止（drool=思考流超量 / timeout=回合超时），区别于外部取消。
+    """
 
     def __init__(self, reason: str):
         super().__init__(reason)
@@ -928,9 +928,8 @@ class InboxMixin(RecoveryMixin):
             quoted_me = False
             if event.is_group_message() and not event.is_at_message() and self._has_reply_segment(event):
                 quoted_me = await self._quote_targets_me(event)
-# 触发规则（会话级覆盖全局）：off 不响应 / lurk 只旁听（observe 已发出）/ at_only 群里仅点名。
-# 让渡 listen=all：扮演/游戏期间全场接话——放宽 at_only 与群 @/唤醒门槛；
-# off/lurk 是隐私硬闸，不因让渡放行
+            # 触发规则（会话级覆盖全局）：off 不响应 / lurk 只旁听（observe 已发出）/ at_only 群里仅点名。
+            # 让渡 listen=all：全场接话，放宽 at_only 与群 @/唤醒门槛；off/lurk 硬闸不因让渡放行
             mode = self._trigger_mode_of(chat_key)
             if mode in ("off", "lurk"):
                 return
@@ -1695,15 +1694,11 @@ class InboxMixin(RecoveryMixin):
                 on_delta, on_reset, on_tool_event, on_reasoning = live_bind(live)
             else:
                 on_delta = on_reset = on_tool_event = on_reasoning = None
-# 会话让渡路由：主智能体已把窗口让渡给 sub: 隔离会话的新智能体——本轮改走
-# _process_handover（上下文/人格/记忆全部绕开，让渡内容不进主会话）。到期的
-# 让渡（轮数尽/空闲超时）当场收场并落回主链路处理本条消息
+            # 会话让渡路由：让渡进行中本轮改走 _process_handover（上下文/人格/记忆
+            # 全部绕开，让渡内容不进主会话）；到期（轮数尽/空闲超时）先收场再落回主链路
             ho_state = self._handover_state(chat_key)
             if ho_state is not None:
                 if _HANDOVER_EXIT_PHRASE_RE.match(labeled):
-# 明确的收场指令：免模型调用直接收场（把退出请求丢给角色"理解再决定"曾让
-# 推理型模型对着退出守则纠结流口水、回合挂死占锁整群假死）。注记先行落主
-# 上下文，随后落回主链路由主智能体自然回应这条消息
                     self._end_handover(chat_key, ho_state)
                     self.logger.info(f"handover ended by exit phrase ({chat_key})")
                 else:
@@ -1728,7 +1723,7 @@ class InboxMixin(RecoveryMixin):
                 cross_user_id=("" if is_group else sender_id),
                 sender_id=sender_id,
                 profile_user=(f"{event.get_platform()}:{sender_id}" if sender_id else ""),
-# 用户级跨会话记忆：仅私聊注入（群聊不注入——私聊记住的事在群里被抖出来是社死现场）
+                # 用户级跨会话记忆：仅私聊注入
                 user_mem_key=(
                     f"usermem:{event.get_platform()}:{sender_id}"
                     if (not is_group and sender_id) else ""
@@ -1994,8 +1989,10 @@ class InboxMixin(RecoveryMixin):
 # ===== 会话让渡（handover）：触发放行 / 路由 / 收场，状态见 conversation/handover.py =====
 
     def _handover_state(self, chat_key: str) -> dict | None:
-        """让渡状态（带 5s 进程内缓存）：每条消息都要过一遍触发判定，KV 读不能每条都打。
-        start/stop/touch 后由调用方失效/回填缓存。"""
+        """
+        {!--< internal-use >!--}
+        读取让渡状态（带 5s 进程内缓存）；start/stop/touch 后由调用方失效/回填缓存。
+        """
         cache = getattr(self, "_handover_cache", None)
         if cache is None:
             cache = {}
@@ -2014,11 +2011,9 @@ class InboxMixin(RecoveryMixin):
             cache.pop(chat_key, None)
 
     def _end_handover(self, chat_key: str, state: dict) -> None:
-        """收场：清让渡状态 + 主会话注记一行发生过的事实，随后异步补剧情摘要。
-
-        两段式：事实注记同步落库（模型调用再慢主智能体也知道发生过），
-        摘要（aux 便宜模型把 sub: 会话压成 ≤3 句汇报）异步追加——失败/满载
-        静默跳过，不让锦上添花的部分阻塞或报错。
+        """
+        {!--< internal-use >!--}
+        收场：清让渡状态 + 主会话注记，随后异步补剧情摘要（aux 模型把 sub: 会话压成 ≤3 句）。
         """
         handover.stop(self.sdk, chat_key)
         self._handover_state_invalidate(chat_key)
@@ -2035,10 +2030,9 @@ class InboxMixin(RecoveryMixin):
             self.spawn(self._summarize_handover(chat_key, state))
 
     async def _summarize_handover(self, chat_key: str, state: dict) -> None:
-        """让渡剧情摘要：aux 模型把让渡会话转写压成 ≤3 句汇报，追加进主会话。
-
-        让渡过程不进主上下文是硬承诺，但主智能体需要知道"演了什么、怎么收场"
-        才能自然接话——用独立转写+cheap 模型汇报，而不是把原文塞给它。
+        """
+        {!--< internal-use >!--}
+        让渡剧情摘要：aux 模型把让渡会话转写压成 ≤3 句汇报，追加进主会话。
         """
         sub_key = str(state.get("sub_key") or "")
         pool = getattr(self, "pool", None)
@@ -2072,7 +2066,10 @@ class InboxMixin(RecoveryMixin):
             self.logger.debug(f"handover summary failed: {e}")
 
     def _handover_partial_save(self, sub_key: str, live) -> None:
-        """让渡回合中止：部分输出归 sub: 会话（绝不写主会话），live 置终态放行会话。"""
+        """
+        {!--< internal-use >!--}
+        让渡回合中止：部分输出归 sub: 会话，live 置终态放行会话。
+        """
         if live is None:
             return
         partial, partial_trace, partial_rounds = live.partial_record()
@@ -2084,12 +2081,9 @@ class InboxMixin(RecoveryMixin):
         live.publish("end", {"status": live.status})
 
     async def _guarded_run(self, coro, *, timeout: float, think_cap: int, box: dict):
-        """让渡回合守门：独立任务 + 哨兵轮询，超时或思考流超量都 cancel。
-
-        钩子在 engine 层被吞异常（_emit_reasoning 的 except Exception: pass），
-        看门狗没法借回调抛错中止——只能由哨兵 observe 计数后 cancel 任务。
-        box["reason"] 记录中止原因；外部取消（live.cancel 等）原样传播并连带
-        取消 runner 任务，不留孤儿协程。
+        """
+        {!--< internal-use >!--}
+        哨兵守门：超时或思考流超量 cancel runner 任务；box["reason"] 记录中止原因。
         """
         task = asyncio.ensure_future(coro)
 
@@ -2121,20 +2115,14 @@ class InboxMixin(RecoveryMixin):
     async def _process_handover(self, event, chat_key: str, state: dict, ctx, labeled: str,
                                 sender_id: str, origin: str, live=None,
                                 on_delta=None, on_reset=None, on_tool_event=None, on_reasoning=None) -> None:
-        """让渡回合：sub: 会话 + 角色设定直答，主链路的上下文工程全部绕开。
-
-        与主链路的差异（故意收窄）：无工具（persona_tools=[]，None 是全放行）、
-        无记忆召回/知识库/事实注入（干净上下文正是让渡的意义）、无 humanize 重 roll、
-        图片暂不进入让渡会话（v1 文本场景）。用量记在主会话名下（限额照常生效）。
-        异常/取消/超时全部在本方法内收束，不落入 _process_locked 的外层
-        except（那里会把部分输出写进主会话，污染主上下文）。
+        """
+        {!--< internal-use >!--}
+        让渡回合处理：sub: 会话 + 角色设定直答，无工具；异常/取消/超时在本方法内收束。
         """
         sub_key = str(state.get("sub_key") or "")
         if not sub_key:
             self._end_handover(chat_key, state)
             return
-# 悬空标记与主链路同键同语义：崩溃重启后按主 chat_key 重跑，让渡状态在 KV
-# 中存活，重放仍会被路由进本方法
         self.sdk.storage.set(
             INFLIGHT_KEY_PREFIX + chat_key,
             {"text": labeled, "origin": origin, "ts": time.time()},
@@ -2147,9 +2135,7 @@ class InboxMixin(RecoveryMixin):
                 or str(getattr(self.cfg, "handover_model", "") or "")
                 or None
             )
-# 让渡回合双守门：专属超时（默认 180s，远短于主回合的 900s——卡死回合占锁
-# 曾让整群假死一刻钟）+ 思考流口水看门狗（推理模型对着退出守则反复纠结的
-# 单轮思考流超量即中止）。0 = 跟随全局 turn_timeout / 关闭
+            # 专属超时（0 跟随全局 turn_timeout）+ 思考流上限
             _turn_timeout = float(getattr(self.cfg, "handover_turn_timeout", 180.0) or 0)
             if _turn_timeout <= 0:
                 _turn_timeout = float(getattr(self.cfg, "turn_timeout", 0) or 0)
@@ -2180,7 +2166,6 @@ class InboxMixin(RecoveryMixin):
             except _HandoverAbort as abort:
                 self._handover_partial_save(sub_key, live)
                 if abort.reason == _HANDOVER_ABORT_DROOL:
-# 流口水是明确病态：收场保群活（不收场的话下一轮大概率再挂）
                     self.logger.warning(
                         f"handover turn aborted: reasoning exceeded {think_cap} chars ({chat_key}), ending handover"
                     )
@@ -2215,9 +2200,9 @@ class InboxMixin(RecoveryMixin):
                 reply = utils.strip_fake_media_prefix(utils.strip_fake_media_claims(reply))
             except Exception as e:
                 self.logger.debug(f"fake media strip failed: {e}")
-            ended = bool(_HANDOVER_EXIT_RE.search(reply))
+            ended = bool(_HANDOVER_EXIT_RE.search(utils.marker_normalized(reply)))
             if ended:
-                reply = _HANDOVER_EXIT_RE.sub("", reply).strip()
+                reply = utils.sub_marker_pattern(_HANDOVER_EXIT_RE, reply).strip()
             skip = utils.is_skip_reply(reply)
             if not skip and reply.strip():
                 self.sessions.append(sub_key, "assistant", reply)
@@ -2249,7 +2234,7 @@ class InboxMixin(RecoveryMixin):
             if new_state is not None and (ended or handover.expired_reason(new_state)):
                 self._end_handover(chat_key, new_state)
         finally:
-# 删除失败当场暴露并重试：残留标记会被恢复例程重放成"自动重发"（与主链路同因）
+            # 删除失败当场重试：残留标记会被恢复例程重放成重跑该轮
             try:
                 self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
             except Exception as e:

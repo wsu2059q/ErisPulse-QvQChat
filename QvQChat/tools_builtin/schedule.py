@@ -87,6 +87,57 @@ async def cancel_scheduled_task(ctx: ToolContext, task_id: str) -> str:
     return texts.t("task_not_found", id=task_id)
 
 
+async def update_scheduled_task(ctx: ToolContext, task_id: str, name: str = "", schedule: str = "",
+                                prompt: str = "", platform: str = "", target_type: str = "",
+                                target_id: str = "", persona: str = "", model: str = "",
+                                jitter_minutes: float = -1) -> str:
+    """
+    按 id 编辑定时任务，仅提供的字段变更，其余保留。
+
+    :param ctx: [ToolContext] 工具上下文
+    :param task_id: [str] 任务 id
+    :param name: [str] 新名称 (默认: ""，保留)
+    :param schedule: [str] 新计划表达式 (默认: ""，保留)
+    :param prompt: [str] 新触发提示词 (默认: ""，保留)
+    :param platform: [str] 新目标平台 (默认: ""，保留)
+    :param target_type: [str] user / group / channel (默认: ""，保留)
+    :param target_id: [str] 新目标 id (默认: ""，保留)
+    :param persona: [str] 新人格 id (默认: ""，保留)
+    :param model: [str] 新模型 id (默认: ""，保留)
+    :param jitter_minutes: [float] 新触发抖动分钟数，-1 保留现值 (默认: -1)
+    :return: [str] 更新结果 JSON；系统内置任务返回对应配置键指引
+    """
+    scheduler = ctx.main.scheduler
+    old = next((t for t in scheduler.list() if t.get("id") == str(task_id)), None)
+    if old is None:
+        return texts.t("task_not_found", id=task_id)
+    if str(old.get("name") or "").startswith("qvq:"):
+        key = "profile_consolidate_hours" if old.get("name") == "qvq:profile_consolidate" else "storage_maintain_hours"
+        return texts.t("task_sys_edit_hint", config=key)
+    try:
+        parsed = parse_schedule(schedule) if schedule else old["schedule"]
+    except ValueError as e:
+        return f"{texts.t('schedule_invalid', error=str(e))} | {SCHEDULE_HELP}"
+    task = scheduler.add({
+        "id": old["id"],
+        "name": name or old.get("name", ""),
+        "schedule": parsed,
+        "schedule_raw": schedule or old.get("schedule_raw", ""),
+        "platform": platform or old.get("platform", ""),
+        "target_type": target_type or old.get("target_type", "user"),
+        "target_id": target_id or old.get("target_id", ""),
+        "prompt": prompt or old.get("prompt", ""),
+        "persona": persona or old.get("persona", ""),
+        "account": old.get("account", ""),
+        "chat_key": old.get("chat_key", ""),
+        "created_by": old.get("created_by", ""),
+        "jitter_minutes": float(jitter_minutes) if jitter_minutes >= 0 else float(old.get("jitter_minutes") or 0),
+        "model": model or old.get("model", ""),
+        "task_kind": old.get("task_kind", "chat"),
+    })
+    return utils.to_text({"ok": True, "task": {"id": task["id"], "name": task.get("name", ""), "schedule": task.get("schedule_raw", ""), "next": format_ts(task.get("next_run", 0))}})
+
+
 def register(registry: ToolRegistry, main) -> None:
     registry.register(Tool(
         name="create_scheduled_task",
@@ -136,4 +187,25 @@ def register(registry: ToolRegistry, main) -> None:
             ["task_id"],
         ),
         handler=cancel_scheduled_task,
+    ))
+    registry.register(Tool(
+        name="update_scheduled_task",
+        access="safe",
+        description="Edit a scheduled task by id: only the fields you provide change, everything else is kept. Built-in qvq: tasks are config-managed (the tool will point you at the right config key). " + SCHEDULE_HELP,
+        parameters=_schema(
+            {
+                "task_id": _s(type="string", description="Task id (from list_scheduled_tasks)"),
+                "name": _s(type="string", description="New task name"),
+                "schedule": _s(type="string", description="New schedule. " + SCHEDULE_HELP),
+                "prompt": _s(type="string", description="New trigger-time prompt"),
+                "platform": _s(type="string", description="New target platform"),
+                "target_type": _s(type="string", description="user / group / channel"),
+                "target_id": _s(type="string", description="New target id"),
+                "persona": _s(type="string", description="New persona id"),
+                "model": _s(type="string", description="New model id (provider:model)"),
+                "jitter_minutes": _s(type="number", description="New randomized trigger window in minutes (-1 = keep current)"),
+            },
+            ["task_id"],
+        ),
+        handler=update_scheduled_task,
     ))

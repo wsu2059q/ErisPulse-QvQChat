@@ -160,7 +160,11 @@ class OpenAIEngine:
                     continue
                 msg = {**msg, "content": parts}
             elif isinstance(content, str) and not content.strip() and role in ("user", "assistant"):
-                msg = {**msg, "content": "（空）"}
+                # 带 tool_calls 的 assistant 空正文是协议合法形态，保持空串
+                if role == "assistant" and msg.get("tool_calls"):
+                    pass
+                else:
+                    msg = {**msg, "content": "（空）"}
             cleaned.append(msg)
         return cleaned or list(messages or [])
 
@@ -175,14 +179,8 @@ class OpenAIEngine:
                 )
             except TypeError:
                 content = str(content)
-        reasoning = (
-            getattr(message, "reasoning_content", None)
-            or getattr(message, "reasoning", None)
-            or ""
-        )
+        # 正文只取 content；reasoning_content 是思考流，不冒充正文
         text = _THINK_RE.sub("", str(content)).strip()
-        if not text and reasoning:
-            text = str(reasoning).strip()
         tool_calls: list[ToolCall] = []
         if getattr(message, "tool_calls", None):
             for tc in message.tool_calls:

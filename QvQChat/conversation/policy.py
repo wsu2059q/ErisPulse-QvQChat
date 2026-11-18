@@ -43,6 +43,7 @@ def get_policy(sdk: Any, chat_key: str) -> dict:
         "low_token": bool(raw.get("low_token", False)),
         "priority": priority,
         "session_budget": session_budget,
+        "full_access": bool(raw.get("full_access", False)),
     }
 
 
@@ -61,6 +62,8 @@ def set_policy(sdk: Any, chat_key: str, **updates) -> dict:
             current["session_budget"] = max(0, int(updates["session_budget"] or 0))
         except (TypeError, ValueError):
             current["session_budget"] = 0
+    if "full_access" in updates:
+        current["full_access"] = bool(updates["full_access"])
     sdk.storage.set(POLICY_PREFIX + str(chat_key or ""), current)
     return current
 

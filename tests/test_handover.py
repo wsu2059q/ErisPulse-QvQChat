@@ -1,7 +1,4 @@
-"""会话让渡（handover）端到端行为：工具开启 / 路由隔离 / 退出协议 / 命令管理 / 触发放行。
-
-让渡的核心承诺：扮演过程绝不进主会话上下文——路由测试与退出注记测试都盯死这一点。
-"""
+"""会话让渡（handover）端到端行为：工具开启 / 路由隔离 / 退出协议 / 命令管理 / 触发放行。"""
 import asyncio
 import inspect
 
@@ -92,16 +89,16 @@ async def test_message_routes_to_sub_session_and_main_stays_clean():
     ev = await drive(main, "我头疼")
     assert main.captured, "让渡中的回合必须走 runner"
     kwargs = main.captured[0]
-# 路由特征：无工具 + 角色设定 system + 模型按场指定
+    # 路由特征：无工具 + 角色设定 system + 模型按场指定
     assert kwargs["persona_tools"] == []
     assert "你扮演病人" in kwargs["system"]
     assert kwargs["model"] == "p:m1"
     assert kwargs["messages"][-1]["content"] == "我头疼"
-# 历史落在 sub: 会话，主会话上下文一动不动
+    # 历史落在 sub: 会话，主会话上下文一动不动
     sub_contexts = main.sessions.get_contexts(state["sub_key"])
     assert [c["content"] for c in sub_contexts] == ["我头疼", "（咳嗽两声）医生你好……"]
     assert main.sessions.get_contexts(KEY) == []
-# 回复照常投递、轮数推进
+    # 回复照常投递、轮数推进
     assert ev.replies
     assert handover.get_state(main.sdk, KEY)["turns"] == 1
 
@@ -137,11 +134,11 @@ async def test_exit_tag_ends_handover_and_leaves_note():
     main.runner = Runner()
     state = handover.start(main.sdk, main.cfg, KEY, setup="你扮演病人")
     ev = await drive(main)
-# 告别语照发，退出标签不外漏
+    # 告别语照发，退出标签不外漏
     sent = "".join(str(c) for _, c in ev.replies)
     assert "回去啦" in sent and "交还" not in sent
     await drain(main)
-# 状态清空 + 主会话恰好多出一条事实注记（user 角色），让渡内容仍在 sub: 会话
+    # 状态清空 + 主会话恰好多出一条事实注记（user 角色），让渡内容仍在 sub: 会话
     assert handover.get_state(main.sdk, KEY) is None
     contexts = main.sessions.get_contexts(KEY)
     assert len(contexts) == 1 and contexts[0]["role"] == "user"
@@ -175,7 +172,7 @@ async def test_end_handover_appends_plot_summary():
     joined = "\n".join(str(c.get("content") or "") for c in contexts)
     assert "会话让渡" in joined or "handover" in joined.lower()  # 事实注记先行
     assert "病人来诊感冒" in joined      # 剧情摘要随后
-# 送入总结模型的转写必须是让渡会话内容（locale 无关：直接查对话原文）
+    # 送入总结模型的转写必须是让渡会话内容（locale 无关：直接查对话原文）
     assert pool.prompts and "我头疼" in pool.prompts[0]
     assert pool.specs[0].kind == "compact" and pool.specs[0].prefer == "cheap"
 
@@ -219,7 +216,7 @@ async def test_idle_timeout_ends_handover_on_next_message():
     main.sdk.storage.set(handover.state_key(KEY), state)
     await drive(main)
     assert handover.get_state(main.sdk, KEY) is None
-# 收场后本条消息落回主链路：正常 prepare→runner 一轮（captured 里是主链路回合）
+    # 收场后本条消息落回主链路：正常 prepare→runner 一轮（captured 里是主链路回合）
     assert main.captured and main.captured[-1]["persona_tools"] is None
     await drain(main)
 
@@ -227,15 +224,15 @@ async def test_idle_timeout_ends_handover_on_next_message():
 async def test_cmd_handover_start_status_off():
     main = make_main()
     ev = FakeChatEvent(text="", group=False)
-# 开启：tokens[1:] 即设定文本
+    # 开启：tokens[1:] 即设定文本
     await Main._cmd_handover(main, ev, KEY, ["handover", "你", "扮演", "病人"])
     state = handover.get_state(main.sdk, KEY)
     assert state is not None and state["setup"] == "你 扮演 病人"
-# 状态
+    # 状态
     ev2 = FakeChatEvent(text="", group=False)
     await Main._cmd_handover(main, ev2, KEY, ["handover", "status"])
     assert any("你 扮演 病人" in str(c) for _, c in ev2.replies)
-# 结束
+    # 结束
     ev3 = FakeChatEvent(text="", group=False)
     await Main._cmd_handover(main, ev3, KEY, ["handover", "off"])
     assert handover.get_state(main.sdk, KEY) is None
@@ -295,8 +292,7 @@ async def test_service_wrappers():
 
 
 async def test_exit_phrase_ends_handover_without_model_call():
-    """整句退出指令免模型调用直接收场——把它丢给角色"理解再决定"曾让推理型
-    模型对着退出守则纠结流口水、回合挂死占锁整群假死。"""
+    """整句退出指令免模型调用直接收场。"""
     main = make_main()
     handover.start(main.sdk, main.cfg, KEY, setup="你扮演病人", listen="all")
     captured_calls = []
@@ -309,14 +305,14 @@ async def test_exit_phrase_ends_handover_without_model_call():
     main.runner = CountingRunner()
     ev = await drive(main, "退出会话让渡")
     assert handover.get_state(main.sdk, KEY) is None
-# 让渡模型全程零调用（唯一的 runner 调用是主链路接手本条消息）
+    # 让渡模型全程零调用（唯一的 runner 调用是主链路接手本条消息）
     assert len(captured_calls) == 1
     assert captured_calls[0]["persona_tools"] is None
-# 落回主链路：注记先行、本条消息由主智能体正常处理
+    # 落回主链路：注记先行、本条消息由主智能体正常处理
     contexts = main.sessions.get_contexts(KEY)
     assert contexts and contexts[0]["role"] == "user"
     assert "你扮演病人" in contexts[0]["content"]
-# 主链路 system 是能力契约（含让渡段），但绝不带角色守则（收场规则是守则独有词）
+    # 主链路 system 是能力契约（含让渡段），但绝不带角色守则（收场规则是守则独有词）
     assert "handover_session" in (captured_calls[0]["system"] or "")
     assert "收场规则" not in (captured_calls[0]["system"] or "")
 
@@ -327,7 +323,7 @@ async def test_exit_phrase_variants():
         handover.start(main.sdk, main.cfg, KEY, setup="角色")
         await drive(main, phrase)
         assert handover.get_state(main.sdk, KEY) is None, phrase
-# 普通对话里含词组的句子不误伤
+    # 普通对话里含词组的句子不误伤
     handover.start(main.sdk, main.cfg, KEY, setup="角色")
     await drive(main, "我们之前说的那个扮演游戏后来怎么样了")
     assert handover.get_state(main.sdk, KEY) is not None
@@ -335,7 +331,7 @@ async def test_exit_phrase_variants():
 
 
 async def test_drool_watchdog_aborts_and_ends(monkeypatch):
-    """推理模型对着收场守则纠结流口水：单轮思考流超量 → 哨兵 cancel → 收场保群活。"""
+    """单轮思考流超量：哨兵中止 runner 并收场。"""
     main = make_main(handover_think_cap=50, handover_turn_timeout=0, turn_timeout=0)
     released = []
 

@@ -24,6 +24,8 @@ CORE_TOOLS = (
 # 被动态注入剪掉的表现就是"突然不会自己查文档了"
     "send_message", "send_dsl", "send_erispulse_message",
     "search_erispulse_docs", "web_search", "web_fetch",
+# 让渡/派单是能力级入口：被动态注入剪掉的表现就是"模型说找不到这个功能"
+    "handover_session", "spawn_agent",
 )
 
 PROMPT = (

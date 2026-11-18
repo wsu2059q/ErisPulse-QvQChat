@@ -16,6 +16,8 @@ RUN_STALE_SECONDS = 600
 @dataclass
 class LiveStream:
     session: str
+    # 流归属标记："" 平台/面板会话 / "sub" 后台子智能体（编排页与快照用于区分展示）
+    agent: str = ""
     status: str = "running"
     text: str = ""
     # 任务发起时的原始用户文本：demote（让路后台续跑）时据此重建任务
@@ -40,6 +42,7 @@ class LiveStream:
     def snapshot(self) -> dict:
         return {
             "session": self.session,
+            "agent": self.agent,
             "status": self.status,
             "text": self.text,
             "reasoning": self.reasoning,
@@ -126,6 +129,7 @@ class LiveRegistry:
                 out.append(
                     {
                         "session": live.session,
+                        "agent": live.agent,
                         "status": live.status,
                         "started": live.started,
                         "steps": len(live.steps),

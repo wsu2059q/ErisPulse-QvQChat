@@ -438,14 +438,34 @@ class EcosystemBridge:
         names |= {p["module"] for p in self._ext_prompts}
         result = []
         for module in sorted(names):
+            skills = [s for s in self._ext_skills if s["module"] == module]
+            knowledge = [k for k in self._ext_knowledge if k["module"] == module]
+            prompts = [p for p in self._ext_prompts if p["module"] == module]
             result.append(
                 {
                     "module": module,
                     "personas": len(self._ext_personas.get(module, [])),
                     "schemas": len(self._schemas.get(module, {})),
-                    "skills": len([s for s in self._ext_skills if s["module"] == module]),
-                    "knowledge": len([k for k in self._ext_knowledge if k["module"] == module]),
-                    "prompts": len([p for p in self._ext_prompts if p["module"] == module]),
+                    "skills": len(skills),
+                    "knowledge": len(knowledge),
+                    "prompts": len(prompts),
+# 详情：面板扩展 chip 点开侧栏可看每个扩展实际贡献了什么
+                    "details": {
+                        "personas": list(self._ext_personas.get(module, [])),
+                        "schemas": sorted(self._schemas.get(module, {}).keys()),
+                        "skills": [
+                            {"name": s.get("name"), "description": str(s.get("description") or "")}
+                            for s in skills
+                        ],
+                        "knowledge": [
+                            {"title": k.get("title"), "triggers": k.get("triggers") or []}
+                            for k in knowledge
+                        ],
+                        "prompts": [
+                            {"text": str(p.get("text") or "")[:120], "priority": p.get("priority", 0)}
+                            for p in prompts
+                        ],
+                    },
                 }
             )
         return result

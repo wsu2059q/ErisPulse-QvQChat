@@ -10,11 +10,38 @@ from ..engine.base import ChatRequest
 
 from .. import texts, utils
 from ..chat.events import EVENT_INBOX_KEY
+from ..conversation import handover
 from ..conversation.policy import get_policy, set_policy
+from ..tools_builtin import agent as agent_tools
+from .api_common import ApiError, api_handler, read_json, sget
 
 TEMPLATES = Path(__file__).parent / "templates"
 SHARES_KEY = "QvQChat:shares"
 UI_DEFAULTS_KEY = "QvQChat:ui_defaults"
+
+
+def _sub_decoration(chat_key: str) -> dict:
+    """``sub:`` 会话键装饰：kind（sub=子智能体 / handover=让渡）+ sub_of（父会话键）。
+
+    键格式：``sub:<parent>:<hex8>``、``sub:<parent>:demote:<hex8>``、
+    ``sub:handover:<parent>:<hex8>``。parent 本身含冒号，只能按已知后缀尽力解析；
+    解析不出父键时只给 kind。
+    """
+    key = str(chat_key or "")
+    if not key.startswith("sub:"):
+        return {}
+    rest = key[4:]
+    kind = "sub"
+    if rest.startswith("handover:"):
+        kind, rest = "handover", rest[len("handover:"):]
+    if ":demote:" in rest:
+        parent = rest.rsplit(":demote:", 1)[0]
+    else:
+        head, _, tail = rest.rpartition(":")
+        if len(tail) != 8:
+            return {"kind": kind}
+        parent = head
+    return {"kind": kind, "sub_of": parent}
 
 
 class SessionsApiMixin:
@@ -35,6 +62,15 @@ class SessionsApiMixin:
             start_i = 0
         archived_only = str(self._query(request, "archived") or "").strip() == "1"
         rows = [s for s in sessions if s.get("archived")] if archived_only else sessions
+        # 搜索过滤（对话页侧栏搜索框）：会话显示名/chat_key 不区分大小写包含匹配；
+        # 名字尚未异步解析落定时退回 chat_key 匹配，任一命中即保留
+        query = str(self._query(request, "q") or "").strip().lower()
+        if query:
+            def _hit(s: dict) -> bool:
+                name = str(s.get("name") or "").lower()
+                key = str(s.get("chat_key") or "").lower()
+                return query in name or query in key
+            rows = [s for s in rows if _hit(s)]
         total = len(rows)
         if limit_n:
             start_i = max(0, min(start_i, total))
@@ -49,6 +85,10 @@ class SessionsApiMixin:
             session["sources"] = self.main.sessions.routes_into(session.get("chat_key") or "")
 # 会话治理策略随行下发：面板开关直接渲染 muted/low_token/priority 当前值
             session["policy"] = get_policy(self.sdk, session.get("chat_key") or "")
+# 子会话装饰：面板侧栏给 sub: 键挂 子智能体/让渡 徽标与父会话链接
+            deco = _sub_decoration(session.get("chat_key") or "")
+            if deco:
+                session.update(deco)
         try:
             self.main.spawn(self.main.conversations.resolve_session_names(window))
         except Exception as e:
@@ -72,6 +112,52 @@ class SessionsApiMixin:
             "identity_map": self.main.sessions.identity_map(),
             "identity_suggestions": self._identity_suggestions(sessions),
         }
+
+    @api_handler
+    async def handover_get(self, request):
+        """让渡状态（面板横幅）：active/setup/turns/max_turns/model/listen/started。"""
+        chat_key = str(self._query(request, "chat_key") or "")
+        state = handover.get_state(self.sdk, chat_key)
+        if not isinstance(state, dict):
+            return {"active": False}
+        out = dict(state)
+        out.pop("role_prompt", None)  # 角色系统提示含场景细节，不外泄
+        return out
+
+    @api_handler
+    async def handover_stop(self, request):
+        """结束让渡：走 Main.handover_stop（注记 + 剧情摘要同一套收场管线）。"""
+        body = await read_json(request)
+        chat_key = sget(body, "chat_key")
+        if not chat_key:
+            raise ApiError("chat_key required")
+# 先查状态再调服务：无让渡不触发收场管线（注记/摘要）
+        if handover.get_state(self.sdk, chat_key) is None:
+            raise ApiError("no active handover for this session", 404)
+        ok = await self.main.handover_stop(chat_key=chat_key)
+        if not ok:
+            raise ApiError("no active handover for this session", 404)
+        self.main.audit("handover_stop", {"chat_key": utils.truncate(chat_key, 120)})
+        return {"ok": True}
+
+    @api_handler
+    async def subjobs_get(self, request):
+        """后台子智能体任务列表：运行中（进程内）+ 终态（探针，新在前）。"""
+        rows = agent_tools.list_subjobs(self.main, limit=100)
+        return {"jobs": rows, "total": len(rows)}
+
+    @api_handler
+    async def subjobs_cancel(self, request):
+        """取消后台子智能体：任务 cancel，收场说明经 qvq.subagent_done 插回父会话。"""
+        body = await read_json(request)
+        sub_key = sget(body, "sub_key")
+        if not sub_key:
+            raise ApiError("sub_key required")
+        ok = agent_tools.cancel_subjob(self.main, sub_key)
+        if not ok:
+            raise ApiError("subjob not running (finished or process restarted)", 404)
+        self.main.audit("subjob_cancel", {"sub_key": utils.truncate(sub_key, 120)})
+        return {"ok": True}
 
     async def identity_set(self, request):
         """身份迁移：source 会话键的事件此后按 target 会话处理（历史/人格/记忆跟随）。
@@ -254,10 +340,7 @@ class SessionsApiMixin:
     def _accounts_overview(self, sessions: list) -> dict:
         """多账户概览：各平台在线 bot + 每个已隔离账户（chat_key 的 @account 后缀）的会话数。
 
-        单账户平台不产生后缀，不进 accounts；账户仍出现在 sessions 里说明历史隔离数据在。
-        子会话（sub: 前缀：spawn/demote/让渡的隔离键）跳过——它们继承父键的 @account
-        中段，rpartition 会切出 "643319481:demote:xxxx" 这种假账户，编排页离线
-        账户区曾被它们刷满。
+        单账户平台不产生后缀，不进 accounts；sub: 前缀的子会话键跳过。
         """
         counts: dict[str, dict] = {}
         for s in sessions:
@@ -277,15 +360,40 @@ class SessionsApiMixin:
         except Exception:
             names = []
         display_names: dict = {}
+        summary: dict = {}
+        try:
+            summary = self.sdk.adapter.get_status_summary() or {}
+        except Exception:
+            summary = {}
+        adapters_summary = summary.get("adapters") or {}
         for name in names:
-            try:
-                # 框架返回 {platform: {bot_id: {status, ...}}}；兼容裸 dict / list 两种形态
-                raw = self.sdk.adapter.list_bots(str(name)) or {}
-                per = raw.get(name, raw) if isinstance(raw, dict) else {}
-                bots = [str(b) for b in per.keys()] if isinstance(per, dict) else [str(b) for b in per]
-            except Exception:
-                bots = []
-            adapters.append({"platform": str(name), "bots": bots})
+            info = adapters_summary.get(str(name)) or {}
+            bots_raw = info.get("bots") or {}
+            bots = []
+            for bot_id, meta in bots_raw.items():
+                meta = meta if isinstance(meta, dict) else {}
+                bots.append({
+                    "id": str(bot_id),
+                    "status": str(meta.get("status") or ""),
+                    "last_active": meta.get("last_active"),
+                    "nickname": str((meta.get("info") or {}).get("nickname") or ""),
+                })
+            adapters.append({
+                "platform": str(name),
+                "status": str(info.get("status") or ""),
+                "enabled": bool(info.get("enabled", True)),
+                "bots": bots,
+            })
+# 配置中存在但未注册的适配器（禁用态）也透出，便于在面板开启
+        for platform_name, info in adapters_summary.items():
+            if str(platform_name) in names or not isinstance(info, dict):
+                continue
+            adapters.append({
+                "platform": str(platform_name),
+                "status": str(info.get("status") or ""),
+                "enabled": bool(info.get("enabled", False)),
+                "bots": [],
+            })
 # user_id → 账户名（配置键）：会话键统一用稳定的 user_id 后缀，UI 显示可读账户名
         try:
             for name in names:
@@ -531,6 +639,27 @@ class SessionsApiMixin:
             return ({"error": "todo not found"}, 404)
         return {"ok": True, "todo": todo}
 
+    async def todo_delete(self, request):
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        todo_id = str((body or {}).get("id") or "")
+        if not chat_key or not todo_id:
+            return ({"error": "chat_key and id required"}, 400)
+        if not self._todo_store().remove(chat_key, todo_id):
+            return ({"error": "todo not found"}, 404)
+        return {"ok": True}
+
+    async def todo_add(self, request):
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        content = str((body or {}).get("content") or "")
+        if not chat_key or not content.strip():
+            return ({"error": "chat_key and content required"}, 400)
+        todo = self._todo_store().add(chat_key, content)
+        if todo is None:
+            return ({"error": "todo rejected"}, 400)
+        return {"ok": True, "todo": todo}
+
     async def sessions_reset(self, request):
         body = await request.json()
         chat_key = str((body or {}).get("chat_key") or "")
@@ -578,8 +707,10 @@ class SessionsApiMixin:
         chat_key = str((body or {}).get("chat_key") or "")
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
-        updates = {k: body[k] for k in ("muted", "low_token", "priority", "session_budget") if k in body}
+        updates = {k: body[k] for k in ("muted", "low_token", "priority", "session_budget", "full_access") if k in body}
         policy = set_policy(self.sdk, chat_key, **updates)
+        if "full_access" in updates:
+            self.main.audit("session_full_access", {"chat_key": chat_key, "value": bool(policy.get("full_access"))})
 # 面板改策略与聊天命令同源，审计留痕（detail 记录本次变更的键值）
         self.main.audit("session_policy", {"chat_key": chat_key, **updates})
         return {"ok": True, "policy": policy}
@@ -799,11 +930,13 @@ class SessionsApiMixin:
 
     def _share_payload(self, share: dict) -> dict:
         contexts = self._share_contexts(share)
-        summary = self.main.sessions.summary_of(str(share.get("chat_key") or ""))
+        chat_key = str(share.get("chat_key") or "")
+        summary = self.main.sessions.summary_of(chat_key)
         rounds = int(share.get("rounds") or 0)
         return {
             "chat_key": share.get("chat_key"),
             "summary": summary,
+            "bot_name": self._share_bot_name(chat_key),
             "messages": contexts,
             "expires": share.get("expires"),
             "rounds": rounds,
@@ -811,6 +944,21 @@ class SessionsApiMixin:
             "tokens_left": max(0, int(share.get("chat_tokens") or 0) - int(share.get("tokens_used") or 0)),
             "continuation": share.get("cont") if isinstance(share.get("cont"), list) else [],
         }
+
+    def _share_bot_name(self, chat_key: str) -> str:
+        """分享页 AI 侧显示名：分享时会话绑定的人格名；未绑定回退 "AI"。"""
+        try:
+            state = self.sdk.storage.get("QvQChat:conv:" + chat_key, None)
+            persona_id = str(state.get("persona") or "") if isinstance(state, dict) else ""
+            if persona_id:
+                personas = self.sdk.storage.get("QvQChat:personas", {}) or {}
+                persona = personas.get(persona_id)
+                if isinstance(persona, dict):
+                    return str(persona.get("name") or persona_id)
+                return persona_id
+        except Exception:
+            pass
+        return "AI"
 
     async def share_chat(self, request):
         """分享续聊：访问者凭 token 继续对话；纯文本、无工具、非管理员权限。"""

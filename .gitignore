@@ -226,3 +226,6 @@ data/
 docs/optimization-*.md
 .mimosa/
 my_erispulse_project/
+
+# 演示站部署产物/状态
+demo/.wrangler/

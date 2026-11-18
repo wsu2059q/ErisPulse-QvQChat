@@ -8,6 +8,7 @@ import uuid
 from .. import texts, utils
 from ..agent.runner import AgentRunner
 from ..agent.tools import Tool, ToolContext, ToolRegistry
+from ..dashboard.live import bind as live_bind
 
 # 后台子智能体探针（崩溃恢复用）：status running → done/error/interrupted
 SUBJOB_PREFIX = "QvQChat:subjob:"
@@ -120,6 +121,14 @@ def _launch_background(main, sub_key: str, sub_ctx, system: str, tools: list[str
     })
     spawned = main.spawn(_run_background(main, sub_key, sub_ctx, system, tools, task))
     register_live_subjob(sub_key, spawned)
+# 纳入面板实时注册表：编排页/概览页能看到运行中的子智能体（流式回调在 _run_background 绑定）
+    live_reg = getattr(main, "live_registry", None)
+    if live_reg is not None:
+        try:
+            live = live_reg.start(sub_key)
+            live.agent = "sub"
+        except Exception:
+            pass
     return spawned
 
 
@@ -180,17 +189,57 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
     """后台执行体：跑完落探针 + emit qvq.subagent_done（Main 监听后插回主会话消化）。
 
     成败都 emit：失败静默违背"自动汇报"承诺——发起者应知道任务黄了。
+    过程回调绑定面板 LiveStream（编排页可围观流式内部过程），终态撤下注册表。
     """
+    live_reg = getattr(main, "live_registry", None)
+    live = live_reg.get(sub_key) if live_reg is not None else None
+    if live is None and live_reg is not None:
+        try:
+            live = live_reg.start(sub_key)
+            live.agent = "sub"
+        except Exception:
+            live = None
+    hooks: dict = {}
+    if live is not None:
+        try:
+            on_delta, on_reset, on_tool_event, on_reasoning = live_bind(live)
+            hooks = {
+                "on_delta": on_delta, "on_reset": on_reset,
+                "on_tool_event": on_tool_event, "on_reasoning": on_reasoning,
+            }
+        except Exception:
+            hooks = {}
+
+    def _live_finish() -> None:
+        if live is None:
+            return
+        try:
+            live.publish("end", {})
+        except Exception:
+            pass
+        try:
+            live_reg.drop(sub_key)
+        except Exception:
+            pass
+
     started = time.monotonic()
     try:
-        async with _SUBJOB_SEMAPHORE:
-            result = await AgentRunner(main.pool, main.registry, sub_ctx.config).run(
-                system=system,
-                messages=[],
-                ctx=sub_ctx,
-                persona_tools=tools or None,
-                priority=6,
-            )
+        async def _job():
+            async with _SUBJOB_SEMAPHORE:
+                return await AgentRunner(main.pool, main.registry, sub_ctx.config).run(
+                    system=system,
+                    messages=[],
+                    ctx=sub_ctx,
+                    persona_tools=tools or None,
+                    priority=6,
+                    **hooks,
+                )
+
+        timeout = float(getattr(main.cfg, "subjob_timeout", 900) or 0)
+        if timeout > 0:
+            result = await asyncio.wait_for(_job(), timeout=timeout)
+        else:
+            result = await _job()
         answer = (result.text or "").strip() or "-"
         main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
         status = "done"
@@ -215,13 +264,22 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
                 })
             except Exception:
                 pass
+        _live_finish()
         raise
+    except (asyncio.TimeoutError, TimeoutError):
+# 超时是明确的失败态：不给模型重试机会（后台任务超时通常是死等），写探针走 error 回报
+        answer = ""
+        status = "error"
+        error = f"timeout: subjob_timeout={timeout:.0f}s exceeded"
+        main.sessions.append(sub_key, "assistant", f"[error] {error}")
+        main.logger.warning(f"background subagent timeout: {error}")
     except Exception as e:
         answer = ""
         status = "error"
         error = f"{type(e).__name__}: {e}"
         main.sessions.append(sub_key, "assistant", f"[error] {error}")
         main.logger.warning(f"background subagent failed: {error}")
+    _live_finish()
     ms = int((time.monotonic() - started) * 1000)
     probe = main.sdk.storage.get(SUBJOB_PREFIX + sub_key, None)
     if isinstance(probe, dict):

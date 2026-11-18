@@ -92,6 +92,8 @@ admins = ["123456"]   # ваш id на платформе
 
 ## Веб-консоль
 
+**[Демо](https://qvqdemo.erisdev.com)** — полная консоль с моковыми данными, без установки. Напишите в чате «ping bilibili», чтобы увидеть стриминг вызовов инструментов, или «fetch GitHub trending» — и фоновый агент.
+
 <img src=".github/assets/chat.png" width="49%" alt="Чат" /> <img src=".github/assets/models.png" width="49%" alt="Модели" />
 <img src=".github/assets/tools.png" width="49%" alt="Инструменты" /> <img src=".github/assets/audit.png" width="49%" alt="Аудит" />
 

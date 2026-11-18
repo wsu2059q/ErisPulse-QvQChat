@@ -8,6 +8,7 @@ from .. import texts, utils# noqa: F401 — utils 供后续扩展；texts 为 ch
 from .api_config import ConfigApiMixin
 from .api_ops import OpsApiMixin, StorageApiMixin
 from .api_sessions import SessionsApiMixin
+from .api_common import ApiError
 TEMPLATES = Path(__file__).parent / "templates"
 
 ICON_SVG = (
@@ -159,6 +160,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         self.main = main
         self.sdk = main.sdk
         self._token_announced = False
+        self._view_cache: tuple | None = None
         from .live import LiveRegistry
 
         self._live = getattr(main, "live_registry", None) or LiveRegistry()
@@ -181,6 +183,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("POST", "/api/qvq/skills/delete", self.skills_delete),
             ("POST", "/api/qvq/skills/enabled", self.skills_enabled),
             ("GET", "/api/qvq/skills/export", self.skills_export),
+            ("GET", "/api/qvq/onboarding", self.onboarding_get),
+            ("POST", "/api/qvq/onboarding", self.onboarding_set),
             ("POST", "/api/qvq/models/test", self.models_test),
             ("GET", "/api/qvq/personas", self.personas_get),
             ("POST", "/api/qvq/personas/save", self.personas_save),
@@ -203,6 +207,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("POST", "/api/qvq/tasks/run", self.tasks_run),
             ("POST", "/api/qvq/tasks/save", self.tasks_save),
             ("GET", "/api/qvq/breakers", self.breakers_get),
+            ("POST", "/api/qvq/breakers/reset", self.breakers_reset),
             ("GET", "/api/qvq/costs", self.costs_get),
             ("GET", "/api/qvq/running", self.running_get),
             ("GET", "/api/qvq/participation", self.participation_get),
@@ -220,7 +225,13 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("POST", "/api/qvq/identity/set", self.identity_set),
             ("POST", "/api/qvq/identity/remove", self.identity_remove),
             ("POST", "/api/qvq/identity/merge_account", self.identity_merge_account),
+# 让渡 / 后台子智能体：面板横幅、编排页任务区与围观入口
+            ("GET", "/api/qvq/handover", self.handover_get),
+            ("POST", "/api/qvq/handover/stop", self.handover_stop),
+            ("GET", "/api/qvq/subjobs", self.subjobs_get),
+            ("POST", "/api/qvq/subjobs/cancel", self.subjobs_cancel),
             ("GET", "/api/qvq/inbox", self.inbox_get),
+            ("POST", "/api/qvq/inbox/handle", self.inbox_handle),
             ("POST", "/api/qvq/inbox/delete", self.inbox_delete),
             ("POST", "/api/qvq/inbox/clear", self.inbox_clear),
             ("GET", "/api/qvq/session/messages", self.session_messages),
@@ -234,6 +245,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("GET", "/api/qvq/todo", self.todo_list),
             ("POST", "/api/qvq/todo/save", self.todo_save),
             ("POST", "/api/qvq/todo/update", self.todo_update),
+            ("POST", "/api/qvq/todo/delete", self.todo_delete),
+            ("POST", "/api/qvq/todo/add", self.todo_add),
             ("POST", "/api/qvq/sessions/delete", self.sessions_delete),
             ("POST", "/api/qvq/sessions/delete-archived", self.sessions_delete_archived),
             ("POST", "/api/qvq/session/compact", self.session_compact),
@@ -272,18 +285,29 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("GET", "/api/qvq/chat/live/subscribe", self.chat_live_subscribe),
         ]
         for method, path, handler in routes:
-            router.register_http_route("QvQChat", path, self._guard(handler), methods=[method])
+            self._register_one(router, method, path, self._guard(handler))
         public_routes = [
             ("GET", "/api/qvq/share/messages", self.share_messages),
             ("POST", "/api/qvq/share/chat", self.share_chat),
             ("GET", "/share", self.share_page),
             ("GET", "/v1/models", self.v1_models),
             ("POST", "/v1/chat/completions", self.v1_chat_completions),
+# 厂商图标是公开 favicon 缓存：<img> 无法带 Bearer 头，走公开路由（无敏感数据）
+            ("GET", "/api/qvq/logo", self.logo),
         ]
         for method, path, handler in public_routes:
-            router.register_http_route("QvQChat", path, handler, methods=[method])
-        router.register_http_route("QvQChat", "/view", self.view_page, methods=["GET"])
+            self._register_one(router, method, path, handler)
+# /view 是面板唯一入口：必须最后兜底注册成功，任何前面的路由冲突不得拖垮它
+        self._register_one(router, "GET", "/view", self.view_page)
         self._register_view()
+
+    def _register_one(self, router, method: str, path: str, handler) -> None:
+        """单条路由注册：SDK 对重复注册抛 ValueError（真机曾因 logo 双注册炸掉 /view），
+        这里降级为日志，保证其余路由与面板入口不受单条失败影响。"""
+        try:
+            router.register_http_route("QvQChat", path, handler, methods=[method])
+        except (ValueError, TypeError) as e:
+            self.main.logger.warning(f"route {method} {path} skipped: {e}")
 
     def unregister(self) -> None:
         try:
@@ -386,22 +410,83 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             self._announce_token()
             if not self._authorized(request):
                 return ({"error": "Unauthorized"}, 401)
-            return await handler(request)
+            try:
+                return await handler(request)
+            except ApiError as e:
+                return ({"error": str(e)}, e.status)
+            except Exception as e:
+# 统一错误形状：意外异常不再裸 500，面板能读到原因；服务端留日志
+                try:
+                    self.main.logger.error(f"api handler failed: {type(e).__name__}: {e}")
+                except Exception:
+                    pass
+                return ({"error": f"{type(e).__name__}: {e}"}, 500)
 
         return wrapped
 
-
     def _view_html(self) -> str:
-        html = (TEMPLATES / "view.html").read_text(encoding="utf-8")
-        css_dir = TEMPLATES / "css"
-        css = "".join(
-            (css_dir / f"{name}.css").read_text(encoding="utf-8")
-            for name in ("base", "admin", "chat", "views")
+# 模板组装缓存：/view 每请求读 ~30 个文件是面板打开慢的主因之一；
+# 签名只 stat 文件（mtime_ns），无变化直接回缓存
+        sig = self._view_sig()
+        cached = getattr(self, "_view_cache", None)
+        if cached is not None and cached[0] == sig:
+            return cached[1]
+        try:
+            html = self._vue_view_html()
+        except OSError as e:
+            # 模板文件缺失（安装不完整/覆盖升级残留）：给出可诊断页面而不是 500
+            hint = (
+                "<h2>QvQChat 前端模板缺失</h2>"
+                f"<p>读取模板失败：{e}</p>"
+                "<p>请完整重装模块：pip install --force-reinstall ErisPulse-QvQChat</p>"
+            )
+            return (
+                "<!DOCTYPE html><html><head><meta charset='utf-8'><title>QvQChat</title></head>"
+                "<body style='font-family:sans-serif;background:#0f1115;color:#e8ecf1;"
+                "display:flex;align-items:center;justify-content:center;min-height:100vh'>"
+                f"<div style='max-width:560px'>{hint}</div></body></html>"
+            )
+        self._view_cache = (sig, html)
+        return html
+
+    @staticmethod
+    def _view_sig() -> tuple:
+        web = TEMPLATES / "web"
+        sig = []
+        try:
+            for p in sorted(web.rglob("*")):
+                if p.is_file():
+                    sig.append((p.name, p.stat().st_mtime_ns))
+        except OSError:
+            return ()
+        return tuple(sig)
+
+    @staticmethod
+    def _inline_script(text: str) -> str:
+        return "<script>" + text.replace("</script", "<\\/script") + "</script>"
+
+    def _vue_view_html(self) -> str:
+        web = TEMPLATES / "web"
+        vendor = "".join(
+            self._inline_script((web / "vendor" / name).read_text(encoding="utf-8"))
+            for name in ("vue.global.prod.js", "naive-ui.prod.js")
         )
-        chat_dir = TEMPLATES / "chat"
-        order = ("core", "ui", "nav", "sessions", "messages", "stream", "views", "init")
+        css = (web / "styles" / "app.css").read_text(encoding="utf-8")
+        html = (web / "app.html").read_text(encoding="utf-8")
+        order = (
+            "i18n", "store", "api", "theme", "md",
+            "components/AppShell", "components/LoginPage", "components/PageOverview",
+            "components/PageChat", "components/PageProviders", "components/PagePlatforms",
+            "components/PagePersonas", "components/PageConfig", "components/PagePlugins",
+            "components/PageSkills", "components/PageTasks", "components/PageMemory",
+            "components/PageKnowledge", "components/PageSessions", "components/PageAudit",
+            "components/PageStorage", "components/PageTools", "components/PageMcp",
+            "components/PageOrchestrate", "components/BackupPanel", "components/PageInbox",
+            "components/SchemaForm", "components/QuickPanel",
+            "components/Mascot", "main",
+        )
         js = "".join(
-            (chat_dir / f"{name}.js").read_text(encoding="utf-8")
+            self._inline_script((web / f"{name}.js").read_text(encoding="utf-8"))
             for name in order
         )
         return (
@@ -409,8 +494,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
             "<title>QvQChat</title>"
             f"<link rel='icon' type='image/svg+xml' href='{FAVICON_HREF}'>"
-            f"<style>html,body{{margin:0;padding:0;height:100%}}{css}</style></head>"
-            f"<body>{html}<script>{js}</script></body></html>"
+            f"<style>html,body{{margin:0;padding:0;height:100%}}{css}</style>"
+            f"</head><body>{html}{vendor}{js}</body></html>"
         )
 
     async def view_page(self, request):
@@ -430,6 +515,107 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             "limit": int(getattr(self.main.cfg, "daily_token_limit", 0) or 0),
         }
         return data
+
+    async def logo(self, request):
+        """供应商图标：正缓存直回本地字节；未命中立即 404 并后台补拉（请求零阻塞）。
+
+        拉取失败的域写负缓存标记（24h），期间不再重试外网——被墙域名不会拖慢面板。
+        """
+        import re
+        import threading
+        import time
+        from starlette.responses import Response
+
+        domain = str(request.query_params.get("domain") or "").strip().lower()
+        if not re.match(r"^[a-z0-9][a-z0-9.-]{2,78}$", domain):
+            return Response(status_code=400)
+        cache_dir = Path.home() / ".cache" / "erispulse-qvqchat" / "logos"
+        cache_file = cache_dir / f"{domain}.bin"
+        fail_file = cache_dir / f"{domain}.failed"
+        headers = {"Cache-Control": "public, max-age=2592000, immutable"}
+        if cache_file.exists():
+            data = cache_file.read_bytes()
+            if data:
+                return Response(content=data, media_type=self._image_type(data), headers=headers)
+        if fail_file.exists() and time.time() - fail_file.stat().st_mtime < 86400:
+            return Response(status_code=404)
+        threading.Thread(target=self._logo_fetch, args=(domain, cache_dir, cache_file, fail_file),
+                         daemon=True).start()
+        return Response(status_code=404)
+
+    @staticmethod
+    def _domain_family(domain: str) -> list:
+        """API 域 → 图标候选域族：api.deepseek.com → [api.deepseek.com, deepseek.com, www.deepseek.com]。
+
+        一般 LLM 网关域不放 favicon，回落主站根域保证有一个图标可拿。
+        """
+        parts = [p for p in domain.split(".") if p]
+        root = ".".join(parts[-2:]) if len(parts) > 2 else domain
+        family = [domain]
+        if root != domain and root not in family:
+            family.append(root)
+        www = "www." + root
+        if www not in family:
+            family.append(www)
+        return family
+
+    def _logo_fetch(self, domain: str, cache_dir: Path, cache_file: Path, fail_file: Path) -> None:
+        """后台补拉 favicon（每个源 4s 超时，成功写正缓存、失败写负缓存）。
+
+        依次尝试本域 favicon → 本域 DDG → 根域 favicon → 根域 DDG → www 根域 → Google S2。
+        """
+        family = self._domain_family(domain)
+        sources = []
+        for d in family:
+            sources.append(f"https://{d}/favicon.ico")
+            sources.append(f"https://icons.duckduckgo.com/ip3/{d}.ico")
+        sources.append(f"https://www.google.com/s2/favicons?sz=128&domain={family[-1].removeprefix('www.')}")
+        data = b""
+        for url in sources:
+            try:
+                resp = self._client_get_sync(url)
+            except Exception:
+                continue
+            if resp is not None and len(resp) > 64 and self._image_type(resp):
+                data = resp
+                break
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            if data:
+                cache_file.write_bytes(data)
+                fail_file.unlink(missing_ok=True)
+            else:
+                fail_file.write_text("")
+        except Exception:
+            pass
+
+    @staticmethod
+    def _client_get_sync(url: str) -> bytes | None:
+        """后台线程用同步 HTTP（urllib，4s 超时）补拉 favicon。"""
+        try:
+            import urllib.request as _ur
+
+            req = _ur.Request(url, headers={"User-Agent": "ErisPulse-QvQChat/1.0"})
+            with _ur.urlopen(req, timeout=4) as resp:
+                if getattr(resp, "status", 200) == 200:
+                    return resp.read()
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
+    def _image_type(data: bytes) -> str:
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            return "image/png"
+        if data[:3] == b"\xff\xd8\xff":
+            return "image/jpeg"
+        if data[:6] in (b"GIF87a", b"GIF89a"):
+            return "image/gif"
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return "image/webp"
+        if data[:5] == b"<svg " or data[:4] == b"<svg":
+            return "image/svg+xml"
+        return "image/x-icon"
 
     async def auth(self, request):
         return {"ok": True}

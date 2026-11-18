@@ -1344,12 +1344,26 @@ STRINGS: dict[str, dict[str, str]] = {
         "ja": "タスクをキャンセルしました [{id}]",
         "ru": "Задача отменена [{id}]",
     },
+    "think_native_guide": {
+        "zh-CN": "\n〔内心独白风格〕你的内心思考请以「{word}」开头，并保持人设口吻。",
+        "zh-TW": "\n〔內心獨白風格〕你的內心思考請以「{word}」開頭，並保持人設口吻。",
+        "en": "\n[Inner monologue style] Begin your internal reasoning with \"{word}\" and keep it in persona voice.",
+        "ja": "\n〔内心独白スタイル〕内心の思考は「{word}」で始め、キャラの口調を保ってください。",
+        "ru": "\n〔Стиль внутреннего монолога〕Начинайте внутреннее рассуждение с \"{word}\", сохраняя голос персонажа.",
+    },
     "task_not_found": {
         "zh-CN": "任务不存在: {id}",
         "zh-TW": "任務不存在: {id}",
         "en": "Task not found: {id}",
         "ja": "タスクが見つかりません: {id}",
         "ru": "Задача не найдена: {id}",
+    },
+    "task_sys_edit_hint": {
+        "zh-CN": "系统内置任务由配置管理，不能直接编辑。请用 manage_config 修改 {config}（小时数，0 关闭）",
+        "zh-TW": "系統內建任務由配置管理，不能直接編輯。請用 manage_config 修改 {config}（小時數，0 關閉）",
+        "en": "Built-in tasks are config-managed and cannot be edited directly. Use manage_config to change {config} (hours, 0 disables)",
+        "ja": "システム内蔵タスクは設定で管理されており、直接編集できません。manage_config で {config} を変更してください（時間、0 で無効）",
+        "ru": "Встроенные задачи управляются конфигом и не редактируются напрямую. Измените {config} через manage_config (часы, 0 — выкл)",
     },
     "task_triggered": {
         "zh-CN": "已手动触发任务「{name}」[{id}]，正在执行（不影响下次计划时间）",

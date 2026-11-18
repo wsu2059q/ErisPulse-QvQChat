@@ -85,8 +85,9 @@ class Scheduler:
     def add(self, spec: dict) -> dict:
         schedule = spec["schedule"]
         now = utils.now_ts()
+        update_id = str(spec.get("id") or "")
         task = {
-            "id": utils.new_id(),
+            "id": update_id or utils.new_id(),
             "name": str(spec.get("name") or "task"),
             "schedule": schedule,
             "schedule_raw": str(spec.get("schedule_raw") or ""),
@@ -110,7 +111,25 @@ class Scheduler:
         }
         task["next_run"] = self._next_with_jitter(task, now)
         tasks = self._load()
-        tasks.append(task)
+        replaced = False
+        if update_id:
+            for i, old in enumerate(tasks):
+                if old.get("id") != update_id:
+                    continue
+                task["created"] = old.get("created") or now
+                task["created_by"] = str(old.get("created_by") or "")
+                if old.get("managed_by") == "Cron" and old.get("cron_ref"):
+                    cron = self._cron_module()
+                    if cron is not None:
+                        try:
+                            cron.cancel(old["cron_ref"])
+                        except Exception:
+                            pass
+                tasks[i] = task
+                replaced = True
+                break
+        if not replaced:
+            tasks.append(task)
         self._save(tasks)
         self._maybe_delegate(task, tasks)
         return task
@@ -246,40 +265,77 @@ class Scheduler:
 # ===== 用户画像固化定时任务 =====
 
     def ensure_profile_task(self) -> dict | None:
-        """注册画像固化内置任务（幂等）：每 profile_consolidate_hours 小时对近期活跃用户跑 consolidate。
+        """
+        注册画像固化内置任务（幂等），按 profile_consolidate_hours 配置设定周期。
 
-        profile_enabled 关闭或间隔<=0 时不注册；任务表中已存在同 kind 任务则不重复。返回新建任务或 None。"""
+        profile_enabled 关闭或间隔<=0 时不注册；已存在同 kind 任务且周期一致则不动，
+        周期不一致则保 id 更新。
+
+        :return: dict | None 新建/更新的任务；无需变更返回 None
+        """
         if not bool(getattr(self.main.cfg, "profile_enabled", True)):
             return None
         hours = float(getattr(self.main.cfg, "profile_consolidate_hours", 6) or 0)
         if hours <= 0:
             return None
+        raw = f"every:{int(hours) if hours.is_integer() else hours}h"
         for task in self._load():
-            if task.get("task_kind") == PROFILE_TASK_KIND:
+            if task.get("task_kind") != PROFILE_TASK_KIND:
+                continue
+            if task.get("schedule_raw") == raw:
                 return None
-        task = self.add(
+            return self.add({
+                "id": task["id"],
+                "name": PROFILE_TASK_NAME,
+                "schedule": {"type": "interval", "seconds": max(60, int(hours * 3600))},
+                "schedule_raw": raw,
+                "prompt": "",
+                "task_kind": PROFILE_TASK_KIND,
+            })
+        return self.add(
             {
                 "name": PROFILE_TASK_NAME,
                 "schedule": {"type": "interval", "seconds": max(60, int(hours * 3600))},
-                "schedule_raw": f"every:{int(hours) if hours.is_integer() else hours}h",
+                "schedule_raw": raw,
                 "prompt": "",
                 "task_kind": PROFILE_TASK_KIND,
             }
         )
-        return task
 
     def ensure_storage_maintain_task(self) -> dict | None:
-        """每日存储自动维护（R7）：slim 去重 / trash 过期 / work 沙箱过期。开关关闭不注册。"""
+        """
+        注册存储自动维护内置任务（幂等），按 storage_maintain_hours 配置设定周期。
+
+        storage_auto_maintain 关闭或间隔<=0 时不注册；已存在同 kind 任务且周期一致
+        则不动，周期不一致则保 id 更新。
+
+        :return: dict | None 新建/更新的任务；无需变更返回 None
+        """
         if not bool(getattr(self.main.cfg, "storage_auto_maintain", True)):
             return None
+        hours = float(getattr(self.main.cfg, "storage_maintain_hours", 24) or 0)
+        if hours <= 0:
+            return None
+        raw = f"every:{int(hours) if hours.is_integer() else hours}h"
+        seconds = max(600, int(hours * 3600))
         for task in self._load():
-            if task.get("task_kind") == MAINTAIN_TASK_KIND:
+            if task.get("task_kind") != MAINTAIN_TASK_KIND:
+                continue
+            if task.get("schedule_raw") == raw:
                 return None
+            return self.add({
+                "id": task["id"],
+                "name": MAINTAIN_TASK_NAME,
+                "schedule": {"type": "interval", "seconds": seconds},
+                "schedule_raw": raw,
+                "prompt": "",
+                "task_kind": MAINTAIN_TASK_KIND,
+            })
         return self.add(
             {
                 "name": MAINTAIN_TASK_NAME,
-                "schedule": {"type": "interval", "seconds": 24 * 3600},
-                "schedule_raw": "every:24h",
+                "schedule": {"type": "interval", "seconds": seconds},
+                "schedule_raw": raw,
                 "prompt": "",
                 "task_kind": MAINTAIN_TASK_KIND,
             }

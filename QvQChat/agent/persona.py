@@ -256,12 +256,43 @@ class PersonaManager:
                 out[key[len(BINDING_PREFIX):]] = value
         return out
 
+    def _single_account_keys(self, platform: str) -> list[str]:
+        """单账户适配器的账户标识候选（账户名 + bot_id）。
+
+        适配器只剩一个账户后，事件 chat_key 不再带 @账户 后缀；而账户级绑定往往挂在
+        @账户名 / @bot_id 上，两边变体对不上就会一路落空到全局默认人格（"以为自己
+        是另一个旧账户"的根因）。仅在恰好一个账户时兜底，避免多账户下张冠李戴。
+        """
+        if not platform:
+            return []
+        try:
+            adapter = self.sdk.adapter.get(str(platform))
+        except Exception:
+            return []
+        accounts = getattr(adapter, "accounts", None) if adapter is not None else None
+        if not isinstance(accounts, dict) or len(accounts) != 1:
+            return []
+        keys: list[str] = []
+        for acct_name, cfg in accounts.items():
+            if str(acct_name):
+                keys.append("@" + str(acct_name))
+            bot_id = None
+            if isinstance(cfg, dict):
+                bot_id = cfg.get("bot_id")
+            elif cfg is not None:
+                bot_id = getattr(cfg, "bot_id", None)
+            if bot_id:
+                keys.append("@" + str(bot_id))
+        return keys
+
     def resolve(self, chat_key: str) -> dict:
         """绑定回落链（从具体到宽泛，首个命中生效）：
 
         会话精确 key → 群 base key（跨账户的同一群）→ @账户 级（该 bot 账户全部会话）
         → platform:* 平台级 → 全局默认 → assistant。
         层级 key 通过 bind() 直接写入即可（chat_key 填 "@账号" / "平台名:*"）。
+
+        键上没有 @账户 后缀（单账户适配器）时，用该平台唯一账户的标识补齐 @ 层候选。
         """
         from ..conversation.service import account_of, strip_account, strip_isolation
 
@@ -272,10 +303,12 @@ class PersonaManager:
             base = strip_account(strip_isolation(key))
             if base and base != key:
                 candidates.append(base)
+            platform = key.split(":", 1)[0]
             account = account_of(key)
             if account:
                 candidates.append("@" + account)
-            platform = key.split(":", 1)[0]
+            else:
+                candidates.extend(self._single_account_keys(platform))
             if platform:
                 candidates.append(f"{platform}:*")
         for candidate in candidates:

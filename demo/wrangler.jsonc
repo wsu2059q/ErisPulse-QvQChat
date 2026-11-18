@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "qvqchat-demo",
+  "compatibility_date": "2026-07-15",
+  "assets": { "directory": "." },
+  "routes": [
+    { "pattern": "qvqdemo.erisdev.com", "custom_domain": true }
+  ]
+}

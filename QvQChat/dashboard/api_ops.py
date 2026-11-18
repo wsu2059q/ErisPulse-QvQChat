@@ -542,6 +542,13 @@ class StorageApiMixin:
         return {"files": files, "bytes": bytes_total}
 
     async def storage_get(self, request):
+        # 总览需逐键读全值统计，大会话量时是秒级操作：60s TTL 缓存，写操作后主动失效
+        import time as _time
+
+        now = _time.time()
+        cached = getattr(self, "_storage_overview", None)
+        if cached and now - cached[0] < 60:
+            return cached[1]
         stats: dict[str, dict] = {}
         for key in self._kv_keys():
             domain = _storage_domain_of(key)
@@ -557,7 +564,7 @@ class StorageApiMixin:
             info.update({"id": domain, "path": path})
             files.append(info)
         total = sum(v["bytes"] for v in stats.values()) + sum(f["bytes"] for f in files)
-        return {
+        payload = {
             "domains": [
                 {"id": domain, "keys": stats[domain]["keys"], "bytes": stats[domain]["bytes"]}
                 for domain in sorted(stats, key=lambda d: -stats[d]["bytes"])
@@ -565,6 +572,11 @@ class StorageApiMixin:
             "files": files,
             "total_bytes": total,
         }
+        self._storage_overview = (now, payload)
+        return payload
+
+    def _storage_overview_invalidate(self) -> None:
+        self._storage_overview = None
 
     async def storage_keys(self, request):
         domain = self._query(request, "domain") or ""
@@ -595,6 +607,7 @@ class StorageApiMixin:
         return {"key": key, "value": text[:MAX_ENTRY_CHARS], "truncated": truncated, "bytes": len(text)}
 
     async def storage_delete(self, request):
+        self._storage_overview_invalidate()
         body = await request.json()
         wanted = [str(k) for k in ((body or {}).get("keys") or []) if isinstance(k, str)]
         wanted = [k for k in wanted if k.startswith("QvQChat:") and k not in PROTECTED_KEYS]
@@ -610,6 +623,7 @@ class StorageApiMixin:
 
     async def storage_cleanup(self, request):
         """分域清理 / 一键重置。reset=true 时清全部域（keep 列表除外）；否则清 domains 列表。"""
+        self._storage_overview_invalidate()
         body = await request.json() or {}
         keep = {str(k) for k in (body.get("keep") or [])}
         if body.get("reset"):
@@ -660,6 +674,7 @@ class StorageApiMixin:
         3) 超长正文截断到 2000 字（保留首尾，标注截断）
         最近 keep 条保持原样（模型仍需要当前上下文细节）。
         """
+        self._storage_overview_invalidate()
         from ..conversation.service import CONV_PREFIX
 
         keep = max(6, int(getattr(self.main.cfg, "context_limit", 30) or 30))

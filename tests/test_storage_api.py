@@ -167,12 +167,11 @@ async def test_sessions_get_accounts_overview():
     assert accts and accts[0]["account"] == "bot_a"
     assert accts[0]["sessions"] == 1
     assert resp["accounts"]["adapters"][0]["platform"] == "onebot11"
-    assert sorted(resp["accounts"]["adapters"][0]["bots"]) == ["bot_a", "bot_b"]
+    bots = resp["accounts"]["adapters"][0]["bots"]
+    assert sorted(b["id"] for b in bots) == ["bot_a", "bot_b"]
 
 
 async def test_accounts_overview_skips_sub_sessions():
-    """子会话（spawn/demote/让渡的 sub: 键）不进账户聚合——它们继承父键的
-    @account 中段，rpartition 会切出 "acct:demote:hex" 假账户刷满编排页。"""
     main, manager = make_manager()
     store = main.sdk.storage
     store.set("QvQChat:conv:onebot11:group:1@bot_a", {"contexts": []})
@@ -183,7 +182,36 @@ async def test_accounts_overview_skips_sub_sessions():
     resp = await manager.sessions_get(_Req())
     accts = resp["accounts"]["accounts"]
     assert len(accts) == 1 and accts[0]["account"] == "bot_a"
-    assert accts[0]["sessions"] == 1  # 仅真会话计数，两个子会话不计
+    assert accts[0]["sessions"] == 1
+
+
+def _seed_sessions(main):
+    store = main.sdk.storage
+    store.set("QvQChat:conv:onebot11:group:111", {"contexts": [], "name": "喵之领域", "updated": 100})
+    store.set("QvQChat:conv:onebot11:group:222", {"contexts": [], "name": "养生馆", "updated": 90})
+    store.set("QvQChat:conv:onebot11:private:333", {"contexts": [], "updated": 80})
+
+
+async def test_sessions_search_q_filters_name_and_key():
+    main, manager = make_manager()
+    _seed_sessions(main)
+    resp = await manager.sessions_get(_Req(query={"q": "喵之领域"}))
+    keys = [s["chat_key"] for s in resp["sessions"]]
+    assert keys == ["onebot11:group:111"] and resp["total"] == 1
+    resp2 = await manager.sessions_get(_Req(query={"q": "onebot11:private"}))
+    assert [s["chat_key"] for s in resp2["sessions"]] == ["onebot11:private:333"]
+    resp3 = await manager.sessions_get(_Req(query={"q": "不存在"}))
+    assert resp3["sessions"] == [] and resp3["total"] == 0
+
+
+async def test_sessions_search_q_combined_with_archived():
+    main, manager = make_manager()
+    _seed_sessions(main)
+    main.sdk.storage.set("QvQChat:conv:onebot11:group:444", {"contexts": [], "name": "喵之 archives", "archived": True, "updated": 70})
+    resp = await manager.sessions_get(_Req(query={"q": "喵之", "archived": "1"}))
+    assert [s["chat_key"] for s in resp["sessions"]] == ["onebot11:group:444"]
+    resp2 = await manager.sessions_get(_Req(query={"q": "喵之"}))
+    assert "onebot11:group:444" not in [s["chat_key"] for s in resp2["sessions"]]
 
 
 async def test_session_rewind_drops_message_and_after():
