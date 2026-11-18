@@ -2263,6 +2263,45 @@ body::-webkit-scrollbar,
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
 }
+/* 生态扩展条目：模块名 + 计数徽标 + 可展开提示（与卡片同一套玻璃/描边语言） */
+.ext-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ext-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: 10px;
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.ext-chip:hover {
+  border-color: var(--qvq-accent);
+  background: var(--qvq-accent-soft);
+  transform: translateY(-1px);
+}
+.ext-chip .nm { color: var(--qvq-tx); font-weight: 600; }
+.ext-chip .cnt {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--qvq-accent-soft);
+  color: var(--qvq-accent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ext-chip .go {
+  font-style: normal;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--qvq-tx-t);
+  transition: color 0.15s, transform 0.15s;
+}
+.ext-chip:hover .go { color: var(--qvq-accent); transform: translateX(2px); }
+
 .plat-grid .is-off,
 .prov-grid .prov-card.is-off { opacity: 0.55; }
 .plat-grid .is-off:hover,

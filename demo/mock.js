@@ -422,10 +422,53 @@
           ],
         });
         case "/api/qvq/config": return json({ fields: CONFIG_FIELDS, groups: CONFIG_GROUPS });
-        case "/api/qvq/plugin_settings": return json({ plugins: [] });
+        case "/api/qvq/plugin_settings": return json({ modules: [
+          { module: "MyServer", title: "MyServer", config_key: "MyServer",
+            schema: { fields: {
+              host: { description: "服务器地址", type: "text" },
+              port: { description: "RCON 端口", type: "number" },
+              token: { description: "访问令牌", type: "text", secret: true },
+              auto_backup: { description: "定时备份", type: "switch" },
+            } },
+            values: { host: "mc.example.com", port: 25575, auto_backup: true } },
+          { module: "QvQMemes", title: "QvQMemes 表情包", config_key: "QvQMemes",
+            schema: { fields: {
+              recall_limit: { description: "单次召回条数", type: "number" },
+              auto_collect: { description: "自动收录新图", type: "switch" },
+              pack: { description: "默认图包", type: "select", options: ["default", "cat", "reaction"] },
+            } },
+            values: { recall_limit: 5, auto_collect: true, pack: "cat" } },
+          { module: "QvQPokeBack", title: "戳一戳自动回应", config_key: "QvQPokeBack",
+            schema: { fields: {
+              enabled: { description: "启用自动回应", type: "switch" },
+              chance: { description: "回应概率", type: "number", min: 0, max: 100 },
+            } },
+            values: { enabled: true, chance: 60 } },
+          { module: "QvQStalker", title: "QvQStalker 群聊参与决策", config_key: "QvQStalker",
+            schema: { fields: {
+              threshold: { description: "插话阈值", type: "number" },
+              cooldown: { description: "冷却秒数", type: "number" },
+              persona_aware: { description: "感知人格", type: "switch" },
+            } },
+            values: { threshold: 0.6, cooldown: 120, persona_aware: true } },
+          { module: "TTS", title: "TTS 语音合成", config_key: "TTS",
+            schema: { fields: {
+              voice: { description: "音色", type: "select", options: ["xiaoxiao", "yunxi", "xiaoyi"] },
+              rate: { description: "语速", type: "number", min: 0.5, max: 2, step: 0.1 },
+              max_chars: { description: "单条字数上限", type: "number" },
+            } },
+            values: { voice: "xiaoxiao", rate: 1, max_chars: 80 } },
+        ] });
         case "/api/qvq/extensions": return json({ extensions: [
-          { name: "QvQMemes", title: "表情包收录", details: { schemas: ["qvq_media"], skills: [], knowledge: [], prompts: [{ text: "用户发图时自动收录新梗图", priority: 2 }], personas: [] } },
-          { name: "QvQStalker", title: "发布追更", details: { schemas: [], skills: [{ name: "stalker_check", description: "检查发布源更新" }], knowledge: [], prompts: [], personas: [] } },
+          { module: "QvQMemes", personas: 0, schemas: 3, skills: 0, knowledge: 0, prompts: 1,
+            details: { schemas: ["qvq_media", "meme_recall", "sticker_pack"], skills: [], knowledge: [], prompts: [{ text: "用户发图时自动收录新梗图", priority: 2 }], personas: [] } },
+          { module: "QvQStalker", personas: 0, schemas: 4, skills: 1, knowledge: 0, prompts: 3,
+            details: { schemas: ["stalker_source", "stalker_sub", "stalker_push", "stalker_stats"], skills: [{ name: "stalker_check", description: "检查发布源更新" }], knowledge: [], prompts: [{ text: "有新发布时主动播报", priority: 1 }], personas: [] } },
+          { module: "MyServer", personas: 0, schemas: 10, skills: 0, knowledge: 0, prompts: 1,
+            details: { schemas: ["mc_status", "mc_players", "mc_backup", "mc_restart", "mc_logs", "mc_rcon", "mc_whitelist", "mc_ban", "mc_tps", "mc_map"], skills: [], knowledge: [], prompts: [{ text: "服务器异常时先查日志再汇报", priority: 2 }], personas: [] } },
+          { module: "TTS", personas: 0, schemas: 4, skills: 0, knowledge: 0, prompts: 1,
+            details: { schemas: ["tts_voice", "tts_rate", "tts_style", "tts_cache"], skills: [], knowledge: [], prompts: [{ text: "语音回复控制在三句内", priority: 3 }], personas: [] } },
+          { module: "Takumi", personas: 0, schemas: 0, skills: 0, knowledge: 0, prompts: 0, details: { schemas: [], skills: [], knowledge: [], prompts: [], personas: [] } },
         ] });
         case "/api/qvq/storage": return json({
           total_bytes: 23172889,
