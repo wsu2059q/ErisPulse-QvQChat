@@ -339,7 +339,13 @@ html[data-theme="light"] .qvq-bg-layer.qvq-bg-fallback {
     font-size: 16px;
     cursor: pointer;
   }
-  .qvq-main { padding: 16px 14px 20px; }
+  /* 移动端窄屏去玻璃：backdrop-filter 在部分移动内核不渲染，半透明底会直接漏出背景层 */
+  .qvq-main {
+    padding: 16px 14px 20px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--qvq-solid);
+  }
   .qvq-page-title { font-size: 22px; }
   .qvq-login-card { padding: 24px 20px; }
 }
@@ -2027,6 +2033,17 @@ body::-webkit-scrollbar,
   cursor: pointer;
 }
 .msg-acts button:hover { color: var(--qvq-accent); }
+.msg-model {
+  padding: 0;
+  color: var(--qvq-tx-t);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+  cursor: default;
+}
 
 .chat-editbar {
   display: flex;

@@ -265,9 +265,11 @@ class ConversationService:
         self._save(chat_key, state)
         return list(seed)
 
-    def append(self, chat_key: str, role: str, content, trace: list | None = None, rounds: list | None = None) -> None:
+    def append(self, chat_key: str, role: str, content, trace: list | None = None, rounds: list | None = None, meta: dict | None = None) -> None:
         state = self._state(chat_key)
         entry: dict = {"role": role, "content": content, "ts": utils.now_ts()}
+        if meta:
+            entry["meta"] = dict(meta)
 # rounds 已含同轮的工具明细与正文，trace 再存一份是纯冗余（前端有 rounds 时不读 trace）——不双写
         if trace and not rounds:
             entry["trace"] = list(trace)
@@ -1204,7 +1206,17 @@ class ConversationService:
     ) -> str:
 
         if not skip_append:
-            self.append(chat_key, "assistant", reply, trace=trace, rounds=rounds)
+            meta: dict = {}
+            if model:
+                meta["model"] = str(model)
+            if isinstance(usage, dict) and usage:
+# 只留小体量的 token 计数；聚合口径仍走 record_usage（日用量/成本），条目里只留
+# 本条消息的出处，前端/命令侧可查"这条是哪个模型答的、花了多少"
+                meta["usage"] = {
+                    k: usage[k] for k in ("prompt_tokens", "completion_tokens", "total_tokens")
+                    if isinstance(usage.get(k), (int, float))
+                }
+            self.append(chat_key, "assistant", reply, trace=trace, rounds=rounds, meta=meta or None)
         if usage:
 # 用户维度记账（user_daily_budget 配额读 by_user）
             if user_id:

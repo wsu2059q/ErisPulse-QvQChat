@@ -112,24 +112,24 @@
     { chat_key: "sub:onebot11:group:1049:9f8e7d6c", name: "抓取 GitHub trending 并汇总", turns: 4, detail_type: "group", pinned: false, archived: false, platform: "sub", kind: "sub", sub_of: "onebot11:group:1049", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
   ];
 
-  /* 多账户页：适配器（运行中/已停用折叠演示）+ 账户（平台/会话数/人格绑定） */
+  /* 多账户页：适配器（运行中/已停用折叠演示 + 平台级人格绑定）+ 账户（平台/会话数/人格绑定） */
   var ADAPTERS = [
-    { platform: "onebot11", status: "started", enabled: true, bots: [
+    { platform: "onebot11", status: "started", enabled: true, persona: "", bots: [
       { id: "3864258723", status: "online", last_active: NOW - 35, nickname: "小喵" },
     ] },
-    { platform: "yunhu", status: "started", enabled: true, bots: [
+    { platform: "yunhu", status: "started", enabled: true, persona: "helper", bots: [
       { id: "740318", status: "online", last_active: NOW - 62, nickname: "小喵" },
     ] },
-    { platform: "oopz", status: "started", enabled: true, bots: [
+    { platform: "oopz", status: "started", enabled: true, persona: "", bots: [
       { id: "9f8e2c1d", status: "online", last_active: NOW - 240, nickname: "SnowOvO" },
     ] },
-    { platform: "qqbot", status: "", enabled: false, bots: [] },
-    { platform: "telegram", status: "", enabled: false, bots: [] },
+    { platform: "qqbot", status: "", enabled: false, persona: "", bots: [] },
+    { platform: "telegram", status: "", enabled: false, persona: "", bots: [] },
   ];
   var MOCK_ACCOUNTS = [
-    { account: "default", platforms: ["onebot11", "yunhu"], sessions: 5, persona: "sakura", enabled: true },
+    { account: "小喵", platforms: ["onebot11", "yunhu"], sessions: 5, persona: "sakura", enabled: true },
     { account: "web", platforms: ["dashboard"], sessions: 1, persona: "helper", enabled: true },
-    { account: "backup", platforms: ["oopz"], sessions: 2, persona: "", enabled: true },
+    { account: "SnowOvO", platforms: ["oopz"], sessions: 2, persona: "", enabled: true },
     { account: "legacy", platforms: ["telegram"], sessions: 3, persona: "", enabled: true },
   ];
 
@@ -145,9 +145,9 @@
   var MESSAGES = {
     "dashboard:private:web": [
       { role: "user", content: "ping一下bilibili" },
-      { role: "assistant", content: "", rounds: ROUNDS_PING },
+      { role: "assistant", content: "", rounds: ROUNDS_PING, meta: { model: "deepseek-chat", usage: { prompt_tokens: 8421, completion_tokens: 96, total_tokens: 8517 } } },
       { role: "user", content: "帮我写个批量重命名的小脚本" },
-      { role: "assistant", content: "好喵，给你个常用的：批量重命名文件小脚本。\n\n```python\nimport os\n\ndef batch_rename(folder, prefix=\"file_\", ext_filter=None):\n    files = sorted(os.listdir(folder))\n    for i, name in enumerate(files, 1):\n        path = os.path.join(folder, name)\n        if not os.path.isfile(path):\n            continue\n        ext = os.path.splitext(name)[1]\n        os.rename(path, os.path.join(folder, f\"{prefix}{i:03d}{ext}\"))\n\nbatch_rename(\"D:/图片\", prefix=\"照片_\", ext_filter=(\".jpg\", \".png\"))\n```\n\n改下文件夹路径就能跑，会把文件重命名成 `照片_001.jpg` 这种带序号的格式。" },
+      { role: "assistant", content: "好喵，给你个常用的：批量重命名文件小脚本。\n\n```python\nimport os\n\ndef batch_rename(folder, prefix=\"file_\", ext_filter=None):\n    files = sorted(os.listdir(folder))\n    for i, name in enumerate(files, 1):\n        path = os.path.join(folder, name)\n        if not os.path.isfile(path):\n            continue\n        ext = os.path.splitext(name)[1]\n        os.rename(path, os.path.join(folder, f\"{prefix}{i:03d}{ext}\"))\n\nbatch_rename(\"D:/图片\", prefix=\"照片_\", ext_filter=(\".jpg\", \".png\"))\n```\n\n改下文件夹路径就能跑，会把文件重命名成 `照片_001.jpg` 这种带序号的格式。", meta: { model: "deepseek-chat", usage: { prompt_tokens: 9104, completion_tokens: 388, total_tokens: 9492 } } },
     ],
     "onebot11:group:1049": [
       { role: "user", content: "今天有什么打算？" },
@@ -538,10 +538,15 @@
         var pb = parseBody(opts);
         var ck = String(pb.chat_key || "");
         var pid = pb.persona || "";
-        MOCK_ACCOUNTS.forEach(function (a) {
-          if (ck === "@" + a.account) a.persona = pid;
-          else if ((a.platforms || []).indexOf(ck.replace(/:\*$/, "")) >= 0 && /:\*$/.test(ck)) a.persona = pid;
-        });
+        if (/:\*$/.test(ck)) {
+          // 平台级绑定（platform:*）：同步适配器卡显示
+          var plat = ck.replace(/:\*$/, "");
+          ADAPTERS.forEach(function (a) { if (a.platform === plat) a.persona = pid; });
+        } else {
+          MOCK_ACCOUNTS.forEach(function (a) {
+            if (ck === "@" + a.account) a.persona = pid;
+          });
+        }
         return json({ ok: true });
       }
       default: return json({ ok: true });
