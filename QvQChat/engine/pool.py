@@ -635,6 +635,16 @@ class ModelPool:
             task_models = getattr(self.config, "task_models", None)
             if isinstance(task_models, dict):
                 explicit = str(task_models.get(spec.kind) or "")
+                if str(spec.kind) == "chat" and str(spec.chat_key or ""):
+# 会话类型级默认：群聊/私聊可分别固定模型（chat_group / chat_private），
+# 优先于 task_models.chat——群聊走便宜档、私聊走旗舰的成本结构靠这两档实现
+# （chat_key 形如 platform:detail:id[@account]，本地拆 detail，避免反向依赖 conversation 层）
+                    tail = str(spec.chat_key).rsplit("@", 1)[0]
+                    segs = tail.split(":")
+                    detail = segs[1] if len(segs) >= 2 else ""
+                    tier = str(task_models.get("chat_" + detail) or "")
+                    if tier:
+                        explicit = tier
 # 辅助调用统一模型：判定/播报/压缩等后台任务的 cheap 自动选择会命中"最便宜的池"，
 # 运营方未必想让辅助调用落到那家（用量与成本统计按 provider 分池）——配一个即全部归位
         if not explicit and str(spec.kind) != "chat":
