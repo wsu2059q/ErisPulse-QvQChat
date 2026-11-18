@@ -66,6 +66,23 @@ window.PagePlatforms = {
       this.personas.forEach(function (p) { map[p.id] = p.name || p.id; });
       return function (id) { return map[id] || id || t("cf_unset"); };
     },
+    bindingGroups() {
+      // 绑定全表按层级分组：@开头=账户级，:*结尾=平台级，其余=会话精确键
+      var self = this;
+      var defs = [
+        { key: "session", label: t("bind_level_session"),
+          match: function (k) { return k.charAt(0) !== "@" && k.slice(-2) !== ":*"; } },
+        { key: "account", label: t("bind_level_account"), match: function (k) { return k.charAt(0) === "@"; } },
+        { key: "platform", label: t("bind_level_platform"), match: function (k) { return k.slice(-2) === ":*"; } },
+      ];
+      var groups = [];
+      defs.forEach(function (d) {
+        var items = Object.keys(self.bindings || {}).filter(d.match).sort()
+          .map(function (k) { return { key: k, persona: String(self.bindings[k] || "") }; });
+        if (items.length) groups.push({ key: d.key, label: d.label, items: items });
+      });
+      return groups;
+    },
   },
   mounted() {
     this.load();
@@ -126,6 +143,18 @@ window.PagePlatforms = {
         if (r && r.error) { a.persona = ""; return; }
         self.load();
       });
+    },
+    bindKey(key, value) {
+      // 绑定管理：改绑 / 解绑（persona null 即删除，后端留回收站撤销）
+      var self = this;
+      api("/api/qvq/personas/bind", "POST", { chat_key: key, persona: value || null })
+        .then(function (r) {
+          if (r && r.error) { self.toast = r.error; return; }
+          self.load();
+        });
+    },
+    unbindKey(key) {
+      this.bindKey(key, null);
     },
     openMig(pair) {
       this.mig = {
@@ -217,6 +246,19 @@ window.PagePlatforms = {
   '    <span>{{ showOffAccounts ? t("plat_off_hide") : t("plat_disabled") + " (" + offAccountsN + ")" }}</span>',
   '    <i :class="{ open: showOffAccounts }"></i>',
   '  </button>',
+  '  <h3 class="plat-sec">{{ t("bind_mgmt") }}</h3>',
+  '  <n-card size="small" class="qvq-glass-card">',
+  '    <div v-for="g in bindingGroups" :key="g.key" class="bind-group">',
+  '      <div class="mention-title">{{ g.label }} <i class="bind-n">{{ g.items.length }}</i></div>',
+  '      <div v-for="row in g.items" :key="row.key" class="bind-row">',
+  '        <code class="bind-key" :title="row.key">{{ row.key }}</code>',
+  '        <n-select size="tiny" :value="row.persona" :options="personaOptions" style="width:220px"',
+  '                 @update:value="v => bindKey(row.key, v)"/>',
+  '        <button type="button" class="prov-act bind-del" @click="unbindKey(row.key)">{{ t("bind_remove") }}</button>',
+  '      </div>',
+  '    </div>',
+  '    <div v-if="!bindingGroups.length" class="qvq-empty">{{ t("bind_empty") }}</div>',
+  '  </n-card>',
   '  <h3 class="plat-sec">{{ t("ident_title") }}</h3>',
     '  <n-card size="small" class="qvq-glass-card">',
     '    <div v-if="suggestions.length" class="plat-suggest">',

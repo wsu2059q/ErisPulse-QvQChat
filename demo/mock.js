@@ -394,7 +394,13 @@
           return json({ messages: msgs.slice(-24), total: msgs.length, start: Math.max(0, msgs.length - 24), limit: 24 });
         }
         case "/api/qvq/todo": return json({ todos: TODOS });
-        case "/api/qvq/personas": return json({ personas: PERSONAS });
+        case "/api/qvq/personas": return json({ personas: PERSONAS, bindings: {
+          "snowluma:private:2694611137": "sakura",
+          "onebot11:group:1049": "helper",
+          "@default": "sakura",
+          "@web": "helper",
+          "yunhu:*": "helper",
+        } });
         case "/api/qvq/skills": return json({ skills: SKILLS });
         case "/api/qvq/tools": return json({ tools: TOOLS, disabled: [] });
         case "/api/qvq/mcp": return json(MCP);

@@ -318,6 +318,10 @@ class PersonaManager:
         → platform:* 平台级 → 全局默认 → assistant。
         层级 key 通过 bind() 直接写入即可（chat_key 填 "@账号" / "平台名:*"）。
 
+        base 层只对群聊生效：群里不同 bot 账号看到的确实是同一场对话，共享绑定合理；
+        私聊的 base 键（去 @ 后缀）会把"用户和 A bot 的绑定"串到"用户和 B bot 的私聊"
+        上（账户增减后键在有无后缀间切换时尤其如此），故私聊跳过。
+
         键上没有 @账户 后缀（单账户适配器）时，用该平台唯一账户的标识补齐 @ 层候选。
         """
         from ..conversation.service import account_of, strip_account, strip_isolation
@@ -326,9 +330,10 @@ class PersonaManager:
         key = str(chat_key or "")
         if key:
             candidates.append(key)
-            base = strip_account(strip_isolation(key))
-            if base and base != key:
-                candidates.append(base)
+            if ":group:" in key:
+                base = strip_account(strip_isolation(key))
+                if base and base != key:
+                    candidates.append(base)
             platform = key.split(":", 1)[0]
             account = account_of(key)
             if account:
