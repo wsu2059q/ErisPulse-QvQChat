@@ -98,7 +98,15 @@ window.PageInbox = {
     handle(e, action) {
       var self = this;
       api("/api/qvq/inbox/handle", "POST", { id: e.id, action: action }).then(function (r) {
-        if (r && r.ok) self.load();
+        if (r && r.error) { QvQ.toast(r.error); return; }
+        if (r && r.ok) {
+          // 结果回显：适配器 accept/reject 的返回值（如同意后的提示）直接可见
+          var detail = r.result && typeof r.result === "object" ? JSON.stringify(r.result) : String(r.result === undefined ? "" : r.result);
+          QvQ.toast(t("inbox_handled") + (detail && detail !== "null" ? " · " + detail.slice(0, 80) : ""));
+          self.load();
+        } else if (r) {
+          QvQ.toast(r.error || "failed");
+        }
       });
     },
     del(e) {
