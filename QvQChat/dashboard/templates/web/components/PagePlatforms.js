@@ -114,6 +114,19 @@ window.PagePlatforms = {
         self.load();
       });
     },
+    bindPlatform(a, value) {
+      // 平台级绑定：platform:* 键，该适配器全部无更精确绑定的会话生效
+      var self = this;
+      if ((a.persona || "") === (value || "")) return;
+      a.persona = value || "";
+      api("/api/qvq/personas/bind", "POST", {
+        chat_key: a.platform + ":*",
+        persona: value || null,
+      }).then(function (r) {
+        if (r && r.error) { a.persona = ""; return; }
+        self.load();
+      });
+    },
     openMig(pair) {
       this.mig = {
         source: (pair && pair.source) || "",
@@ -167,6 +180,11 @@ window.PagePlatforms = {
     '        </span>',
     '        <span v-if="!(a.bots || []).length" class="qvq-meta-line">{{ t("plat_none") }}</span>',
     '      </div>',
+    '      <footer class="prov-foot">',
+    '        <n-select size="tiny" :value="a.persona || \'\'" :options="personaOptions"',
+    '                 :placeholder="t(\'plat_persona_platform\')" style="width:100%"',
+    '                 @update:value="v => bindPlatform(a, v)"/>',
+    '      </footer>',
     '    </n-card>',
   '  </div>',
   '  <button v-if="offAdaptersN" type="button" class="plat-off-toggle" @click="showOffAdapters = !showOffAdapters">',

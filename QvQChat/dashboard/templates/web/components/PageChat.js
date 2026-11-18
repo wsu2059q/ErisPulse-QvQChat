@@ -343,6 +343,15 @@ window.PageChat = {
       var self = this;
       QvQ.copy(text, function (ok) { if (ok) self.toast = t("copied"); });
     },
+    modelMetaTip(m) {
+      // 消息出处悬浮提示：模型 + token 明细
+      if (!m.meta) return "";
+      var u = m.meta.usage || {};
+      var parts = [];
+      if (u.prompt_tokens != null) parts.push("in " + u.prompt_tokens);
+      if (u.completion_tokens != null) parts.push("out " + u.completion_tokens);
+      return t("chat_model_meta") + (parts.length ? "\n" + parts.join(" / ") : "");
+    },
     regenerate() {
       var self = this;
       api("/api/qvq/session/regenerate", "POST", { chat_key: this.activeKey }).then(function (r) {
@@ -1065,6 +1074,8 @@ window.PageChat = {
     '          </template>',
     '        </div>',
     '        <div class="msg-acts">',
+    '          <span v-if="m.meta && m.meta.model" class="msg-model"',
+    '                :title="modelMetaTip(m)">{{ m.meta.model }}{{ m.meta.usage && m.meta.usage.total_tokens != null ? " · " + Number(m.meta.usage.total_tokens).toLocaleString() + " tok" : "" }}</span>',
     '          <button v-if="m.role === \'user\'" type="button" @click="startEdit(i)">{{ t("edit") }}</button>',
     '          <button type="button" @click="copyText(m.content)">{{ t("chat_copy") }}</button>',
     '          <button type="button" @click="delMsg(i)">{{ t("chat_delete") }}</button>',

@@ -383,6 +383,7 @@ class SessionsApiMixin:
                 "status": str(info.get("status") or ""),
                 "enabled": bool(info.get("enabled", True)),
                 "bots": bots,
+                "persona": "",
             })
 # 配置中存在但未注册的适配器（禁用态）也透出，便于在面板开启
         for platform_name, info in adapters_summary.items():
@@ -393,19 +394,22 @@ class SessionsApiMixin:
                 "status": str(info.get("status") or ""),
                 "enabled": bool(info.get("enabled", False)),
                 "bots": [],
+                "persona": "",
             })
 # user_id → 账户名（配置键）：会话键统一用稳定的 user_id 后缀，UI 显示可读账户名
+        adapter_accounts: dict[str, list[str]] = {}  # 适配器名 → 配置账户名列表
         try:
             for name in names:
                 adapter = self.sdk.adapter.get(str(name))
-                accounts = getattr(adapter, "accounts", None) if adapter is not None else None
-                if isinstance(accounts, dict):
-                    for acct_name, cfg in accounts.items():
+                accounts_cfg = getattr(adapter, "accounts", None) if adapter is not None else None
+                if isinstance(accounts_cfg, dict):
+                    adapter_accounts[str(name)] = [str(k) for k in accounts_cfg if str(k)]
+                    for acct_name, cfg in accounts_cfg.items():
                         bot_id = getattr(cfg, "bot_id", None)
                         if bot_id:
                             display_names[str(bot_id)] = str(acct_name)
         except Exception:
-            display_names = {}
+            adapter_accounts = {}
 # 每账户当前人格：绑定表的 @account / 平台:* 层级键（编排页账户卡显示+快捷绑定用）
         persona_by_key: dict[str, str] = {}
         try:
@@ -413,12 +417,43 @@ class SessionsApiMixin:
                 persona_by_key[str(bind_key)] = str(persona_id)
         except Exception:
             persona_by_key = {}
-        accounts = []
-        for entry in sorted(counts.values(), key=lambda x: (-x["sessions"], x["account"])):
+# 适配器卡的平台级绑定（platform:*）——适配器卡上的快捷下拉
+        for a in adapters:
+            a["persona"] = persona_by_key.get(a["platform"] + ":*", "")
+# 会话键后缀（bot_id 或账户名变体）归并到配置账户名：同一账户不再裂成多条；
+# 适配器配置里的账户即使 0 会话也透出（新登录账户还没有会话，也要能绑定人格）
+        merged: dict[str, dict] = {}
+        for entry in counts.values():
             acct = entry["account"]
-            platforms = sorted(entry["platforms"])
-# 生效人格：精确 @账户 键优先，其次该账户任一平台的 platform:* 键
-            persona = persona_by_key.get("@" + acct, "")
+            canonical = display_names.get(acct, acct)
+            slot = merged.setdefault(
+                canonical,
+                {"account": canonical, "platforms": set(), "sessions": 0, "aliases": set()},
+            )
+            slot["platforms"] |= entry["platforms"]
+            slot["sessions"] += entry["sessions"]
+            slot["aliases"].add(acct)
+        for platform, accts in adapter_accounts.items():
+            for acct in accts:
+                if acct in merged:
+                    merged[acct]["platforms"].add(platform)
+                    continue
+                merged[acct] = {
+                    "account": acct,
+                    "platforms": {platform},
+                    "sessions": 0,
+                    "aliases": {acct},
+                }
+        accounts = []
+        for slot in sorted(merged.values(), key=lambda x: (-x["sessions"], x["account"])):
+            acct = slot["account"]
+            platforms = sorted(slot["platforms"])
+# 生效人格：账户名与全部历史后缀变体的 @键 依次试，其次该账户任一平台的 platform:* 键
+            persona = ""
+            for alias in [acct, *sorted(slot["aliases"])]:
+                persona = persona_by_key.get("@" + alias, "")
+                if persona:
+                    break
             if not persona:
                 for platform in platforms:
                     persona = persona_by_key.get(f"{platform}:*", "")
@@ -427,7 +462,7 @@ class SessionsApiMixin:
             accounts.append({
                 "account": acct,
                 "platforms": platforms,
-                "sessions": entry["sessions"],
+                "sessions": slot["sessions"],
                 "persona": persona,
             })
         return {
