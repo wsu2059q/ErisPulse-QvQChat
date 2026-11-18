@@ -257,33 +257,59 @@ class PersonaManager:
         return out
 
     def _single_account_keys(self, platform: str) -> list[str]:
-        """单账户适配器的账户标识候选（账户名 + bot_id）。
+        """单账户适配器的账户标识候选（@bot_id + @账户名）。
 
-        适配器只剩一个账户后，事件 chat_key 不再带 @账户 后缀；而账户级绑定往往挂在
-        @账户名 / @bot_id 上，两边变体对不上就会一路落空到全局默认人格（"以为自己
-        是另一个旧账户"的根因）。仅在恰好一个账户时兜底，避免多账户下张冠李戴。
+        适配器只剩一个账户后，事件 chat_key 不再带 @账户 后缀（inbox 的隔离策略：
+        在线 bot < 2 不加，为存量会话兼容）；而账户级绑定往往挂在 @账户名 / @bot_id
+        上，两边变体对不上就会一路落空到全局默认人格（"以为自己是另一个旧账户"的根因）。
+
+        判定用 adapter.list_bots(platform)（与 inbox 同一数据源：在线 bot 集合）——
+        配置里可能残留停用/掉登录的旧账户，以在线集合恰有一个为准；只有唯一在线 bot
+        才兜底，避免多账户下张冠李戴。名字变体从 adapter.accounts 的 bot_id 反查补齐。
         """
         if not platform:
             return []
+        platform = str(platform)
+        bot_ids: list[str] = []
         try:
-            adapter = self.sdk.adapter.get(str(platform))
+            bots = self.sdk.adapter.list_bots(platform) or {}
+            per_platform = bots.get(platform, bots) if isinstance(bots, dict) else {}
+            if isinstance(per_platform, dict) and len(per_platform) == 1:
+                bot_ids.append(str(next(iter(per_platform))))
         except Exception:
-            return []
-        accounts = getattr(adapter, "accounts", None) if adapter is not None else None
-        if not isinstance(accounts, dict) or len(accounts) != 1:
-            return []
+            bot_ids = []
+        if not bot_ids:
+            # list_bots 不可用时的回退：配置账户恰好一个也视为唯一
+            try:
+                adapter = self.sdk.adapter.get(platform)
+                accounts = getattr(adapter, "accounts", None) if adapter is not None else None
+                if isinstance(accounts, dict) and len(accounts) == 1:
+                    name, cfg = next(iter(accounts.items()))
+                    cfg_bot = cfg.get("bot_id") if isinstance(cfg, dict) else getattr(cfg, "bot_id", None)
+                    bot_ids.append(str(cfg_bot) if cfg_bot else "")
+                    if str(name):
+                        bot_ids.append("@" + str(name))  # 带 @ 前缀标记账户名候选
+            except Exception:
+                return []
         keys: list[str] = []
-        for acct_name, cfg in accounts.items():
-            if str(acct_name):
-                keys.append("@" + str(acct_name))
-            bot_id = None
-            if isinstance(cfg, dict):
-                bot_id = cfg.get("bot_id")
-            elif cfg is not None:
-                bot_id = getattr(cfg, "bot_id", None)
-            if bot_id:
-                keys.append("@" + str(bot_id))
-        return keys
+        for item in bot_ids:
+            item = str(item)
+            if not item:
+                continue
+            keys.append(item if item.startswith("@") else "@" + item)
+# bot_id → 配置账户名（绑定可能挂在名字变体上，两种都试）
+        if keys:
+            try:
+                adapter = self.sdk.adapter.get(platform)
+                accounts = getattr(adapter, "accounts", None) if adapter is not None else None
+                if isinstance(accounts, dict):
+                    for acct_name, cfg in accounts.items():
+                        cfg_bot = cfg.get("bot_id") if isinstance(cfg, dict) else getattr(cfg, "bot_id", None)
+                        if cfg_bot and "@" + str(cfg_bot) in keys and str(acct_name):
+                            keys.append("@" + str(acct_name))
+            except Exception:
+                pass
+        return list(dict.fromkeys(keys))
 
     def resolve(self, chat_key: str) -> dict:
         """绑定回落链（从具体到宽泛，首个命中生效）：

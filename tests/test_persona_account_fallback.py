@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from QvQChat.agent.persona import BINDING_PREFIX, PersonaManager
 
 
-def _sdk(accounts: dict | None):
+def _sdk(accounts: dict | None, online_bots: dict | None = None):
     storage = SimpleNamespace()
 
     class _S:
@@ -30,6 +30,12 @@ def _sdk(accounts: dict | None):
                 return None
             return SimpleNamespace(accounts=accounts)
 
+        def list_bots(self, name):
+            # 与 inbox 同款数据源：返回 {platform: {bot_id: meta}}；未提供时回退由 accounts 推导
+            if name != "snowluma" or online_bots is None:
+                return {}
+            return {"snowluma": online_bots}
+
     return SimpleNamespace(storage=_S(), adapter=_Adapters())
 
 
@@ -38,8 +44,11 @@ def _persona(pid: str, name: str) -> dict:
 
 
 def test_single_account_binding_hit_without_suffix():
-    # 适配器只剩一个账户（名 Amer，bot_id 643319481），绑定挂在 @Amer / @643319481
-    sdk = _sdk({"Amer": SimpleNamespace(bot_id="643319481")})
+    # 在线 bot 恰一个（643319481），绑定挂在 @账户名 / @bot_id
+    sdk = _sdk(
+        {"Amer": SimpleNamespace(bot_id="643319481")},
+        online_bots={"643319481": {"status": "online"}},
+    )
     sdk.storage.set("QvQChat:personas", {"amer": _persona("amer", "Amer")})
     mgr = PersonaManager(sdk)
     mgr.bind("@Amer", "amer")
@@ -48,6 +57,48 @@ def test_single_account_binding_hit_without_suffix():
     persona = mgr.resolve("snowluma:private:2694611137")
     assert persona["id"] == "amer"
     assert persona["name"] == "Amer"
+
+
+def test_binding_by_bot_id_with_stale_account_in_config():
+    # 配置里残留停用/掉登录的旧账户，但在线 bot 只剩一个——以在线集合为准命中 @bot_id
+    sdk = _sdk(
+        {
+            "Amer": SimpleNamespace(bot_id="643319481"),
+            "Eris": SimpleNamespace(bot_id="1325859446"),
+        },
+        online_bots={"643319481": {"status": "online"}},
+    )
+    sdk.storage.set("QvQChat:personas", {"amer": _persona("amer", "Amer")})
+    mgr = PersonaManager(sdk)
+    mgr.bind("@643319481", "amer")
+
+    assert mgr.resolve("snowluma:private:2694611137")["id"] == "amer"
+
+
+def test_accounts_dict_fallback_without_list_bots():
+    # list_bots 未提供在线集合时，配置账户恰好一个也兜底
+    sdk = _sdk({"Amer": SimpleNamespace(bot_id="643319481")})
+    sdk.storage.set("QvQChat:personas", {"amer": _persona("amer", "Amer")})
+    mgr = PersonaManager(sdk)
+    mgr.bind("@Amer", "amer")
+
+    assert mgr.resolve("snowluma:private:2694611137")["id"] == "amer"
+
+
+def test_multiple_online_bots_do_not_guess():
+    # 在线 bot 两个：无法判定归属，不猜（落全局默认）
+    sdk = _sdk(
+        {
+            "Amer": SimpleNamespace(bot_id="643319481"),
+            "Eris": SimpleNamespace(bot_id="1325859446"),
+        },
+        online_bots={"643319481": {"status": "online"}, "1325859446": {"status": "online"}},
+    )
+    sdk.storage.set("QvQChat:personas", {"amer": _persona("amer", "Amer")})
+    mgr = PersonaManager(sdk)
+    mgr.bind("@Amer", "amer")
+
+    assert mgr.resolve("snowluma:private:2694611137")["id"] != "amer"
 
 
 def test_single_account_binding_hit_by_bot_id():
