@@ -43,9 +43,9 @@
     ["trigger_mode", "群聊触发方式", "select", "chat", 3, ["follow", "all", "at_only", "lurk", "off"]],
     ["reply_split", "长回复分段投递", "select", "chat", 4, ["paragraph", "off"]],
     ["typing_speed", "分段打字速度倍率", "number", "chat", 5],
-    ["max_tool_rounds", "单回合工具轮数上限", "number", "agent", 1],
-    ["multi_agent", "多智能体（spawn_agent 后台派单）", "switch", "agent", 2],
-    ["subjob_timeout", "后台子智能体超时秒数", "number", "agent", 3],
+    ["max_tool_rounds", "单回合工具轮数上限", "number", "tools", 1],
+    ["multi_agent", "多智能体（spawn_agent 后台派单）", "switch", "tools", 2],
+    ["subjob_timeout", "后台子智能体超时秒数", "number", "tools", 3],
     ["tool_select", "动态工具注入", "select", "tools", 1, ["auto", "on", "off"]],
     ["tool_select_threshold", "注入触发工具数阈值", "number", "tools", 2],
     ["trust_agent", "完全信任（跳过危险操作确认）", "switch", "security", 1, null, true],
@@ -60,7 +60,7 @@
       choices: f[5] || null, dangerous: !!f[6], value: CONFIG_DRAFT[f[0]],
     };
   });
-  var CONFIG_GROUPS = ["chat", "agent", "tools", "security"];
+  var CONFIG_GROUPS = [{ id: "model" }, { id: "chat" }, { id: "tools" }, { id: "security" }];
 
   var PROVIDERS = [
     { id: "deepseek", name: "DeepSeek", base_url: "https://api.deepseek.com/v1", api_key_masked: "********c3f9", enabled: true, models: [
@@ -427,7 +427,7 @@
             { text: "偏好简洁直接的回复风格", ts: NOW - 172800 },
           ],
         });
-        case "/api/qvq/config": return json({ fields: CONFIG_FIELDS, groups: CONFIG_GROUPS });
+        case "/api/qvq/config": return json(window.GENERATED_CONFIG || { fields: CONFIG_FIELDS, groups: CONFIG_GROUPS });
         case "/api/qvq/plugin_settings": return json({ modules: [
           { module: "MyServer", title: "MyServer", config_key: "MyServer",
             schema: { fields: {

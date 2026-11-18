@@ -81,6 +81,14 @@ window.PageConfig = {
           };
         });
     },
+    navItems() {
+      // 数组兜底：groups 数据异常时不至于抛 forEach not a function；备份是设置页的普通末段
+      var items = Array.isArray(this.groups) ? this.groups.slice() : [];
+      if (items.length) {
+        items.push({ id: "backup", label: t("nav_backup"), fields: [], dirty: false });
+      }
+      return items;
+    },
   },
   methods: {
     toDraft(field, value) {
@@ -111,7 +119,9 @@ window.PageConfig = {
         var rawGroups = (data && data.groups) || [];
         // groups 兼容：数组 [{id,label}] 为常规形态；字典 {id:...} 转数组
         if (Array.isArray(rawGroups)) {
-          self.groupOrder = rawGroups;
+          self.groupOrder = rawGroups.map(function (g) {
+            return typeof g === "string" ? { id: g } : g;
+          });
         } else if (rawGroups && typeof rawGroups === "object") {
           self.groupOrder = Object.keys(rawGroups).map(function (k) {
             var v = rawGroups[k];
@@ -148,14 +158,6 @@ window.PageConfig = {
         text = text ? text + " · " + extra : extra;
       }
       return text;
-    },
-    navItems() {
-      // 数组兜底：groups/groupOrder 数据异常（旧接口/缓存）时不至于抛 forEach not a function
-      var items = Array.isArray(this.groups) ? this.groups.slice() : [];
-      if (items.length) {
-        items.push({ id: "backup", label: t("nav_backup"), fields: [], dirty: false });
-      }
-      return items;
     },
     spy() {
       if (!this.scroller) return;
@@ -264,7 +266,7 @@ window.PageConfig = {
     '        <span class="dot" v-if="g.dirty"></span>',
     '      </button>',
     '    </nav>',
-    '    <div class="doc-body" v-if="!loading">',
+    '    <div class="doc-body" v-if="loading">',
     '      <div class="qvq-loading"><i></i>{{ t("loading") }}</div>',
     '    </div>',
     '    <div class="doc-body" v-else>',
