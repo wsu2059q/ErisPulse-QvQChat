@@ -104,3 +104,24 @@ def test_task_model_type_tier_group_vs_private():
     assert got_private["id"] == "p1:smart"
     # 无 chat_key 回落 chat 档
     assert pool.resolve_task_model(TaskSpec(kind="chat"))["id"] == "p1:plain"
+
+
+def test_budget_quiet_hours():
+    """时段礼仪：静默窗内参与预算直接拒；窗外不受影响。"""
+    import asyncio, time
+    main = FakeMain()
+    main.cfg.participation_quiet_hours = "23:00-07:00"
+    budget = main.conversations and None
+    from QvQChat.participation.budget import SpeechBudget
+    b = SpeechBudget(main.sdk, main.cfg)
+    # 构造 23:30 与 12:00 两个时刻
+    t_night = time.mktime(time.strptime(time.strftime("%Y-%m-%d") + " 23:30", "%Y-%m-%d %H:%M"))
+    t_noon = time.mktime(time.strptime(time.strftime("%Y-%m-%d") + " 12:00", "%Y-%m-%d %H:%M"))
+    ok_night, reason = b.allow("s:q:1", "interject", now=t_night)
+    ok_noon, _ = b.allow("s:q:1", "interject", now=t_noon)
+    assert not ok_night and "静默" in reason or "Quiet" in reason or "silent" in reason.lower() or "quiet" in reason.lower()
+    assert ok_noon
+    # 跨零点：01:00 仍在窗内
+    t_early = time.mktime(time.strptime(time.strftime("%Y-%m-%d") + " 01:00", "%Y-%m-%d %H:%M"))
+    ok_early, _ = b.allow("s:q:2", "interject", now=t_early)
+    assert not ok_early

@@ -214,6 +214,7 @@ class QvQConfig(BaseConfig):
     humanize_recall_interval_hours: int = field(default=72, metadata=_desc("humanize_recall_interval_hours", "「记得你」记忆回捞提示的最小间隔（小时/用户，0 关闭该提示；相关记忆本身仍正常注入）", "humanize", 6, "number"))
     scene_roster_enabled: bool = field(default=True, metadata=_desc("scene_roster_enabled", "群聊场景注入成员名册（最近发言者，供模型认出群友）", "chat", 98, "switch"))
     scene_roster_max: int = field(default=20, metadata=_desc("scene_roster_max", "成员名册最多注入人数（0 关闭）", "chat", 99, "number"))
+    scene_reunion_hours: float = field(default=12.0, metadata=_desc("scene_reunion_hours", "重逢感知：距上次对话超过该小时数时在场景注记告知模型（0 关闭）", "chat", 100, "number"))
     humanize_recall_on_cold_only: bool = field(default=True, metadata=_desc("humanize_recall_on_cold_only", "回捞提示仅在对方先发起对话的回合出现，任务/定时触发的回合不提旧事", "humanize", 7, "switch"))
     humanize_budget_seconds: float = field(default=7.0, metadata=_desc("humanize_budget_seconds", "单次回复总响应预算（秒，防抖+生成+打字延迟）：超时按 延迟减半→归零→多条合并为一条 降级，话一定说完只是放弃节奏；0 关闭", "humanize", 8, "number", minimum=0, maximum=60))
     humanize_interrupt: bool = field(default=True, metadata=_desc("humanize_interrupt", "硬打断：上一轮回复还没发完时，收到强信号立即丢弃未发短句，新消息优先处理（已发出的句子不撤）", "humanize", 9, "switch"))
@@ -349,6 +350,7 @@ class QvQConfig(BaseConfig):
     participation_hourly_limit: int = field(default=8, metadata=_desc("participation_hourly_limit", "每群每小时机器人主动发言上限（插话+主动开口，0 不限），超出后本小时静默", "participation", 4, "number"))
     participation_cooldown_seconds: int = field(default=300, metadata=_desc("participation_cooldown_seconds", "同群两次发言的最小间隔秒数（0 不限），冷却期内不再插话", "participation", 5, "number"))
     participation_proactive_daily_limit: int = field(default=3, metadata=_desc("participation_proactive_daily_limit", "全局每日主动发言（speak 服务）上限（0 不限），插话不计入", "participation", 6, "number"))
+    participation_quiet_hours: str = field(default="", metadata=_desc("participation_quiet_hours", "夜间静默窗（如 23:00-07:00，跨零点可用）：窗口内参与决策与主动发言直接静默（用户 @ 或命令不受影响）。留空关闭", "participation", 7, "text", placeholder="23:00-07:00"))
 
 # ===== 类型校验 seam：三个写入方（dashboard config_set / AI 工具 manage_config / 导入回灌）共用 =====
 

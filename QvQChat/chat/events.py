@@ -340,6 +340,12 @@ class EventsMixin:
                 return
             chat_key = self._event_chat_key(event)
             entry = self._inbox_add(event, "notice", chat_key)
+# 撤回感知：recall 类通知挂短时效注记，下一轮真实对话的 scene 注入
+# （上下文里被撤回的消息无从定位，注记是认知一致性的最小实现）
+            sub = self._event_sub_type(event)
+            if "recall" in sub:
+                who = self._ev_s(event, lambda: event.get_user_id()) or self._ev_s(event, lambda: event.get_operator_id()) or ""
+                self._scene_memo_push(chat_key, texts.t("scene_recall_note", who=who or "有人"))
 # 生态开放接口：qvq.notice 广播（listen_off 与 observe 同语义：群要隐私就静音）
             if not self.sessions.get_flag(chat_key, "listen_off"):
                 try:

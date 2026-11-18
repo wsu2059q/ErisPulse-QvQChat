@@ -84,12 +84,42 @@ class SpeechBudget:
 
 # ==================== 判定与记账 ====================
 
+    def _quiet_window(self) -> tuple[int, int, int, int] | None:
+        """静默窗解析：cfg "23:00-07:00" → (23,0,7,0)（可跨零点）；空/坏值 None。"""
+        raw = str(getattr(self._cfg(), "participation_quiet_hours", "") or "").strip()
+        if not raw or "-" not in raw:
+            return None
+        try:
+            a, b = raw.split("-", 1)
+            h1, m1 = (int(x) for x in a.strip().split(":"))
+            h2, m2 = (int(x) for x in b.strip().split(":"))
+        except (ValueError, TypeError):
+            return None
+        if not (0 <= h1 <= 23 and 0 <= h2 <= 23 and 0 <= m1 <= 59 and 0 <= m2 <= 59):
+            return None
+        return (h1, m1, h2, m2)
+
+    @staticmethod
+    def _in_quiet_window(now: float, window: tuple[int, int, int, int]) -> bool:
+        import datetime as _dt
+
+        t = _dt.datetime.fromtimestamp(now)
+        cur = t.hour * 60 + t.minute
+        start = window[0] * 60 + window[1]
+        end = window[2] * 60 + window[3]
+        if start <= end:
+            return start <= cur < end
+        return cur >= start or cur < end  # 跨零点
+
     def allow(self, chat_key: str, kind: str, now: float | None = None) -> tuple[bool, str]:
         """预算是否放行一次发言；拒绝时第二个返回值为人类可读原因（texts）。"""
         chat_key = str(chat_key or "")
         if not chat_key:
             return False, "empty chat_key"
         now = time.time() if now is None else float(now)
+        window = self._quiet_window()
+        if window and self._in_quiet_window(now, window):
+            return False, texts.t("participate_quiet_hours", window=f"{window[0]:02d}:{window[1]:02d}-{window[2]:02d}:{window[3]:02d}")
         hourly = self._hourly()
         cooldown = self._cooldown()
         daily = self._daily()

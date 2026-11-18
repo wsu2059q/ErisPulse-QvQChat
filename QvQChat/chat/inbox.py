@@ -1561,6 +1561,14 @@ class InboxMixin(RecoveryMixin):
             mutes_note = self._mutes_note(chat_key)
             if mutes_note:
                 scene += mutes_note
+# 重逢感知：距上次对话超过阈值时告知模型——隔三天回来接得像隔三秒一样是拟人化穿帮点
+            reunion = self._reunion_note(chat_key)
+            if reunion:
+                scene += reunion
+# 短时效场景注记消费（撤回等认知事件，事件侧写入、本轮消费即清）
+            memo = self._scene_memo_pop(chat_key)
+            if memo:
+                scene += memo
 # 非消息事件来源注记（通知/请求唤醒的回合）：让模型知道这不是用户发言
             ev_type = ""
             try:
@@ -1582,6 +1590,11 @@ class InboxMixin(RecoveryMixin):
                     scene += texts.t("scene_self_identity", user_id=self_uid or "-", nickname=self_nick or "-", account=self_acct or "-")
             except Exception:
                 pass
+# 多人分流：聚合回合合并了多个独立发言者时，提示逐人分段回应（防"只答最后一个人"）
+            if is_group and len(items) > 1:
+                speakers = {str(i.get("sender_id") or "") for i in items if isinstance(i, dict) and i.get("sender_id")}
+                if len(speakers) > 1:
+                    scene += texts.t("scene_multi_speakers", n=len(speakers))
             ctx.scene_note = scene
             combined_text = "\n".join(str(i.get("text") or "") for i in items if i.get("text"))
             try:
@@ -2390,6 +2403,52 @@ class InboxMixin(RecoveryMixin):
             else:
                 seeded.append({"role": "assistant", "content": text})
         return seeded
+
+    def _scene_memo_push(self, chat_key: str, text: str) -> None:
+        """短时效场景注记（10 分钟过期）：撤回等认知事件，下一轮对话消费。"""
+        if not chat_key or not text:
+            return
+        key = "QvQChat:scene_memo:" + chat_key
+        items = self.sdk.storage.get(key, [])
+        items = [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
+        now = time.time()
+        items = [x for x in items if now - float(x.get("ts") or 0) < 600]
+        items.append({"text": text, "ts": now})
+        self.sdk.storage.set(key, items)
+
+    def _scene_memo_pop(self, chat_key: str) -> str:
+        """取出并清空未过期注记（消费即清，只影响下一轮）。"""
+        key = "QvQChat:scene_memo:" + chat_key
+        items = self.sdk.storage.get(key, [])
+        self.sdk.storage.delete(key)
+        now = time.time()
+        fresh = [x for x in items if isinstance(x, dict) and now - float(x.get("ts") or 0) < 600] if isinstance(items, list) else []
+        return "".join(str(x.get("text") or "") for x in fresh)
+
+    def _reunion_note(self, chat_key: str) -> str:
+        """重逢注记：state.updated 距今超过 scene_reunion_hours 时生成时长文案。"""
+        try:
+            hours = float(getattr(self.cfg, "scene_reunion_hours", 12.0) or 0)
+        except (TypeError, ValueError):
+            hours = 0.0
+        if hours <= 0:
+            return ""
+        state = self.sdk.storage.get("QvQChat:conv:" + chat_key, None)
+        last = float(state.get("updated") or 0) if isinstance(state, dict) else 0.0
+        if not last:
+            return ""
+        gap = utils.now_ts() - last
+        if gap < hours * 3600:
+            return ""
+        if gap >= 30 * 86400:
+            dur = f"{int(gap // (30 * 86400))} 个月"
+        elif gap >= 86400:
+            dur = f"{int(gap // 86400)} 天"
+        elif gap >= 3600:
+            dur = f"{int(gap // 3600)} 小时"
+        else:
+            dur = f"{max(1, int(gap // 60))} 分钟"
+        return texts.t("scene_reunion", dur=dur)
 
     async def _group_roster(self, chat_key: str, platform: str, group_id: str) -> str:
         """群成员名册文本：供 scene 注入，让模型认出群友。
