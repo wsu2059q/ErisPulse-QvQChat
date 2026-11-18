@@ -741,6 +741,19 @@ class ConfigApiMixin:
         platforms = sorted({k.split(":", 1)[0] for k in chat_keys if ":" in k})
         skill_names = [str(item.get("name") or "") for item in self.main.skills.list_skills()]
         skill_names = [k for k in skill_names if k]
+# 管理员候选：框架主人表（全局+平台）——可视化下拉的选项来源；
+# admins 配置本身仍是权威（可加框架主人之外的人），主人只是默认候选
+        master_choices = []
+        try:
+            from ..Main import framework_masters
+
+            g_masters, p_masters = framework_masters()
+            pool_set = {str(x) for x in g_masters}
+            for per in (p_masters or {}).values():
+                pool_set |= {str(x) for x in per}
+            master_choices = sorted(pool_set)
+        except Exception:
+            master_choices = []
         list_choices = {
             "admin_tools": tool_names,
             "safe_tools": tool_names,
@@ -789,7 +802,9 @@ class ConfigApiMixin:
                 "dangerous": bool(ui.get("dangerous")),
                 "items": ui.get("items"),
             }
-            if f.name in list_choices:
+            if f.name == "admins":
+                field["choices"] = sorted(set(master_choices) | {str(x) for x in (value or []) if str(x).strip()})
+            elif f.name in list_choices:
                 field["choices"] = list_choices[f.name]
             elif f.name in model_keys:
                 field["choices"] = model_choices

@@ -208,7 +208,12 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
                 ctx.main.logger.warning(f"send_message forward failed, fallback: {e}")
         if used:
             _record_sent(ctx, platform, target_type, target_id)
-            return texts.t("sent_as_forward")
+# 回显各节首行：转发节点正文在 QQ 上要展开才看得到，工具输出必须带内容摘要
+# （面板 rounds 的 tool.out 与 AI 自身都靠这个知道"发出去了什么"）
+            summary = " / ".join(
+                (s2.split("\n", 1)[0] or "…")[:60] for s2 in sections if s2 and s2.strip()
+            )
+            return texts.t("sent_as_forward", summary=summary[:400])
 
 # 多账户后端：默认绑接收事件的账户（ctx.self_id），否则适配器按默认 bot 发出
     chain = adapter.Send
