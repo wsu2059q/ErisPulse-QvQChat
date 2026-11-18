@@ -165,6 +165,8 @@ class ModelPool:
             "models": data.get("models") if isinstance(data.get("models"), list) else [],
 # provider 级禁用开关：临时下线整个供应方（模型链跳过；重新启用即恢复）
             "enabled": bool(data.get("enabled", True)),
+# 提供商默认思考强度：模型未单独设置时生效（list_models 透出 provider_reasoning_effort）
+            "reasoning_effort": str(data.get("reasoning_effort") or ""),
         }
         if not entry["base_url"]:
             raise EngineError(texts.t("provider_base_url_required"))

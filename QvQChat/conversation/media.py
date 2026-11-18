@@ -19,8 +19,8 @@ from .. import texts, utils
 # 只认"括号 + 冒号 + 内容"的完整形态；裸标签 [表情]/[语音] 由 utils 的
 # 假媒体清扫处理，两者互不抢口径
 _MARKER_RE = re.compile(
-    r"[\[［【]\s*(表情包|表情|贴图|sticker|语音|声音|音声|voice|audio)\s*[:：]\s*"
-    r"([^\[\]［］【】\n]*?)\s*[\]］】]",
+    r"[\[［【（(]\s*(表情包|表情|贴图|sticker|语音|声音|音声|voice|audio)\s*[:：]\s*"
+    r"([^\[\]［］【】()（）\n]*?)\s*[\]］】)）]",
     re.IGNORECASE,
 )
 _VOICE_WORDS = {"语音", "声音", "音声", "voice", "audio"}

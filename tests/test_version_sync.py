@@ -1,8 +1,4 @@
-"""版本防呆：pyproject 构建版本与运行时 __version__ 必须一致。
-
-只在 version.py bump、漏改 pyproject 会导致构建出的 wheel 仍是旧版本号
-（发布事故重现过一次）——用测试把两处锁死。
-"""
+"""版本防呆：pyproject 构建版本与运行时 __version__ 必须一致。"""
 import re
 from pathlib import Path
 

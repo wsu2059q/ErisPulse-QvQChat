@@ -212,6 +212,13 @@ class FakeAdapterManager:
     def list_bots(self, platform):
         return {platform: self.bots}
 
+    def get_status_summary(self):
+        return {"adapters": {
+            name: {"status": "started", "enabled": True,
+                   "bots": {bid: {"status": "online", "last_active": 0, "info": {}} for bid in self.bots}}
+            for name in self._adapters
+        }}
+
     def list_registered(self):
         return list(self._adapters)
 
@@ -521,6 +528,7 @@ def make_config(**overrides):
         view_token="",
         daily_token_limit=0,
         usage_retention_days=14,
+        think_prefill_text="",
     )
     base.update(overrides)
     return SimpleNamespace(**base)

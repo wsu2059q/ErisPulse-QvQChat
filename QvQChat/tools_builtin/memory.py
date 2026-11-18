@@ -16,8 +16,7 @@ def _schema(properties: dict, required: list[str]) -> dict:
 
 
 def _scope_key(ctx: ToolContext, scope: str) -> str:
-# user 维度：跨会话共享的"关于这个人"记忆库（同一 platform 同一 user_id 全会话可见；
-# 仅在与其的私聊中自动注入，群聊不注入）。platform/user_id 缺失时退回本会话。
+    # user 维度：同一 platform 同一 user_id 全会话共享，仅私聊自动注入；缺失时退回本会话键
     if scope == "user":
         if ctx.user_id and ctx.platform:
             return f"usermem:{ctx.platform}:{ctx.user_id}"

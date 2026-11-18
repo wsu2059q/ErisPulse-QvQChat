@@ -85,6 +85,15 @@ class TodoStore:
         self._save(chat_key, items)
         return item
 
+    def remove(self, chat_key: str, todo_id: str) -> bool:
+        """删除单条（面板用）：按 id 精确移除，不影响其余条目状态。"""
+        items = self._load(chat_key)
+        kept = [item for item in items if str(item.get("id")) != str(todo_id)]
+        if len(kept) == len(items):
+            return False
+        self._save(chat_key, kept)
+        return True
+
     def render(self, chat_key: str) -> str:
         """复选框文本（系统提示注入用）；空清单返回空串（不注入部件）。"""
         lines = []

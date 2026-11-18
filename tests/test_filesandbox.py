@@ -65,7 +65,19 @@ async def test_list_and_delete(ctx):
         await file_tools.delete_file(ctx, "b.txt/inner")
 
 
-def test_check_public_url_blocks_internal():
+def test_check_public_url_blocks_internal(monkeypatch):
+    # 环境无关的域名解析：公网域名固定解析到公网 IP
+    # （本机若开 VPN/TUN 的 fake-ip 模式，真实 DNS 会把任何域名解析进保留段）
+    import ipaddress as _ipa
+
+    def fake_getaddrinfo(host, *args, **kwargs):
+        try:
+            ip = _ipa.ip_address(host)
+        except ValueError:
+            ip = _ipa.ip_address("93.184.216.34")
+        return [(2, 1, 6, "", (str(ip), 0))]
+
+    monkeypatch.setattr(file_tools.socket, "getaddrinfo", fake_getaddrinfo)
     for url in (
         "http://localhost/x",
         "http://127.0.0.1/x",

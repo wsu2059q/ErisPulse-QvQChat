@@ -726,6 +726,32 @@ class ConfigApiMixin:
     async def config_get(self, request):
         from ErisPulse.Core import i18n
 
+# 模型 id 类字段：池内已有模型直接作为选项，前端渲染下拉而非手填
+        model_choices = [str(m.get("id") or "") for m in self.main.pool.list_models()]
+        model_choices = [m for m in model_choices if m]
+        model_keys = {
+            "default_model", "aux_model", "handover_model",
+            "compact_model", "tool_select_model",
+        }
+# 值域已知的列表字段：直接给候选，前端渲染为多选
+        tool_names = [t.name for t in self.main.registry.list()]
+        sessions = self.main.sessions.list_sessions()
+        chat_keys = [str(item.get("chat_key") or "") for item in sessions][:200]
+        chat_keys = [k for k in chat_keys if k]
+        platforms = sorted({k.split(":", 1)[0] for k in chat_keys if ":" in k})
+        skill_names = [str(item.get("name") or "") for item in self.main.skills.list_skills()]
+        skill_names = [k for k in skill_names if k]
+        list_choices = {
+            "admin_tools": tool_names,
+            "safe_tools": tool_names,
+            "disabled_tools": tool_names,
+            "chat_whitelist": chat_keys,
+            "participation_groups": chat_keys,
+            "participation_groups_exclude": chat_keys,
+            "skills_disabled": skill_names,
+            "forward_platforms": platforms,
+            "no_forward_platforms": platforms,
+        }
         fields = []
         for f in dc_fields(QvQConfig):
             meta = f.metadata or {}
@@ -746,25 +772,32 @@ class ConfigApiMixin:
             if secret and value not in (None, ""):
 # secret 值掩码回显：真实值不进浏览器
                 value = "******"
-            fields.append(
-                {
-                    "key": f.name,
-                    "value": value,
-                    "description": text,
-                    "group": str(ui.get("group") or "other"),
-                    "order": ui.get("order", 99),
-                    "widget": str(ui.get("widget") or "text"),
-                    "options": ui.get("options"),
-                    "type": QvQConfig.type_of(f.name),
-                    "min": ui.get("min"),
-                    "max": ui.get("max"),
-                    "step": ui.get("step"),
-                    "placeholder": ui.get("placeholder"),
-                    "secret": secret,
-                    "dangerous": bool(ui.get("dangerous")),
-                    "items": ui.get("items"),
-                }
-            )
+            field = {
+                "key": f.name,
+                "value": value,
+                "description": text,
+                "group": str(ui.get("group") or "other"),
+                "order": ui.get("order", 99),
+                "widget": str(ui.get("widget") or "text"),
+                "options": ui.get("options"),
+                "type": QvQConfig.type_of(f.name),
+                "min": ui.get("min"),
+                "max": ui.get("max"),
+                "step": ui.get("step"),
+                "placeholder": ui.get("placeholder"),
+                "secret": secret,
+                "dangerous": bool(ui.get("dangerous")),
+                "items": ui.get("items"),
+            }
+            if f.name in list_choices:
+                field["choices"] = list_choices[f.name]
+            elif f.name in model_keys:
+                field["choices"] = model_choices
+            elif f.name == "task_models":
+                field["widget"] = "model_map"
+                field["items"] = ["chat", "compact", "title", "vision", "toolselect", "announce"]
+                field["choices"] = model_choices
+            fields.append(field)
         return {"fields": fields, "groups": QvQConfig.groups()}
 
     async def config_set(self, request):

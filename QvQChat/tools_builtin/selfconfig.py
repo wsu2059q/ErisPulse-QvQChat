@@ -260,14 +260,20 @@ async def manage_config(ctx: ToolContext, action: str = "get", key: str = "", up
 
 
 def _plugin_config_class(sdk, module: str):
-    """插件 ConfigClass 解析（与 Dashboard 插件设置端点同源：模块注册名 → 模块类）。"""
+    """
+    {!--< internal-use >!--}
+    插件 ConfigClass 解析：模块注册名 → 模块类（与 Dashboard 插件设置端点同源）。
+    """
     classes = getattr(getattr(sdk, "module", None), "_module_classes", None) or {}
     cls = classes.get(str(module))
     return getattr(cls, "ConfigClass", None) if cls is not None else None
 
 
 def _plugin_field_meta(config_class) -> dict:
-    """ConfigClass → {field: {type, description, secret}}（描述经框架 i18n 解析）。"""
+    """
+    {!--< internal-use >!--}
+    ConfigClass → {field: {type, description, secret}}（描述经框架 i18n 解析）。
+    """
     from ErisPulse.runtime.config_schema import resolve_config_schema
 
     schema = resolve_config_schema(config_class) or {}
@@ -283,12 +289,15 @@ def _plugin_field_meta(config_class) -> dict:
 
 async def manage_plugin_config(ctx: ToolContext, action: str = "list", module: str = "",
                                key: str = "", values: dict | None = None) -> str:
-    """读写其他插件模块的声明式配置（仅限声明了 qvq_settings 的模块，admin 档）。
+    """
+    读写其他插件模块的声明式配置（仅限声明了 qvq_settings 的模块）。
 
-    与 Dashboard 插件设置页同一套框架管线：resolve_config_schema 出表单 →
-    dict_to_dataclass + validate_config 校验 → 逐键 sdk.config.setConfig（触发
-    目标模块 on_config_update 热更新）→ emit qvq.plugin_config 通知热加载。
-    框架对 config 写入不设权限墙——本工具的 admin 档就是唯一闸门。
+    :param ctx: [ToolContext] 工具上下文
+    :param action: [str] list / get / set (默认: "list")
+    :param module: [str] 目标模块注册名 (默认: "")
+    :param key: [str] get 时读取的单个配置键 (默认: "")
+    :param values: [dict] set 时 {config_key: value} 键值对 (默认: None)
+    :return: [str] 操作结果 JSON
     """
     main = ctx.main
     action = str(action or "list").lower()

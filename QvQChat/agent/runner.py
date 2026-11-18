@@ -10,6 +10,7 @@ from typing import Any
 
 from ..engine.base import ChatRequest, EngineError, TaskSpec
 from .. import texts, utils
+from ..conversation.policy import get_policy as _policy_get
 from ..prompts import CRITIQUE_PROMPT, REFLEXION_PLAN_PROMPT
 from ..utils import truncate
 from .tools import ToolContext, ToolRegistry
@@ -662,12 +663,23 @@ class AgentRunner:
             whitelist=persona_tools,
             disabled=list(getattr(self.config, "disabled_tools", []) or []),
         )
+# 会话级完全信任：面板给该会话开了 full_access → schema 不裁剪、动态注入跳过
+        full_access = bool(getattr(ctx, "_full_access_override", False) or False)
+        if not full_access and getattr(ctx, "main", None) is not None:
+            try:
+                full_access = bool(_policy_get(ctx.main.sdk, str(ctx.chat_key or "")).get("full_access"))
+            except Exception:
+                full_access = False
+            try:
+                ctx._full_access_override = full_access
+            except Exception:
+                pass
 # 权限对齐：非管理员看不到调不动的工具（避免模型反复调用然后被拒浪费轮次）
-        if schemas and not self._ctx_is_admin(ctx):
+        if schemas and not full_access and not self._ctx_is_admin(ctx):
             schemas = [s for s in schemas if self._tool_visible_nonadmin(str(s.get("function", {}).get("name") or ""))]
 # 动态工具注入（权限过滤之后：只从"本来就能用"的工具里挑）
         hidden_by_select: list[str] = []
-        if schemas and getattr(self, "selector", None) is not None:
+        if schemas and not full_access and getattr(self, "selector", None) is not None:
             visible_names = {str(s.get("function", {}).get("name") or "") for s in schemas}
             user_text = self._last_user_text(contexts)
             selected = await self.selector.select(user_text, schemas, chat_key=ctx.chat_key)
@@ -744,9 +756,23 @@ class AgentRunner:
 
         for loop_index in range(max_rounds):
             messages = [{"role": "system", "content": system}] + contexts
+# 思考前置词：内联思考模型首轮注入 <think>+前置词，原生 reasoning 模型走系统提示引导
+            think_word = str(getattr(self.config, "think_prefill_text", "") or "").strip()
+            think_native = self._pool_capability("reasoning") == "yes"
+            think_lead = (
+                bool(think_word)
+                and loop_index == 0
+                and not self._prefill_blocked(model)
+                and not think_native
+            )
+            if think_word and think_native and loop_index == 0:
+                messages[0]["content"] += texts.t("think_native_guide", word=think_word)
             use_prefill = bool(prefill) and loop_index == 0 and not self._prefill_blocked(model)
-            if use_prefill:
-                messages.append({"role": "assistant", "content": prefill})
+            if use_prefill or think_lead:
+                tail = prefill if use_prefill else ""
+                if think_lead:
+                    tail = (tail + "\n" if tail else "") + "<think>\n" + think_word
+                messages.append({"role": "assistant", "content": tail})
             request = ChatRequest(
                 messages=messages,
                 tools=schemas or None,
@@ -755,7 +781,7 @@ class AgentRunner:
                 max_tokens=max_tokens,
                 needs=chat_needs,
             )
-            if use_prefill:
+            if use_prefill or think_lead:
                 try:
                     response = await self._dispatch("chat", request, needs=chat_needs, model=model, prefer=prefer,
                                                     on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning,

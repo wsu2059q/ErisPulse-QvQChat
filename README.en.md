@@ -92,6 +92,8 @@ The main command is `/qvq` (alias `/qvqchat`).
 
 ## Web console
 
+**[Live demo](https://qvqdemo.erisdev.com)** — the full console with mocked data, no install needed. Try "ping bilibili" in Chat to watch tool calls stream in, or "fetch GitHub trending" to spawn a background agent.
+
 <img src=".github/assets/chat.png" width="49%" alt="Chat" /> <img src=".github/assets/models.png" width="49%" alt="Models" />
 <img src=".github/assets/tools.png" width="49%" alt="Tools" /> <img src=".github/assets/audit.png" width="49%" alt="Audit" />
 

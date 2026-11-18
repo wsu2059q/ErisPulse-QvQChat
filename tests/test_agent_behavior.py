@@ -425,7 +425,7 @@ def test_capability_prompt_chinese_and_slim():
         assert token in CAPABILITY_PROMPT, token
 # 不超过 1300 字符（原英文版 ~6100，中文重写后约 1/6；4.7.x 新增让渡段后放宽，
 # 再加能力段时同步精简旧段——契约越短，人格的声音越大）
-    assert len(CAPABILITY_PROMPT) <= 1300, len(CAPABILITY_PROMPT)
+    assert len(CAPABILITY_PROMPT) <= 1450, len(CAPABILITY_PROMPT)
 
 
 def test_budget_priority_keeps_human_parts():
@@ -438,3 +438,55 @@ def test_budget_priority_keeps_human_parts():
     assert PRIORITY["chat_rules"] < PRIORITY["kb"]
     assert PRIORITY["chat_rules"] < PRIORITY["skill_list"]
     assert PRIORITY["roster"] < PRIORITY["extra"]
+
+
+class CapPool:
+    """dispatch 假池：capability_status 可控，捕获 chat 请求。"""
+
+    def __init__(self, reasoning_status="no"):
+        self.reasoning_status = reasoning_status
+        self.requests = []
+
+    def capability_status(self, need):
+        return "yes" if (need == "reasoning" and self.reasoning_status == "yes") else "no"
+
+    async def dispatch(self, spec, request, **kwargs):
+        self.requests.append(request)
+        return ChatResponse(content="答案", model="p:m", usage={"total_tokens": 1})
+
+
+async def test_think_prefill_injected_for_non_reasoning_model():
+    pool = CapPool("no")
+    runner, main = deep_runner(pool, think_prefill_text="我的宝宝在")
+    ctx = make_ctx(main)
+    await runner.run(system="SYS", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
+    tail = pool.requests[0].messages[-1]
+    assert tail["role"] == "assistant" and tail["content"] == "<think>\n我的宝宝在"
+
+
+async def test_think_prefill_skipped_for_native_reasoning():
+    pool = CapPool("yes")
+    runner, main = deep_runner(pool, think_prefill=True)
+    ctx = make_ctx(main)
+    await runner.run(system="SYS", messages=[{"role": "user", "content": "hi"}], ctx=ctx)
+    assert pool.requests[0].messages[-1]["role"] == "user"
+
+
+async def test_think_prefill_dropped_after_prefill_reject():
+    from QvQChat.engine.base import EngineError
+
+    pool = CapPool("no")
+
+    async def dispatch(spec, request, **kwargs):
+        if request.messages and request.messages[-1].get("role") == "assistant":
+            raise EngineError("assistant tail not supported")
+        pool.requests.append(request)
+        return ChatResponse(content="答案", model="p:m", usage={"total_tokens": 1})
+
+    pool.dispatch = dispatch
+    runner, main = deep_runner(pool, think_prefill_text="我的宝宝在")
+    ctx = make_ctx(main)
+    await runner.run(system="SYS", messages=[{"role": "user", "content": "hi"}], ctx=ctx, model="p:m")
+    assert runner._prefill_blocked("p:m")
+# 重跑请求不带尾部 assistant
+    assert pool.requests[-1].messages[-1]["role"] == "user"

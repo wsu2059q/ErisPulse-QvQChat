@@ -269,6 +269,7 @@ class QvQConfig(BaseConfig):
     eco_call_timeout: int = field(default=90, metadata=_desc("eco_call_timeout", "生态服务调用超时（秒，0 不限）：超时向模型如实报错，不挂起回合", "eco", 7, "number"))
 
     mcp_timeout: int = field(default=30, metadata=_desc("mcp_timeout", "MCP 请求超时（秒）", "mcp", 1, "number"))
+    mcp_access: str = field(default="admin", metadata=_desc("mcp_access", "MCP 工具默认可见级别：admin 仅管理员 / safe 所有人（含普通群友）", "mcp", 2, "select", ["admin", "safe"]))
 
 # 内置 ErisPulse 文档（不经 MCP：按已安装框架版本自动同步框架仓库 docs/ 并本地检索）
     docs_builtin: bool = field(default=True, metadata=_desc("docs_builtin", "内置 ErisPulse 文档检索：注册 search_erispulse_docs 等工具，AI 写模块/查 API 时先查证文档", "mcp", 2, "switch"))
@@ -302,6 +303,7 @@ class QvQConfig(BaseConfig):
     skills_disabled: list[str] = field(default_factory=list, metadata=_desc("skills_disabled", "禁用的技能名列表", "skills", 2, "list", items="skills"))
     skill_dev: bool = field(default=True, metadata=_desc("skill_dev", "模块开发能力：启用内置 erispulse-dev 技能（开发流程/约定）与 reload_module 热加载工具（仅管理员）", "skills", 3, "switch"))
     multi_agent: bool = field(default=True, metadata=_desc("multi_agent", "多智能体：注册 spawn_agent 工具并在提示词中教模型把耗时的抓取/检索/长内容任务派给子智能体，自己先回复用户进度", "tools", 18, "switch"))
+    subjob_timeout: int = field(default=900, metadata=_desc("subjob_timeout", "后台子智能体单任务超时秒数（超时按失败回报发起会话；0 不限时）", "tools", 19, "number"))
 # 文件工作区沙箱：读/写/列/删/下载/打包对所有人开放但框死在沙箱内；沙箱外一律拒绝
     file_tools_enabled: bool = field(default=True, metadata=_desc("file_tools_enabled", "文件工作区沙箱工具（list/read/write/delete/download/zip + send_message file_path）：所有文件活动框死在本会话工作区内，敏感名（*.env/*.db/config*）拒绝读取，全部走审计", "tools", 19, "switch"))
     file_workdir: str = field(default="data/QvQChat/work", metadata=_desc("file_workdir", "文件工作区根目录（每会话一个子目录）", "tools", 20, "text"))
@@ -318,6 +320,8 @@ class QvQConfig(BaseConfig):
     effort_smalltalk: str = field(default="", metadata=_desc("effort_smalltalk", "简单场景自动降思考：难度路由（routing_enabled）判为 cheap 的消息注入此思考档位——off 尝试关闭思考（Qwen/GLM 系 extra_body），low/medium/high 为 reasoning_effort 档位（OpenAI o 系等），留空不干预。需同时开启难度路由", "chat", 74, "select", ["", "off", "low", "medium", "high"]))
     usage_warn_at: int = field(default=80, metadata=_desc("usage_warn_at", "今日用量达到 daily_token_limit 的该百分比时提示一次（100% 再提示一次）；0 关闭。仅设了 daily_token_limit 时生效", "chat", 84, "number"))
     storage_auto_maintain: bool = field(default=True, metadata=_desc("storage_auto_maintain", "每日自动存储维护：rounds/trace 双写去重、回收站与文件工作区过期清理", "chat", 81, "switch"))
+    storage_maintain_hours: int = field(default=24, metadata=_desc("storage_maintain_hours", "存储自动维护间隔（小时），0 关闭定时维护", "chat", 96, "number"))
+    think_prefill_text: str = field(default="", metadata=_desc("think_prefill_text", "思考前置词：内联思考模型（Qwen3/GLM 系）回复前注入 <think> 并接续此文本，思考流开头即人设口吻（如\"我的宝宝在\"）；原生 reasoning 模型（DeepSeek 系）经系统提示尽力引导；留空关闭", "chat", 97, "text"))
     trash_retention_days: int = field(default=14, metadata=_desc("trash_retention_days", "回收站保留天数（过期自动清理；撤销按钮在此期限内有效）", "chat", 82, "number"))
     work_retention_days: int = field(default=30, metadata=_desc("work_retention_days", "文件工作区会话目录保留天数（按最后修改时间；0 不清理）", "chat", 83, "number"))
     turn_timeout: float = field(default=900.0, metadata=_desc("turn_timeout", "单回合执行超时（秒）：回合超过该时长（任务卡死/模型无响应）自动收束并放行后续消息，部分输出照常入库；0 关闭", "chat", 46, "number"))

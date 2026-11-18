@@ -1,0 +1,4 @@
+build.py
+serve_dev.py
+wrangler.jsonc
+.assetsignore

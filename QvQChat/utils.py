@@ -13,6 +13,9 @@ from typing import Any
 TEXT_LIMIT = 4000
 OUTPUT_LIMIT = 8000
 
+# 发送通道偏好（Markdown/Html/Text）：send_message 尝试顺序，delivery 与工具共用
+REPLY_PREFERENCE = ("Markdown", "Html", "Text")
+
 
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 _DELAY_RE = re.compile(r"^(\d+)\s*([smhd])$", re.IGNORECASE)
@@ -31,9 +34,37 @@ STRAY_TAG_RE = re.compile(r"^\s*\[\[?(转发|直发)\]\]?\s*", re.MULTILINE)
 STRAY_TAG_INLINE_RE = re.compile(r"\[\[(转发|直发)\]\]")
 
 
+_MARKER_WIDTH_TRANS = str.maketrans({
+    "（": "[", "）": "]", "【": "[", "】": "]", "［": "[", "］": "]",
+})
+
+
+def marker_normalized(text: str) -> str:
+    """投递标记识别副本：全角括号归一为半角（等长替换，字符 span 与原文对齐）。"""
+    return str(text or "").translate(_MARKER_WIDTH_TRANS)
+
+
+def sub_marker_pattern(pattern, text: str, repl: str = "") -> str:
+    """在归一化副本上匹配标记正则，按等长 span 将替换应用到原文。
+
+    :param pattern: [re.Pattern] 标记正则（半角括号形态）
+    :param text: [str] 原始文本
+    :param repl: [str] 替换内容 (默认: "")
+    :return: [str] 处理后的原文
+    """
+    norm = marker_normalized(text)
+    out = text
+    for m in reversed(list(pattern.finditer(norm))):
+        out = out[:m.start()] + repl + out[m.end():]
+    return out
+
+
 def is_skip_reply(reply: str) -> bool:
-    """整条回复是否为自主跳过标记（[[不回复]]/[[skip]]，允许首尾空白）。"""
-    return bool(SKIP_TAG_RE.match(str(reply or "").strip()))
+    """整条回复是否为自主跳过标记（[[不回复]]/[[skip]]/空占位，允许首尾空白）。"""
+    text = marker_normalized(str(reply or "").strip())
+    if text in ("[空]", "(空)"):
+        return True
+    return bool(SKIP_TAG_RE.match(text))
 
 
 def strip_output_tag(reply: str) -> tuple[str, bool | None]:
@@ -41,7 +72,7 @@ def strip_output_tag(reply: str) -> tuple[str, bool | None]:
 
     返回 (剩余文本, force)：force=True 转发 / False 直发 / None 无标签（走自动规则）。
     """
-    tag = OUTPUT_TAG_RE.match(reply)
+    tag = OUTPUT_TAG_RE.match(marker_normalized(reply))
     if not tag:
         return reply, None
     return reply[tag.end():].strip(), tag.group(1) == "转发"
@@ -52,8 +83,8 @@ def strip_stray_tags(text: str) -> str:
 
     只处理标记语义明确的形态，不碰普通方括号文本。
     """
-    text = STRAY_TAG_INLINE_RE.sub("", str(text or ""))
-    text = STRAY_TAG_RE.sub("", text)
+    text = sub_marker_pattern(STRAY_TAG_INLINE_RE, str(text or ""))
+    text = sub_marker_pattern(STRAY_TAG_RE, text)
     return text.strip()
 
 
@@ -74,7 +105,10 @@ def strip_fake_media_prefix(reply: str) -> str:
     prev = None
     while prev != text:
         prev = text
-        text = FAKE_MEDIA_PREFIX_RE.sub("", text, count=1)
+        stripped = sub_marker_pattern(FAKE_MEDIA_PREFIX_RE, text)
+        if stripped == text:
+            break
+        text = stripped
     return text.strip()
 
 

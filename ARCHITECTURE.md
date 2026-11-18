@@ -56,7 +56,7 @@ QvQChat/
 └── dashboard/
     ├── manager.py           # REST/SSE 路由（统一鉴权 guard）+ /QvQChat/view 独立页 + 会话分享页 + OpenAI 兼容端点
     ├── live.py              # LiveStream / LiveRegistry：会话级流式状态与 SSE 订阅（打断/排队）
-    └── templates/           # view.html + chat/*.js + css/*.css + share.html（原生 JS，无构建步骤）
+    └── templates/           # web/（Vue3 + Naive UI，vendored 无构建步骤）+ share.html 分享页
 ```
 
 ## 数据流
@@ -146,7 +146,7 @@ run_prompt(chat_key, prompt, origin)
 
 ## Dashboard
 
-独立路由与侧边栏视窗同一页面：`manager.py` 经 `sdk.router` 注册 REST 路由与 `GET /QvQChat/view`（HTML 外壳，内联三模板），`register_view` 以 `iframe_url=/QvQChat/view` 挂进 Dashboard 侧边栏。前端为原生 JS，无构建步骤，内置 zh-CN / zh-TW / en / ja / ru 五语言词条，设置页按分类导航（模型/触发/安全/对话/记忆/工具/生态/MCP/任务/访问）。
+独立路由与侧边栏视窗同一页面：`manager.py` 经 `sdk.router` 注册 REST 路由与 `GET /QvQChat/view`（HTML 外壳，内联三模板），`register_view` 以 `iframe_url=/QvQChat/view` 挂进 Dashboard 侧边栏。前端为 Vue3 + Naive UI（vendored 进包，无构建步骤），内置 zh-CN / zh-TW / en / ja / ru 五语言词条，设置页按分类导航（模型/触发/安全/对话/记忆/工具/生态/MCP/任务/访问）。
 
 鉴权：每个 API 路由包一层 guard——有 Dashboard 用它的 `verify_request`，没有则校验自有令牌（Bearer 头或 `?token=`，与 `localStorage.__ep_tk__` / `qvq_token` 对应）；令牌无效返回 401，前端弹出登录浮层。`/QvQChat/view` 外壳本身不拦，数据接口全部要求令牌。对话页直接调用 `run_prompt`。
 

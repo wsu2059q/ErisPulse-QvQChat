@@ -265,7 +265,9 @@ class MCPManager:
                 parameters=schema,
                 handler=handler,
                 origin="mcp",
-                access="admin",
+                access=str(getattr(self.main.cfg, "mcp_access", "admin") or "admin").strip().lower()
+                if str(getattr(self.main.cfg, "mcp_access", "admin") or "admin").strip().lower() in ("admin", "safe")
+                else "admin",
                 meta={"server": name},
             ))
 

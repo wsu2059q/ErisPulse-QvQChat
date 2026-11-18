@@ -21,6 +21,8 @@
 
 ## 界面
 
+**在线演示**：[qvqdemo.erisdev.com](https://qvqdemo.erisdev.com) —— 无需安装、内置模拟数据的完整面板。对话页发「ping一下bilibili」看工具调用流式过程，「抓取一下GitHub」看后台智能体派单，「你来扮演病人」体验会话让渡。
+
 <img src=".github/assets/chat.png" width="860" alt="对话" />
 
 <img src=".github/assets/overview.png" width="49%" alt="概览" /> <img src=".github/assets/models.png" width="49%" alt="模型池" />

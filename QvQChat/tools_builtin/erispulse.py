@@ -8,7 +8,8 @@ from .. import texts, utils
 from ..agent.tools import Tool, ToolContext, ToolRegistry
 
 OBJECT_PARAMS = {"type": "object", "properties": {}, "required": []}
-REPLY_PREFERENCE = ("Markdown", "Html", "Text")
+# 常量本体在 utils（delivery 也要用）；此处保留名字再导出，兼容既有引用
+REPLY_PREFERENCE = utils.REPLY_PREFERENCE
 
 
 def _schema(properties: dict, required: list[str]) -> dict:

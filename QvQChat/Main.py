@@ -14,12 +14,13 @@ except ImportError:
 
 from . import texts, utils
 from .chat.cli import CliMixin
-from .chat.events import EventsMixin
+from .chat.events import EVENT_INBOX_KEY, EventsMixin
 from .chat.inbox import InboxMixin, _int_or_none, _num_or_none
 from .chat.usage import UsageMixin
 from .conversation.delivery import Delivery
 from .conversation import handover
 from .conversation.memory import MemoryStore
+from .conversation.policy import get_policy as _policy_get
 from .conversation.service import ConversationService, account_of as _account_of, make_chat_key, parse_chat_key, strip_isolation
 from .dashboard.live import bind as live_bind# noqa: F401 — 兼容引用（本体在 chat/inbox 使用）
 from .prompts import CAPABILITY_PROMPT# 本体已迁 prompts.py；导入即保持 QvQChat.Main.CAPABILITY_PROMPT 兼容引用
@@ -250,6 +251,13 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         self._interrupted_notes: dict = {}
         self._rate_window: dict = {}
         self._rate_notice_shown: dict = {}
+# 以下容器历史上靠 mixin 首用 getattr 兜底；显式声明让状态一目了然（兜底仍保留双保险）
+        self._interrupted_notes = getattr(self, "_interrupted_notes", {}) or {}
+        self._handover_cache: dict = {}
+        self._event_inbox: dict = {}
+        self._notice_rate: dict = {}
+        self._join_buffer: dict = {}
+        self._recent_friend_greeted: set = set()
 
     @staticmethod
     def get_load_strategy() -> ModuleLoadStrategy:
@@ -351,7 +359,25 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         return True
 
     async def on_config_update(self, old, new) -> None:
-        return
+        try:
+            scheduler = getattr(self, "scheduler", None)
+            if scheduler is None or new is None:
+                return
+            for key in (
+                "profile_enabled",
+                "profile_consolidate_hours",
+                "storage_auto_maintain",
+                "storage_maintain_hours",
+            ):
+                # config.set 通知不带变更前快照：与内存当前生效值比较，一致即跳过
+                if getattr(new, key, None) == getattr(self.cfg, key, None):
+                    continue
+                if key in ("profile_enabled", "profile_consolidate_hours"):
+                    scheduler.ensure_profile_task()
+                else:
+                    scheduler.ensure_storage_maintain_task()
+        except Exception as e:
+            self.logger.debug(f"builtin task reschedule failed: {e}")
 
     async def _startup(self) -> None:
         try:
@@ -590,6 +616,19 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
     def check_tool_permission(self, tool, ctx) -> tuple[bool, str]:
 # 必须传 Tool 对象本体：tool_allowed 靠 getattr(tool, "access", "admin") 判 safe，
 # 传 tool.name 字符串会让所有 safe 工具在调用期被当成 admin（普通用户连联网搜索都被拒）
+# 会话级完全信任（full_access，仅面板/管理端可设）：该会话全工具放行，一次 KV 读并缓存在 ctx 上
+        override = getattr(ctx, "_full_access_override", None)
+        if override is None:
+            try:
+                override = bool(_policy_get(self.sdk, getattr(ctx, "chat_key", "") or "").get("full_access"))
+            except Exception:
+                override = False
+            try:
+                ctx._full_access_override = override
+            except Exception:
+                pass
+        if override:
+            return True, ""
         return tool_allowed(self.cfg, tool, ctx.user_id, ctx.origin, ctx.platform, self._master_checker())
 
     def _master_checker(self):
@@ -624,6 +663,26 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 # 审计落盘失败不能完全静默
             self.logger.debug(f"audit persist failed: {e}")
 
+    def _inbox_notice(self, chat_key: str, summary: str) -> None:
+        """合成一条收件箱通知（不依赖平台事件对象）：超限丢弃等静默失败的可见化出口。"""
+        try:
+            key = EVENT_INBOX_KEY + "default"
+            entries = self.sdk.storage.get(key, [])
+            if not isinstance(entries, list):
+                entries = []
+            entries.append({
+                "id": f"notice-synthetic-{int(time.time() * 1000)}",
+                "ts": round(time.time(), 3),
+                "kind": "notice",
+                "account": "default",
+                "chat_key": str(chat_key or ""),
+                "summary": utils.truncate(str(summary or ""), 300),
+                "read": False,
+            })
+            self.sdk.storage.set(key, entries[-200:])
+        except Exception as e:
+            self.logger.debug(f"inbox notice failed: {e}")
+
     async def run_prompt(self, chat_key: str, prompt: str, persona_id: str = "",
                          origin: str = "task", send: bool = True, user_id: str = "",
                          model: str = "", task_kind: str = "chat", scene: str = "",
@@ -639,6 +698,9 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 checker = getattr(type(self), "_over_token_limit", None)
                 if checker is not None and checker(self, chat_key):
                     self.logger.info(f"over token limit, {origin} run_prompt skipped ({chat_key})")
+# 静默丢弃可见化：主动来源含子智能体回报——发起者/运营方至少能在收件箱看到"被跳过"
+                    if origin == "proactive":
+                        self._inbox_notice(chat_key, "令牌超限，一条主动消息（可能包含子智能体回报）被跳过")
                     return ""
             except Exception:
                 pass
@@ -827,11 +889,16 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
     async def handover_start(self, chat_key: str, setup: str, model: str = "",
                              listen: str = "inherit", max_turns: int = 0,
                              scene: str = "", **_) -> dict:
-        """会话让渡（编程入口）：把 chat_key 的对话窗口让渡给全新上下文的智能体。
+        """
+        开启会话让渡：该会话的用户消息此后由设定角色直接回复。
 
-        让渡期间该会话的用户消息由设定角色直接回复（sub: 隔离会话，主会话不沾内容）；
-        结束后主会话自动注入一行注记与剧情摘要。scene 可传场景定向文本（群名/当前
-        说话人等，注入角色 system 帮其入戏）。返回让渡状态 dict。
+        :param chat_key: [str] 会话键
+        :param setup: [str] 角色/场景设定文本
+        :param model: [str] 池内模型 id (默认: ""，跟随 handover_model/主模型)
+        :param listen: [str] inherit / all (默认: "inherit")
+        :param max_turns: [int] 轮数上限，0 走全局配置 (默认: 0)
+        :param scene: [str] 场景定向文本，注入角色 system (默认: "")
+        :return: dict 让渡状态
         """
         state = handover.start(
             self.sdk, self.cfg, str(chat_key or ""),
@@ -843,7 +910,12 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         return state
 
     async def handover_stop(self, chat_key: str, **_) -> bool:
-        """结束会话让渡并给主会话写注记；无进行中的让渡返回 False。"""
+        """
+        结束会话让渡并给主会话写注记。
+
+        :param chat_key: [str] 会话键
+        :return: bool 是否存在被结束的让渡
+        """
         chat_key = str(chat_key or "")
         state = handover.get_state(self.sdk, chat_key)
         if state is None:
@@ -852,7 +924,12 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         return True
 
     async def handover_status(self, chat_key: str, **_) -> dict:
-        """查询会话让渡状态：无让渡返回 {"active": False}。"""
+        """
+        查询会话让渡状态。
+
+        :param chat_key: [str] 会话键
+        :return: dict 让渡状态；无让渡返回 {"active": False}
+        """
         state = handover.get_state(self.sdk, str(chat_key or ""))
         if state is None:
             return {"active": False}

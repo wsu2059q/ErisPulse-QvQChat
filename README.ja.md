@@ -92,6 +92,8 @@ admins = ["123456"]   # チャットプラットフォームでのあなたの�
 
 ## コンソール
 
+**[デモ](https://qvqdemo.erisdev.com)** — インストール不要の完全なコンソール。チャットで「ping bilibili」と送るとツール呼び出しのストリーミング、「GitHub取得」でバックグラウンド Agent を試せます。
+
 <img src=".github/assets/chat.png" width="49%" alt="チャット" /> <img src=".github/assets/models.png" width="49%" alt="モデルプール" />
 <img src=".github/assets/tools.png" width="49%" alt="ツール" /> <img src=".github/assets/audit.png" width="49%" alt="監査" />
 

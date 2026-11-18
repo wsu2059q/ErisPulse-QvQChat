@@ -202,6 +202,7 @@ document.title = "QvQChat · " + L.title;
     return String(c || "");
   }
   function renderContinuation(box, data, token) {
+    var botName = String(data.bot_name || "AI");
     var rounds = data.rounds || 0;
     var stale = box.querySelector(".cont");
     if (stale) stale.remove();
@@ -214,7 +215,7 @@ document.title = "QvQChat · " + L.title;
       if (m.role === "user") {
         inner += '<div class="m user"><div class="role">' + esc(L.you) + '</div>' + esc(m.content || "") + "</div>";
       } else if (m.role === "assistant") {
-        inner += '<div class="m bot"><div class="role">' + esc(L.bot) + '</div><div class="md">' + md(m.content || "") + "</div></div>";
+        inner += '<div class="m bot"><div class="role">' + esc(botName) + '</div><div class="md">' + md(m.content || "") + "</div></div>";
       }
     });
     if ((data.rounds_left || 0) > 0) {
@@ -308,6 +309,7 @@ document.title = "QvQChat · " + L.title;
   loadShare(0)
     .then(function (data) {
       if (!data) return;
+      var botName = String(data.bot_name || "AI");
       var msgs = data.messages || [];
       var box = document.getElementById("content");
       var exp = data.expires ? new Date((data.expires || 0) * 1000) : null;
@@ -329,7 +331,7 @@ document.title = "QvQChat · " + L.title;
         if (role === "user") {
           html += '<div class="m user"><div class="role">' + L.user + '</div>' + esc(raw) + "</div>";
         } else if (role === "assistant") {
-          html += '<div class="m bot"><div class="role">AI</div>' + (md(raw) || esc(raw)) + "</div>";
+          html += '<div class="m bot"><div class="role">' + esc(botName) + '</div>' + (md(raw) || esc(raw)) + "</div>";
         } else {
           html += '<details class="m ctx"><summary>' + esc(role) + "</summary><pre>" + esc(raw) + "</pre></details>";
         }

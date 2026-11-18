@@ -1077,8 +1077,7 @@ class ConversationService:
         if recalled:
             lines = "\n".join(f"- {entry.get('content', '')}" for entry in recalled)
             parts.append(SystemPart("memory", texts.t("memory_header") + "\n" + lines))
-# 用户级跨会话记忆（仅私聊传入 user_mem_key）：同一个人在所有会话里记住的
-# "关于 TA 的事"——群聊绝不注入（私聊内容在群里被抖出来的社死风险归零）
+        # 用户级跨会话记忆（仅私聊传入 user_mem_key 时注入）
         if memory is not None and user_mem_key:
             try:
                 user_recalled = memory.recall(

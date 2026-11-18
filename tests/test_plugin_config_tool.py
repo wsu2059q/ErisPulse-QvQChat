@@ -1,7 +1,4 @@
-"""manage_plugin_config 工具：插件声明的配置读/改走框架声明式管线。
-
-对齐 Dashboard 插件设置页行为：schema 出字段表、整节校验、逐键写入、qvq.plugin_config 事件。
-"""
+"""manage_plugin_config 工具：插件声明配置的读/改走框架声明式管线（schema 字段表 / 整节校验 / 逐键写入 / qvq.plugin_config 事件）。"""
 from dataclasses import dataclass, field
 
 from QvQChat.agent.tools import ToolContext
@@ -50,7 +47,7 @@ async def test_set_applies_and_emits_event():
     assert sets.get("ToyPlugin.tag") == "y" and sets.get("ToyPlugin.limit") == 5
     emitted = [d for evt, d in main.sdk.lifecycle.emitted if evt == "qvq.plugin_config"]
     assert emitted and emitted[0]["module"] == "ToyPlugin"
-# 整节读回（FakeConfig 合并点路径子键）
+    # 整节读回（FakeConfig 合并点路径子键）
     out_get = await selfconfig.manage_plugin_config(ctx, action="get", module="ToyPlugin")
     assert '"tag": "y"' in out_get or "'tag': 'y'" in out_get or '"tag":"y"' in out_get
 

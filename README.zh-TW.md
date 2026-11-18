@@ -92,6 +92,8 @@ admins = ["123456"]   # 你在聊天平台上的使用者 id
 
 ## 網頁控制台
 
+**[線上演示](https://qvqdemo.erisdev.com)** — 無需安裝、內建模擬數據的完整面板。對話頁發「ping一下bilibili」看工具呼叫串流過程，「抓取一下GitHub」看後台智能體派單，「你來扮演病人」體驗會話讓渡。
+
 <img src=".github/assets/chat.png" width="49%" alt="對話頁" /> <img src=".github/assets/models.png" width="49%" alt="模型池頁" />
 <img src=".github/assets/tools.png" width="49%" alt="工具" /> <img src=".github/assets/audit.png" width="49%" alt="稽核" />
 

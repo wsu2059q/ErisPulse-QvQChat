@@ -6,7 +6,6 @@ import re
 import time
 
 from .. import texts, utils
-from ..tools_builtin.erispulse import REPLY_PREFERENCE
 from ..utils import OUTPUT_TAG_RE, strip_output_tag
 from . import media
 from .media import MediaRouter
@@ -338,10 +337,8 @@ class Delivery:
         return user_id, nickname
 
     def _reply_methods(self, event) -> list:
-        from ..tools_builtin import erispulse
-
         methods = []
-        for name in erispulse.REPLY_PREFERENCE:
+        for name in utils.REPLY_PREFERENCE:
             try:
                 if event.supports(name):
                     methods.append(name)
@@ -705,7 +702,7 @@ class Delivery:
             sends = list(self.sdk.adapter.list_sends(platform))
         except Exception:
             sends = []
-        methods = [m for m in REPLY_PREFERENCE if not sends or m in sends]
+        methods = [m for m in utils.REPLY_PREFERENCE if not sends or m in sends]
         if "Text" not in methods:
             methods.append("Text")
         _account = ""

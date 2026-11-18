@@ -1,7 +1,6 @@
-"""会话让渡工具：主智能体把对话窗口让渡给全新上下文的智能体（handover）。
+"""会话让渡工具：主智能体把对话窗口让渡给一个全新上下文的智能体。
 
-与 spawn_agent（后台干活→汇报）不同，让渡是"接管窗口直答用户"——扮演、临时人格、
-剧本主持等场景。让渡状态见 conversation/handover.py；路由在 chat/inbox.py。
+让渡状态见 conversation/handover.py；消息路由在 chat/inbox.py。
 """
 from __future__ import annotations
 
@@ -31,8 +30,7 @@ async def handover_session(ctx: ToolContext, setup: str, model: str = "",
     existing = handover.get_state(ctx.sdk, ctx.chat_key)
     if existing:
         return texts.t("handover_already_active", setup=str(existing.get("setup") or "-"))
-    # 接手定向：场景注记（群名/当前说话人）+ 让渡前主会话最近几条——新智能体
-    # 不必两眼一抹黑，但明确告知别回应旧话题
+    # 接手定向：场景注记（群名/当前说话人）+ 让渡前主会话最近几条对话
     try:
         recent = list(main.sessions.get_contexts(str(ctx.chat_key)) or [])[-6:]
     except Exception:
@@ -44,8 +42,7 @@ async def handover_session(ctx: ToolContext, setup: str, model: str = "",
         scene_note=str(getattr(ctx, "scene_note", "") or ""),
         recent=recent,
     )
-    # 触发判定有 5s 进程内缓存，开让渡后立刻失效，避免紧随其后的用户消息
-    # 在缓存窗口内被路由给主智能体
+    # 开让渡后立刻失效触发判定的 5s 进程内缓存，避免紧随其后的用户消息命中旧缓存
     invalidate = getattr(main, "_handover_state_invalidate", None)
     if callable(invalidate):
         invalidate(ctx.chat_key)

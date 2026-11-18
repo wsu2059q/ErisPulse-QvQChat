@@ -1,8 +1,4 @@
-"""用户级跨会话记忆：同一人在多个会话共享"关于 TA"的记忆库。
-
-行为契约：remember/recall/forget/list_memory 的 scope=user 落 usermem:{platform}:{uid}
-合成键；仅私聊把 user_mem_key 传进 prepare 注入系统提示，群聊绝不注入。
-"""
+"""用户级跨会话记忆：scope=user 的记忆落 usermem:{platform}:{uid} 合成键，仅私聊注入系统提示。"""
 import inspect
 
 from QvQChat.Main import Main
@@ -37,7 +33,7 @@ async def test_user_scope_shared_across_sessions():
     main, ctx = make_ctx()
     await memory_tool.remember(ctx, "用户养了只猫叫年糕", scope="user")
     await memory_tool.remember(ctx, "本群约定每晚开黑", scope="chat")
-# 换一个会话键（同一人另一群），user scope 可查到，chat scope 查不到
+    # 换一个会话键（同一人另一群），user scope 可查到，chat scope 查不到
     ctx2 = ToolContext(
         main=main, sdk=main.sdk, config=main.cfg,
         chat_key="onebot11:group:999", platform="onebot11", user_id="u1",
@@ -77,7 +73,7 @@ async def test_prepare_injects_user_memory_only_when_key_given():
         user_mem_key="usermem:onebot11:u1", persist=False,
     )
     assert "胃病" in prepared["system"]
-# 不传 user_mem_key（群聊路径）：不注入
+    # 不传 user_mem_key（群聊路径）：不注入
     prepared2 = await main.sessions.prepare(
         PKEY, "胃病 忌口 提醒我一下",
         persist=False,
