@@ -1072,11 +1072,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "ru": "Платформа {platform} не поддерживает {method}. Доступно: {methods}",
     },
     "sent_as_forward": {
-        "zh-CN": "[已作为合并转发消息发送]",
-        "zh-TW": "[已作為合併轉發訊息傳送]",
-        "en": "[Sent as a merged-forward message]",
-        "ja": "[まとめ転送として送信しました]",
-        "ru": "[Отправлено как пересылаемое сообщение]",
+        "zh-CN": "[已作为合并转发消息发送：{summary}]",
+        "zh-TW": "[已作為合併轉發訊息傳送：{summary}]",
+        "en": "[Sent as a merged-forward message: {summary}]",
+        "ja": "[まとめ転送として送信しました：{summary}]",
+        "ru": "[Отправлено как пересылаемое сообщение: {summary}]",
     },
     "send_method_used": {
         "zh-CN": "[发送方式: {method}]",
