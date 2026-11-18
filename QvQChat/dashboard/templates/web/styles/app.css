@@ -2347,6 +2347,39 @@ body::-webkit-scrollbar,
   transition: transform 0.18s;
 }
 .plat-off-toggle i.open { transform: rotate(45deg); }
+
+/* 人格绑定管理：层级分组 + 键/改绑/解绑行 */
+.bind-group { margin-bottom: 14px; }
+.bind-group:last-child { margin-bottom: 0; }
+.bind-n {
+  font-style: normal;
+  color: var(--qvq-accent);
+  font-variant-numeric: tabular-nums;
+  margin-left: 4px;
+}
+.bind-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--qvq-bd);
+}
+.bind-row:last-child { border-bottom: 0; }
+.bind-key {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font-size: 11.5px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.bind-del { color: var(--qvq-tx-t); }
+.bind-del:hover { color: var(--qvq-er); }
 .plat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .plat-name { font-size: 14px; font-weight: 600; color: var(--qvq-tx); }
 .plat-bots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }

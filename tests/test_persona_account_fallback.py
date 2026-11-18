@@ -140,3 +140,41 @@ def test_session_exact_binding_beats_account_level():
     mgr.bind("snowluma:private:2694611137", "x")
 
     assert mgr.resolve("snowluma:private:2694611137")["id"] == "x"
+
+
+def test_private_base_key_does_not_cross_accounts():
+    # 私聊 base 层会串味：用户和 Amer 号的会话精确绑定，不该污染用户和小eris号的私聊
+    sdk = _sdk(
+        {
+            "Amer": SimpleNamespace(bot_id="643319481"),
+            "Eris": SimpleNamespace(bot_id="1325859446"),
+        },
+        online_bots={"643319481": {"status": "online"}, "1325859446": {"status": "online"}},
+    )
+    sdk.storage.set("QvQChat:personas", {"amer": _persona("amer", "Amer"), "eris": _persona("eris", "小eris")})
+    mgr = PersonaManager(sdk)
+    mgr.bind("@643319481", "amer")
+    mgr.bind("@1325859446", "eris")
+    # 毒绑定：单账户时期的止血写在无后缀 base 键上，指向 Amer
+    mgr.bind("snowluma:private:2694611137", "amer")
+
+    # 小eris 号的会话（@1325859446）必须命中账户级小eris，而不是 base 层的 Amer
+    assert mgr.resolve("snowluma:private:2694611137@1325859446")["id"] == "eris"
+    # Amer 号会话照常命中
+    assert mgr.resolve("snowluma:private:2694611137@643319481")["id"] == "amer"
+
+
+def test_group_base_key_still_shared():
+    # 群聊 base 层保留：跨账户同一群共享绑定
+    sdk = _sdk(
+        {
+            "Amer": SimpleNamespace(bot_id="643319481"),
+            "Eris": SimpleNamespace(bot_id="1325859446"),
+        },
+        online_bots={"643319481": {"status": "online"}, "1325859446": {"status": "online"}},
+    )
+    sdk.storage.set("QvQChat:personas", {"amer": _persona("amer", "Amer")})
+    mgr = PersonaManager(sdk)
+    mgr.bind("snowluma:group:871684833", "amer")
+
+    assert mgr.resolve("snowluma:group:871684833@643319481")["id"] == "amer"
