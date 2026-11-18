@@ -32,7 +32,9 @@ async def _wait_for(pred, timeout: float = 3.0) -> bool:
 
 async def test_flush_holds_during_merge_window():
     """刚回复过的会话：聚合窗口关闭后直接挂等待队列，不开新回合。"""
-    main = make_merge_main(reply_merge_window=1.2)
+    # 合并窗给足 60s：断言的是"消息被 hold 住"，而非它何时放行。窗口过短时全量并行下
+    # 事件循环被抢占 >1s 就会先到点 drain，导致偶发红灯（与实现无关的计时竞态）。
+    main = make_merge_main(reply_merge_window=60.0)
     main._last_reply_ts["onebot11:group:1"] = time.time() - 0.2  # 刚回复 0.2s
     ev = FakeChatEvent(text="再来一条", user_id="u2", at=True)
     await Main._on_message(main, ev)

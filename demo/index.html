@@ -2263,6 +2263,45 @@ body::-webkit-scrollbar,
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
 }
+/* 生态扩展条目：模块名 + 计数徽标 + 可展开提示（与卡片同一套玻璃/描边语言） */
+.ext-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ext-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: 10px;
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
+}
+.ext-chip:hover {
+  border-color: var(--qvq-accent);
+  background: var(--qvq-accent-soft);
+  transform: translateY(-1px);
+}
+.ext-chip .nm { color: var(--qvq-tx); font-weight: 600; }
+.ext-chip .cnt {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--qvq-accent-soft);
+  color: var(--qvq-accent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ext-chip .go {
+  font-style: normal;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--qvq-tx-t);
+  transition: color 0.15s, transform 0.15s;
+}
+.ext-chip:hover .go { color: var(--qvq-accent); transform: translateX(2px); }
+
 .plat-grid .is-off,
 .prov-grid .prov-card.is-off { opacity: 0.55; }
 .plat-grid .is-off:hover,
@@ -3396,10 +3435,53 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
           ],
         });
         case "/api/qvq/config": return json({ fields: CONFIG_FIELDS, groups: CONFIG_GROUPS });
-        case "/api/qvq/plugin_settings": return json({ plugins: [] });
+        case "/api/qvq/plugin_settings": return json({ modules: [
+          { module: "MyServer", title: "MyServer", config_key: "MyServer",
+            schema: { fields: {
+              host: { description: "服务器地址", type: "text" },
+              port: { description: "RCON 端口", type: "number" },
+              token: { description: "访问令牌", type: "text", secret: true },
+              auto_backup: { description: "定时备份", type: "switch" },
+            } },
+            values: { host: "mc.example.com", port: 25575, auto_backup: true } },
+          { module: "QvQMemes", title: "QvQMemes 表情包", config_key: "QvQMemes",
+            schema: { fields: {
+              recall_limit: { description: "单次召回条数", type: "number" },
+              auto_collect: { description: "自动收录新图", type: "switch" },
+              pack: { description: "默认图包", type: "select", options: ["default", "cat", "reaction"] },
+            } },
+            values: { recall_limit: 5, auto_collect: true, pack: "cat" } },
+          { module: "QvQPokeBack", title: "戳一戳自动回应", config_key: "QvQPokeBack",
+            schema: { fields: {
+              enabled: { description: "启用自动回应", type: "switch" },
+              chance: { description: "回应概率", type: "number", min: 0, max: 100 },
+            } },
+            values: { enabled: true, chance: 60 } },
+          { module: "QvQStalker", title: "QvQStalker 群聊参与决策", config_key: "QvQStalker",
+            schema: { fields: {
+              threshold: { description: "插话阈值", type: "number" },
+              cooldown: { description: "冷却秒数", type: "number" },
+              persona_aware: { description: "感知人格", type: "switch" },
+            } },
+            values: { threshold: 0.6, cooldown: 120, persona_aware: true } },
+          { module: "TTS", title: "TTS 语音合成", config_key: "TTS",
+            schema: { fields: {
+              voice: { description: "音色", type: "select", options: ["xiaoxiao", "yunxi", "xiaoyi"] },
+              rate: { description: "语速", type: "number", min: 0.5, max: 2, step: 0.1 },
+              max_chars: { description: "单条字数上限", type: "number" },
+            } },
+            values: { voice: "xiaoxiao", rate: 1, max_chars: 80 } },
+        ] });
         case "/api/qvq/extensions": return json({ extensions: [
-          { name: "QvQMemes", title: "表情包收录", details: { schemas: ["qvq_media"], skills: [], knowledge: [], prompts: [{ text: "用户发图时自动收录新梗图", priority: 2 }], personas: [] } },
-          { name: "QvQStalker", title: "发布追更", details: { schemas: [], skills: [{ name: "stalker_check", description: "检查发布源更新" }], knowledge: [], prompts: [], personas: [] } },
+          { module: "QvQMemes", personas: 0, schemas: 3, skills: 0, knowledge: 0, prompts: 1,
+            details: { schemas: ["qvq_media", "meme_recall", "sticker_pack"], skills: [], knowledge: [], prompts: [{ text: "用户发图时自动收录新梗图", priority: 2 }], personas: [] } },
+          { module: "QvQStalker", personas: 0, schemas: 4, skills: 1, knowledge: 0, prompts: 3,
+            details: { schemas: ["stalker_source", "stalker_sub", "stalker_push", "stalker_stats"], skills: [{ name: "stalker_check", description: "检查发布源更新" }], knowledge: [], prompts: [{ text: "有新发布时主动播报", priority: 1 }], personas: [] } },
+          { module: "MyServer", personas: 0, schemas: 10, skills: 0, knowledge: 0, prompts: 1,
+            details: { schemas: ["mc_status", "mc_players", "mc_backup", "mc_restart", "mc_logs", "mc_rcon", "mc_whitelist", "mc_ban", "mc_tps", "mc_map"], skills: [], knowledge: [], prompts: [{ text: "服务器异常时先查日志再汇报", priority: 2 }], personas: [] } },
+          { module: "TTS", personas: 0, schemas: 4, skills: 0, knowledge: 0, prompts: 1,
+            details: { schemas: ["tts_voice", "tts_rate", "tts_style", "tts_cache"], skills: [], knowledge: [], prompts: [{ text: "语音回复控制在三句内", priority: 3 }], personas: [] } },
+          { module: "Takumi", personas: 0, schemas: 0, skills: 0, knowledge: 0, prompts: 0, details: { schemas: [], skills: [], knowledge: [], prompts: [], personas: [] } },
         ] });
         case "/api/qvq/storage": return json({
           total_bytes: 23172889,
@@ -7908,17 +7990,24 @@ window.PagePlugins = {
         self.load();
       });
     },
-    extLabel(e) {
-      // 生态扩展贡献摘要：{module, personas, schemas, skills, knowledge, prompts} → 模块名 · 计数
-      if (typeof e === "string") return e;
-      var name = String(e.module || e.name || "");
+    extName(e) {
+      return typeof e === "string" ? e : String(e.module || e.name || "");
+    },
+    extParts(e) {
+      // 生态扩展贡献计数（拆成独立徽标渲染，不再用 · 串成一长条）
+      if (typeof e === "string") return [];
       var parts = [];
       if (Number(e.schemas)) parts.push(e.schemas + " schema");
       if (Number(e.skills)) parts.push(e.skills + " " + t("caps_skills"));
       if (Number(e.knowledge)) parts.push(e.knowledge + " " + t("nav_knowledge"));
       if (Number(e.personas)) parts.push(e.personas + " " + t("nav_personas"));
       if (Number(e.prompts)) parts.push(e.prompts + " prompt");
-      return name + (parts.length ? " · " + parts.join(" · ") : "");
+      return parts;
+    },
+    extLabel(e) {
+      // 抽屉标题等纯文本场合仍用单行摘要
+      var parts = this.extParts(e);
+      return this.extName(e) + (parts.length ? " · " + parts.join(" · ") : "");
     },
   },
   template: [
@@ -7948,12 +8037,16 @@ window.PagePlugins = {
     '    </article>',
     '  </div>',
     '  <div v-if="!modules.length" class="qvq-empty">-</div>',
-    '  <h3 class="plat-sec">{{ t("stat_extensions") }}</h3>',
-    '  <div class="plat-bots">',
-    '    <button v-for="(e, i) in extensions" :key="i" type="button" class="plat-bot ext-chip"',
-    '            @click="openExt(e)">{{ extLabel(e) }}</button>',
-    '    <span v-if="!extensions.length" class="qvq-meta-line">-</span>',
-    '  </div>',
+  '  <h3 class="plat-sec">{{ t("stat_extensions") }}</h3>',
+  '  <div class="ext-row">',
+  '    <button v-for="(e, i) in extensions" :key="i" type="button" class="ext-chip"',
+  '            :title="extLabel(e)" @click="openExt(e)">',
+  '      <b class="nm">{{ extName(e) }}</b>',
+  '      <span v-for="(p, j) in extParts(e)" :key="j" class="cnt">{{ p }}</span>',
+  '      <i class="go">›</i>',
+  '    </button>',
+  '    <span v-if="!extensions.length" class="qvq-meta-line">-</span>',
+  '  </div>',
     '  <n-drawer v-model:show="drawer" :width="520" placement="right">',
     '    <n-drawer-content :title="active ? active.title : \'\'" closable>',
     '      <div class="qvq-empty" v-if="active && !fieldCount(active)">{{ t("plugin_no_settings") }}</div>',

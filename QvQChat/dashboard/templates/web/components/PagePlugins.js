@@ -97,17 +97,24 @@ window.PagePlugins = {
         self.load();
       });
     },
-    extLabel(e) {
-      // 生态扩展贡献摘要：{module, personas, schemas, skills, knowledge, prompts} → 模块名 · 计数
-      if (typeof e === "string") return e;
-      var name = String(e.module || e.name || "");
+    extName(e) {
+      return typeof e === "string" ? e : String(e.module || e.name || "");
+    },
+    extParts(e) {
+      // 生态扩展贡献计数（拆成独立徽标渲染，不再用 · 串成一长条）
+      if (typeof e === "string") return [];
       var parts = [];
       if (Number(e.schemas)) parts.push(e.schemas + " schema");
       if (Number(e.skills)) parts.push(e.skills + " " + t("caps_skills"));
       if (Number(e.knowledge)) parts.push(e.knowledge + " " + t("nav_knowledge"));
       if (Number(e.personas)) parts.push(e.personas + " " + t("nav_personas"));
       if (Number(e.prompts)) parts.push(e.prompts + " prompt");
-      return name + (parts.length ? " · " + parts.join(" · ") : "");
+      return parts;
+    },
+    extLabel(e) {
+      // 抽屉标题等纯文本场合仍用单行摘要
+      var parts = this.extParts(e);
+      return this.extName(e) + (parts.length ? " · " + parts.join(" · ") : "");
     },
   },
   template: [
@@ -137,12 +144,16 @@ window.PagePlugins = {
     '    </article>',
     '  </div>',
     '  <div v-if="!modules.length" class="qvq-empty">-</div>',
-    '  <h3 class="plat-sec">{{ t("stat_extensions") }}</h3>',
-    '  <div class="plat-bots">',
-    '    <button v-for="(e, i) in extensions" :key="i" type="button" class="plat-bot ext-chip"',
-    '            @click="openExt(e)">{{ extLabel(e) }}</button>',
-    '    <span v-if="!extensions.length" class="qvq-meta-line">-</span>',
-    '  </div>',
+  '  <h3 class="plat-sec">{{ t("stat_extensions") }}</h3>',
+  '  <div class="ext-row">',
+  '    <button v-for="(e, i) in extensions" :key="i" type="button" class="ext-chip"',
+  '            :title="extLabel(e)" @click="openExt(e)">',
+  '      <b class="nm">{{ extName(e) }}</b>',
+  '      <span v-for="(p, j) in extParts(e)" :key="j" class="cnt">{{ p }}</span>',
+  '      <i class="go">›</i>',
+  '    </button>',
+  '    <span v-if="!extensions.length" class="qvq-meta-line">-</span>',
+  '  </div>',
     '  <n-drawer v-model:show="drawer" :width="520" placement="right">',
     '    <n-drawer-content :title="active ? active.title : \'\'" closable>',
     '      <div class="qvq-empty" v-if="active && !fieldCount(active)">{{ t("plugin_no_settings") }}</div>',
