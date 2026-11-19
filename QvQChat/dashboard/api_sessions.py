@@ -12,6 +12,7 @@ from .. import texts, utils
 from ..chat.events import EVENT_INBOX_KEY
 from ..conversation import handover
 from ..conversation.policy import get_policy, set_policy
+from ..conversation.service import parse_chat_key, strip_account, strip_isolation
 from ..tools_builtin import agent as agent_tools
 from .api_common import ApiError, api_handler, read_json, sget
 
@@ -113,6 +114,8 @@ class SessionsApiMixin:
                 session["name"] = texts.t("dashboard_session_name")
             session["members"] = self.main.sessions.members_of(session.get("chat_key") or "")
             session["sources"] = self.main.sessions.routes_into(session.get("chat_key") or "")
+# 人工接管态随行下发（头部横幅 + composer 直发分支）
+            session["manual"] = bool(self.main.sessions.get_flag(session.get("chat_key") or "", "manual"))
 # 会话治理策略随行下发：面板开关直接渲染 muted/low_token/priority 当前值
             session["policy"] = get_policy(self.sdk, session.get("chat_key") or "")
 # 子会话装饰：面板侧栏给 sub: 键挂 子智能体/让渡 徽标与父会话链接
@@ -768,6 +771,31 @@ class SessionsApiMixin:
         )
         return {"ok": True}
 
+    async def takeover_say(self, request):
+        """人工接管发言：以 bot 身份把文本直发平台会话，并写入上下文。
+
+        与普通面板发送的区别：不进 AI 管线（AI 不响应、不开回合），
+        但以 assistant 身份落库——AI 下一轮知道"自己"说过这句话。
+        会话级开关（session_settings.manual）开启后前端发送走这里。
+        """
+        body = await request.json()
+        chat_key = str((body or {}).get("chat_key") or "")
+        text = str((body or {}).get("text") or "").strip()
+        if not chat_key or not text:
+            return ({"error": "chat_key/text required"}, 400)
+        platform, detail_type, target_id = parse_chat_key(strip_account(strip_isolation(chat_key)))
+        if not platform or platform == "dashboard":
+            return ({"error": "not a platform session"}, 400)
+        try:
+            await self.main.delivery.send_segments(
+                platform, detail_type, target_id, [(0.0, text)], chat_key=chat_key,
+            )
+        except Exception as e:
+            return ({"error": f"{type(e).__name__}: {e}"}, 502)
+        self.main.sessions.append(chat_key, "assistant", text)
+        self.main.audit("takeover_say", {"chat_key": chat_key, "chars": len(text)})
+        return {"ok": True}
+
     async def session_settings(self, request):
         body = await request.json()
         chat_key = str((body or {}).get("chat_key") or "")
@@ -784,6 +812,10 @@ class SessionsApiMixin:
         if "listen_off" in ui:
             self.main.sessions.set_flags(chat_key, {"listen_off": bool(ui["listen_off"])})
             saved["listen_off"] = bool(ui["listen_off"])
+# 人工接管：面板发送以 bot 身份直发平台并写入上下文（AI 不响应该条，见 takeover_say）
+        if "manual" in ui:
+            self.main.sessions.set_flags(chat_key, {"manual": bool(ui["manual"])})
+            saved["manual"] = bool(ui["manual"])
         return {"ok": True, "ui": saved}
 
     async def session_policy(self, request):

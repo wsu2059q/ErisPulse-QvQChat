@@ -650,6 +650,53 @@ html[data-theme="light"] .qvq-bg-layer.qvq-bg-fallback {
 .qvq-row .live-dot.idle { animation: none; opacity: 0.35; }
 
 /* 让渡横幅 / 子会话徽标 */
+/* 人工接管横幅：开启后面板发送以 bot 身份直发（AI 不响应） */
+.chat-manualbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--qvq-bd);
+  background: var(--qvq-accent-soft);
+}
+.chat-manualbar .nm { flex: 1 1 auto; font-size: 12px; color: var(--qvq-accent); font-weight: 600; }
+.chat-manualbar .x {
+  border: 0;
+  background: transparent;
+  color: var(--qvq-accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 上下文占用条：最后一轮输入 tokens / 模型 context_length */
+.chat-ctxbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--qvq-bd);
+  background: var(--qvq-bg-s);
+}
+.chat-ctxbar-track {
+  flex: 1 1 auto;
+  max-width: 260px;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--qvq-bg-s);
+  border: 1px solid var(--qvq-bd);
+  overflow: hidden;
+}
+.chat-ctxbar-track i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--qvq-accent);
+  transition: width 0.3s ease;
+}
+.chat-ctxbar-track i.warn { background: var(--qvq-er, #d0604f); }
+.chat-ctxbar .tx { font-size: 11px; color: var(--qvq-tx-t); white-space: nowrap; }
+
 .chat-hv {
   display: flex;
   align-items: center;
@@ -1680,6 +1727,14 @@ body::-webkit-scrollbar,
   animation: chat-pulse 2s ease-in-out infinite;
 }
 .live-dot.idle { animation: none; opacity: 0.35; }
+/* 未读点（本地 last_seen 对比）：live 优先，非 live 才显示 */
+.unread-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--qvq-accent);
+  display: inline-block;
+}
 @keyframes chat-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
 .chat-head {
@@ -2130,6 +2185,27 @@ body::-webkit-scrollbar,
   background: var(--qvq-accent-soft);
   color: var(--qvq-accent);
   font-size: 11.5px;
+}
+/* 引用回复条：挂在 composer 上方（同 editbar 语言，左对齐原文预览） */
+.chat-quotebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: var(--qvq-accent-soft);
+  color: var(--qvq-accent);
+  font-size: 11.5px;
+}
+.chat-quotebar .nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-quotebar .x {
+  border: 0;
+  background: transparent;
+  color: var(--qvq-accent);
+  font: inherit;
+  cursor: pointer;
+  padding: 2px 6px;
 }
 .chat-edit-acts { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
 .chat-editbar button {

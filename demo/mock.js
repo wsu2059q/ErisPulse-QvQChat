@@ -75,9 +75,9 @@
     { id: "openai", name: "OpenAI", base_url: "https://api.openai.com/v1", api_key_masked: "", enabled: false, models: [] },
   ];
   var CHAIN = [
-    { provider: "deepseek", model: { id: "deepseek-chat" } },
-    { provider: "deepseek", model: { id: "deepseek-reasoner" } },
-    { provider: "siliconflow", model: { id: "Qwen/Qwen2.5-72B-Instruct" } },
+    { provider: "deepseek", model: { id: "deepseek-chat", context_length: 128000, max_output_tokens: 8192 } },
+    { provider: "deepseek", model: { id: "deepseek-reasoner", context_length: 128000, max_output_tokens: 65536 } },
+    { provider: "siliconflow", model: { id: "Qwen/Qwen2.5-72B-Instruct", context_length: 32768, max_output_tokens: 16384 } },
   ];
 
   var PERSONAS = [
@@ -147,8 +147,8 @@
     "dashboard:private:web": [
       { role: "user", content: "ping一下bilibili", ts: NOW - 86400 * 2 },
       { role: "user", content: "帮我写个批量重命名的小脚本", ts: NOW - 3600 },
-      { role: "assistant", content: "", rounds: ROUNDS_PING, ts: NOW - 3500, meta: { model: "deepseek-chat", usage: { prompt_tokens: 8421, completion_tokens: 96, total_tokens: 8517 } } },
-      { role: "assistant", content: "好喵，给你个常用的：批量重命名文件小脚本。\n\n```python\nimport os\n\ndef batch_rename(folder, prefix=\"file_\", ext_filter=None):\n    files = sorted(os.listdir(folder))\n    for i, name in enumerate(files, 1):\n        path = os.path.join(folder, name)\n        if not os.path.isfile(path):\n            continue\n        ext = os.path.splitext(name)[1]\n        os.rename(path, os.path.join(folder, f\"{prefix}{i:03d}{ext}\"))\n\nbatch_rename(\"D:/图片\", prefix=\"照片_\", ext_filter=(\".jpg\", \".png\"))\n```\n\n改下文件夹路径就能跑，会把文件重命名成 `照片_001.jpg` 这种带序号的格式。", ts: NOW - 1800, meta: { model: "deepseek-chat", usage: { prompt_tokens: 9104, completion_tokens: 388, total_tokens: 9492 } } },
+      { role: "assistant", content: "", rounds: ROUNDS_PING, ts: NOW - 3500, meta: { model: "deepseek:deepseek-chat", usage: { prompt_tokens: 8421, completion_tokens: 96, total_tokens: 8517 } } },
+      { role: "assistant", content: "好喵，给你个常用的：批量重命名文件小脚本。\n\n```python\nimport os\n\ndef batch_rename(folder, prefix=\"file_\", ext_filter=None):\n    files = sorted(os.listdir(folder))\n    for i, name in enumerate(files, 1):\n        path = os.path.join(folder, name)\n        if not os.path.isfile(path):\n            continue\n        ext = os.path.splitext(name)[1]\n        os.rename(path, os.path.join(folder, f\"{prefix}{i:03d}{ext}\"))\n\nbatch_rename(\"D:/图片\", prefix=\"照片_\", ext_filter=(\".jpg\", \".png\"))\n```\n\n改下文件夹路径就能跑，会把文件重命名成 `照片_001.jpg` 这种带序号的格式。", ts: NOW - 1800, meta: { model: "deepseek:deepseek-chat", usage: { prompt_tokens: 9104, completion_tokens: 388, total_tokens: 9492 } } },
     ],
     "onebot11:group:3301@SnowOvO": [
       { role: "user", content: "今晚连麦打游戏吗", ts: NOW - 7200, sender_name: "阿雪" },
@@ -392,7 +392,7 @@
           by_model: { "custom:glm-5.3-flash": 1.9753, "deepseek:deepseek-chat": 1.2841, "siliconflow:Qwen/Qwen3.5-35B-A3B": 0.6411, "scnet:GLM-5.3-Flash": 0.0756 },
           total: 3.9761,
         });
-        case "/api/qvq/models": return json({ providers: PROVIDERS, chain: CHAIN, models: CHAIN.map(function (c) { return { id: c.provider + ":" + c.model.id }; }), default: "deepseek:deepseek-chat", presets: [] });
+        case "/api/qvq/models": return json({ providers: PROVIDERS, chain: CHAIN, models: CHAIN.map(function (c) { return { id: c.provider + ":" + c.model.id, context_length: c.model.context_length, max_output_tokens: c.model.max_output_tokens }; }), default: "deepseek:deepseek-chat", presets: [] });
         case "/api/qvq/sessions": {
           /* 与真后端同形：名字/chat_key 不中时扫 MESSAGES 正文（内容级全局搜索），命中行带 snippet */
           var q = String(query.q || "").trim().toLowerCase();

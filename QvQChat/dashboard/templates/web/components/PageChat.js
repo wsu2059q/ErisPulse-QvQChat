@@ -38,6 +38,12 @@ window.PageChat = {
       sessTimer: null,
       loadingMsgs: false,
       draft: "",
+      draftChatKey: "",
+      quote: null,
+      lastSeen: (function () {
+// 侧栏未读：本地视角的会话已读时间戳（面板是单管理员界面，服务端不需要存）
+        try { return JSON.parse(localStorage.getItem("qvq_seen") || "{}") || {}; } catch (e) { return {}; }
+      })(),
       attachments: [],
       sending: false,
       live: null,
@@ -82,7 +88,7 @@ window.PageChat = {
       collapsed: {},
       cfgOpen: false,
       cfgPol: { muted: false, low_token: false, priority: "normal", session_budget: 0 },
-      cfgSet: { density: "", model: "", effort: "", trigger_mode: "", listen_off: false, persona: "" },
+      cfgSet: { density: "", model: "", effort: "", trigger_mode: "", listen_off: false, manual: false, persona: "" },
       cfgMembers: "",
       cfgSources: "",
       cfgBusy: false,
@@ -182,6 +188,24 @@ window.PageChat = {
         { label: t("sort_turns"), value: "turns" },
         { label: t("sort_name"), value: "name" },
       ];
+    },
+    ctxUsage() {
+      // 上下文占用：最后一轮回复的输入 tokens / 模型 context_length。
+      // 会话级选中的模型优先，消息实际用的模型次之（auto 时两者一致）
+      var last = null;
+      for (var i = this.messages.length - 1; i >= 0; i--) {
+        var m = this.messages[i];
+        if (m && m.role === "assistant" && m.meta && m.meta.usage && m.meta.usage.prompt_tokens != null) { last = m; break; }
+      }
+      if (!last) return null;
+      var id = String(this.model || last.meta.model || "");
+      var ctx = 0;
+      for (var j = 0; j < (this.models || []).length; j++) {
+        if (String(this.models[j].id) === id) { ctx = Number(this.models[j].context_length || 0); break; }
+      }
+      var used = Number(last.meta.usage.prompt_tokens || 0);
+      if (!ctx || !used) return null;
+      return { used: used, ctx: ctx, pct: Math.min(100, Math.round(used * 100 / ctx)), model: id };
     },
     filterActive() {
       return !!(this.acctFilter || this.sortBy !== "updated");
@@ -300,6 +324,18 @@ window.PageChat = {
       self.mcpTools = ((d && d.tools) || []).filter(function (x) { return x.origin === "mcp"; });
     });
   },
+  watch: {
+    // 草稿防抖落盘：输入停 400ms 才写 localStorage（每键入字节都写太频）
+    draft(val) {
+      var self = this;
+      if (this._draftTimer) clearTimeout(this._draftTimer);
+      this._draftTimer = setTimeout(function () {
+        self._draftTimer = null;
+        if (!self.draftChatKey) return;
+        try { localStorage.setItem("qvq_draft_" + self.draftChatKey, val); } catch (e) { /* 忽略 */ }
+      }, 400);
+    },
+  },
   beforeUnmount() {
     this.stopSessPoll();
     this.stopTodoPoll();
@@ -323,6 +359,25 @@ window.PageChat = {
       this.acctFilter = "";
       this.sortBy = "updated";
     },
+    markSeen(key) {
+// 已读时间戳：打开会话/轮询当前会话时推进（未读 = updated > lastSeen 且非当前会话）
+      if (!key) return;
+      this.lastSeen[key] = Date.now() / 1000;
+      try { localStorage.setItem("qvq_seen", JSON.stringify(this.lastSeen)); } catch (e) { /* 忽略 */ }
+    },
+    quoteMsg(m) {
+// 引用回复：摘取原文（assistant 回复剥 markdown 源码块噪音直接用文本），composer 挂引用条；
+// 发送时以单行引用头 + 用户文本走既有文本通道（平台层不需要真 reply 协议）
+      var text = String(m.content || "").replace(/```[\s\S]*?```/g, "〔代码〕").replace(/\s+/g, " ").trim();
+      if (!text) return;
+      this.quote = { role: String(m.role || ""), text: text.slice(0, 300) };
+      var ta = this.$el.querySelector(".chat-ta");
+      if (ta) ta.focus();
+    },
+    isUnread(s) {
+      if (!s || s.chat_key === this.activeKey || !(s.updated > 0)) return false;
+      return s.updated > (this.lastSeen[s.chat_key] || 0);
+    },
     onSearchInput() {
 // 内容级全局搜索每次输入都要扫会话正文：300ms 防抖；清空立即刷新不等
       var self = this;
@@ -338,7 +393,18 @@ window.PageChat = {
     },
     open(key) {
       if (!key) return;
+// 草稿暂存：旧会话草稿落盘，恢复目标会话草稿（切换/刷新不丢；编辑态不属于草稿，取消）
+      if (this.draftChatKey && this.draftChatKey !== key) {
+        try { localStorage.setItem("qvq_draft_" + this.draftChatKey, this.draft); } catch (e) { /* 忽略 */ }
+      }
+      this.draftChatKey = key;
+      var savedDraft = "";
+      try { savedDraft = localStorage.getItem("qvq_draft_" + key) || ""; } catch (e) { /* 忽略 */ }
+      this.draft = savedDraft;
+      this.editing = null;
+      this.quote = null;
       this.activeKey = key;
+      this.markSeen(key);
       this.sideOpen = false; // 移动端抽屉选完即收
       QvQ.store.pendingChat = "";
       this.messages = [];
@@ -547,6 +613,7 @@ window.PageChat = {
         effort: String(ui.effort || ""),
         trigger_mode: String(ui.trigger_mode || ""),
         listen_off: !!a.listen_off,
+        manual: !!a.manual,
         persona: String(a.persona || ""),
       };
       this.cfgMembers = (a.members || []).join("\n");
@@ -566,6 +633,7 @@ window.PageChat = {
           settings: {
             density: this.cfgSet.density, model: this.cfgSet.model, effort: this.cfgSet.effort,
             trigger_mode: this.cfgSet.trigger_mode, listen_off: this.cfgSet.listen_off,
+            manual: this.cfgSet.manual,
             members: this.cfgMembers.split("\n").map(function (s) { return s.trim(); })
               .filter(function (s) { return s; }),
           },
@@ -942,18 +1010,42 @@ window.PageChat = {
     },
     send() {
       var self = this;
+      var clearDraft = function () {
+// 发送/入队即清草稿槽（watch 的防抖晚于清空触发，会拿空串覆盖回空串，无碍；
+// 但立即 removeItem 避免刷新瞬间闪回旧草稿）
+        try { localStorage.removeItem("qvq_draft_" + self.draftChatKey); } catch (e) { /* 忽略 */ }
+      };
       if (!this.draft.trim() && !this.attachments.length) return;
       if (this.sending) {
         this.queue.push({ text: this.draft.trim(), atts: this.attachments.slice() });
         this.draft = "";
         this.attachments = [];
+        clearDraft();
         this.toast = t("queue_added");
         return;
       }
       var text = this.draft.trim();
+// 引用回复拼装：单行引用头 + 用户文本（非编辑态；引用的是已落库消息，rewind 编辑路径不掺引用）
+      if (this.quote && !this.editing) {
+        var who = this.quote.role === "assistant" ? t("quote_who_ai") : t("quote_who_user");
+        text = "[" + t("quote_head").replace("{who}", who) + "] " + this.quote.text + "\n" + text;
+        this.quote = null;
+      }
       var atts = this.attachments.slice();
       this.draft = "";
       this.attachments = [];
+      clearDraft();
+// 人工接管：以 bot 身份直发平台 + 写入上下文，AI 不响应该条
+      if (this.active && this.active.manual) {
+        api("/api/qvq/takeover/say", "POST", { chat_key: this.activeKey, text: text }).then(function (r) {
+          if (!r || !r.ok) {
+            self.toast = (r && r.error) || "say failed";
+            return;
+          }
+          self.reload();
+        });
+        return;
+      }
       var editing = this.editing;
       this.editing = null;
       if (!editing) {
@@ -1159,7 +1251,7 @@ window.PageChat = {
     '            <button type="button" class="chat-sitem" :class="{ on: s.chat_key === activeKey }"',
     '                    @click="open(s.chat_key)">',
     '              <span class="nm">{{ s.name || s.chat_key }}<i v-if="s.kind === \'handover\'" class="chat-subtag hv">{{ t("hv_badge") }}</i><i v-else-if="s.kind === \'sub\'" class="chat-subtag">{{ t("sub_badge") }}</i></span>',
-    '              <span class="mt"><span class="live-dot" v-if="s.live"></span>{{ s.turns || 0 }}</span>',
+    '              <span class="mt"><span class="live-dot" v-if="s.live"></span><i v-else-if="isUnread(s)" class="unread-dot" :title="t(\'unread_tip\')"></i>{{ s.turns || 0 }}</span>',
     '              <span v-if="s.snippet" class="chat-sitem-snippet">{{ s.snippet }}</span>',
     '            </button>',
     '            <div class="chat-sitem-acts">',
@@ -1224,6 +1316,14 @@ window.PageChat = {
     '        </n-dropdown>',
     '      </div>',
     '    </header>',
+    '    <div class="chat-manualbar" v-if="active && active.manual">',
+    '      <span class="nm">{{ t("manual_on") }}</span>',
+    '      <button type="button" class="x" @click="cfgSet.manual = false; saveCfg();">{{ t("manual_exit") }}</button>',
+    '    </div>',
+    '    <div class="chat-ctxbar" v-if="ctxUsage" :title="t(\'ctx_usage_tip\')">',
+    '      <div class="chat-ctxbar-track"><i :style="{ width: ctxUsage.pct + \'%\' }" :class="{ warn: ctxUsage.pct >= 80 }"></i></div>',
+    '      <span class="tx">{{ t("ctx_usage_line").replace("{pct}", ctxUsage.pct).replace("{used}", Number(ctxUsage.used).toLocaleString()).replace("{ctx}", Number(ctxUsage.ctx).toLocaleString()) }}</span>',
+    '    </div>',
     '    <div class="chat-hv" v-if="hv && hv.active">',
     '      <button type="button" class="chat-hv-main" @click="open(hv.sub_key)" :title="t(\'viewing_sub\')">',
     '        <span class="nm">{{ t("hv_active") }}</span>',
@@ -1275,6 +1375,7 @@ window.PageChat = {
     '          <span v-if="m.meta && m.meta.model" class="msg-model"',
     '                :title="modelMetaTip(m)">{{ m.meta.model }}{{ m.meta.usage && m.meta.usage.total_tokens != null ? " · " + Number(m.meta.usage.total_tokens).toLocaleString() + " tok" : "" }}</span>',
     '          <button v-if="m.role === \'user\'" type="button" @click="startEdit(i)">{{ t("edit") }}</button>',
+    '          <button type="button" @click="quoteMsg(m)">{{ t("quote_btn") }}</button>',
     '          <button type="button" @click="copyText(m.content)">{{ t("chat_copy") }}</button>',
     '          <button type="button" @click="delMsg(i)">{{ t("chat_delete") }}</button>',
     '          <button v-if="m.role === \'assistant\' && i === messages.length - 1 && !sending"',
@@ -1321,6 +1422,10 @@ window.PageChat = {
     '          <button type="button" class="x" @click="removeAttach(i)">×</button>',
     '        </div>',
     '      </div>',
+    '      <div class="chat-quotebar" v-if="quote">',
+    '        <span class="nm">{{ t("quote_bar") }}{{ quote.text.length > 80 ? quote.text.slice(0, 80) + "…" : quote.text }}</span>',
+    '        <button type="button" class="x" @click="quote = null">×</button>',
+    '      </div>',
     '      <div class="chat-editbar" v-if="editing">',
     '        <span>{{ t("chat_edit_on") }}</span>',
     '        <span class="chat-edit-acts">',
@@ -1342,7 +1447,7 @@ window.PageChat = {
     '          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"',
     '               stroke-linecap="round"><path d="M21.4 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l8.49-8.49a3.5 3.5 0 114.95 4.95l-8.49 8.49a2 2 0 01-2.83-2.83l7.78-7.78"/></svg>',
     '        </label>',
-    '        <textarea v-model="draft" class="chat-ta" rows="1" :placeholder="t(\'chat_input_ph\')"',
+    '        <textarea v-model="draft" class="chat-ta" rows="1" :placeholder="active && active.manual ? t(\'manual_ph\') : t(\'chat_input_ph\')"',
     '                  @keydown="onKey" @paste="onPaste" @input="autoGrow"></textarea>',
     '        <div class="chat-input-side">',
     '          <span class="chat-queue-n" v-if="queue.length">{{ queue.length }}</span>',
@@ -1440,6 +1545,11 @@ window.PageChat = {
     '        <div class="prov-field">',
     '          <label>{{ t("listen_off_toggle") }}</label>',
     '          <n-switch v-model:value="cfgSet.listen_off"/>',
+    '        </div>',
+    '        <div class="prov-field">',
+    '          <label>{{ t("manual_flag") }}</label>',
+    '          <n-switch v-model:value="cfgSet.manual"/>',
+    '          <div class="qvq-field-hint">{{ t("manual_flag_hint") }}</div>',
     '        </div>',
     '        <div class="prov-field">',
     '          <label>{{ t("sess_members") }}</label>',
