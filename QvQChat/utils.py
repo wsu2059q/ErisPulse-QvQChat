@@ -69,6 +69,21 @@ def marker_normalized(text: str) -> str:
     return str(text or "").translate(_MARKER_WIDTH_TRANS)
 
 
+def content_text(content: Any, sep: str = " ") -> str:
+    """消息 content（str 或 parts list）→ 纯文本：只取 ``type=="text"`` 的 dict 项。
+
+    会话/分享/压缩/导出侧此前各有一份 inline 归一循环（语义漂移风险），统一走这里。
+    引擎层的多模态转换（openai.py）与平台信封提取（inbox 转发段）不在此列——
+    它们处理的是协议形状，不是展示文本。"""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return sep.join(
+            str(p.get("text") or "") for p in content if isinstance(p, dict) and p.get("type") == "text"
+        )
+    return str(content or "")
+
+
 def sub_marker_pattern(pattern, text: str, repl: str = "") -> str:
     """在归一化副本上匹配标记正则，按等长 span 将替换应用到原文。
 

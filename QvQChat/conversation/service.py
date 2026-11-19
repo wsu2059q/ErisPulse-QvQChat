@@ -1789,8 +1789,4 @@ class ConversationService:
 
     @staticmethod
     def _text_of(content) -> str:
-        if isinstance(content, list):
-            return " ".join(
-                str(p.get("text") or "") for p in content if isinstance(p, dict) and p.get("type") == "text"
-            )
-        return str(content or "")
+        return utils.content_text(content)
