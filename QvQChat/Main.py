@@ -637,24 +637,26 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 
     def audit(self, tool: str, detail: dict, ctx=None) -> None:
         try:
-            entries = self.sdk.storage.get(AUDIT_KEY, [])
-            if not isinstance(entries, list):
-                entries = []
-            entries.append(
-                {
-                    "ts": utils.now_ts(),
-                    "tool": tool,
-                    "detail": detail,
-                    "chat_key": getattr(ctx, "chat_key", "") if ctx is not None else "",
-                    "origin": getattr(ctx, "origin", "") if ctx is not None else "",
-                    "user_id": str(getattr(ctx, "user_id", "") or ""),
-                }
-            )
             limit = int(getattr(self.cfg, "audit_limit", 5000) or 0)
-            if limit > 0:
-                entries = entries[-limit:]
-# 写回存储（未落库则审计页无数据可查）
-            self.sdk.storage.set(AUDIT_KEY, entries)
+            entry = {
+                "ts": utils.now_ts(),
+                "tool": tool,
+                "detail": detail,
+                "chat_key": getattr(ctx, "chat_key", "") if ctx is not None else "",
+                "origin": getattr(ctx, "origin", "") if ctx is not None else "",
+                "user_id": str(getattr(ctx, "user_id", "") or ""),
+            }
+
+            def _append(entries):
+                if not isinstance(entries, list):
+                    entries = []
+                entries.append(entry)
+                if limit > 0:
+                    entries = entries[-limit:]
+                return entries
+
+# 键级 RMW（并发任务同时记账不再互相覆盖）；未落库则审计页无数据可查
+            utils.storage_update(self.sdk, AUDIT_KEY, _append, [])
         except Exception as e:
 # 审计落盘失败不能完全静默
             self.logger.debug(f"audit persist failed: {e}")
@@ -663,10 +665,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         """合成一条收件箱通知（不依赖平台事件对象）：超限丢弃等静默失败的可见化出口。"""
         try:
             key = EVENT_INBOX_KEY + "default"
-            entries = self.sdk.storage.get(key, [])
-            if not isinstance(entries, list):
-                entries = []
-            entries.append({
+            notice = {
                 "id": f"notice-synthetic-{int(time.time() * 1000)}",
                 "ts": round(time.time(), 3),
                 "kind": "notice",
@@ -674,8 +673,15 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 "chat_key": str(chat_key or ""),
                 "summary": utils.truncate(str(summary or ""), 300),
                 "read": False,
-            })
-            self.sdk.storage.set(key, entries[-200:])
+            }
+
+            def _append(entries):
+                if not isinstance(entries, list):
+                    entries = []
+                entries.append(notice)
+                return entries[-200:]
+
+            utils.storage_update(self.sdk, key, _append, [])
         except Exception as e:
             self.logger.debug(f"inbox notice failed: {e}")
 

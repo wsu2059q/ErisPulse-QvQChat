@@ -967,29 +967,46 @@ class SessionsApiMixin:
         except (TypeError, ValueError):
             chat_tokens = 20000
         token = _secrets.token_urlsafe(18)
-        shares = self._shares()
-        shares[token] = {
-            "chat_key": chat_key,
-            "created": utils.now_ts(),
-            "expires": utils.now_ts() + hours * 3600,
-            "max_tokens": max_tokens,
-            "rounds": rounds,
-            "chat_tokens": chat_tokens,
-            "rounds_used": 0,
-            "tokens_used": 0,
-            "cont": [],
-            "enabled": True,
-        }
-        self.sdk.storage.set(SHARES_KEY, shares)
-        return {"ok": True, "token": token, "url": f"/QvQChat/share?token={token}", "expires": shares[token]["expires"], "max_tokens": max_tokens}
+        created: dict = {}
+
+        def _add(shares) -> dict:
+            if not isinstance(shares, dict):
+                shares = {}
+            shares[token] = {
+                "chat_key": chat_key,
+                "created": utils.now_ts(),
+                "expires": utils.now_ts() + hours * 3600,
+                "max_tokens": max_tokens,
+                "rounds": rounds,
+                "chat_tokens": chat_tokens,
+                "rounds_used": 0,
+                "tokens_used": 0,
+                "cont": [],
+                "enabled": True,
+            }
+            created["rec"] = shares[token]
+            return shares
+
+# 键级 RMW（并发创建/撤销分享不再互相覆盖）
+        utils.storage_update(self.sdk, SHARES_KEY, _add, {})
+        rec = created["rec"]
+        return {"ok": True, "token": token, "url": f"/QvQChat/share?token={token}", "expires": rec["expires"], "max_tokens": max_tokens}
 
     async def session_share_revoke(self, request):
         body = await request.json()
         token = str((body or {}).get("token") or "")
-        shares = self._shares()
-        if token in shares:
-            shares.pop(token)
-            self.sdk.storage.set(SHARES_KEY, shares)
+        found: list = []
+
+        def _drop(shares) -> dict:
+            if not isinstance(shares, dict):
+                shares = {}
+            if token in shares:
+                shares.pop(token)
+                found.append(True)
+            return shares
+
+        utils.storage_update(self.sdk, SHARES_KEY, _drop, {})
+        if found:
             return {"ok": True}
         return ({"error": "not found"}, 404)
 
@@ -1073,14 +1090,23 @@ class SessionsApiMixin:
         except Exception as e:
             return ({"error": str(e)}, 502)
         reply = (response.content or "").strip() or texts.t("no_reply_content")
-        cont = share.get("cont") if isinstance(share.get("cont"), list) else []
-        cont = cont + [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
-        share["cont"] = cont[-40:]
-        share["rounds_used"] = used + 1
-        share["tokens_used"] = spent + int(response.usage.get("total_tokens", 0) or 0)
-        shares = self._shares()
-        shares[token] = share
-        self.sdk.storage.set(SHARES_KEY, shares)
+        cost = int(response.usage.get("total_tokens", 0) or 0)
+
+        def _apply(shares) -> dict:
+            if not isinstance(shares, dict):
+                shares = {}
+            record = shares.get(token)
+            if not isinstance(record, dict):
+                record = dict(share)
+            cont = record.get("cont") if isinstance(record.get("cont"), list) else []
+            record["cont"] = (cont + [{"role": "user", "content": text}, {"role": "assistant", "content": reply}])[-40:]
+            record["rounds_used"] = int(record.get("rounds_used") or 0) + 1
+            record["tokens_used"] = int(record.get("tokens_used") or 0) + cost
+            shares[token] = record
+            return shares
+
+# 键级 RMW：多个访问者同时续聊，配额计数与续聊记录不再互相覆盖
+        utils.storage_update(self.sdk, SHARES_KEY, _apply, {})
         return {
             "ok": True,
             "reply": reply,

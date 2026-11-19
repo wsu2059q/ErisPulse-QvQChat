@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timedelta
 
-from .. import texts
+from .. import texts, utils
 
 # 上次清理日标记（跨天首条记账才执行一次全扫）
 USAGE_LAST_PRUNE_KEY = "QvQChat:usage:last_prune"
@@ -21,37 +21,41 @@ class UsageMixin:
         try:
             today = time.strftime("%Y-%m-%d")
             key = f"QvQChat:usage:{today}"
-            data = self.sdk.storage.get(key, {})
-            if not isinstance(data, dict):
-                data = {}
             tokens = int(usage.get("total_tokens", 0) or 0)
-            data["tokens"] = int(data.get("tokens", 0) or 0) + tokens
-            data["calls"] = int(data.get("calls", 0) or 0) + 1
-            by_chat = data.get("by_chat")
-            if not isinstance(by_chat, dict):
-                by_chat = {}
-            by_chat[chat_key] = int(by_chat.get(chat_key, 0) or 0) + tokens
-            data["by_chat"] = by_chat
-# 用户维度（user_daily_budget 配额门槛读这里）：ctx.user_id 由调用方带出
             user_id = str(usage.get("user_id") or "")
-            if user_id:
-                by_user = data.get("by_user")
-                if not isinstance(by_user, dict):
-                    by_user = {}
-                by_user[user_id] = int(by_user.get(user_id, 0) or 0) + tokens
-                data["by_user"] = by_user
-            if model:
-                by_model = data.get("by_model")
-                if not isinstance(by_model, dict):
-                    by_model = {}
-                entry = by_model.get(model)
-                entry = {"tokens": 0, "in": 0, "out": 0} if not isinstance(entry, dict) else entry
-                entry["tokens"] = int(entry.get("tokens", 0) or 0) + tokens
-                entry["in"] = int(entry.get("in", 0) or 0) + int(usage.get("prompt_tokens", 0) or 0)
-                entry["out"] = int(entry.get("out", 0) or 0) + int(usage.get("completion_tokens", 0) or 0)
-                by_model[model] = entry
-                data["by_model"] = by_model
-            self.sdk.storage.set(key, data)
+
+            def _merge(data: dict) -> dict:
+                if not isinstance(data, dict):
+                    data = {}
+                data["tokens"] = int(data.get("tokens", 0) or 0) + tokens
+                data["calls"] = int(data.get("calls", 0) or 0) + 1
+                by_chat = data.get("by_chat")
+                if not isinstance(by_chat, dict):
+                    by_chat = {}
+                by_chat[chat_key] = int(by_chat.get(chat_key, 0) or 0) + tokens
+                data["by_chat"] = by_chat
+# 用户维度（user_daily_budget 配额门槛读这里）：ctx.user_id 由调用方带出
+                if user_id:
+                    by_user = data.get("by_user")
+                    if not isinstance(by_user, dict):
+                        by_user = {}
+                    by_user[user_id] = int(by_user.get(user_id, 0) or 0) + tokens
+                    data["by_user"] = by_user
+                if model:
+                    by_model = data.get("by_model")
+                    if not isinstance(by_model, dict):
+                        by_model = {}
+                    entry = by_model.get(model)
+                    entry = {"tokens": 0, "in": 0, "out": 0} if not isinstance(entry, dict) else entry
+                    entry["tokens"] = int(entry.get("tokens", 0) or 0) + tokens
+                    entry["in"] = int(entry.get("in", 0) or 0) + int(usage.get("prompt_tokens", 0) or 0)
+                    entry["out"] = int(entry.get("out", 0) or 0) + int(usage.get("completion_tokens", 0) or 0)
+                    by_model[model] = entry
+                    data["by_model"] = by_model
+                return data
+
+# 键级 RMW（并发回合同时记账不再互相覆盖少记）
+            data = utils.storage_update(self.sdk, key, _merge, {})
             self._prune_usage(today)
             self._usage_warn_check(chat_key, int(data.get("tokens", 0) or 0), today)
         except Exception as e:
@@ -66,21 +70,28 @@ class UsageMixin:
             return
         pct = tokens_today * 100 // limit
         marker_key = f"QvQChat:usage:warned:{today}"
+        crossed: list = []
+
+        def _mark(warned) -> dict:
+            if not isinstance(warned, dict):
+                warned = {}
+            if pct >= 100 and not warned.get("100"):
+                warned["100"] = True
+                crossed.append(("100", texts.t("usage_warn_100", limit=limit)))
+            elif pct >= warn_at and not warned.get(str(warn_at)):
+                warned[str(warn_at)] = True
+                crossed.append((str(warn_at), texts.t("usage_warn_80", at=warn_at, pct=pct, limit=limit)))
+            return warned
+
         try:
-            warned = self.sdk.storage.get(marker_key, {})
-            warned = warned if isinstance(warned, dict) else {}
-        except Exception:
-            warned = {}
-        crossed = []
-        if pct >= 100 and not warned.get("100"):
-            warned["100"] = True
-            crossed.append(("100", texts.t("usage_warn_100", limit=limit)))
-        elif pct >= warn_at and not warned.get(str(warn_at)):
-            warned[str(warn_at)] = True
-            crossed.append((str(warn_at), texts.t("usage_warn_80", at=warn_at, pct=pct, limit=limit)))
+# 键级 RMW（并发回合跨阈值只提示一次，不重复发）
+            utils.storage_update(self.sdk, marker_key, _mark, {})
+        except Exception as e:
+# 存储故障时不发提示（发了也记不住阈值，会重复打扰）；留调试日志
+            self.logger.debug(f"usage warn marker failed: {e}")
+            return
         if not crossed:
             return
-        self.sdk.storage.set(marker_key, warned)
         logger = self.logger
         for _, message in crossed:
             logger.info(f"usage warn: {message}")
