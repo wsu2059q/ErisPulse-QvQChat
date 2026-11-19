@@ -18,7 +18,7 @@
 
   /* ---------------- 基础数据 ---------------- */
 
-  var VERSION = "4.7.0-demo";
+  var VERSION = "4.8.0-demo";
 
   function dayKey(offset) {
     var d = new Date(NOW * 1000 - offset * 86400000);
@@ -109,7 +109,8 @@
     { chat_key: "dashboard:private:web", name: "网页对话", turns: 12, detail_type: "private", pinned: false, archived: false, platform: "dashboard", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
     { chat_key: "onebot11:group:8871", name: "开发组", turns: 41, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: true, low_token: false, priority: "low", session_budget: 0 }, ui: {} },
     { chat_key: "onebot11:group:2210", name: "闲聊灌水区", turns: 19, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "sub:onebot11:group:1049:9f8e7d6c", name: "抓取 GitHub trending 并汇总", turns: 4, detail_type: "group", pinned: false, archived: false, platform: "sub", kind: "sub", sub_of: "onebot11:group:1049", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:group:3301@SnowOvO", name: "语音房闲聊", turns: 8, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "yunhu:private:740318@小喵", name: "云湖私聊-陈哥", turns: 5, detail_type: "private", pinned: false, archived: false, platform: "yunhu", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
   ];
 
   /* 多账户页：适配器（运行中/已停用折叠演示 + 平台级人格绑定）+ 账户（平台/会话数/人格绑定） */
@@ -148,6 +149,14 @@
       { role: "user", content: "帮我写个批量重命名的小脚本", ts: NOW - 3600 },
       { role: "assistant", content: "", rounds: ROUNDS_PING, ts: NOW - 3500, meta: { model: "deepseek-chat", usage: { prompt_tokens: 8421, completion_tokens: 96, total_tokens: 8517 } } },
       { role: "assistant", content: "好喵，给你个常用的：批量重命名文件小脚本。\n\n```python\nimport os\n\ndef batch_rename(folder, prefix=\"file_\", ext_filter=None):\n    files = sorted(os.listdir(folder))\n    for i, name in enumerate(files, 1):\n        path = os.path.join(folder, name)\n        if not os.path.isfile(path):\n            continue\n        ext = os.path.splitext(name)[1]\n        os.rename(path, os.path.join(folder, f\"{prefix}{i:03d}{ext}\"))\n\nbatch_rename(\"D:/图片\", prefix=\"照片_\", ext_filter=(\".jpg\", \".png\"))\n```\n\n改下文件夹路径就能跑，会把文件重命名成 `照片_001.jpg` 这种带序号的格式。", ts: NOW - 1800, meta: { model: "deepseek-chat", usage: { prompt_tokens: 9104, completion_tokens: 388, total_tokens: 9492 } } },
+    ],
+    "onebot11:group:3301@SnowOvO": [
+      { role: "user", content: "今晚连麦打游戏吗", ts: NOW - 7200, sender_name: "阿雪" },
+      { role: "assistant", content: "来啊，老时间语音房集合喵！", ts: NOW - 7100 },
+    ],
+    "yunhu:private:740318@小喵": [
+      { role: "user", content: "论文初稿我发你邮箱了", ts: NOW - 5400 },
+      { role: "assistant", content: "收到，晚上给你标注意见喵。", ts: NOW - 5300 },
     ],
     "onebot11:group:1049": [
       { role: "user", content: "今天有什么打算？" },
@@ -384,7 +393,30 @@
           total: 3.9761,
         });
         case "/api/qvq/models": return json({ providers: PROVIDERS, chain: CHAIN, models: CHAIN.map(function (c) { return { id: c.provider + ":" + c.model.id }; }), default: "deepseek:deepseek-chat", presets: [] });
-        case "/api/qvq/sessions": return json({ sessions: SESSIONS, total: SESSIONS.length, start: 0, limit: 200, live_sessions: [], ui_defaults: {}, accounts: { adapters: ADAPTERS, accounts: MOCK_ACCOUNTS }, identity_map: {}, identity_suggestions: [] });
+        case "/api/qvq/sessions": {
+          /* 与真后端同形：名字/chat_key 不中时扫 MESSAGES 正文（内容级全局搜索），命中行带 snippet */
+          var q = String(query.q || "").trim().toLowerCase();
+          var rows = SESSIONS;
+          if (q) {
+            rows = [];
+            SESSIONS.forEach(function (s) {
+              var name = String(s.name || "").toLowerCase();
+              var key = String(s.chat_key || "").toLowerCase();
+              if (name.indexOf(q) >= 0 || key.indexOf(q) >= 0) { rows.push(s); return; }
+              var body = (MESSAGES[s.chat_key] || []).map(function (m) {
+                return typeof m.content === "string" ? m.content
+                  : Array.isArray(m.content) ? m.content.map(function (p) { return (p && p.text) || ""; }).join(" ") : "";
+              }).join("\n").toLowerCase();
+              var idx = body.indexOf(q);
+              if (idx < 0) return;
+              var head = Math.max(0, idx - 40);
+              var snippet = body.slice(head, idx + q.length + 60).replace(/\s+/g, " ").trim();
+              var copy = Object.assign({}, s, { snippet: (head > 0 ? "…" : "") + snippet + "…" });
+              rows.push(copy);
+            });
+          }
+          return json({ sessions: rows, total: rows.length, start: 0, limit: 200, live_sessions: [], ui_defaults: {}, accounts: { adapters: ADAPTERS, accounts: MOCK_ACCOUNTS }, identity_map: {}, identity_suggestions: [] });
+        }
         case "/api/qvq/session/messages": {
           var msgs = MESSAGES[query.chat_key] || [];
           try {

@@ -1696,8 +1696,10 @@ body::-webkit-scrollbar,
   font-size: 11.5px;
   cursor: pointer;
 }
-.msg { display: flex; margin-bottom: 12px; }
+.msg { display: flex; margin-bottom: 14px; }
 .msg.user { justify-content: flex-end; }
+/* 组内贴合（cont）：同角色连续消息收紧；组首条上方加呼吸 */
+.msg.cont { margin-top: -6px; margin-bottom: 10px; }
 .msg-body {
   max-width: min(680px, 84%);
   padding: 9px 13px;
@@ -1705,22 +1707,75 @@ body::-webkit-scrollbar,
   background: var(--qvq-bg-s);
   color: var(--qvq-tx);
   font-size: 13.5px;
-  line-height: 1.65;
+  line-height: 1.7;
   word-break: break-word;
 }
-.msg.user .msg-body { background: var(--qvq-accent-soft); }
-.msg.assistant .msg-body { background: transparent; padding-left: 2px; }
+/* IM 气泡语感：发言方角落收小圆角（user 右下 / assistant 左下） */
+.msg.user .msg-body { background: var(--qvq-accent-soft); border-bottom-right-radius: 5px; }
+.msg.assistant .msg-body { background: transparent; padding-left: 2px; border-bottom-left-radius: 5px; }
 .msg-text > :first-child { margin-top: 0; }
 .msg-text > :last-child { margin-bottom: 0; }
+/* ---- markdown 正文排版（assistant 文档式回复的层级感）---- */
+.msg-text h1, .msg-text h2, .msg-text h3, .msg-text h4, .msg-text h5, .msg-text h6 {
+  margin: 14px 0 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--qvq-tx);
+}
+.msg-text h1:first-child, .msg-text h2:first-child, .msg-text h3:first-child { margin-top: 0; }
+.msg-text h1 { font-size: 16px; }
+.msg-text h2 { font-size: 15px; }
+.msg-text ul, .msg-text ol { margin: 6px 0; padding-left: 22px; }
+.msg-text li { margin: 3px 0; }
+.msg-text li::marker { color: var(--qvq-accent); }
+.msg-text a { color: var(--qvq-accent); text-decoration: none; border-bottom: 1px solid transparent; }
+.msg-text a:hover { border-bottom-color: var(--qvq-accent); }
+.msg-text blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--qvq-accent);
+  border-radius: 0 8px 8px 0;
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+}
+.msg-text blockquote > :first-child { margin-top: 0; }
+.msg-text blockquote > :last-child { margin-bottom: 0; }
+.msg-text hr { border: 0; border-top: 1px solid var(--qvq-bd-h); margin: 12px 0; }
+.msg-text .qvq-md-table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12.5px;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.msg-text .qvq-md-table th, .msg-text .qvq-md-table td {
+  border: 1px solid var(--qvq-bd-h);
+  padding: 5px 10px;
+  text-align: left;
+}
+.msg-text .qvq-md-table th { background: var(--qvq-bg-s); font-weight: 600; }
+.msg-text p { margin: 6px 0; }
+/* 内联代码与代码块：底色 + 描边双层区分 */
+.msg-text code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12.5px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--qvq-bg-s);
+  border: 1px solid var(--qvq-bd-h);
+}
 .msg-text pre {
   margin: 8px 0;
   padding: 10px 12px;
   border-radius: 9px;
   background: var(--qvq-bg-s);
+  border: 1px solid var(--qvq-bd-h);
   overflow-x: auto;
   font-size: 12px;
+  line-height: 1.55;
 }
-.msg-text code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12.5px; }
+.msg-text pre code { padding: 0; border: 0; background: transparent; font-size: inherit; }
 .msg-atts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .msg-img { max-width: 180px; max-height: 180px; border-radius: 8px; display: block; }
 .msg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
@@ -1939,8 +1994,6 @@ body::-webkit-scrollbar,
 
 @media (max-width: 900px) {
   .chat-wrap { grid-template-columns: minmax(0, 1fr); height: 100%; }
-  .chat-side { display: none; }
-  .chat-sess-pick { display: block; flex: 1 1 100%; }
   .chat-main { height: 100%; min-height: 0; }
 }
 
@@ -2243,20 +2296,67 @@ body::-webkit-scrollbar,
 @media (max-width: 900px) {
   .qvq-main.chat-mode { padding: 8px; }
   .chat-wrap { grid-template-columns: minmax(0, 1fr); height: 100%; }
-  .chat-side { display: none; }
-  .chat-sess-pick { display: block; flex: 1 1 100%; }
-  .chat-head { gap: 8px; padding: 8px 10px; }
+  /* 会话栏抽屉化：不再 display:none 硬藏，滑出式（选完即收） */
+  .chat-side {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 71;
+    width: min(320px, 84vw);
+    border-radius: 0 18px 18px 0;
+    transform: translateX(-105%);
+    transition: transform 0.25s ease;
+    visibility: hidden;
+  }
+  .chat-side.open { transform: none; visibility: visible; }
+  .chat-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(6, 8, 12, 0.55);
+  }
+  /* 头部：☰会话名按钮开抽屉，替代占满一行的会话大下拉 */
+  .chat-side-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: 60%;
+    padding: 6px 12px 6px 10px;
+    border: 1px solid var(--qvq-bd);
+    border-radius: 10px;
+    background: var(--qvq-bg-s);
+    color: var(--qvq-tx);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .chat-side-toggle svg { flex: 0 0 auto; width: 16px; height: 16px; color: var(--qvq-tx-t); }
+  .chat-side-toggle .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-sess-pick { display: none !important; }
   .chat-head-tx { display: none; }
+  /* 全局汉堡（fixed 12,12，宽 36）压着头部左上角：首行让出按钮位 */
+  .chat-head { gap: 8px; padding: 8px 10px 8px 52px; }
+  /* 控件收纳：select 三件均分一行，按钮跟随其后不掉宽条 */
   .chat-head-ctl {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 92px 84px;
+    display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     width: 100%;
   }
-  .chat-head-ctl .n-select { width: auto !important; }
+  .chat-head-ctl .n-select { width: auto !important; flex: 1 1 0; min-width: 96px; }
+  .chat-head-ctl > button { flex: 0 0 auto; }
   .chat-main { height: 100%; min-height: 0; }
+  /* 消息区窄屏：收边距让气泡占满，正文行高略收 */
+  .chat-thread { padding: 12px 12px 6px; }
+  .msg-body { max-width: 92%; font-size: 13px; line-height: 1.6; }
   .doc-save { display: none; }
   .qvq-doc .doc-tools { width: 100%; }
+}
+@media (min-width: 901px) {
+  .chat-side-toggle, .chat-mask { display: none; }
 }
 
 .prov-model-edit {
@@ -2423,6 +2523,50 @@ body::-webkit-scrollbar,
 }
 .partic-chip.on { border-color: var(--qvq-ok); color: var(--qvq-ok); }
 
+/* 账户筛选 chips（对话侧栏筛选弹层 / 执行记录页共用） */
+.sess-acct-row { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 2px 6px; }
+.sess-filter-row { padding: 2px 2px 4px; }
+.sess-filter-row .sess-acct-chip .x {
+  font-style: normal;
+  margin-left: 6px;
+  opacity: 0.7;
+}
+.sess-filter-row .sess-acct-chip .x:hover { opacity: 1; }
+.chat-filter-btn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: 8px;
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.chat-filter-btn svg { width: 14px; height: 14px; }
+.chat-filter-btn:hover { border-color: var(--qvq-bd-h); color: var(--qvq-tx); }
+.chat-filter-btn.on { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+.sess-filter-panel { display: flex; flex-direction: column; gap: 10px; min-width: 200px; }
+.sess-filter-sec { display: flex; flex-direction: column; gap: 6px; }
+.sess-filter-label { font-size: 11px; color: var(--qvq-tx-t); }
+.sess-filter-opts { display: flex; flex-wrap: wrap; gap: 5px; }
+.sess-acct-chip {
+  padding: 2px 10px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: 99px;
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.sess-acct-chip:hover { border-color: var(--qvq-bd-h); color: var(--qvq-tx); }
+.sess-acct-chip.on { border-color: var(--qvq-accent); background: var(--qvq-accent-soft); color: var(--qvq-accent); }
+
 /* 提示词调试器 */
 .prompt-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .prompt-parts { margin-bottom: 10px; border: 1px solid var(--qvq-bd); border-radius: 10px; overflow: hidden; }
@@ -2455,7 +2599,6 @@ body::-webkit-scrollbar,
   font-size: 11px;
   color: var(--qvq-tx-t);
 }
-.msg.cont { margin-top: 2px; }
 .chat-down {
   position: sticky;
   bottom: 12px;
@@ -2961,6 +3104,17 @@ tr.dim { opacity: 0.45; }
 }
 .chat-sitem-wrap:hover .chat-sitem-acts { display: block; }
 .chat-sitem-wrap:hover .chat-sitem .mt { visibility: hidden; }
+/* 内容搜索命中摘要：名字行下方的小字正文摘录（搜到的那句话在哪） */
+.chat-sitem { flex-wrap: wrap; }
+.chat-sitem-snippet {
+  flex: 1 0 100%;
+  font-size: 11px;
+  color: var(--qvq-tx-t);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-sitem.on .chat-sitem-snippet { color: var(--qvq-accent); opacity: 0.75; }
 .chat-sitem-more {
   border: 0;
   background: var(--qvq-bg-s);
@@ -3207,7 +3361,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
 
   /* ---------------- 基础数据 ---------------- */
 
-  var VERSION = "4.7.0-demo";
+  var VERSION = "4.8.0-demo";
 
   function dayKey(offset) {
     var d = new Date(NOW * 1000 - offset * 86400000);
@@ -3298,7 +3452,8 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
     { chat_key: "dashboard:private:web", name: "网页对话", turns: 12, detail_type: "private", pinned: false, archived: false, platform: "dashboard", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
     { chat_key: "onebot11:group:8871", name: "开发组", turns: 41, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: true, low_token: false, priority: "low", session_budget: 0 }, ui: {} },
     { chat_key: "onebot11:group:2210", name: "闲聊灌水区", turns: 19, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "sub:onebot11:group:1049:9f8e7d6c", name: "抓取 GitHub trending 并汇总", turns: 4, detail_type: "group", pinned: false, archived: false, platform: "sub", kind: "sub", sub_of: "onebot11:group:1049", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:group:3301@SnowOvO", name: "语音房闲聊", turns: 8, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "yunhu:private:740318@小喵", name: "云湖私聊-陈哥", turns: 5, detail_type: "private", pinned: false, archived: false, platform: "yunhu", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
   ];
 
   /* 多账户页：适配器（运行中/已停用折叠演示 + 平台级人格绑定）+ 账户（平台/会话数/人格绑定） */
@@ -3337,6 +3492,14 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       { role: "user", content: "帮我写个批量重命名的小脚本", ts: NOW - 3600 },
       { role: "assistant", content: "", rounds: ROUNDS_PING, ts: NOW - 3500, meta: { model: "deepseek-chat", usage: { prompt_tokens: 8421, completion_tokens: 96, total_tokens: 8517 } } },
       { role: "assistant", content: "好喵，给你个常用的：批量重命名文件小脚本。\n\n```python\nimport os\n\ndef batch_rename(folder, prefix=\"file_\", ext_filter=None):\n    files = sorted(os.listdir(folder))\n    for i, name in enumerate(files, 1):\n        path = os.path.join(folder, name)\n        if not os.path.isfile(path):\n            continue\n        ext = os.path.splitext(name)[1]\n        os.rename(path, os.path.join(folder, f\"{prefix}{i:03d}{ext}\"))\n\nbatch_rename(\"D:/图片\", prefix=\"照片_\", ext_filter=(\".jpg\", \".png\"))\n```\n\n改下文件夹路径就能跑，会把文件重命名成 `照片_001.jpg` 这种带序号的格式。", ts: NOW - 1800, meta: { model: "deepseek-chat", usage: { prompt_tokens: 9104, completion_tokens: 388, total_tokens: 9492 } } },
+    ],
+    "onebot11:group:3301@SnowOvO": [
+      { role: "user", content: "今晚连麦打游戏吗", ts: NOW - 7200, sender_name: "阿雪" },
+      { role: "assistant", content: "来啊，老时间语音房集合喵！", ts: NOW - 7100 },
+    ],
+    "yunhu:private:740318@小喵": [
+      { role: "user", content: "论文初稿我发你邮箱了", ts: NOW - 5400 },
+      { role: "assistant", content: "收到，晚上给你标注意见喵。", ts: NOW - 5300 },
     ],
     "onebot11:group:1049": [
       { role: "user", content: "今天有什么打算？" },
@@ -3573,7 +3736,30 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
           total: 3.9761,
         });
         case "/api/qvq/models": return json({ providers: PROVIDERS, chain: CHAIN, models: CHAIN.map(function (c) { return { id: c.provider + ":" + c.model.id }; }), default: "deepseek:deepseek-chat", presets: [] });
-        case "/api/qvq/sessions": return json({ sessions: SESSIONS, total: SESSIONS.length, start: 0, limit: 200, live_sessions: [], ui_defaults: {}, accounts: { adapters: ADAPTERS, accounts: MOCK_ACCOUNTS }, identity_map: {}, identity_suggestions: [] });
+        case "/api/qvq/sessions": {
+          /* 与真后端同形：名字/chat_key 不中时扫 MESSAGES 正文（内容级全局搜索），命中行带 snippet */
+          var q = String(query.q || "").trim().toLowerCase();
+          var rows = SESSIONS;
+          if (q) {
+            rows = [];
+            SESSIONS.forEach(function (s) {
+              var name = String(s.name || "").toLowerCase();
+              var key = String(s.chat_key || "").toLowerCase();
+              if (name.indexOf(q) >= 0 || key.indexOf(q) >= 0) { rows.push(s); return; }
+              var body = (MESSAGES[s.chat_key] || []).map(function (m) {
+                return typeof m.content === "string" ? m.content
+                  : Array.isArray(m.content) ? m.content.map(function (p) { return (p && p.text) || ""; }).join(" ") : "";
+              }).join("\n").toLowerCase();
+              var idx = body.indexOf(q);
+              if (idx < 0) return;
+              var head = Math.max(0, idx - 40);
+              var snippet = body.slice(head, idx + q.length + 60).replace(/\s+/g, " ").trim();
+              var copy = Object.assign({}, s, { snippet: (head > 0 ? "…" : "") + snippet + "…" });
+              rows.push(copy);
+            });
+          }
+          return json({ sessions: rows, total: rows.length, start: 0, limit: 200, live_sessions: [], ui_defaults: {}, accounts: { adapters: ADAPTERS, accounts: MOCK_ACCOUNTS }, identity_map: {}, identity_suggestions: [] });
+        }
         case "/api/qvq/session/messages": {
           var msgs = MESSAGES[query.chat_key] || [];
           try {
@@ -3805,7 +3991,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "今日用量", chart_usage: "用量", chart_cost: "成本", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "调用", chart_tip_pct: "占上限", sec_level_strict: "严格", sec_level_standard: "标准", sec_level_permissive: "宽松", backup_export: "导出配置", backup_import: "导入配置", audit_filter: "过滤工具/用户…", col_preview: "最近消息",
       subtitle: "通用智能体",
       nav_overview: "概览", nav_chat: "对话", nav_models: "模型池", nav_personas: "人格",
-      nav_tools: "工具", nav_extensions: "扩展", nav_tasks: "定时任务", nav_memory: "记忆", nav_sessions: "会话", nav_plugins: "插件", nav_inbox: "收件箱", nav_backup: "备份", add_title: "添加", item_desc: "描述", loading: "加载中…", sess_group_group: "群聊", sess_group_private: "私聊", sess_group_pinned: "置顶",
+      nav_tools: "工具", nav_extensions: "扩展", nav_tasks: "定时任务", nav_memory: "记忆", nav_sessions: "会话", nav_plugins: "插件", nav_inbox: "收件箱", nav_backup: "备份", add_title: "添加", item_desc: "描述", loading: "加载中…", sess_group_group: "群聊", sess_group_private: "私聊", sess_group_pinned: "置顶", sess_recent: "最近", sess_all: "全部", filter_title: "筛选", sess_toggle: "会话列表", filter_account: "账户", filter_sort: "排序", sort_updated: "最近活跃", sort_turns: "最多轮次", sort_name: "会话名",
       nav_knowledge: "知识库", knowledge_desc: "共享资料库：相关片段会自动注入对话，也可用 knowledge_search 检索", kb_add: "添加条目", kb_search_ph: "检索…", kb_stats_line: "条目 {e} · 分块 {c}", kb_list_empty: "还没有条目，点上方按钮添加", kb_title_label: "标题", kb_source_label: "来源（可选）", kb_content_label: "内容", kb_need_title_content: "需要标题与内容", kb_triggers_label: "触发关键词（可选，世界书）", kb_triggers_ph: "如：魔王, 北塔（逗号分隔，命中即注入）", kb_priority_label: "触发优先级（大优先）", kb_cooldown_label: "触发冷却分钟（留空用默认，0 不冷却）", kb_edit: "编辑条目", kb_scope_label: "可见域", kb_scope_chat: "会话/平台（填 chat_key 或平台名，如 bilibili）", kb_scope_ph: "留空=全局", kb_scope_chip_private: "私有",
       nav_audit: "审计", audit_clear: "清空记录", nav_settings: "设置",
       sess_members: "成员", sess_members_hint: "成员白名单（每行一个用户 ID，* 表示全员；留空恢复全员）", sess_sources_hint: "接受其它会话的输入（每行一个 chat_key，如 onebot11:group:123；这些会话的消息会路由到本会话）", kb_export: "导出", kb_import: "导入",
@@ -3913,7 +4099,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "今日用量", chart_usage: "用量", chart_cost: "成本", sec_level_strict: "嚴格", sec_level_standard: "標準", sec_level_permissive: "寬鬆", backup_export: "匯出配置", backup_import: "匯入配置", audit_filter: "過濾工具/使用者…", col_preview: "最近訊息",
       subtitle: "通用智慧代理",
       nav_overview: "概覽", nav_chat: "對話", nav_models: "模型池", nav_personas: "人格",
-      nav_tools: "工具", nav_extensions: "擴展", nav_tasks: "定時任務", nav_memory: "記憶", nav_sessions: "會話", nav_plugins: "外掛", nav_inbox: "收件匣", nav_backup: "備份", add_title: "新增", item_desc: "描述", loading: "載入中…", sess_group_group: "群聊", sess_group_private: "私聊", sess_group_pinned: "置頂",
+      nav_tools: "工具", nav_extensions: "擴展", nav_tasks: "定時任務", nav_memory: "記憶", nav_sessions: "會話", nav_plugins: "外掛", nav_inbox: "收件匣", nav_backup: "備份", add_title: "新增", item_desc: "描述", loading: "載入中…", sess_group_group: "群聊", sess_group_private: "私聊", sess_group_pinned: "置頂", sess_recent: "最近", sess_all: "全部", filter_title: "篩選", sess_toggle: "會話列表", filter_account: "帳號", filter_sort: "排序", sort_updated: "最近活躍", sort_turns: "最多輪次", sort_name: "會話名",
       nav_knowledge: "知識庫", knowledge_desc: "共享資料庫：相關片段會自動注入對話，也可用 knowledge_search 檢索", kb_add: "新增條目", kb_search_ph: "檢索…", kb_stats_line: "條目 {e} · 分塊 {c}", kb_list_empty: "還沒有條目，點上方按鈕新增", kb_title_label: "標題", kb_source_label: "來源（可選）", kb_content_label: "內容", kb_need_title_content: "需要標題與內容", kb_triggers_label: "觸發關鍵詞（可選，世界書）", kb_triggers_ph: "如：魔王, 北塔（逗號分隔，命中即注入）", kb_priority_label: "觸發優先級（大優先）", kb_cooldown_label: "觸發冷卻分鐘（留空用預設，0 不冷卻）", kb_edit: "編輯條目", kb_scope_label: "可見域", kb_scope_chat: "會話/平台（填 chat_key 或平台名，如 bilibili）", kb_scope_ph: "留空=全域", kb_scope_chip_private: "私有",
       nav_audit: "審計", audit_clear: "清空記錄", nav_settings: "設定",
       sess_members: "成員", sess_members_hint: "成員白名單（每行一個使用者 ID，* 表示全員；留空恢復全員）", sess_sources_hint: "接受其它會話的輸入（每行一個 chat_key，如 onebot11:group:123；這些會話的訊息會路由到本會話）", kb_export: "匯出", kb_import: "匯入",
@@ -4021,7 +4207,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "Today usage", chart_usage: "Usage", chart_cost: "Cost", chart_limit_legend: "Daily limit {n} · {d} days over", chart_tip_calls: "Calls", chart_tip_pct: "% of limit", sec_level_strict: "Strict", sec_level_standard: "Standard", sec_level_permissive: "Permissive", backup_export: "Export config", backup_import: "Import config", audit_filter: "Filter tool/user…", col_preview: "Last message",
       subtitle: "universal agent",
       nav_overview: "Overview", nav_chat: "Chat", nav_models: "Models", nav_personas: "Personas",
-      nav_tools: "Tools", nav_extensions: "Extensions", nav_tasks: "Tasks", nav_memory: "Memory", nav_sessions: "Sessions", nav_plugins: "Plugins", nav_inbox: "Inbox", nav_backup: "Backup", add_title: "Add", item_desc: "Description", loading: "Loading…", sess_group_group: "Group chats", sess_group_private: "Direct chats", sess_group_pinned: "Pinned",
+      nav_tools: "Tools", nav_extensions: "Extensions", nav_tasks: "Tasks", nav_memory: "Memory", nav_sessions: "Sessions", nav_plugins: "Plugins", nav_inbox: "Inbox", nav_backup: "Backup", add_title: "Add", item_desc: "Description", loading: "Loading…", sess_group_group: "Group chats", sess_group_private: "Direct chats", sess_group_pinned: "Pinned", sess_recent: "Recent", sess_all: "All", filter_title: "Filter", sess_toggle: "Sessions", filter_account: "Account", filter_sort: "Sort", sort_updated: "Latest activity", sort_turns: "Most turns", sort_name: "Name",
       nav_knowledge: "Knowledge", knowledge_desc: "Shared library: relevant passages are auto-injected into chats and searchable via knowledge_search", kb_add: "Add entry", kb_search_ph: "Search…", kb_stats_line: "{e} entries · {c} chunks", kb_list_empty: "No entries yet — use the button above to add one", kb_title_label: "Title", kb_source_label: "Source (optional)", kb_content_label: "Content", kb_need_title_content: "Title and content are required", kb_triggers_label: "Trigger keywords (optional, lorebook)", kb_triggers_ph: "e.g. demon king, north tower (comma separated)", kb_priority_label: "Trigger priority (higher first)", kb_cooldown_label: "Trigger cooldown minutes (blank = default, 0 = none)", kb_edit: "Edit entry", kb_scope_label: "Visibility", kb_scope_chat: "Session/platform (chat_key or platform name, e.g. bilibili)", kb_scope_ph: "blank = global", kb_scope_chip_private: "private",
       nav_audit: "Audit", audit_clear: "Clear log", nav_settings: "Settings",
       sess_members: "Members", sess_members_hint: "Member allowlist (one user ID per line, * = everyone; empty resets to everyone)", sess_sources_hint: "Accept input from other chats (one chat_key per line, e.g. onebot11:group:123; their messages route into this chat)", kb_export: "Export", kb_import: "Import",
@@ -4129,7 +4315,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "今日の使用量", chart_usage: "使用量", chart_cost: "コスト", chart_limit_legend: "日上限 {n} · 超過 {d} 日", chart_tip_calls: "呼び出し", chart_tip_pct: "上限比", sec_level_strict: "厳格", sec_level_standard: "標準", sec_level_permissive: "緩和", backup_export: "設定をエクスポート", backup_import: "設定をインポート", audit_filter: "絞り込み…", col_preview: "最新メッセージ",
       subtitle: "汎用エージェント",
       nav_overview: "概要", nav_chat: "チャット", nav_models: "モデル", nav_personas: "ペルソナ",
-      nav_tools: "ツール", nav_extensions: "拡張", nav_tasks: "タスク", nav_memory: "記憶", nav_sessions: "セッション", nav_plugins: "プラグイン", nav_inbox: "受信箱", nav_backup: "バックアップ", add_title: "追加", item_desc: "説明", loading: "読み込み中…", sess_group_group: "グループ", sess_group_private: "個人", sess_group_pinned: "ピン留め",
+      nav_tools: "ツール", nav_extensions: "拡張", nav_tasks: "タスク", nav_memory: "記憶", nav_sessions: "セッション", nav_plugins: "プラグイン", nav_inbox: "受信箱", nav_backup: "バックアップ", add_title: "追加", item_desc: "説明", loading: "読み込み中…", sess_group_group: "グループ", sess_group_private: "個人", sess_group_pinned: "ピン留め", sess_recent: "最近", sess_all: "すべて", filter_title: "絞り込み", sess_toggle: "セッション", filter_account: "アカウント", filter_sort: "並び順", sort_updated: "最新活動", sort_turns: "ターン数", sort_name: "セッション名",
       nav_knowledge: "ナレッジ", knowledge_desc: "共有ライブラリ：関連する断片は会話に自動注入され、knowledge_search でも検索できます", kb_add: "項目を追加", kb_search_ph: "検索…", kb_stats_line: "項目 {e} · チャンク {c}", kb_list_empty: "まだ項目がありません。上のボタンから追加してください", kb_title_label: "タイトル", kb_source_label: "ソース（任意）", kb_content_label: "内容", kb_need_title_content: "タイトルと内容が必要です", kb_triggers_label: "トリガーキーワード（任意・ワールドブック）", kb_triggers_ph: "例：魔王, 北塔（カンマ区切り、一致で注入）", kb_priority_label: "トリガー優先度（大きい順）", kb_cooldown_label: "トリガークールダウン分（空欄でデフォルト、0 で無効）", kb_edit: "項目を編集", kb_scope_label: "公開範囲", kb_scope_chat: "セッション/プラットフォーム（chat_key またはプラットフォーム名、例: bilibili）", kb_scope_ph: "空欄=グローバル", kb_scope_chip_private: "非公開",
       nav_audit: "監査", audit_clear: "記録消去", nav_settings: "設定",
       sess_members: "メンバー", sess_members_hint: "メンバー許可リスト（1 行に 1 つのユーザー ID、* は全員。空で全員に戻す）", sess_sources_hint: "他のセッションの入力を受け入れる（1 行に 1 つの chat_key、例 onebot11:group:123。そのメッセージはこのセッションに転送されます）", kb_export: "エクスポート", kb_import: "インポート",
@@ -4237,7 +4423,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "Расход сегодня", chart_usage: "Расход", chart_cost: "Стоимость", chart_limit_legend: "Дневной лимит {n} · превышений: {d}", chart_tip_calls: "Вызовы", chart_tip_pct: "% от лимита", sec_level_strict: "Строгий", sec_level_standard: "Стандартный", sec_level_permissive: "Свободный", backup_export: "Экспорт конфига", backup_import: "Импорт конфига", audit_filter: "Фильтр инструмента/пользователя…", col_preview: "Последнее сообщение",
       subtitle: "универсальный агент",
       nav_overview: "Обзор", nav_chat: "Чат", nav_models: "Модели", nav_personas: "Личности",
-      nav_tools: "Инструменты", nav_extensions: "Расширения", nav_tasks: "Задачи", nav_memory: "Память", nav_sessions: "Сессии", nav_plugins: "Плагины", nav_inbox: "Входящие", nav_backup: "Резерв", add_title: "Добавить", item_desc: "Описание", loading: "Загрузка…", sess_group_group: "Группы", sess_group_private: "Личные", sess_group_pinned: "Закреплённые",
+      nav_tools: "Инструменты", nav_extensions: "Расширения", nav_tasks: "Задачи", nav_memory: "Память", nav_sessions: "Сессии", nav_plugins: "Плагины", nav_inbox: "Входящие", nav_backup: "Резерв", add_title: "Добавить", item_desc: "Описание", loading: "Загрузка…", sess_group_group: "Группы", sess_group_private: "Личные", sess_group_pinned: "Закреплённые", sess_recent: "Недавние", sess_all: "Все", filter_title: "Фильтр", sess_toggle: "Сессии", filter_account: "Аккаунт", filter_sort: "Сортировка", sort_updated: "По активности", sort_turns: "По оборотам", sort_name: "По имени",
       nav_knowledge: "База знаний", knowledge_desc: "Общая библиотека: подходящие фрагменты автоматически попадают в диалог, доступен поиск через knowledge_search", kb_add: "Добавить запись", kb_search_ph: "Поиск…", kb_stats_line: "Записей: {e} · Фрагментов: {c}", kb_list_empty: "Записей пока нет — добавьте через кнопку выше", kb_title_label: "Заголовок", kb_source_label: "Источник (необязательно)", kb_content_label: "Содержимое", kb_need_title_content: "Нужны заголовок и содержимое", kb_triggers_label: "Ключевые слова триггера (опционально, лорбук)", kb_triggers_ph: "напр.: демон, башня (через запятую)", kb_priority_label: "Приоритет триггера (выше — раньше)", kb_cooldown_label: "Кулдаун триггера, мин (пусто — по умолчанию, 0 — нет)", kb_edit: "Изменить запись", kb_scope_label: "Область видимости", kb_scope_chat: "Сессия/платформа (chat_key или имя платформы, напр. bilibili)", kb_scope_ph: "пусто = глобально", kb_scope_chip_private: "приватно",
       nav_audit: "Аудит", audit_clear: "Очистить журнал", nav_settings: "Настройки",
       sess_members: "Участники", sess_members_hint: "Белый список участников (один ID в строке, * = все; пусто — вернуть всех)", sess_sources_hint: "Принимать ввод из других чатов (один chat_key в строке, напр. onebot11:group:123; их сообщения направляются в этот чат)", kb_export: "Экспорт", kb_import: "Импорт",
@@ -4360,8 +4546,7 @@ I18N["ru"] = Object.assign(I18N["ru"] || {}, { nav_platforms: "Аккаунты"
 
 function t(k) {
   return (I18N[QvQ.store.lang] && I18N[QvQ.store.lang][k]) || I18N.en[k] || k;
-}
-</script><script>/* 全局命名空间与响应式状态 */
+}</script><script>/* 全局命名空间与响应式状态 */
 window.QvQ = window.QvQ || {};
 const QvQ = window.QvQ;
 QvQ.store = null;
@@ -5570,6 +5755,11 @@ window.PageChat = {
     return {
       sessions: [],
       q: "",
+      acctFilter: "",
+      sortBy: "updated",
+      filterOpen: false,
+      sideOpen: false,
+      accountsOverview: null,
       activeKey: "",
       messages: [],
       total: 0,
@@ -5716,25 +5906,57 @@ window.PageChat = {
       });
       return out;
     },
-    sessGroups() {
-      // 侧栏分组（对齐旧版）：置顶 / 群聊 / 私聊 / 已归档，各自可折叠
-      var groups = [
-        { key: "pinned", label: t("sess_group_pinned"), items: [] },
-        { key: "group", label: t("sess_group_group"), items: [] },
-        { key: "private", label: t("sess_group_private"), items: [] },
-        { key: "archived", label: t("chat_archived"), items: [] },
+    sortOptions() {
+      return [
+        { label: t("sort_updated"), value: "updated" },
+        { label: t("sort_turns"), value: "turns" },
+        { label: t("sort_name"), value: "name" },
       ];
-      this.sessions.forEach(function (s) {
-        if (s.archived) groups[3].items.push(s);
-        else if (s.pinned) groups[0].items.push(s);
-        else (String(s.detail_type) === "group" ? groups[1] : groups[2]).items.push(s);
+    },
+    filterActive() {
+      return !!(this.acctFilter || this.sortBy !== "updated");
+    },
+    filterLabel() {
+      var bits = [];
+      if (this.acctFilter) bits.push("@" + this.acctFilter);
+      if (this.sortBy !== "updated") {
+        var hit = this.sortOptions.filter(function (o) { return o.value === this.sortBy; }, this)[0];
+        bits.push(hit ? hit.label : "");
+      }
+      return t("filter_title") + ": " + bits.join(" · ");
+    },
+    sessAccounts() {
+      // 账户筛选 chips：全集账户表（响应自带 accounts 概览，不随搜索过滤缩水）；
+      // 过滤按会话键 @后缀 匹配。单账户/无后缀会话不出 chips。
+      var list = ((this.accountsOverview || {}).accounts) || [];
+      return list.map(function (a) { return String(a.account || ""); }).filter(Boolean);
+    },
+    sessGroups() {
+      // 侧栏分组（扁平化）：置顶 / 最近（群聊+私聊合并，谁先说话谁在顶部）/ 已归档
+      // 最近组排序：正在对话的（live 流式中）最前；其余按筛选排序
+      // （updated=谁先说话谁在顶部 / turns=最多轮次 / name=会话名）
+      var acct = this.acctFilter;
+      var sortBy = this.sortBy;
+      var pool = this.sessions.filter(function (s) {
+        if (!acct) return true;
+        var tail = String(s.chat_key || "").split(":").pop() || "";
+        var at = tail.indexOf("@");
+        return at >= 0 && tail.slice(at + 1) === acct;
       });
-      // 组内排序：正在对话的（live 流式中）最前，其余按最近回复时间倒序
       var byFresh = function (a, b) {
         if (!!a.live !== !!b.live) return a.live ? -1 : 1;
+        if (sortBy === "turns") return (b.turns || 0) - (a.turns || 0);
+        if (sortBy === "name") return String(a.name || a.chat_key).localeCompare(String(b.name || b.chat_key));
         return (b.updated || 0) - (a.updated || 0);
       };
-      groups.forEach(function (g) { g.items.sort(byFresh); });
+      var pinned = pool.filter(function (s) { return s.pinned && !s.archived; });
+      var recent = pool.filter(function (s) { return !s.pinned && !s.archived; }).sort(byFresh);
+      var archived = pool.filter(function (s) { return !!s.archived; });
+      var groups = [
+        { key: "pinned", label: t("sess_group_pinned"), items: pinned },
+        { key: "recent", label: t("sess_recent"), items: recent },
+        { key: "archived", label: t("chat_archived"), items: archived },
+      ];
       return groups.filter(function (g) { return g.items.length; });
     },
     todoLeft() {
@@ -5820,15 +6042,34 @@ window.PageChat = {
       if (this.q.trim()) url += "&q=" + encodeURIComponent(this.q.trim());
       return api(url).then(function (d) {
         self.sessions = (d && d.sessions) || [];
+        self.accountsOverview = (d && d.accounts) || null;
         self.loadingSessions = false;
         if (!self.activeKey && !QvQ.store.pendingChat && self.sessions.length) {
           self.open(self.sessions[0].chat_key);
         }
       });
     },
+    clearFilter() {
+      this.acctFilter = "";
+      this.sortBy = "updated";
+    },
+    onSearchInput() {
+// 内容级全局搜索每次输入都要扫会话正文：300ms 防抖；清空立即刷新不等
+      var self = this;
+      if (this._searchTimer) clearTimeout(this._searchTimer);
+      if (!this.q.trim()) {
+        this.loadSessions();
+        return;
+      }
+      this._searchTimer = setTimeout(function () {
+        self._searchTimer = null;
+        self.loadSessions();
+      }, 300);
+    },
     open(key) {
       if (!key) return;
       this.activeKey = key;
+      this.sideOpen = false; // 移动端抽屉选完即收
       QvQ.store.pendingChat = "";
       this.messages = [];
       this.total = 0;
@@ -6600,11 +6841,42 @@ window.PageChat = {
   },
   template: [
     '<div class="chat-wrap">',
-    '  <aside class="chat-side">',
+    '  <transition name="qvq-fade">',
+    '    <div v-if="sideOpen" class="chat-mask" @click="sideOpen = false"></div>',
+    '  </transition>',
+    '  <aside class="chat-side" :class="{ open: sideOpen }">',
     '    <div class="chat-side-head">',
     '      <n-input v-model:value="q" size="small" clearable :placeholder="t(\'search_ph\')"',
-    '               @update:value="loadSessions"/>',
+    '               @update:value="onSearchInput"/>',
+    '      <n-popover trigger="click" placement="bottom-end" :show="filterOpen" @update:show="filterOpen = $event" style="max-width: 280px">',
+    '        <template #trigger>',
+    '          <button type="button" class="chat-filter-btn" :class="{ on: filterActive }"',
+    '                  :title="t(\'filter_title\')" @click="filterOpen = !filterOpen">',
+    '            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>',
+    '          </button>',
+    '        </template>',
+    '        <div class="sess-filter-panel">',
+    '          <div class="sess-filter-sec" v-if="sessAccounts.length > 1">',
+    '            <div class="sess-filter-label">{{ t("filter_account") }}</div>',
+    '            <div class="sess-filter-opts">',
+    '              <button v-for="a in [\'\'].concat(sessAccounts)" :key="a || \'@all\'" type="button" class="sess-acct-chip"',
+    '                      :class="{ on: acctFilter === a }" @click="acctFilter = a">{{ a || t("sess_all") }}</button>',
+    '            </div>',
+    '          </div>',
+    '          <div class="sess-filter-sec">',
+    '            <div class="sess-filter-label">{{ t("filter_sort") }}</div>',
+    '            <div class="sess-filter-opts">',
+    '              <button v-for="o in sortOptions" :key="o.value" type="button" class="sess-acct-chip"',
+    '                      :class="{ on: sortBy === o.value }" @click="sortBy = o.value">{{ o.label }}</button>',
+    '            </div>',
+    '          </div>',
+    '        </div>',
+    '      </n-popover>',
     '      <button type="button" class="chat-new" :title="t(\'chat_new\')" @click="newSession">+</button>',
+    '    </div>',
+    '    <div class="sess-filter-row" v-if="filterActive">',
+    '      <button type="button" class="sess-acct-chip on" @click="filterOpen = true">',
+    '        {{ filterLabel }}<i class="x" @click.stop="clearFilter">×</i></button>',
     '    </div>',
     '    <div class="chat-list">',
     '      <template v-for="g in sessGroups" :key="g.key">',
@@ -6618,6 +6890,7 @@ window.PageChat = {
     '                    @click="open(s.chat_key)">',
     '              <span class="nm">{{ s.name || s.chat_key }}<i v-if="s.kind === \'handover\'" class="chat-subtag hv">{{ t("hv_badge") }}</i><i v-else-if="s.kind === \'sub\'" class="chat-subtag">{{ t("sub_badge") }}</i></span>',
     '              <span class="mt"><span class="live-dot" v-if="s.live"></span>{{ s.turns || 0 }}</span>',
+    '              <span v-if="s.snippet" class="chat-sitem-snippet">{{ s.snippet }}</span>',
     '            </button>',
     '            <div class="chat-sitem-acts">',
     '              <n-dropdown trigger="click" placement="bottom-end" size="small"',
@@ -6633,6 +6906,11 @@ window.PageChat = {
     '  </aside>',
     '  <section class="chat-main">',
     '    <header class="chat-head">',
+    '      <button type="button" class="chat-side-toggle" :title="t(\'sess_toggle\')" @click="sideOpen = true">',
+    '        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">',
+    '          <path d="M4 6h16M4 12h10M4 18h16"/></svg>',
+    '        <span class="nm">{{ activeName || t("nav_chat") }}</span>',
+    '      </button>',
     '      <n-select class="chat-sess-pick" :value="activeKey" :options="sessionOptions"',
     '                size="small" filterable @update:value="open"/>',
     '      <div class="chat-head-tx">',
