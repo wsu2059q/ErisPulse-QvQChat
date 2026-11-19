@@ -294,9 +294,9 @@ def test_dup_gate_cleanup_never_crashes():
     for i in range(300):
         assert main._dup_delivery_gate(IdEv(f"M{i}", f"消息{i}"), f"消息{i}") is True
 # 清理路径安全（此前在这里 v[1] 下标炸 float）：过期条目被淘汰
-    main.state.msg_claims["bot:Mold"] = _time.time() - 100
+    main.rt.msg_claims["bot:Mold"] = _time.time() - 100
     assert main._dup_delivery_gate(IdEv("Mnew", "新消息"), "新消息") is True
-    assert "bot:Mold" not in main.state.msg_claims
+    assert "bot:Mold" not in main.rt.msg_claims
     ev = IdEv("MX", "hello")
     assert main._dup_delivery_gate(ev, "hello") is True
     assert main._dup_delivery_gate(ev, "hello") is False  # 6s 窗内同 id 拦截

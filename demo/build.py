@@ -113,6 +113,7 @@ ORDER = (
     "components/PageKnowledge", "components/PageSessions", "components/PageAudit",
     "components/PageStorage", "components/PageTools", "components/PageMcp",
     "components/PageOrchestrate", "components/BackupPanel", "components/PageInbox",
+            "components/PageUsage",
     "components/SchemaForm", "components/QuickPanel",
     "components/Mascot", "main",
 )

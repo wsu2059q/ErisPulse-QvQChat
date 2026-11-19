@@ -11,11 +11,11 @@ def make_main(**overrides):
     main = FakeMain(**overrides)
     if not hasattr(main.cfg, "context_compress_tokens"):
         main.cfg.context_compress_tokens = 0
-    main.state.pending = {}
-    main.state.waiting = {}
-    main.state.chat_locks = {}
-    main.state.rate_window = {}
-    main.state.rate_notice_shown = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
+    main.rt.chat_locks = {}
+    main.rt.rate_window = {}
+    main.rt.rate_notice_shown = {}
 # 短窗去重是模块级全局（进程内跨实例共享）：测试间清空防同文本跨用例误丢
     from QvQChat.chat.inbox import INBOX_BOUND_METHODS, _RECENT_MSGS
 
@@ -49,9 +49,9 @@ async def test_batch_merges_image_and_text():
     ev2 = FakeChatEvent(text="这是啥", group=False)
     await Main._on_message(main, ev1)
     await Main._on_message(main, ev2)
-    assert main.state.pending["onebot11:private:u1"]["items"]
+    assert main.rt.pending["onebot11:private:u1"]["items"]
     await asyncio.sleep(0.2)
-    assert not main.state.pending
+    assert not main.rt.pending
     assert main.captured
     assert ev1.claimed and ev2.claimed
     messages = main.captured[0]["messages"]

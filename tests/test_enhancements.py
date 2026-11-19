@@ -19,7 +19,7 @@ from fakes import FakeMain, make_config, make_ctx
 
 
 def make_harness(**overrides):
-    return SimpleNamespace(cfg=make_config(**overrides), logger=FakeMain().logger, state=RuntimeState())
+    return SimpleNamespace(cfg=make_config(**overrides), logger=FakeMain().logger, rt=RuntimeState())
 
 
 def test_lock_same_key_same_object():

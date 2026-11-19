@@ -12,10 +12,10 @@ from fakes import FakeChatEvent, FakeMain
 def make_main(**overrides):
     main = FakeMain(**overrides)
     main.cfg.context_compress_tokens = 0
-    main.state.pending = {}
-    main.state.chat_locks = {}
-    main.state.rate_window = {}
-    main.state.rate_notice_shown = {}
+    main.rt.pending = {}
+    main.rt.chat_locks = {}
+    main.rt.rate_window = {}
+    main.rt.rate_notice_shown = {}
     for name in (
         "_seed_history", "_transcript_rows", "_label_seed_rows", "_group_nicknames",
     ):
