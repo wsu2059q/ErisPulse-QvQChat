@@ -1,767 +1,140 @@
+"""模型池门面：目录（catalog）× 分派（dispatch）两半的组装层。
+
+目录半区在 catalog.py（ProviderCatalog：提供商 CRUD/全局链/presets/models.dev
+富化/成本/能力/模型表解析），分派半区在 dispatch.py（DispatchGate：并发闸门/
+熔断/负载分流/难度路由/任务分派/chat 链）。本类只做组装与兼容委托——
+公开方法签名与属性面（含测试触碰的 _breaker/_provider_active/_ever_ok/gate）不变。
+"""
 from __future__ import annotations
 
-import asyncio
-import re
-import time
-from collections import deque
 from typing import Any
 
-from .. import texts, utils
-from ..providers import PROVIDER_PRESETS, get_preset
-from .base import ChatRequest, ChatResponse, EngineError, TaskSpec
-from .gate import PriorityGate
+from .base import ChatRequest, ChatResponse, TaskSpec
+from .catalog import ProviderCatalog
+from .dispatch import DispatchGate
 from .openai import OpenAIEngine
-from .router import classify
-
-POOL_KEY = "QvQChat:providers"
-CHAIN_KEY = "QvQChat:model_chain"
-LEGACY_KEY = "QvQChat:models"
-MODELS_DEV_URL = "https://models.dev/api.json"
-MODELS_DEV_CACHE_KEY = "QvQChat:modelsdev"
-MODELS_DEV_TTL = 86400
-MODELS_ENRICH_KEY = "QvQChat:models_enriched_at"
-MODELS_ENRICH_TTL = 6 * 3600
-
-
-def _provider_match(provider_id: str, pattern: str) -> bool:
-    """提供商匹配：精确或 * 通配（api* 命中 apiprovider）。"""
-    name = str(provider_id or "")
-    pat = str(pattern or "").strip()
-    if not pat:
-        return False
-    if pat.endswith("*"):
-        return name.startswith(pat[:-1])
-    return name == pat
 
 
 class ModelPool:
-    BREAKER_THRESHOLD = 3
-    BREAKER_BASE_COOLDOWN = 60.0
-    BREAKER_MAX_COOLDOWN = 600.0
-
-    ROUTING_LOG_MAX = 50
-
     def __init__(self, sdk: Any, config: Any):
         self.sdk = sdk
         self.config = config
         self.engine = OpenAIEngine()
-# 全局并发闸门（多人高负载）：limit 随配置实时生效；0 = 不限流
-        self.gate = PriorityGate(int(getattr(config, "max_concurrent_requests", 0) or 0))
-        self._migrate_legacy()
-# 模型熔断状态：model_id -> {"fails": 连续失败次数, "until": 冷却截止时间戳}
-        self._breaker: dict[str, dict] = {}
-# Provider 负载分流：provider_id -> 在飞请求数（并发时把新请求导向更闲的一家）
-        self._provider_active: dict[str, int] = {}
-# 至少成功过一次的模型（负载分流抢占链首的门槛，见 _record_success）
-        self._ever_ok: set[str] = set()
-# 难度感知路由（默认关闭）：chat_key -> (prefer, reason, ts)
-        self.routing_cache: dict[str, tuple] = {}
-# 路由统计与最近决策回看（{prefer: 计数} / deque[{chat_key, prefer, reason, ts}]）
-        self.routing_stats: dict[str, int] = {}
-        self.routing_log: deque = deque(maxlen=self.ROUTING_LOG_MAX)
+        self.catalog = ProviderCatalog(self)
+        self._dispatch = DispatchGate(self)
+        self.catalog.migrate_legacy()
 
-    def breaker_state(self) -> list[dict]:
-        import time as _time
+# ---- 兼容属性面：分派状态容器/闸门（测试与外部读这里）----
 
-        now = _time.time()
-        state = []
-        for model_id, info in self._breaker.items():
-            until = float(info.get("until") or 0)
-            if until <= now:
-                continue
-            state.append({"model": model_id, "fails": info.get("fails", 0), "cooldown_left": int(until - now)})
-        return state
+    @property
+    def gate(self):
+        return self._dispatch.gate
 
-    def breaker_reset(self, model_id: str = "") -> int:
-        """手动清除熔断状态（编排页健康卡重置按钮）：清全部或指定模型。"""
-        breaker = self._breaker
-        if model_id:
-            removed = 1 if breaker.pop(str(model_id), None) is not None else 0
-            return removed
-        removed = len(breaker)
-        breaker.clear()
-        return removed
+    @property
+    def _breaker(self) -> dict:
+        return self._dispatch._breaker
 
-    def _record_fail(self, model_id: str) -> None:
-        import time as _time
+    @property
+    def _provider_active(self) -> dict:
+        return self._dispatch._provider_active
 
-        info = self._breaker.setdefault(model_id, {"fails": 0, "until": 0})
-        info["fails"] = int(info.get("fails", 0)) + 1
-        if info["fails"] >= self.BREAKER_THRESHOLD:
-            cooldown = min(self.BREAKER_BASE_COOLDOWN * (2 ** (info["fails"] - self.BREAKER_THRESHOLD)), self.BREAKER_MAX_COOLDOWN)
-            info["until"] = _time.time() + cooldown
+    @property
+    def _ever_ok(self) -> set:
+        return self._dispatch._ever_ok
 
-    def _record_success(self, model_id: str) -> None:
-        self._breaker.pop(model_id, None)
-# 已验证集：该模型至少真实成功过一次。负载分流只允许"服务过"的 provider
-# 抢占链首——新加的 provider active=0 永远最闲，否则并发一来就被导到
-# 从未验证的模型上（全局间歇性空回复事故：谁最闲就轮到谁，而它没跑通过）
-        self._ever_ok.add(str(model_id))
+    @property
+    def routing_cache(self) -> dict:
+        return self._dispatch.routing_cache
+
+    @property
+    def routing_stats(self) -> dict:
+        return self._dispatch.routing_stats
+
+    @property
+    def routing_log(self):
+        return self._dispatch.routing_log
 
     def _is_open(self, model_id: str) -> bool:
-        import time as _time
+        return self._dispatch._is_open(model_id)
 
-        info = self._breaker.get(model_id)
-        return bool(info and float(info.get("until") or 0) > _time.time())
+    def _record_fail(self, model_id: str) -> None:
+        self._dispatch._record_fail(model_id)
 
-    def _migrate_legacy(self) -> None:
-        try:
-            legacy = self.sdk.storage.get(LEGACY_KEY, [])
-            if isinstance(legacy, list) and legacy and not self.list_providers():
-                models = [m for m in legacy if isinstance(m, dict)]
-                base_url = models[0].get("base_url", "") if models else ""
-                api_key = models[0].get("api_key", "") if models else ""
-                provider = {
-                    "id": "custom",
-                    "name": "Custom",
-                    "base_url": base_url or "https://api.openai.com/v1",
-                    "api_key": api_key,
-                    "models": [
-                        {
-                            "id": m.get("model", ""),
-                            "enabled": True,
-                            "temperature": m.get("temperature"),
-                            "max_tokens": m.get("max_tokens"),
-                        }
-                        for m in models
-                    ],
-                }
-                self.save_provider(provider)
-        except Exception:
-            pass
+    def _record_success(self, model_id: str) -> None:
+        self._dispatch._record_success(model_id)
 
+# ---- 目录半区委托（catalog.py）----
 
     def list_providers(self) -> list[dict]:
-        providers = self.sdk.storage.get(POOL_KEY, [])
-        return providers if isinstance(providers, list) else []
+        return self.catalog.list_providers()
 
     def get_provider(self, provider_id: str) -> dict | None:
-        for provider in self.list_providers():
-            if provider.get("id") == provider_id:
-                return provider
-        return None
-
-    @staticmethod
-    def _merge_models(existing: list, incoming: list) -> list:
-        """按模型 id 合并：UI 只回传 id/enabled 时保留已探测的能力/价格/参数。"""
-        by_id = {str(m.get("id")): m for m in existing if isinstance(m, dict) and m.get("id")}
-        merged = []
-        for model in incoming:
-            if not isinstance(model, dict):
-                merged.append(model)
-                continue
-            base = by_id.get(str(model.get("id") or ""))
-            merged.append({**base, **model} if base else model)
-        return merged
+        return self.catalog.get_provider(provider_id)
 
     def save_provider(self, data: dict) -> dict:
-        providers = self.list_providers()
-        provider_id = str(data.get("id") or utils.new_id())
-        entry = {
-            "id": provider_id,
-            "name": str(data.get("name") or provider_id),
-            "base_url": str(data.get("base_url") or "").rstrip("/"),
-            "api_key": str(data.get("api_key") or ""),
-            "models": data.get("models") if isinstance(data.get("models"), list) else [],
-# provider 级禁用开关：临时下线整个供应方（模型链跳过；重新启用即恢复）
-            "enabled": bool(data.get("enabled", True)),
-# 提供商默认思考强度：模型未单独设置时生效（list_models 透出 provider_reasoning_effort）
-            "reasoning_effort": str(data.get("reasoning_effort") or ""),
-        }
-        if not entry["base_url"]:
-            raise EngineError(texts.t("provider_base_url_required"))
-        for index, existing in enumerate(providers):
-            if existing.get("id") == provider_id:
-                if not entry["api_key"]:
-                    entry["api_key"] = str(existing.get("api_key") or "")
-                if "models" not in data:
-                    entry["models"] = existing.get("models") or []
-                else:
-                    entry["models"] = self._merge_models(existing.get("models") or [], entry["models"])
-                providers[index] = {**existing, **entry}
-                break
-        else:
-            providers.append(entry)
-        self.sdk.storage.set(POOL_KEY, providers)
-        return entry
+        return self.catalog.save_provider(data)
 
     def delete_provider(self, provider_id: str) -> bool:
-        providers = self.list_providers()
-        remaining = [p for p in providers if p.get("id") != provider_id]
-        if len(remaining) == len(providers):
-            return False
-        self.sdk.storage.set(POOL_KEY, remaining)
-        return True
-
-# 故障转移链是跨 provider 的全局顺序，存在独立键里；provider.models 只能表达组内顺序
-    @staticmethod
-    def _chain_key(item: Any) -> tuple[str, str] | None:
-        if isinstance(item, dict):
-            pid = str(item.get("provider") or "")
-            mid = str(item.get("model") or "")
-            return (pid, mid) if pid and mid else None
-        if isinstance(item, str) and ":" in item:
-            pid, mid = item.split(":", 1)
-            return (pid, mid) if pid and mid else None
-        return None
-
-    def _known_model_keys(self, providers: list[dict] | None = None) -> list[tuple[str, str]]:
-        keys: list[tuple[str, str]] = []
-        for provider in providers if providers is not None else self.list_providers():
-            pid = str(provider.get("id") or "")
-            for model in provider.get("models") or []:
-                if isinstance(model, dict):
-                    mid = str(model.get("id") or "")
-                    if pid and mid:
-                        keys.append((pid, mid))
-        return keys
+        return self.catalog.delete_provider(provider_id)
 
     def model_chain(self, providers: list[dict] | None = None) -> list[dict]:
-        """全局模型链：先按已保存顺序，未收录的模型按 provider 默认顺序补在末尾。"""
-        known = self._known_model_keys(providers)
-        known_set = set(known)
-        chain: list[dict] = []
-        seen: set[tuple[str, str]] = set()
-        raw = self.sdk.storage.get(CHAIN_KEY, [])
-        for item in raw if isinstance(raw, list) else []:
-            key = self._chain_key(item)
-            if key and key in known_set and key not in seen:
-                seen.add(key)
-                chain.append({"provider": key[0], "model": key[1]})
-        for key in known:
-            if key not in seen:
-                seen.add(key)
-                chain.append({"provider": key[0], "model": key[1]})
-        return chain
+        return self.catalog.model_chain(providers)
 
     def save_chain(self, entries: list) -> list[dict]:
-        """保存编排页拖拽后的全局链序；池中不存在的项直接忽略，缺失项读时自动补齐。"""
-        known_set = set(self._known_model_keys())
-        ordered: list[dict] = []
-        seen: set[tuple[str, str]] = set()
-        for item in entries if isinstance(entries, list) else []:
-            key = self._chain_key(item)
-            if key and key in known_set and key not in seen:
-                seen.add(key)
-                ordered.append({"provider": key[0], "model": key[1]})
-        self.sdk.storage.set(CHAIN_KEY, ordered)
-        return self.model_chain()
+        return self.catalog.save_chain(entries)
 
     def presets(self) -> list[dict]:
-        return [dict(p) for p in PROVIDER_PRESETS]
+        return self.catalog.presets()
 
     def get_preset(self, preset_id: str) -> dict | None:
-        return get_preset(preset_id)
-
-
-    async def _models_dev_catalog(self) -> dict:
-        cached = self.sdk.storage.get(MODELS_DEV_CACHE_KEY, None)
-        if isinstance(cached, dict) and time.time() - cached.get("ts", 0) < MODELS_DEV_TTL:
-            data = cached.get("data")
-            if isinstance(data, dict):
-                return data
-        try:
-            resp = await self.sdk.client.get(MODELS_DEV_URL, timeout=30)
-            if resp.status == 200:
-                data = await resp.json()
-                if isinstance(data, dict):
-                    self.sdk.storage.set(MODELS_DEV_CACHE_KEY, {"ts": time.time(), "data": data})
-                    return data
-        except Exception:
-            pass
-        return {}
-
-    @staticmethod
-    def _models_dev_hints(provider_id: str, base_url: str) -> set[str]:
-        raw = f"{provider_id} {base_url}".lower()
-        hints = {
-            token
-            for token in re.split(r"[^a-z0-9]+", raw)
-            if len(token) >= 3 and token not in {"api", "com", "www", "net", "org", "cloud", "https", "http"}
-        }
-        if any(token in raw for token in ("bigmodel", "zhipu", "z.ai")):
-            hints.update({"zhipuai", "zai"})
-        if "siliconflow" in raw:
-            hints.add("siliconflow")
-        if "akile" in raw:
-            hints.add("zai")
-        return hints
-
-    @classmethod
-    def _models_dev_lookup(cls, catalog: dict, base_url: str, model_id: str,
-                           provider_id: str = "", provider_name: str = "") -> dict:
-        """按模型 id 在 models.dev 目录里找元数据；同名模型优先取与当前 provider 匹配的条目。"""
-        target = str(model_id or "")
-        if not target:
-            return {}
-        target_low = target.lower()
-        leaf = target_low.rsplit("/", 1)[-1]
-        matches: list[tuple[str, dict]] = []
-        for key, provider in catalog.items():
-            if not isinstance(provider, dict):
-                continue
-            models = provider.get("models")
-            if not isinstance(models, dict):
-                continue
-            for cid, entry in models.items():
-                low = str(cid).lower()
-                if isinstance(entry, dict) and (low == target_low or low == leaf):
-                    matches.append((str(key), entry))
-                    break
-        if not matches:
-            return {}
-        hints = cls._models_dev_hints(f"{provider_id} {provider_name}", base_url)
-        meta = max(matches, key=lambda item: sum(1 for hint in hints if hint in item[0].lower()))[1]
-        limit = meta.get("limit") if isinstance(meta.get("limit"), dict) else {}
-        info = {
-            "context_length": limit.get("context"),
-            "max_output_tokens": limit.get("output"),
-            "reasoning": bool(meta.get("reasoning")) if meta.get("reasoning") is not None else None,
-            "vision": None,
-            "files": None,
-            "video": None,
-            "tool_call": None,
-        }
-        if meta.get("attachment") is not None:
-            info["files"] = bool(meta.get("attachment"))
-        cost = meta.get("cost")
-        if isinstance(cost, dict):
-            try:
-                info["cost"] = {
-                    "input": float(cost.get("input") or 0),
-                    "output": float(cost.get("output") or 0),
-                }
-            except (TypeError, ValueError):
-                pass
-        modalities = meta.get("modalities")
-        if isinstance(modalities, dict):
-            inputs = modalities.get("input")
-            if isinstance(inputs, list):
-                info["vision"] = "image" in inputs
-                info["video"] = "video" in inputs
-                if "pdf" in inputs:
-                    info["files"] = True
-        elif meta.get("vision") is not None:
-            info["vision"] = bool(meta.get("vision"))
-        if meta.get("tool_call") is not None:
-            info["tool_call"] = bool(meta.get("tool_call"))
-        return {key: value for key, value in info.items() if value is not None}
+        return self.catalog.get_preset(preset_id)
 
     async def fetch_remote_models(self, provider: dict) -> list[dict]:
-        base_url = str(provider.get("base_url") or "").rstrip("/")
-        if not base_url:
-            raise EngineError(texts.t("provider_base_url_required"))
-        api_key = str(provider.get("api_key") or "")
-        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        try:
-            resp = await self.sdk.client.get(f"{base_url}/models", headers=headers, timeout=30)
-        except Exception as e:
-            raise EngineError(texts.t("fetch_models_failed", error=str(e))) from e
-        if resp.status != 200:
-            raise EngineError(texts.t("fetch_models_failed", error=f"HTTP {resp.status}"))
-        data = await resp.json()
-        items = data.get("data") if isinstance(data, dict) else data
-        if not isinstance(items, list):
-            return []
-        catalog = await self._models_dev_catalog()
-        provider_id = str(provider.get("id") or "")
-        provider_name = str(provider.get("name") or "")
-        result: list[dict] = []
-        for item in items:
-            model_id = item.get("id") if isinstance(item, dict) else str(item or "")
-            if not model_id:
-                continue
-            entry = {
-                "id": model_id,
-                "context_length": item.get("context_length") if isinstance(item, dict) else None,
-                "max_output_tokens": None,
-                "vision": None,
-                "files": None,
-                "video": None,
-                "reasoning": None,
-                "tool_call": None,
-            }
-            if isinstance(item, dict):
-                modalities = item.get("modalities")
-                if isinstance(modalities, dict):
-                    inputs = modalities.get("input") or []
-                    entry["vision"] = "image" in inputs
-                    entry["files"] = "pdf" in inputs
-                    entry["video"] = "video" in inputs
-            extra = self._models_dev_lookup(catalog, base_url, model_id, provider_id, provider_name)
-            for key, value in extra.items():
-                if entry.get(key) is None and value is not None:
-                    entry[key] = value
-            result.append(entry)
-        return result
+        return await self.catalog.fetch_remote_models(provider)
 
     async def detect_model(self, provider: dict, model_id: str) -> dict:
-        """只查 models.dev（不请求 provider 的 /models），供模型编辑器的智能配置使用。"""
-        catalog = await self._models_dev_catalog()
-        if not isinstance(catalog, dict) or not catalog:
-            return {}
-        return self._models_dev_lookup(
-            catalog,
-            str(provider.get("base_url") or ""),
-            str(model_id or ""),
-            str(provider.get("id") or ""),
-            str(provider.get("name") or ""),
-        )
+        return await self.catalog.detect_model(provider, model_id)
 
     async def enrich_models(self, provider: dict, models: list, catalog: dict | None = None) -> tuple[list, int]:
-        """回填缺失的 context/max_output/能力/价格；已有值不覆盖（手动配置优先）。"""
-        if catalog is None:
-            catalog = await self._models_dev_catalog()
-        if not isinstance(catalog, dict) or not catalog:
-            return models, 0
-        keys = ("context_length", "max_output_tokens", "tool_call", "reasoning", "vision", "files", "video", "cost")
-        updated = 0
-        enriched: list = []
-        for model in models:
-            if not isinstance(model, dict) or not model.get("id"):
-                enriched.append(model)
-                continue
-            row = dict(model)
-            if row.get("manual") is True:
-# 智能配置关闭：尊重手工填写的空缺，不用目录补全
-                enriched.append(row)
-                continue
-            meta = self._models_dev_lookup(
-                catalog,
-                str(provider.get("base_url") or ""),
-                str(row.get("id") or ""),
-                str(provider.get("id") or ""),
-                str(provider.get("name") or ""),
-            )
-            for key in keys:
-                if row.get(key) is None and meta.get(key) is not None:
-                    row[key] = meta[key]
-                    updated += 1
-            enriched.append(row)
-        return enriched, updated
-
-    def needs_enrichment(self, providers: list[dict] | None = None) -> bool:
-        checks = ("context_length", "tool_call", "cost")
-        for provider in providers if providers is not None else self.list_providers():
-            if provider.get("enabled") is False:
-                continue
-            for model in provider.get("models") or []:
-                if isinstance(model, dict) and model.get("enabled", True) and model.get("manual") is not True:
-                    if any(model.get(key) is None for key in checks):
-                        return True
-        return False
+        return await self.catalog.enrich_models(provider, models, catalog)
 
     async def enrich_all_providers(self, force: bool = False) -> int:
-        """用 models.dev 批量回填；非 force 时按 TTL 限流，避免每次打开面板都请求。"""
-        providers = self.list_providers()
-        if not force and not self.needs_enrichment(providers):
-            return 0
-        now = time.time()
-        try:
-            last = float(self.sdk.storage.get(MODELS_ENRICH_KEY, 0) or 0)
-        except (TypeError, ValueError):
-            last = 0.0
-        if not force and now - last < MODELS_ENRICH_TTL:
-            return 0
-        catalog = await self._models_dev_catalog()
-        self.sdk.storage.set(MODELS_ENRICH_KEY, now)
-        if not isinstance(catalog, dict) or not catalog:
-            return 0
-        total = 0
-        for provider in providers:
-            models, updated = await self.enrich_models(provider, provider.get("models") or [], catalog)
-            if updated:
-                provider["models"] = models
-                total += updated
-        if total:
-            self.sdk.storage.set(POOL_KEY, providers)
-        return total
+        return await self.catalog.enrich_all_providers(force)
 
-
-    CAPABILITY_KEYS = ("vision", "files", "video", "tool_call", "reasoning")
+    def needs_enrichment(self, providers: list[dict] | None = None) -> bool:
+        return self.catalog.needs_enrichment(providers)
 
     def model_costs(self) -> dict:
-# 每百万 token 单价（models.dev 目录），用于 Dashboard 成本换算
-# 含已停用模型：历史用量里可能仍有它们的记录
-        costs: dict[str, dict] = {}
-        for provider in self.list_providers():
-            pid = str(provider.get("id") or "")
-            for model in provider.get("models") or []:
-                if not isinstance(model, dict):
-                    continue
-                price = model.get("cost")
-                if not isinstance(price, dict):
-                    continue
-                try:
-                    input_price = float(price.get("input") or 0)
-                    output_price = float(price.get("output") or 0)
-                except (TypeError, ValueError):
-                    continue
-                if input_price > 0 or output_price > 0:
-                    costs[f"{pid}:{model.get('id', '')}"] = {"input": input_price, "output": output_price}
-        return costs
-
+        return self.catalog.model_costs()
 
     def model_capabilities(self, model: dict) -> dict:
-
-        caps = {}
-        for key in self.CAPABILITY_KEYS:
-            value = model.get(key)
-            if value is None and isinstance(model.get("capabilities"), dict):
-                value = model["capabilities"].get(key)
-            caps[key] = bool(value) if value is not None else None
-        return caps
-
-    def _meets_needs(self, model: dict, needs: list | None) -> bool:
-        if not needs:
-            return True
-        caps = self.model_capabilities(model)
-        return all(caps.get(n) is True for n in needs)
-
-    def _unknown_needs(self, model: dict, needs: list | None) -> bool:
-        """能力位缺失（不是明确不支持）：可作为故障转移的最后备选，避免链只剩一个模型。"""
-        if not needs:
-            return False
-        caps = self.model_capabilities(model)
-        return all(caps.get(n) is None for n in needs)
+        return self.catalog.model_capabilities(model)
 
     def primary_capabilities(self) -> dict:
-
-        try:
-            primary = self.resolve_model(None)
-        except Exception:
-            return {k: None for k in self.CAPABILITY_KEYS}
-        return self.model_capabilities(primary)
+        return self.catalog.primary_capabilities()
 
     def list_models(self) -> list[dict]:
-        providers = self.list_providers()
-        pool: dict[tuple[str, str], tuple[dict, dict]] = {}
-        for provider in providers:
-            pid = str(provider["id"])
-            for model in provider.get("models") or []:
-                if isinstance(model, dict):
-                    pool[(pid, str(model.get("id", "")))] = (provider, model)
-        models: list[dict] = []
-        for entry in self.model_chain(providers):
-            found = pool.get((entry["provider"], entry["model"]))
-            if not found:
-                continue
-            provider, model = found
-            if provider.get("enabled") is False:
-                continue  # provider 级禁用：整家临时下线
-            if not model.get("enabled", True):
-                continue
-            models.append(
-                {
-                    "id": f"{provider['id']}:{model.get('id', '')}",
-                    "provider": provider["id"],
-                    "provider_name": provider.get("name", ""),
-                    "base_url": provider.get("base_url", ""),
-                    "api_key": provider.get("api_key", ""),
-                    "model": model.get("id", ""),
-                    "temperature": model.get("temperature"),
-                    "max_tokens": model.get("max_tokens"),
-                    "capabilities": self.model_capabilities(model),
-# 透出 models.db 目录数据，否则 context_length/cost 是死数据
-                    "context_length": model.get("context_length"),
-                    "max_output_tokens": model.get("max_output_tokens"),
-# 思考强度（模型条目 > 提供商默认，engine 注入链消费）
-                    "reasoning_effort": str(model.get("reasoning_effort") or ""),
-                    "provider_reasoning_effort": str(provider.get("reasoning_effort") or ""),
-                    "cost": model.get("cost") if isinstance(model.get("cost"), dict) else None,
-# 自定义说明与预填充支持（编辑器维护；models.dev enrich 不碰这两个字段）
-                    "notes": str(model.get("notes") or ""),
-                    "prefill_ok": model.get("prefill_ok"),
-                }
-            )
-        return models
+        return self.catalog.list_models()
 
     def resolve_model(self, model_id: str | None = None, needs: list | None = None) -> dict:
-        models = self.list_models()
-# 显式指定的模型优先于 needs 过滤——用户点名不被静默换掉
-        if model_id:
-            for model in models:
-                if model["id"] == model_id:
-                    return model
-            for model in models:
-                if model.get("model") == model_id:
-                    return model
-        if needs:
-            capable = [m for m in models if self._meets_needs(m, needs)]
-            if capable:
-                models = capable
-            else:
-                self.sdk.logger.warning(f"no model meets needs {needs}, falling back to full pool")
-        default = getattr(self.config, "default_model", "") or ""
-        if default:
-            for model in models:
-                if model["id"] == default or model.get("model") == default:
-                    return model
-        if models:
-            return models[0]
-        raise EngineError(texts.t("provider_no_models"))
-
-# ===== 无副作用能力查询 =====
+        return self.catalog.resolve_model(model_id, needs)
 
     def has_model(self, needs: list | None = None) -> bool:
-        """无副作用查询：池中是否存在满足全部 needs 的启用模型（能力未知 None 视为不满足）。"""
-        models = self.list_models()
-        if not needs:
-            return bool(models)
-        return any(self._meets_needs(m, needs) for m in models)
+        return self.catalog.has_model(needs)
 
     def capability_status(self, need: str) -> str:
-        """全池对单一能力的明确判定：yes=至少一个启用模型明确具备；
-        no=全部启用模型明确不具备；unknown=无数据或含能力未知的模型。"""
-        saw_false = False
-        for model in self.list_models():
-            value = self.model_capabilities(model).get(need)
-            if value is True:
-                return "yes"
-            if value is False:
-                saw_false = True
-        return "no" if saw_false else "unknown"
+        return self.catalog.capability_status(need)
 
-# ===== TaskSpec 任务分派 =====
+# ---- 分派半区委托（dispatch.py）----
 
     def resolve_task_model(self, spec: TaskSpec) -> dict:
-        """解析任务模型：显式 model > cfg.task_models[kind] > aux_model（非 chat）> needs 过滤 >
-        prefer="cheap" 按 cost(input+output) 升序 > 池序。"""
-        models = self.list_models()
-        if not models:
-            raise EngineError(texts.t("provider_no_models"))
-        explicit = str(spec.model or "")
-        if not explicit:
-            task_models = getattr(self.config, "task_models", None)
-            if isinstance(task_models, dict):
-                explicit = str(task_models.get(spec.kind) or "")
-                if str(spec.kind) == "chat" and str(spec.chat_key or ""):
-# 会话类型级默认：群聊/私聊可分别固定模型（chat_group / chat_private），
-# 优先于 task_models.chat——群聊走便宜档、私聊走旗舰的成本结构靠这两档实现
-# （chat_key 形如 platform:detail:id[@account]，本地拆 detail，避免反向依赖 conversation 层）
-                    tail = str(spec.chat_key).rsplit("@", 1)[0]
-                    segs = tail.split(":")
-                    detail = segs[1] if len(segs) >= 2 else ""
-                    tier = str(task_models.get("chat_" + detail) or "")
-                    if tier:
-                        explicit = tier
-# 辅助调用统一模型：判定/播报/压缩等后台任务的 cheap 自动选择会命中"最便宜的池"，
-# 运营方未必想让辅助调用落到那家（用量与成本统计按 provider 分池）——配一个即全部归位
-        if not explicit and str(spec.kind) != "chat":
-            explicit = str(getattr(self.config, "aux_model", "") or "").strip()
-        if explicit:
-            for model in models:
-                if model["id"] == explicit:
-                    return model
-            for model in models:
-                if model.get("model") == explicit:
-                    return model
-            self.sdk.logger.warning(f"task model {explicit!r} not found for kind {spec.kind!r}, falling back to pool")
-        candidates = models
-        needs = [str(n) for n in (spec.needs or []) if str(n)]
-        if needs:
-            capable = [m for m in candidates if self._meets_needs(m, needs)]
-            if capable:
-                candidates = capable
-            elif "vision" in needs:
-# 视觉任务：能力标记缺失/未知时按模型名启发式兜底（池里常有 gpt-4o/glm-4v 等）
-                hinted = [m for m in candidates if self._vision_name_hint(m)]
-                if hinted:
-                    self.sdk.logger.info(
-                        f"no model advertises vision; using name-based candidate {hinted[0]['id']!r}"
-                    )
-                    candidates = hinted
-                else:
-                    self.sdk.logger.warning(
-                        "no vision-capable model found: set task_models.vision in config "
-                        "(e.g. {\"vision\": \"provider:model\"}) or use a vision model"
-                    )
-                    raise EngineError(texts.t("no_vision_model"))
-            else:
-                self.sdk.logger.warning(f"no model meets needs {needs} for task {spec.kind!r}, falling back to full pool")
-        if str(spec.prefer or "").lower() == "cheap" and len(candidates) > 1:
-            costs = self.model_costs()
-            priced = [m for m in candidates if m["id"] in costs]
-            rest = [m for m in candidates if m["id"] not in costs]
-            priced.sort(key=lambda m: costs[m["id"]]["input"] + costs[m["id"]]["output"])
-            candidates = priced + rest
-        return candidates[0]
+        return self._dispatch.resolve_task_model(spec)
 
-# 保守的视觉模型名启发式：宁可漏判也不错配（错配会让描述变成空串/幻觉）
-    _VISION_HINTS = (
-        "gpt-4o", "gpt-4.1", "gpt-5", "o4-", "gemini", "claude-3", "claude-4",
-        "glm-4v", "glm-4.1v", "glm-4.5v", "qwen-vl", "qwen2-vl", "qwen2.5-vl", "qwen3-vl",
-        "-vl-", "-vl", "llava", "pixtral", "internvl", "minicpm-v", "vision",
-    )
+    def breaker_state(self) -> list[dict]:
+        return self._dispatch.breaker_state()
 
-    @classmethod
-    def _vision_name_hint(cls, model: dict) -> bool:
-        name = f"{model.get('id', '')} {model.get('model', '')}".lower()
-        return any(hint in name for hint in cls._VISION_HINTS)
-
-# ===== 难度感知路由（V1 启发式，cfg.routing_enabled 默认关闭） =====
-
-    @staticmethod
-    def _first_user_text(request: ChatRequest) -> str:
-        """本轮首条 user 消息的文本（多模态分片取 text 部分），无则空串。"""
-        for message in request.messages or []:
-            if not isinstance(message, dict) or message.get("role") != "user":
-                continue
-            content = message.get("content")
-            if isinstance(content, str):
-                return content
-            if isinstance(content, list):
-                parts = [
-                    str(part.get("text") or "")
-                    for part in content
-                    if isinstance(part, dict) and part.get("type") == "text"
-                ]
-                return "\n".join(part for part in parts if part)
-            return ""
-        return ""
-
-    def _route_chat_spec(self, spec: TaskSpec, request: ChatRequest) -> None:
-        """开关打开时，对无显式约束的 chat 任务按首条用户消息难度改写 spec.prefer。
-
-        命中条件：kind=="chat" 且 prefer/model/needs 均未指定（显式指定与能力过滤优先于路由）。
-        结果按 chat_key 缓存 routing_ttl 秒（无 chat_key 则每条独立分级）；统计入
-        routing_stats / routing_log，决策走 logger.debug。routing_enabled=False 时零行为。
-        """
-        if not getattr(self.config, "routing_enabled", False):
-            return
-        if spec.kind != "chat" or spec.prefer or spec.model or spec.needs:
-            return
-        text = self._first_user_text(request)
-        if not text:
-            return
-        chat_key = str(spec.chat_key or "")
-        now = time.time()
-        try:
-            ttl = float(getattr(self.config, "routing_ttl", 300) or 0)
-        except (TypeError, ValueError):
-            ttl = 300.0
-        prefer = reason = ""
-        cached = False
-        if chat_key and ttl > 0:
-            hit = self.routing_cache.get(chat_key)
-            if hit and now - float(hit[2]) < ttl:
-                prefer, reason = str(hit[0]), str(hit[1])
-                cached = True
-        if not prefer:
-            prefer, reason = classify(text)
-            if chat_key and ttl > 0:
-# 简单防膨胀：超 256 条时先剔除过期项再写入
-                if len(self.routing_cache) > 256:
-                    self.routing_cache = {
-                        k: v for k, v in self.routing_cache.items() if now - float(v[2]) < ttl
-                    }
-                self.routing_cache[chat_key] = (prefer, reason, now)
-        spec.prefer = prefer
-        self.routing_stats[prefer] = self.routing_stats.get(prefer, 0) + 1
-        self.routing_log.append({"chat_key": chat_key, "prefer": prefer, "reason": reason, "ts": now})
-        scope = f"[{chat_key}] " if chat_key else ""
-        suffix = "; cache hit" if cached else ""
-        self.sdk.logger.debug(f"model routing {scope}-> {prefer} ({reason}){suffix}")
+    def breaker_reset(self, model_id: str = "") -> int:
+        return self._dispatch.breaker_reset(model_id)
 
     async def dispatch(
         self,
@@ -771,210 +144,20 @@ class ModelPool:
         on_reset=None,
         on_reasoning=None,
     ) -> ChatResponse:
-        """按 TaskSpec 分派任务模型后走统一 chat 链（failover/熔断照常生效）。
+        return await self._dispatch.dispatch(spec, request, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning)
 
-        并发闸门优先级：kind=="chat" 用 spec.priority（用户直答默认 0）；其余
-        （compact/title/toolselect 等后台任务）固定 8，满载时让位给真实用户。
-        """
-        self._route_chat_spec(spec, request)# 难度感知路由（默认关闭，不改显式约束）
-        model = self.resolve_task_model(spec)
-# 思考强度注入优先级（近端覆盖远端）：
-# 调用方显式 > 模型条目 > 提供商默认 > 全局配置；全都为空且 chat+cheap 时
-# 才落 effort_smalltalk 自动降档（自动档绝不覆盖任何显式档位）
-        effort = (
-            str(getattr(request, "reasoning_effort", "") or "")
-            or str(model.get("reasoning_effort") or "")
-            or str(model.get("provider_reasoning_effort") or "")
-            or str(getattr(self.config, "reasoning_effort", "") or "")
-        )
-        if not effort and str(spec.kind) == "chat" and str(spec.prefer or "") == "cheap":
-            effort = str(getattr(self.config, "effort_smalltalk", "") or "")
-        scoped = ChatRequest(
-            messages=request.messages,
-            tools=request.tools,
-            model=model["id"],
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            needs=request.needs,
-            reasoning_effort=effort,
-        )
-        priority = int(spec.priority or 0) if str(spec.kind) == "chat" else 8
-        return await self.chat(scoped, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning, priority=priority)
+    async def chat(self, request: ChatRequest, on_delta=None, on_reset=None, on_reasoning=None, priority: int = 0) -> ChatResponse:
+        return await self._dispatch.chat(request, on_delta=on_delta, on_reset=on_reset, on_reasoning=on_reasoning, priority=priority)
+
+    async def describe_images(self, image_urls: list, prompt: str = "", on_error: str = "empty") -> list[str]:
+        return await self._dispatch.describe_images(image_urls, prompt, on_error=on_error)
+
+    async def test_model(self, model_id: str) -> ChatResponse:
+        return await self._dispatch.test_model(model_id)
 
     @property
     def saturated(self) -> bool:
-        """并发闸门满载：上游可据此跳过插话问询等可选工作。"""
-        return self.gate.saturated
+        return self._dispatch.saturated
 
     def background_blocked(self) -> bool:
-        """后台任务（压缩/标题/画像提炼/工具筛选/中止判定）此时是否应让路。
-
-        满载时这些调用全部可跳过且无副作用：压缩下轮再触发、标题下次生成、
-        工具筛选回退全量、中止判定回退排队。把并发槽位全部让给用户直答。"""
-        try:
-            return self.gate.saturated
-        except Exception:
-            return False
-
-    async def chat(self, request: ChatRequest, on_delta=None, on_reset=None, on_reasoning=None, priority: int = 0) -> ChatResponse:
-        primary = self.resolve_model(request.model, request.needs)
-        chain = [primary]
-        if getattr(self.config, "model_failover", True):
-            backups: list[dict] = []
-            for model in self.list_models():
-                if model["id"] == primary["id"]:
-                    continue
-                if self._meets_needs(model, request.needs):
-                    chain.append(model)
-                elif self._unknown_needs(model, request.needs):
-# 能力未知的模型不参与首选，但保留为后备：首选全挂时仍可继续尝试
-                    backups.append(model)
-            chain.extend(backups)
-# 熔断：冷却中的模型沉底而不是丢弃（全冷却时仍按链尝试）
-        chain.sort(key=lambda m: 1 if self._is_open(m["id"]) else 0)
-# 质量绑定（steer_keep 同时约束分流转出与熔断回退）：首选 provider 在名单内时，
-# 跨提供商的后备全部剔除——模型挂了宁可报错（触发失败告警）也不静默换弱模型答
-        keep = [str(x) for x in (getattr(self.config, "provider_steer_keep", []) or [])]
-        primary_keep = any(_provider_match(primary["provider"], k) for k in keep)
-        if primary_keep:
-            same = [m for m in chain if m["provider"] == primary["provider"]]
-            if len(same) < len(chain):
-                self.sdk.logger.debug(
-                    f"breaker fallback guard: {primary['provider']} is steer-keep, "
-                    f"dropped {len(chain) - len(same)} cross-provider models"
-                )
-                chain = same
-# 思考强度直连路径兜底：不经 dispatch 的调用（面板聊天/OpenAI 端点等）也要吃到
-# 模型条目 > 提供商默认 > 全局配置的档位（调用方显式档位保持最高优先级）
-        if not str(getattr(request, "reasoning_effort", "") or ""):
-            inherited = (
-                str(primary.get("reasoning_effort") or "")
-                or str(primary.get("provider_reasoning_effort") or "")
-                or str(getattr(self.config, "reasoning_effort", "") or "")
-            )
-            if inherited:
-                request.reasoning_effort = inherited
-# 负载分流（并发时转移）：首选 provider 在飞数达到阈值时，把更闲的 provider 稳定提前——
-# 不等报错就分流；各 provider 的 base_url 不同也照常工作。
-# 门槛：只在"至少成功服务过一次"的 provider 之间重排——新加的 provider
-# active=0 永远最闲，不分门槛就等于并发一来请求全被导到未验证模型上
-# （全局间歇性空回复事故根因），从未跑通的沉底、不参与抢占
-        if bool(getattr(self.config, "provider_load_steering", True)) and chain:
-            threshold = max(1, int(getattr(self.config, "provider_steer_active", 2) or 2))
-            primary_active = self._provider_active.get(chain[0]["provider"], 0)
-            if primary_active >= threshold and not primary_keep:
-                before = chain[0]["id"]
-                chain.sort(key=lambda m: (
-                    1 if self._is_open(m["id"]) else 0,
-                    0 if str(m["id"]) in self._ever_ok else 1,
-                    self._provider_active.get(m["provider"], 0),
-                ))
-                if chain[0]["id"] != before:
-                    self.sdk.logger.debug(f"load steering: {before} active={primary_active} -> {chain[0]['id']}")
-            elif primary_keep and primary_active >= threshold:
-                self.sdk.logger.debug(f"load steering skipped: {chain[0]['provider']} is steer-keep (active={primary_active})")
-        errors: list[str] = []
-        gate = self.gate
-        gate.set_limit(int(getattr(self.config, "max_concurrent_requests", 0) or 0))
-        await gate.acquire(priority)
-        try:
-            for index, model in enumerate(chain):
-                temperature = request.temperature
-                if temperature is None:
-                    temperature = model.get("temperature")
-                if temperature is None:
-                    temperature = getattr(self.config, "temperature", 0.7)
-                max_tokens = request.max_tokens or model.get("max_tokens") or getattr(self.config, "max_tokens", 2048)
-                scoped = ChatRequest(
-                    messages=request.messages,
-                    tools=request.tools,
-                    model=model["model"],
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    reasoning_effort=str(getattr(request, "reasoning_effort", "") or ""),
-                )
-                self._provider_active[model["provider"]] = self._provider_active.get(model["provider"], 0) + 1
-                try:
-                    extra = {"on_reasoning": on_reasoning} if on_reasoning is not None else {}
-                    response = await self.engine.chat(
-                        model.get("base_url", ""),
-                        model.get("api_key", ""),
-                        scoped,
-                        on_delta=on_delta,
-                        on_reset=on_reset,
-                        **extra,
-                    )
-                except EngineError as e:
-                    self._provider_active[model["provider"]] = max(0, self._provider_active.get(model["provider"], 0) - 1)
-                    self._record_fail(model["id"])
-                    errors.append(f"{model['id']}: {e}")
-                    if index + 1 < len(chain) and on_reset is not None:
-                        try:
-                            result = on_reset()
-                            if asyncio.iscoroutine(result):
-                                await result
-                        except Exception:
-                            pass
-                    continue
-                self._provider_active[model["provider"]] = max(0, self._provider_active.get(model["provider"], 0) - 1)
-                response.model = model["id"]
-# 空响应软失败：HTTP 200 但无正文且无工具调用不是成功——坏配置的备用模型
-# （连通但输出空）此前会在这里"成功"返回空，主对话拿到的就是
-# "没有可回复的内容"（间歇性空回复事故：取决于哪次请求落到备用链上）。
-# 链上还有模型时记 fail 并继续尝试下一个
-                if (
-                    index + 1 < len(chain)
-                    and not (response.content or "").strip()
-                    and not response.tool_calls
-                ):
-                    self._record_fail(model["id"])
-                    errors.append(f"{model['id']}: empty content (no text, no tool calls)")
-                    if on_reset is not None:
-                        try:
-                            result = on_reset()
-                            if asyncio.iscoroutine(result):
-                                await result
-                        except Exception:
-                            pass
-                    continue
-                self._record_success(model["id"])
-                return response
-            raise EngineError(texts.t("engine_all_failed", errors=" | ".join(errors)))
-        finally:
-            self.gate.release()
-
-    async def describe_images(self, image_urls: list, prompt: str = "", on_error: str = "empty") -> list[str]:
-        """逐张图片走视觉模型描述。
-
-        on_error="empty"：失败返回空串（打标签路径依赖此语义，空=未分类）
-        on_error="text"：失败返回明确占位文本（对话路径用——宁可说看不见，也不要装作看过）
-        """
-
-        descriptions: list[str] = []
-        for url in image_urls[:3]:
-            parts: list = [
-                {
-                    "type": "text",
-                    "text": prompt
-                    or "Describe this image in detail in its likely language: subjects, text, layout and anything notable.",
-                },
-# 本地路径转 base64 data URL：厂商拉不到部署机本地文件（不转 = 静默丢图，
-# 打标签全部失败留「未分类」的根因）
-                {"type": "image_url", "image_url": {"url": utils.image_data_url(url)}},
-            ]
-            try:
-                response = await self.dispatch(
-                    TaskSpec(kind="vision", needs=["vision"]),
-                    ChatRequest(messages=[{"role": "user", "content": parts}], max_tokens=800),
-                )
-                text = (response.content or "").strip()
-            except Exception as e:
-                self.sdk.logger.warning(f"vision delegate failed: {e}")
-                text = ""
-            if not text and on_error == "text":
-                text = texts.t("vision_unavailable")
-            descriptions.append(text)
-        return descriptions
-
-    async def test_model(self, model_id: str) -> ChatResponse:
-        return await self.chat(ChatRequest(messages=[{"role": "user", "content": "ping"}], model=model_id or None))
+        return self._dispatch.background_blocked()

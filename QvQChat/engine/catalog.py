@@ -1,0 +1,557 @@
+"""提供商目录（ModelPool 的目录半区）：CRUD/全局链/presets/models.dev 富化/成本/能力。
+
+从 pool.py 拆出（M6-5）：方法体逐字搬运，语义不变。pool 门面（ModelPool）
+保留全部公开签名，面板与调度代码零改动；本类通过 back-ref 取 sdk/config。
+"""
+from __future__ import annotations
+
+import re
+import time
+from typing import Any
+
+from .. import texts, utils
+from ..providers import PROVIDER_PRESETS, get_preset
+from .base import EngineError
+
+POOL_KEY = "QvQChat:providers"
+CHAIN_KEY = "QvQChat:model_chain"
+LEGACY_KEY = "QvQChat:models"
+MODELS_DEV_URL = "https://models.dev/api.json"
+MODELS_DEV_CACHE_KEY = "QvQChat:modelsdev"
+MODELS_DEV_TTL = 86400
+MODELS_ENRICH_KEY = "QvQChat:models_enriched_at"
+MODELS_ENRICH_TTL = 6 * 3600
+
+
+class ProviderCatalog:
+    """目录半区：存储读写的提供商/模型元数据，无分派状态（熔断/并发在 dispatch.py）。"""
+
+    def __init__(self, pool):
+        self.pool = pool
+
+    @property
+    def sdk(self):
+        return self.pool.sdk
+
+    @property
+    def config(self):
+        return self.pool.config
+
+    def migrate_legacy(self) -> None:
+        try:
+            legacy = self.sdk.storage.get(LEGACY_KEY, [])
+            if isinstance(legacy, list) and legacy and not self.list_providers():
+                models = [m for m in legacy if isinstance(m, dict)]
+                base_url = models[0].get("base_url", "") if models else ""
+                api_key = models[0].get("api_key", "") if models else ""
+                provider = {
+                    "id": "custom",
+                    "name": "Custom",
+                    "base_url": base_url or "https://api.openai.com/v1",
+                    "api_key": api_key,
+                    "models": [
+                        {
+                            "id": m.get("model", ""),
+                            "enabled": True,
+                            "temperature": m.get("temperature"),
+                            "max_tokens": m.get("max_tokens"),
+                        }
+                        for m in models
+                    ],
+                }
+                self.save_provider(provider)
+        except Exception:
+            pass
+
+
+    def list_providers(self) -> list[dict]:
+        providers = self.sdk.storage.get(POOL_KEY, [])
+        return providers if isinstance(providers, list) else []
+
+    def get_provider(self, provider_id: str) -> dict | None:
+        for provider in self.list_providers():
+            if provider.get("id") == provider_id:
+                return provider
+        return None
+
+    @staticmethod
+    def _merge_models(existing: list, incoming: list) -> list:
+        """按模型 id 合并：UI 只回传 id/enabled 时保留已探测的能力/价格/参数。"""
+        by_id = {str(m.get("id")): m for m in existing if isinstance(m, dict) and m.get("id")}
+        merged = []
+        for model in incoming:
+            if not isinstance(model, dict):
+                merged.append(model)
+                continue
+            base = by_id.get(str(model.get("id") or ""))
+            merged.append({**base, **model} if base else model)
+        return merged
+
+    def save_provider(self, data: dict) -> dict:
+        providers = self.list_providers()
+        provider_id = str(data.get("id") or utils.new_id())
+        entry = {
+            "id": provider_id,
+            "name": str(data.get("name") or provider_id),
+            "base_url": str(data.get("base_url") or "").rstrip("/"),
+            "api_key": str(data.get("api_key") or ""),
+            "models": data.get("models") if isinstance(data.get("models"), list) else [],
+# provider 级禁用开关：临时下线整个供应方（模型链跳过；重新启用即恢复）
+            "enabled": bool(data.get("enabled", True)),
+# 提供商默认思考强度：模型未单独设置时生效（list_models 透出 provider_reasoning_effort）
+            "reasoning_effort": str(data.get("reasoning_effort") or ""),
+        }
+        if not entry["base_url"]:
+            raise EngineError(texts.t("provider_base_url_required"))
+        for index, existing in enumerate(providers):
+            if existing.get("id") == provider_id:
+                if not entry["api_key"]:
+                    entry["api_key"] = str(existing.get("api_key") or "")
+                if "models" not in data:
+                    entry["models"] = existing.get("models") or []
+                else:
+                    entry["models"] = self._merge_models(existing.get("models") or [], entry["models"])
+                providers[index] = {**existing, **entry}
+                break
+        else:
+            providers.append(entry)
+        self.sdk.storage.set(POOL_KEY, providers)
+        return entry
+
+    def delete_provider(self, provider_id: str) -> bool:
+        providers = self.list_providers()
+        remaining = [p for p in providers if p.get("id") != provider_id]
+        if len(remaining) == len(providers):
+            return False
+        self.sdk.storage.set(POOL_KEY, remaining)
+        return True
+
+# 故障转移链是跨 provider 的全局顺序，存在独立键里；provider.models 只能表达组内顺序
+    @staticmethod
+    def _chain_key(item: Any) -> tuple[str, str] | None:
+        if isinstance(item, dict):
+            pid = str(item.get("provider") or "")
+            mid = str(item.get("model") or "")
+            return (pid, mid) if pid and mid else None
+        if isinstance(item, str) and ":" in item:
+            pid, mid = item.split(":", 1)
+            return (pid, mid) if pid and mid else None
+        return None
+
+    def _known_model_keys(self, providers: list[dict] | None = None) -> list[tuple[str, str]]:
+        keys: list[tuple[str, str]] = []
+        for provider in providers if providers is not None else self.list_providers():
+            pid = str(provider.get("id") or "")
+            for model in provider.get("models") or []:
+                if isinstance(model, dict):
+                    mid = str(model.get("id") or "")
+                    if pid and mid:
+                        keys.append((pid, mid))
+        return keys
+
+    def model_chain(self, providers: list[dict] | None = None) -> list[dict]:
+        """全局模型链：先按已保存顺序，未收录的模型按 provider 默认顺序补在末尾。"""
+        known = self._known_model_keys(providers)
+        known_set = set(known)
+        chain: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        raw = self.sdk.storage.get(CHAIN_KEY, [])
+        for item in raw if isinstance(raw, list) else []:
+            key = self._chain_key(item)
+            if key and key in known_set and key not in seen:
+                seen.add(key)
+                chain.append({"provider": key[0], "model": key[1]})
+        for key in known:
+            if key not in seen:
+                seen.add(key)
+                chain.append({"provider": key[0], "model": key[1]})
+        return chain
+
+    def save_chain(self, entries: list) -> list[dict]:
+        """保存编排页拖拽后的全局链序；池中不存在的项直接忽略，缺失项读时自动补齐。"""
+        known_set = set(self._known_model_keys())
+        ordered: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        for item in entries if isinstance(entries, list) else []:
+            key = self._chain_key(item)
+            if key and key in known_set and key not in seen:
+                seen.add(key)
+                ordered.append({"provider": key[0], "model": key[1]})
+        self.sdk.storage.set(CHAIN_KEY, ordered)
+        return self.model_chain()
+
+    def presets(self) -> list[dict]:
+        return [dict(p) for p in PROVIDER_PRESETS]
+
+    def get_preset(self, preset_id: str) -> dict | None:
+        return get_preset(preset_id)
+
+
+    async def _models_dev_catalog(self) -> dict:
+        cached = self.sdk.storage.get(MODELS_DEV_CACHE_KEY, None)
+        if isinstance(cached, dict) and time.time() - cached.get("ts", 0) < MODELS_DEV_TTL:
+            data = cached.get("data")
+            if isinstance(data, dict):
+                return data
+        try:
+            resp = await self.sdk.client.get(MODELS_DEV_URL, timeout=30)
+            if resp.status == 200:
+                data = await resp.json()
+                if isinstance(data, dict):
+                    self.sdk.storage.set(MODELS_DEV_CACHE_KEY, {"ts": time.time(), "data": data})
+                    return data
+        except Exception:
+            pass
+        return {}
+
+    @staticmethod
+    def _models_dev_hints(provider_id: str, base_url: str) -> set[str]:
+        raw = f"{provider_id} {base_url}".lower()
+        hints = {
+            token
+            for token in re.split(r"[^a-z0-9]+", raw)
+            if len(token) >= 3 and token not in {"api", "com", "www", "net", "org", "cloud", "https", "http"}
+        }
+        if any(token in raw for token in ("bigmodel", "zhipu", "z.ai")):
+            hints.update({"zhipuai", "zai"})
+        if "siliconflow" in raw:
+            hints.add("siliconflow")
+        if "akile" in raw:
+            hints.add("zai")
+        return hints
+
+    @classmethod
+    def _models_dev_lookup(cls, catalog: dict, base_url: str, model_id: str,
+                           provider_id: str = "", provider_name: str = "") -> dict:
+        """按模型 id 在 models.dev 目录里找元数据；同名模型优先取与当前 provider 匹配的条目。"""
+        target = str(model_id or "")
+        if not target:
+            return {}
+        target_low = target.lower()
+        leaf = target_low.rsplit("/", 1)[-1]
+        matches: list[tuple[str, dict]] = []
+        for key, provider in catalog.items():
+            if not isinstance(provider, dict):
+                continue
+            models = provider.get("models")
+            if not isinstance(models, dict):
+                continue
+            for cid, entry in models.items():
+                low = str(cid).lower()
+                if isinstance(entry, dict) and (low == target_low or low == leaf):
+                    matches.append((str(key), entry))
+                    break
+        if not matches:
+            return {}
+        hints = cls._models_dev_hints(f"{provider_id} {provider_name}", base_url)
+        meta = max(matches, key=lambda item: sum(1 for hint in hints if hint in item[0].lower()))[1]
+        limit = meta.get("limit") if isinstance(meta.get("limit"), dict) else {}
+        info = {
+            "context_length": limit.get("context"),
+            "max_output_tokens": limit.get("output"),
+            "reasoning": bool(meta.get("reasoning")) if meta.get("reasoning") is not None else None,
+            "vision": None,
+            "files": None,
+            "video": None,
+            "tool_call": None,
+        }
+        if meta.get("attachment") is not None:
+            info["files"] = bool(meta.get("attachment"))
+        cost = meta.get("cost")
+        if isinstance(cost, dict):
+            try:
+                info["cost"] = {
+                    "input": float(cost.get("input") or 0),
+                    "output": float(cost.get("output") or 0),
+                }
+            except (TypeError, ValueError):
+                pass
+        modalities = meta.get("modalities")
+        if isinstance(modalities, dict):
+            inputs = modalities.get("input")
+            if isinstance(inputs, list):
+                info["vision"] = "image" in inputs
+                info["video"] = "video" in inputs
+                if "pdf" in inputs:
+                    info["files"] = True
+        elif meta.get("vision") is not None:
+            info["vision"] = bool(meta.get("vision"))
+        if meta.get("tool_call") is not None:
+            info["tool_call"] = bool(meta.get("tool_call"))
+        return {key: value for key, value in info.items() if value is not None}
+
+    async def fetch_remote_models(self, provider: dict) -> list[dict]:
+        base_url = str(provider.get("base_url") or "").rstrip("/")
+        if not base_url:
+            raise EngineError(texts.t("provider_base_url_required"))
+        api_key = str(provider.get("api_key") or "")
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        try:
+            resp = await self.sdk.client.get(f"{base_url}/models", headers=headers, timeout=30)
+        except Exception as e:
+            raise EngineError(texts.t("fetch_models_failed", error=str(e))) from e
+        if resp.status != 200:
+            raise EngineError(texts.t("fetch_models_failed", error=f"HTTP {resp.status}"))
+        data = await resp.json()
+        items = data.get("data") if isinstance(data, dict) else data
+        if not isinstance(items, list):
+            return []
+        catalog = await self._models_dev_catalog()
+        provider_id = str(provider.get("id") or "")
+        provider_name = str(provider.get("name") or "")
+        result: list[dict] = []
+        for item in items:
+            model_id = item.get("id") if isinstance(item, dict) else str(item or "")
+            if not model_id:
+                continue
+            entry = {
+                "id": model_id,
+                "context_length": item.get("context_length") if isinstance(item, dict) else None,
+                "max_output_tokens": None,
+                "vision": None,
+                "files": None,
+                "video": None,
+                "reasoning": None,
+                "tool_call": None,
+            }
+            if isinstance(item, dict):
+                modalities = item.get("modalities")
+                if isinstance(modalities, dict):
+                    inputs = modalities.get("input") or []
+                    entry["vision"] = "image" in inputs
+                    entry["files"] = "pdf" in inputs
+                    entry["video"] = "video" in inputs
+            extra = self._models_dev_lookup(catalog, base_url, model_id, provider_id, provider_name)
+            for key, value in extra.items():
+                if entry.get(key) is None and value is not None:
+                    entry[key] = value
+            result.append(entry)
+        return result
+
+    async def detect_model(self, provider: dict, model_id: str) -> dict:
+        """只查 models.dev（不请求 provider 的 /models），供模型编辑器的智能配置使用。"""
+        catalog = await self._models_dev_catalog()
+        if not isinstance(catalog, dict) or not catalog:
+            return {}
+        return self._models_dev_lookup(
+            catalog,
+            str(provider.get("base_url") or ""),
+            str(model_id or ""),
+            str(provider.get("id") or ""),
+            str(provider.get("name") or ""),
+        )
+
+    async def enrich_models(self, provider: dict, models: list, catalog: dict | None = None) -> tuple[list, int]:
+        """回填缺失的 context/max_output/能力/价格；已有值不覆盖（手动配置优先）。"""
+        if catalog is None:
+            catalog = await self._models_dev_catalog()
+        if not isinstance(catalog, dict) or not catalog:
+            return models, 0
+        keys = ("context_length", "max_output_tokens", "tool_call", "reasoning", "vision", "files", "video", "cost")
+        updated = 0
+        enriched: list = []
+        for model in models:
+            if not isinstance(model, dict) or not model.get("id"):
+                enriched.append(model)
+                continue
+            row = dict(model)
+            if row.get("manual") is True:
+# 智能配置关闭：尊重手工填写的空缺，不用目录补全
+                enriched.append(row)
+                continue
+            meta = self._models_dev_lookup(
+                catalog,
+                str(provider.get("base_url") or ""),
+                str(row.get("id") or ""),
+                str(provider.get("id") or ""),
+                str(provider.get("name") or ""),
+            )
+            for key in keys:
+                if row.get(key) is None and meta.get(key) is not None:
+                    row[key] = meta[key]
+                    updated += 1
+            enriched.append(row)
+        return enriched, updated
+
+    def needs_enrichment(self, providers: list[dict] | None = None) -> bool:
+        checks = ("context_length", "tool_call", "cost")
+        for provider in providers if providers is not None else self.list_providers():
+            if provider.get("enabled") is False:
+                continue
+            for model in provider.get("models") or []:
+                if isinstance(model, dict) and model.get("enabled", True) and model.get("manual") is not True:
+                    if any(model.get(key) is None for key in checks):
+                        return True
+        return False
+
+    async def enrich_all_providers(self, force: bool = False) -> int:
+        """用 models.dev 批量回填；非 force 时按 TTL 限流，避免每次打开面板都请求。"""
+        providers = self.list_providers()
+        if not force and not self.needs_enrichment(providers):
+            return 0
+        now = time.time()
+        try:
+            last = float(self.sdk.storage.get(MODELS_ENRICH_KEY, 0) or 0)
+        except (TypeError, ValueError):
+            last = 0.0
+        if not force and now - last < MODELS_ENRICH_TTL:
+            return 0
+        catalog = await self._models_dev_catalog()
+        self.sdk.storage.set(MODELS_ENRICH_KEY, now)
+        if not isinstance(catalog, dict) or not catalog:
+            return 0
+        total = 0
+        for provider in providers:
+            models, updated = await self.enrich_models(provider, provider.get("models") or [], catalog)
+            if updated:
+                provider["models"] = models
+                total += updated
+        if total:
+            self.sdk.storage.set(POOL_KEY, providers)
+        return total
+
+
+    CAPABILITY_KEYS = ("vision", "files", "video", "tool_call", "reasoning")
+
+    def model_costs(self) -> dict:
+# 每百万 token 单价（models.dev 目录），用于 Dashboard 成本换算
+# 含已停用模型：历史用量里可能仍有它们的记录
+        costs: dict[str, dict] = {}
+        for provider in self.list_providers():
+            pid = str(provider.get("id") or "")
+            for model in provider.get("models") or []:
+                if not isinstance(model, dict):
+                    continue
+                price = model.get("cost")
+                if not isinstance(price, dict):
+                    continue
+                try:
+                    input_price = float(price.get("input") or 0)
+                    output_price = float(price.get("output") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if input_price > 0 or output_price > 0:
+                    costs[f"{pid}:{model.get('id', '')}"] = {"input": input_price, "output": output_price}
+        return costs
+
+
+    def model_capabilities(self, model: dict) -> dict:
+
+        caps = {}
+        for key in self.CAPABILITY_KEYS:
+            value = model.get(key)
+            if value is None and isinstance(model.get("capabilities"), dict):
+                value = model["capabilities"].get(key)
+            caps[key] = bool(value) if value is not None else None
+        return caps
+
+    def _meets_needs(self, model: dict, needs: list | None) -> bool:
+        if not needs:
+            return True
+        caps = self.model_capabilities(model)
+        return all(caps.get(n) is True for n in needs)
+
+    def _unknown_needs(self, model: dict, needs: list | None) -> bool:
+        """能力位缺失（不是明确不支持）：可作为故障转移的最后备选，避免链只剩一个模型。"""
+        if not needs:
+            return False
+        caps = self.model_capabilities(model)
+        return all(caps.get(n) is None for n in needs)
+
+    def primary_capabilities(self) -> dict:
+
+        try:
+            primary = self.resolve_model(None)
+        except Exception:
+            return {k: None for k in self.CAPABILITY_KEYS}
+        return self.model_capabilities(primary)
+
+    def list_models(self) -> list[dict]:
+        providers = self.list_providers()
+        pool: dict[tuple[str, str], tuple[dict, dict]] = {}
+        for provider in providers:
+            pid = str(provider["id"])
+            for model in provider.get("models") or []:
+                if isinstance(model, dict):
+                    pool[(pid, str(model.get("id", "")))] = (provider, model)
+        models: list[dict] = []
+        for entry in self.model_chain(providers):
+            found = pool.get((entry["provider"], entry["model"]))
+            if not found:
+                continue
+            provider, model = found
+            if provider.get("enabled") is False:
+                continue  # provider 级禁用：整家临时下线
+            if not model.get("enabled", True):
+                continue
+            models.append(
+                {
+                    "id": f"{provider['id']}:{model.get('id', '')}",
+                    "provider": provider["id"],
+                    "provider_name": provider.get("name", ""),
+                    "base_url": provider.get("base_url", ""),
+                    "api_key": provider.get("api_key", ""),
+                    "model": model.get("id", ""),
+                    "temperature": model.get("temperature"),
+                    "max_tokens": model.get("max_tokens"),
+                    "capabilities": self.model_capabilities(model),
+# 透出 models.db 目录数据，否则 context_length/cost 是死数据
+                    "context_length": model.get("context_length"),
+                    "max_output_tokens": model.get("max_output_tokens"),
+# 思考强度（模型条目 > 提供商默认，engine 注入链消费）
+                    "reasoning_effort": str(model.get("reasoning_effort") or ""),
+                    "provider_reasoning_effort": str(provider.get("reasoning_effort") or ""),
+                    "cost": model.get("cost") if isinstance(model.get("cost"), dict) else None,
+# 自定义说明与预填充支持（编辑器维护；models.dev enrich 不碰这两个字段）
+                    "notes": str(model.get("notes") or ""),
+                    "prefill_ok": model.get("prefill_ok"),
+                }
+            )
+        return models
+
+    def resolve_model(self, model_id: str | None = None, needs: list | None = None) -> dict:
+        models = self.list_models()
+# 显式指定的模型优先于 needs 过滤——用户点名不被静默换掉
+        if model_id:
+            for model in models:
+                if model["id"] == model_id:
+                    return model
+            for model in models:
+                if model.get("model") == model_id:
+                    return model
+        if needs:
+            capable = [m for m in models if self._meets_needs(m, needs)]
+            if capable:
+                models = capable
+            else:
+                self.sdk.logger.warning(f"no model meets needs {needs}, falling back to full pool")
+        default = getattr(self.config, "default_model", "") or ""
+        if default:
+            for model in models:
+                if model["id"] == default or model.get("model") == default:
+                    return model
+        if models:
+            return models[0]
+        raise EngineError(texts.t("provider_no_models"))
+
+# ===== 无副作用能力查询 =====
+
+    def has_model(self, needs: list | None = None) -> bool:
+        """无副作用查询：池中是否存在满足全部 needs 的启用模型（能力未知 None 视为不满足）。"""
+        models = self.list_models()
+        if not needs:
+            return bool(models)
+        return any(self._meets_needs(m, needs) for m in models)
+
+    def capability_status(self, need: str) -> str:
+        """全池对单一能力的明确判定：yes=至少一个启用模型明确具备；
+        no=全部启用模型明确不具备；unknown=无数据或含能力未知的模型。"""
+        saw_false = False
+        for model in self.list_models():
+            value = self.model_capabilities(model).get(need)
+            if value is True:
+                return "yes"
+            if value is False:
+                saw_false = True
+        return "no" if saw_false else "unknown"
+
