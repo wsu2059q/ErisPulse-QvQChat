@@ -193,7 +193,8 @@ async def test_pool_passes_stream_callbacks():
     from fakes import FakeSDK, make_config
 
     pool = ModelPool(FakeSDK(), make_config(default_model="", model_failover=False))
-    pool.providers = [
+    # 目录半区已拆到 catalog（M6-5）：实例级桩打在 catalog 上（dispatch 走 catalog 查模型）
+    pool.catalog.providers = [
         {
             "id": "p1",
             "name": "P1",
@@ -202,8 +203,8 @@ async def test_pool_passes_stream_callbacks():
             "models": [{"id": "m", "enabled": True}],
         }
     ]
-    pool.list_providers = lambda: pool.providers
-    pool.list_models = lambda: [
+    pool.catalog.list_providers = lambda: pool.catalog.providers
+    pool.catalog.list_models = lambda: [
         {"id": "p1:m", "provider": "p1", "provider_name": "P1", "base_url": "", "api_key": "",
          "model": "m", "temperature": None, "max_tokens": None}
     ]

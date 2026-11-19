@@ -1,5 +1,6 @@
 import pytest
 
+from QvQChat.engine.catalog import ProviderCatalog
 from QvQChat.engine.pool import ModelPool
 
 from fakes import FakeSDK, make_config
@@ -47,7 +48,7 @@ def _catalog():
 
 
 def test_models_dev_lookup_maps_limits_and_prefers_matching_provider():
-    meta = ModelPool._models_dev_lookup(
+    meta = ProviderCatalog._models_dev_lookup(
         _catalog(), "https://api.z.ai/api/paas/v4", "glm-5.3", "custom", "Custom"
     )
     assert meta["context_length"] == 2000
@@ -60,7 +61,7 @@ def test_models_dev_lookup_maps_limits_and_prefers_matching_provider():
 
 
 def test_models_dev_lookup_matches_path_prefixed_model_id():
-    meta = ModelPool._models_dev_lookup(
+    meta = ProviderCatalog._models_dev_lookup(
         _catalog(), "https://api.siliconflow.cn/v1", "deepseek-ai/DeepSeek-V3.2", "siliconflow", "SiliconFlow"
     )
     assert meta["context_length"] == 128000
