@@ -26,6 +26,8 @@ class Scheduler:
     def __init__(self, main):
         self.main = main
         self.sdk = main.sdk
+# Cron 触发回调（register_cron_handler 幂等注册的判据）
+        self._cron_handler = None
 
     def _cron_module(self):
         try:
@@ -187,7 +189,7 @@ class Scheduler:
         cron = self._cron_module()
         if cron is None:
             return
-        if getattr(self, "_cron_handler", None) is not None:
+        if self._cron_handler is not None:
             return
         self._cron_handler = self._on_cron_trigger
         try:

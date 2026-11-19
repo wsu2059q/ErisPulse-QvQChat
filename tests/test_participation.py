@@ -88,11 +88,11 @@ def add_broken_provider(main, module="Broken"):
 
 
 def cancel_pending(main):
-    for entry in main._pending.values():
+    for entry in main.state.pending.values():
         timer = entry.get("timer")
         if timer is not None:
             timer.cancel()
-    main._pending.clear()
+    main.state.pending.clear()
 
 
 def observe_payloads(main):
@@ -344,7 +344,7 @@ async def test_observe_payload_fields_and_channel_exists():
     assert payload["is_command_prefix"] is False
     assert payload["ts"] > 0
 # 未触发消息：旁听但不回复
-    assert not main._pending and not ev.claimed
+    assert not main.state.pending and not ev.claimed
 
 # 命令前缀消息不进入旁听通道
     main.sdk.lifecycle.emitted.clear()
@@ -365,13 +365,13 @@ async def test_interject_speak_enters_pending_with_plugin_origin():
     await main.participation.discover()
     ev = FakeChatEvent(text="这个问题怎么解？", at=False)
     await Main._on_message(main, ev)
-    assert GROUP_KEY in main._pending
-    entry = main._pending[GROUP_KEY]
+    assert GROUP_KEY in main.state.pending
+    entry = main.state.pending[GROUP_KEY]
     assert entry["items"] and entry["items"][0]["text"] == "这个问题怎么解？"
     assert entry["origin"] == "plugin"
     assert ev.claimed
 # 插话不消耗发送者限频窗口
-    assert f"rate:{GROUP_KEY}:u1" not in main._rate_window
+    assert f"rate:{GROUP_KEY}:u1" not in main.state.rate_window
 # 决策观测：环形日志 + qvq.participation 事件
     logged = main.participation.decisions[-1]
     assert logged["decision"] == "speak" and logged["budget_ok"] is True
@@ -387,7 +387,7 @@ async def test_interject_silent_or_disabled_keeps_original_behavior():
     add_provider(main, "Stalker", decision="speak")
     await main.participation.discover()
     await Main._on_message(main, FakeChatEvent(text="插我", at=False))
-    assert not main._pending
+    assert not main.state.pending
     assert not main.participation.decisions# decide 根本未被调用
 
 # 开启但提供者沉默 → 照旧 return（仅记观测）
@@ -396,7 +396,7 @@ async def test_interject_silent_or_disabled_keeps_original_behavior():
         lambda ctx=None, **_: {"decision": "silent", "reason": "保守模式", "score": 0.0, "urgency": "low"}
     )
     await Main._on_message(main, FakeChatEvent(text="再插", at=False))
-    assert not main._pending
+    assert not main.state.pending
     assert main.participation.decisions[-1]["decision"] == "silent"
     assert participation_payloads(main)[-1]["decision"] == "silent"
 
@@ -406,15 +406,15 @@ async def test_interject_group_whitelist_config():
     add_provider(main, "Stalker", decision="speak")
     await main.participation.discover()
     await Main._on_message(main, FakeChatEvent(text="非白名单群", at=False))
-    assert not main._pending and not main.participation.decisions
+    assert not main.state.pending and not main.participation.decisions
 
     main.cfg.participation_groups = ["1"]# 群号命中
     await Main._on_message(main, FakeChatEvent(text="白名单群", at=False))
-    assert GROUP_KEY in main._pending
+    assert GROUP_KEY in main.state.pending
 
     main.cfg.participation_groups_exclude = ["onebot11:group:*"]# 黑名单优先
     await Main._on_message(main, FakeChatEvent(text="被排除", at=False))
-    assert len(main._pending[GROUP_KEY]["items"]) == 1
+    assert len(main.state.pending[GROUP_KEY]["items"]) == 1
     cancel_pending(main)
 
 
@@ -424,14 +424,14 @@ async def test_interject_member_whitelist_blocks_sender():
     await main.participation.discover()
     main.sessions.set_members(GROUP_KEY, ["u9"])
     await Main._on_message(main, FakeChatEvent(text="名单外人", at=False))
-    assert not main._pending
+    assert not main.state.pending
     logged = main.participation.decisions[-1]
     assert logged["decision"] == "speak" and logged["budget_ok"] is False
     assert logged["reason"] == texts.t("participate_member_denied")
 
 # 名单内成员可作为插话由头
     await Main._on_message(main, FakeChatEvent(text="名单内人", user_id="u9", at=False))
-    assert GROUP_KEY in main._pending
+    assert GROUP_KEY in main.state.pending
     cancel_pending(main)
 
 
@@ -442,7 +442,7 @@ async def test_interject_budget_rejection_observed():
     main.participation.budget.record(GROUP_KEY, KIND_INTERJECT)# 触发默认 300s 冷却
     ev = FakeChatEvent(text="冷却中插话", at=False)
     await Main._on_message(main, ev)
-    assert not main._pending and not ev.claimed
+    assert not main.state.pending and not ev.claimed
     logged = main.participation.decisions[-1]
     assert logged["budget_ok"] is False and logged["reason"]
     assert participation_payloads(main)[-1]["budget_ok"] is False

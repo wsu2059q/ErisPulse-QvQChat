@@ -560,14 +560,15 @@ class FakeMain:
 
         self.skills = SkillManager(self.sdk, self.cfg)
         self.mcp = MCPManager(self)
+        from QvQChat.runtime_state import RuntimeState
+
+        self.state = RuntimeState()
         self.takeover = {}
+        self.plugin_settings_catalog = {}
         self.audits = []
         self.tasks_fired = []
         self.prompts = []
         self.spawned = []
-        self._merge_timers = {}
-        self._last_reply_ts = {}
-        self._proactive_recent = {}
 
     def spawn(self, coro):
 # 与框架 Module.spawn 对齐：后台任务立即调度（测试可 await main.spawned 收敛）

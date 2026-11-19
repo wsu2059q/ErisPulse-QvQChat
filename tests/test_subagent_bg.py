@@ -162,7 +162,7 @@ async def test_recover_subjobs_marks_interrupted():
 async def test_run_prompt_persist_writes_both_sides():
     """persist=True：问答双方都进会话；persist=False（默认）不留痕。"""
     main = FakeMain()
-    main._chat_locks = {}
+    main.state.chat_locks = {}
 
     class R:
         async def run(self, **kwargs):
@@ -222,7 +222,7 @@ async def test_subjob_observability_and_cancel():
     agent_tool.AgentRunner = SlowRunner
     try:
         main = FakeMain()
-        main._event_inbox = {}
+        main.state.event_inbox = {}
         ctx = _group_ctx(main)
         await agent_tool.spawn_agent(ctx, task="慢慢跑", background=True)
         await asyncio.sleep(0.05)

@@ -190,25 +190,9 @@ async def test_stream_reset_callback_invoked_on_image_fallback():
 async def test_pool_passes_stream_callbacks():
     from QvQChat.engine.pool import ModelPool
 
-    captured = {}
+    from fakes import FakeSDK, make_config
 
-    class Pool(ModelPool):
-        async def chat(self, request, on_delta=None, on_reset=None):
-            captured["on_delta"] = on_delta
-            captured["on_reset"] = on_reset
-            return await super().chat(request, on_delta=on_delta, on_reset=on_reset)
-
-    class FakeSdkStorage:
-        def get(self, key, default=None):
-            return default
-
-        def set(self, key, value):
-            pass
-
-    pool = ModelPool.__new__(ModelPool)
-    pool.engine = OpenAIEngine()
-    pool.sdk = SimpleNamespace(storage=FakeSdkStorage())
-    pool.config = SimpleNamespace(default_model="", model_failover=False, temperature=0.7, max_tokens=64)
+    pool = ModelPool(FakeSDK(), make_config(default_model="", model_failover=False))
     pool.providers = [
         {
             "id": "p1",

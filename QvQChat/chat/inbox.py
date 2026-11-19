@@ -302,9 +302,9 @@ def _seed_dedupe(rows, contexts) -> list:
 class InboxMixin(RecoveryMixin):
     """Main 的消息入口 mixin（组合 RecoveryMixin：实例重启恢复方法随本链挂到 Main）。
     依赖宿主提供 self.sdk / self.cfg / self.logger /
-    self.sessions / self.pool / self.runner / self.delivery / self.takeover /
-    self._pending / self._waiting / self._chat_locks / self._rate_window /
-    self._rate_notice_shown / self.spawn / self.is_admin / self._chat_confirmer 等。"""
+    self.sessions / self.pool / self.runner / self.delivery /
+    self.state（RuntimeState：pending/waiting/chat_locks/rate_window 等进程内瞬态容器，
+    见 runtime_state.py）/ self.spawn / self.is_admin / self._chat_confirmer 等。"""
 
 
 
@@ -541,14 +541,14 @@ class InboxMixin(RecoveryMixin):
 # 顺带回收内存态（每条入站消息都会走到这里；同步无 await，回收安全）
 # 1) 限频滑窗：窗口已空的键连同提示标记一并清掉
         for key in [
-            k for k, w in self._rate_window.items()
+            k for k, w in self.state.rate_window.items()
             if not w or now - max(w) >= 60
         ]:
-            self._rate_window.pop(key, None)
-            self._rate_notice_shown.pop(key, None)
+            self.state.rate_window.pop(key, None)
+            self.state.rate_notice_shown.pop(key, None)
 # 2) per-chat 锁：仅回收未持有且无等待者的锁
-        for key in [k for k, lock in self._chat_locks.items() if not lock.locked()]:
-            self._chat_locks.pop(key, None)
+        for key in [k for k, lock in self.state.chat_locks.items() if not lock.locked()]:
+            self.state.chat_locks.pop(key, None)
 
     async def _maybe_interrupt(self, event, chat_key: str, text: str) -> None:
         """H3/H5：打断信号检测。仅在本会话确有未发完的分段时生效；纠错词同时撤回上一条。"""
@@ -559,16 +559,14 @@ class InboxMixin(RecoveryMixin):
             return
         now = time.time()
         sender = str(event.get_user_id() or "")
-        if not hasattr(self, "_burst_last"):
-            self._burst_last = {}
         gap = None
         if sender:
-            last = self._burst_last.get(f"{chat_key}:{sender}")
+            last = self.state.burst_last.get(f"{chat_key}:{sender}")
             if last:
                 gap = now - last
-            self._burst_last[f"{chat_key}:{sender}"] = now
+            self.state.burst_last[f"{chat_key}:{sender}"] = now
 # 仅在防抖窗口内或上一轮分段尚未发完时才打断（护栏，防误伤）
-        in_debounce = chat_key in self._pending
+        in_debounce = chat_key in self.state.pending
         sending = chat_key in getattr(delivery, "_budget_start", {})
         if not (in_debounce or sending):
             return
@@ -655,32 +653,31 @@ class InboxMixin(RecoveryMixin):
             return True
         now = time.time()
         key = f"rate:{chat_key}:{sender_id}"
-        window = [t for t in self._rate_window.get(key, []) if now - t < 60]
+        window = [t for t in self.state.rate_window.get(key, []) if now - t < 60]
         if len(window) >= limit:
-            if not getattr(self, "_rate_notice_shown", {}).get(key):
-                self._rate_notice_shown = getattr(self, "_rate_notice_shown", {})
-                self._rate_notice_shown[key] = True
+            if not self.state.rate_notice_shown.get(key):
+                self.state.rate_notice_shown[key] = True
                 notice_event = event
                 self.spawn(self._rate_notice(notice_event))
             return False
         window.append(now)
-        self._rate_window[key] = window
+        self.state.rate_window[key] = window
         if now - max(window[:-1], default=now) > 120:
-            self._rate_notice_shown.pop(key, None)
+            self.state.rate_notice_shown.pop(key, None)
 # 容量上限，超出时优先淘汰已过期键，仍超则按插入序淘汰最旧键
-        if len(self._rate_window) > RATE_WINDOW_CAP:
+        if len(self.state.rate_window) > RATE_WINDOW_CAP:
             for stale in [
-                k for k, w in self._rate_window.items()
+                k for k, w in self.state.rate_window.items()
                 if not w or now - max(w) >= 60
             ]:
-                if len(self._rate_window) <= RATE_WINDOW_CAP:
+                if len(self.state.rate_window) <= RATE_WINDOW_CAP:
                     break
-                self._rate_window.pop(stale, None)
-                self._rate_notice_shown.pop(stale, None)
-            while len(self._rate_window) > RATE_WINDOW_CAP:
-                stale = next(iter(self._rate_window))
-                self._rate_window.pop(stale, None)
-                self._rate_notice_shown.pop(stale, None)
+                self.state.rate_window.pop(stale, None)
+                self.state.rate_notice_shown.pop(stale, None)
+            while len(self.state.rate_window) > RATE_WINDOW_CAP:
+                stale = next(iter(self.state.rate_window))
+                self.state.rate_window.pop(stale, None)
+                self.state.rate_notice_shown.pop(stale, None)
         return True
 
     async def _rate_notice(self, event) -> None:
@@ -764,15 +761,12 @@ class InboxMixin(RecoveryMixin):
         )
         identity = mid or f"{fp}@{ts}"
         key = f"{account}:{identity}"
-        claims = getattr(self, "_msg_claims", None)
-        if claims is None:
-            claims = {}
-            self._msg_claims = claims
+        claims = self.state.msg_claims
         if len(claims) > 256:
 # 值是纯 float 时间戳（见下方写入），不是元组——下标访问会在容量清理时
 # 炸掉后续每一条消息（'float' object is not subscriptable，bot 全哑）
             claims = {k: v for k, v in claims.items() if now - v < DUP_DELIVERY_WINDOW}
-            self._msg_claims = claims
+            self.state.msg_claims = claims
         seen = claims.get(key)
         if seen and now - seen < DUP_DELIVERY_WINDOW:
             return False
@@ -913,17 +907,14 @@ class InboxMixin(RecoveryMixin):
             if sibling and not bool(getattr(self.cfg, "bot_cross_talk", True)):
                 return
             if sibling:
-                chain = getattr(self, "_bot_chain", None)
-                if chain is None:
-                    chain = {}
-                    self._bot_chain = chain
+                chain = self.state.bot_chain
                 count = int(chain.get(chat_key, 0))
                 if count >= 3:
                     return
                 chain[chat_key] = count + 1
             else:
-                chain = getattr(self, "_bot_chain", None)
-                if chain is not None and chain.get(chat_key):
+                chain = self.state.bot_chain
+                if chain.get(chat_key):
                     chain[chat_key] = 0
 # 引用=艾特：有人引用本账户的消息等同被点名。懒判定——只在群聊、未被 @
 # 且带引用段时才向适配器拉取被引用消息，控制 get_msg 调用频率
@@ -1206,7 +1197,7 @@ class InboxMixin(RecoveryMixin):
         return "queue", "fallback", ""
 
     def _enqueue_waiting(self, chat_key: str, event, items: list, announce: bool = True) -> None:
-        queue = self._waiting.setdefault(chat_key, [])
+        queue = self.state.waiting.setdefault(chat_key, [])
 # 回执合一：每条新消息至多一条回执。auto 路径回执由判定话术承担（announce=False 全静默入队）；
 # queue 模式只在队列为空的第一条播报（后续静默，反正任务结束后会被合并处理），say_mode=off 也不播
         first = not queue
@@ -1254,8 +1245,8 @@ class InboxMixin(RecoveryMixin):
             self.logger.warning(f"queue announce reply failed: {e}")
 
     def _drain_waiting(self, chat_key: str) -> None:
-        self._merge_timers.pop(chat_key, None)
-        queue = self._waiting.pop(chat_key, None)
+        self.state.merge_timers.pop(chat_key, None)
+        queue = self.state.waiting.pop(chat_key, None)
         if not queue:
             return
 # 队列整体合并为一个回合：条目预构建并保留各自发言人归属（逐条 _batch_message
@@ -1271,10 +1262,10 @@ class InboxMixin(RecoveryMixin):
         self._batch_message(last_event, chat_key, "", [], items=merged_items)
 
     def _lock_for(self, chat_key: str) -> asyncio.Lock:
-        lock = self._chat_locks.get(chat_key)
+        lock = self.state.chat_locks.get(chat_key)
         if lock is None:
             lock = asyncio.Lock()
-            self._chat_locks[chat_key] = lock
+            self.state.chat_locks[chat_key] = lock
         return lock
 
     def _is_self_event(self, event) -> bool:
@@ -1326,7 +1317,7 @@ class InboxMixin(RecoveryMixin):
 
     def _batch_message(self, event, chat_key: str, text: str, images: list,
                        origin: str = "chat", items: list | None = None) -> None:
-        entry = self._pending.setdefault(chat_key, {"items": [], "event": event, "timer": None})
+        entry = self.state.pending.setdefault(chat_key, {"items": [], "event": event, "timer": None})
 # origin（chat/plugin）随聚合条目传递，进 ToolContext 记账可观测
         entry.setdefault("origin", origin)
 # 入队时间戳：陈旧插话丢弃的依据（首个到达时间，聚合不刷新）
@@ -1375,7 +1366,7 @@ class InboxMixin(RecoveryMixin):
         await self._flush_pending(chat_key)
 
     async def _flush_pending(self, chat_key: str) -> None:
-        entry = self._pending.pop(chat_key, None)
+        entry = self.state.pending.pop(chat_key, None)
         if not entry:
             return
 # 陈旧插话丢弃：多人洪流里等到锁时话题早已翻页——插话（origin=plugin）等太久
@@ -1390,10 +1381,10 @@ class InboxMixin(RecoveryMixin):
 # 窗口走完后合并为一次后续回复（短时多条不逐条应答，防止刷屏式复读轰炸）
         merge_window = float(getattr(self.cfg, "reply_merge_window", 0) or 0)
         if merge_window > 0:
-            last = float(self._last_reply_ts.get(chat_key, 0.0) or 0.0)
+            last = float(self.state.last_reply_ts.get(chat_key, 0.0) or 0.0)
             remain = merge_window - (time.time() - last)
             if remain > 0:
-                queue = self._waiting.setdefault(chat_key, [])
+                queue = self.state.waiting.setdefault(chat_key, [])
                 queue.append((entry["event"], entry["items"]))
                 self._arm_merge_timer(chat_key, remain)
                 self.logger.info(f"reply merge window holding ({chat_key}, {len(queue)} waiting, {remain:.1f}s left)")
@@ -1441,9 +1432,7 @@ class InboxMixin(RecoveryMixin):
 # interrupt：中断上下文留给即将开始的新回合（模型知道上一轮做到哪被叫停了）
             current = str(getattr(old_live, "text", "") or "").strip()
             if current:
-                if not hasattr(self, "_interrupted_notes"):
-                    self._interrupted_notes = {}
-                self._interrupted_notes[chat_key] = texts.t(
+                self.state.interrupted_notes[chat_key] = texts.t(
                     "interrupted_note", content=utils.truncate(current, 500)
                 )
             old_live.cancel()
@@ -1476,9 +1465,7 @@ class InboxMixin(RecoveryMixin):
         if _is_stop_phrase(incoming_text):
             current = str(getattr(live, "text", "") or "").strip()
             if current:
-                if not hasattr(self, "_interrupted_notes"):
-                    self._interrupted_notes = {}
-                self._interrupted_notes[chat_key] = texts.t(
+                self.state.interrupted_notes[chat_key] = texts.t(
                     "interrupted_note", content=utils.truncate(current, 500)
                 )
             live.cancel()
@@ -1495,9 +1482,7 @@ class InboxMixin(RecoveryMixin):
 # interrupt 模式（纯中断）：cancel + interrupted_note，语义保持现状
         current = str(getattr(live, "text", "") or "").strip()
         if current:
-            if not hasattr(self, "_interrupted_notes"):
-                self._interrupted_notes = {}
-            self._interrupted_notes[chat_key] = texts.t(
+            self.state.interrupted_notes[chat_key] = texts.t(
                 "interrupted_note", content=utils.truncate(current, 500)
             )
         live.cancel()
@@ -1506,14 +1491,14 @@ class InboxMixin(RecoveryMixin):
 
     def _arm_merge_timer(self, chat_key: str, delay: float) -> None:
         """合并窗定时器：到点把等待队列回灌为一个聚合回合。已有定时器则续用（消息继续挂队）。"""
-        if chat_key in self._merge_timers:
+        if chat_key in self.state.merge_timers:
             return
 
         async def _merge_fire() -> None:
-            self._merge_timers.pop(chat_key, None)
+            self.state.merge_timers.pop(chat_key, None)
             self._drain_waiting(chat_key)
 
-        self._merge_timers[chat_key] = self.spawn(_merge_fire())
+        self.state.merge_timers[chat_key] = self.spawn(_merge_fire())
 
     async def _process_locked(self, event, items: list, chat_key: str, origin: str = "chat") -> None:
         try:
@@ -1680,9 +1665,7 @@ class InboxMixin(RecoveryMixin):
                             await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
                     return
 # 锁外中断判定留下的上下文（旧任务被叫停时做到哪）
-            interrupted_note = ""
-            if getattr(self, "_interrupted_notes", None) is not None:
-                interrupted_note = self._interrupted_notes.pop(chat_key, "") or ""
+            interrupted_note = self.state.interrupted_notes.pop(chat_key, "") or ""
             live = None
             registry = getattr(self, "live_registry", None)
             if registry is not None:
@@ -1697,9 +1680,9 @@ class InboxMixin(RecoveryMixin):
                         decision, _why, line = await self._auto_interrupt_decide(chat_key, old_live, labeled)
                         if not await self._handle_auto_decision(chat_key, event, items, old_live, decision, line, labeled):
                             return
-# 中断注记由 helper 写入 _interrupted_notes（与锁外路径同一条管道），这里取回直用
-                        if getattr(self, "_interrupted_notes", None):
-                            interrupted_note = self._interrupted_notes.pop(chat_key, "") or interrupted_note
+# 中断注记由 helper 写入 state.interrupted_notes（与锁外路径同一条管道），这里取回直用
+                        if self.state.interrupted_notes:
+                            interrupted_note = self.state.interrupted_notes.pop(chat_key, "") or interrupted_note
                     else:
                         old_live.cancel()
                         interrupted_note = texts.t(
@@ -1961,7 +1944,7 @@ class InboxMixin(RecoveryMixin):
                 else:
                     await self.delivery.deliver_reply(event, reply, result.tool_trace, force=force_forward, rounds=getattr(result, "rounds", None), origin=origin)
 # 记录回复时间：回复合并窗口的起点（窗口内后续消息合并为一次后续回复）
-                self._last_reply_ts[chat_key] = time.time()
+                self.state.last_reply_ts[chat_key] = time.time()
                 self._drain_waiting(chat_key)
             finally:
 # 删除失败必须当场暴露并重试：残留标记会在下次重启被恢复例程重放成"自动重发"
@@ -2012,10 +1995,7 @@ class InboxMixin(RecoveryMixin):
         {!--< internal-use >!--}
         读取让渡状态（带 5s 进程内缓存）；start/stop/touch 后由调用方失效/回填缓存。
         """
-        cache = getattr(self, "_handover_cache", None)
-        if cache is None:
-            cache = {}
-            self._handover_cache = cache
+        cache = self.state.handover_cache
         now = time.time()
         hit = cache.get(chat_key)
         if hit and now - hit[0] < 5.0:
@@ -2025,9 +2005,7 @@ class InboxMixin(RecoveryMixin):
         return state
 
     def _handover_state_invalidate(self, chat_key: str) -> None:
-        cache = getattr(self, "_handover_cache", None)
-        if cache:
-            cache.pop(chat_key, None)
+        self.state.handover_cache.pop(chat_key, None)
 
     def _end_handover(self, chat_key: str, state: dict) -> None:
         """
@@ -2227,7 +2205,7 @@ class InboxMixin(RecoveryMixin):
                 self.sessions.append(sub_key, "assistant", reply)
                 try:
                     await self.delivery.deliver_reply(event, reply, [], origin=origin)
-                    self._last_reply_ts[chat_key] = time.time()
+                    self.state.last_reply_ts[chat_key] = time.time()
                 except Exception as e:
                     self.logger.warning(f"handover reply deliver failed: {e}")
             elif ended:

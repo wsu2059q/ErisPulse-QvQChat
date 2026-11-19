@@ -13,11 +13,11 @@ KEY = "onebot11:private:u1"
 
 def make_main(**overrides):
     main = FakeMain(**overrides)
-    main._pending = {}
-    main._waiting = {}
-    main._chat_locks = {}
-    main._rate_window = {}
-    main._rate_notice_shown = {}
+    main.state.pending = {}
+    main.state.waiting = {}
+    main.state.chat_locks = {}
+    main.state.rate_window = {}
+    main.state.rate_notice_shown = {}
     from QvQChat.chat.inbox import INBOX_BOUND_METHODS
 
     for name in INBOX_BOUND_METHODS:

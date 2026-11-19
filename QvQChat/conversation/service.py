@@ -94,13 +94,17 @@ class ConversationService:
 # summary 异步合并的 per-chat 锁与待合并队列
         self._summary_locks: dict[str, asyncio.Lock] = {}
         self._summary_pending: dict[str, list[str]] = {}
+# 懒构造子仓（见下方 profile/todos/user_mutes 属性）：__init__ 不触发 KV 读
+        self._profile = None
+        self._todos = None
+        self._user_mutes = None
 # 启动后首次访问会话索引时做一次全量对账
         self._index_ready = False
 
     @property
     def profile(self):
         """跨会话用户画像（ProfileStore，懒构造；实现在 conversation/profile.py）。"""
-        if getattr(self, "_profile", None) is None:
+        if self._profile is None:
             from .profile import ProfileStore
 
             self._profile = ProfileStore(self.main)
@@ -109,7 +113,7 @@ class ConversationService:
     @property
     def todos(self):
         """会话级 TODO 清单（TodoStore，懒构造；实现在 conversation/todo.py）。"""
-        if getattr(self, "_todos", None) is None:
+        if self._todos is None:
             from .todo import TodoStore
 
             self._todos = TodoStore(self.sdk, self.config)
@@ -118,7 +122,7 @@ class ConversationService:
     @property
     def user_mutes(self):
         """用户级屏蔽（UserMuteStore，懒构造；实现在 conversation/usermute.py）。"""
-        if getattr(self, "_user_mutes", None) is None:
+        if self._user_mutes is None:
             from .usermute import UserMuteStore
 
             self._user_mutes = UserMuteStore(self.sdk, self.config)

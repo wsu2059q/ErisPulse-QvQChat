@@ -108,10 +108,10 @@ def _make_lock_main():
     main = FakeMain()
     main.cfg = make_config(aggregate_window=0.05)
     main.cfg.context_compress_tokens = 0
-    main._pending = {}
-    main._chat_locks = {}
-    main._rate_window = {}
-    main._rate_notice_shown = {}
+    main.state.pending = {}
+    main.state.chat_locks = {}
+    main.state.rate_window = {}
+    main.state.rate_notice_shown = {}
     main.live_registry = None
     for name in INBOX_BOUND_METHODS:
         static_attr = inspect.getattr_static(Main, name)
@@ -168,17 +168,17 @@ async def test_rate_window_and_locks_recycled():
     """窗口过期的限频键与空闲 per-chat 锁被顺带回收。"""
     main = FakeMain()
     setattr(main, "_cleanup_takeovers", getattr(Main, "_cleanup_takeovers").__get__(main))
-    main._rate_window = {"rate:g:u1": [1000.0], "rate:g:u2": []}
-    main._rate_notice_shown = {"rate:g:u1": True, "rate:g:u2": True}
-    main._chat_locks = {"a": asyncio.Lock(), "b": asyncio.Lock()}
-    await main._chat_locks["b"].acquire()# 持有中的锁不回收
+    main.state.rate_window = {"rate:g:u1": [1000.0], "rate:g:u2": []}
+    main.state.rate_notice_shown = {"rate:g:u1": True, "rate:g:u2": True}
+    main.state.chat_locks = {"a": asyncio.Lock(), "b": asyncio.Lock()}
+    await main.state.chat_locks["b"].acquire()# 持有中的锁不回收
     main._cleanup_takeovers()
-    assert "rate:g:u1" not in main._rate_window# 窗口早已过期
-    assert "rate:g:u1" not in main._rate_notice_shown
-    assert "rate:g:u2" not in main._rate_window# 空窗口
-    assert "a" not in main._chat_locks# 空闲锁被回收
-    assert "b" in main._chat_locks# 持有中的锁保留
-    main._chat_locks["b"].release()
+    assert "rate:g:u1" not in main.state.rate_window# 窗口早已过期
+    assert "rate:g:u1" not in main.state.rate_notice_shown
+    assert "rate:g:u2" not in main.state.rate_window# 空窗口
+    assert "a" not in main.state.chat_locks# 空闲锁被回收
+    assert "b" in main.state.chat_locks# 持有中的锁保留
+    main.state.chat_locks["b"].release()
 
 
 def test_session_module_removed():

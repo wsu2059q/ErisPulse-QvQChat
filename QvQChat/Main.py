@@ -24,6 +24,7 @@ from .conversation.policy import get_policy as _policy_get
 from .conversation.service import ConversationService, account_of as _account_of, make_chat_key, parse_chat_key, strip_isolation
 from .dashboard.live import bind as live_bind# noqa: F401 — 兼容引用（本体在 chat/inbox 使用）
 from .prompts import CAPABILITY_PROMPT# 本体已迁 prompts.py；导入即保持 QvQChat.Main.CAPABILITY_PROMPT 兼容引用
+from .runtime_state import RuntimeState
 from .Config import QvQConfig
 from .I18n import QvQI18n
 from .agent.persona import PersonaManager
@@ -224,10 +225,9 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         self.sdk = sdk
         self.logger = sdk.logger.get_child("QvQChat")
         self.started_at = time.time()  # 运行时长（状态卡）
-# 跨账户同消息认领表：指纹 -> (账户, 时间戳, 是否@)，防多账户各跑一份
-        self._msg_claims: dict = {}
-# bot 连锁计数：chat_key -> 连续兄弟 bot 触发轮数（超限静默等真人）
-        self._bot_chain: dict = {}
+# 进程内瞬态状态集中一处（RuntimeState）：锁表/限频/合并窗/缓存/缓冲等
+# 与进程同寿、不需持久化的容器都在这里，mixin 与面板端点统一 self.state.<名> 访问
+        self.state = RuntimeState()
         self.pool = None
         self.registry = None
         self.personas = None
@@ -240,24 +240,20 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         self.scheduler = None
         self.dashboard = None
         self.participation = None
-        self.takeover: dict = {}
-        self.plugin_settings_catalog: dict = {}# qvq_settings 归属标记：{module: title}
-        self._chat_locks: dict = {}
-        self._pending: dict = {}
-        self._waiting: dict = {}
-        self._merge_timers: dict = {}
-        self._last_reply_ts: dict = {}
-        self._proactive_recent: dict = {}
-        self._interrupted_notes: dict = {}
-        self._rate_window: dict = {}
-        self._rate_notice_shown: dict = {}
-# 以下容器历史上靠 mixin 首用 getattr 兜底；显式声明让状态一目了然（兜底仍保留双保险）
-        self._interrupted_notes = getattr(self, "_interrupted_notes", {}) or {}
-        self._handover_cache: dict = {}
-        self._event_inbox: dict = {}
-        self._notice_rate: dict = {}
-        self._join_buffer: dict = {}
-        self._recent_friend_greeted: set = set()
+
+    @property
+    def takeover(self) -> dict:
+# 兼容读口：接管表本体在 state.takeover（面板/生态模块仍按 main.takeover 读）
+        return self.state.takeover
+
+    @property
+    def plugin_settings_catalog(self) -> dict:
+# 兼容读写口：qvq_settings 归属标记本体在 state.plugin_settings_catalog
+        return self.state.plugin_settings_catalog
+
+    @plugin_settings_catalog.setter
+    def plugin_settings_catalog(self, value: dict) -> None:
+        self.state.plugin_settings_catalog = value or {}
 
     @staticmethod
     def get_load_strategy() -> ModuleLoadStrategy:
@@ -343,11 +339,11 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             await self.mcp.close_all()
         except Exception as e:
             self.logger.debug(f"mcp close_all failed: {e}")
-        for entry in self._pending.values():
+        for entry in self.state.pending.values():
             timer = entry.get("timer")
             if timer is not None:
                 timer.cancel()
-        self._pending.clear()
+        self.state.pending.clear()
         for entry in list(self.takeover.values()):
             lease = entry.get("lease")
             if lease is not None:
@@ -987,7 +983,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 
         now = _time.time()
         recent = [
-            txt for ts, txt in (self._proactive_recent.get(chat_key) or ())
+            txt for ts, txt in (self.state.proactive_recent.get(chat_key) or ())
             if now - ts < 1800
         ]
         if recent:
@@ -1001,8 +997,8 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             scene=scene,
         )
         if str(reply or "").strip() not in ("", ".", "。", "-"):
-            self._proactive_recent.setdefault(chat_key, []).append((now, utils.truncate(str(reply).strip(), 120)))
-            del self._proactive_recent[chat_key][:-8]
+            self.state.proactive_recent.setdefault(chat_key, []).append((now, utils.truncate(str(reply).strip(), 120)))
+            del self.state.proactive_recent[chat_key][:-8]
         _log_proactive(True, "")
         return reply
 
