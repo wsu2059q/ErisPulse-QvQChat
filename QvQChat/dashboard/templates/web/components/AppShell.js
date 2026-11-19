@@ -20,6 +20,7 @@ window.AppShell = {
         knowledge: '<svg viewBox="0 0 24 24"><path d="M4 19V6a2 2 0 0 1 2-2h13v13H6a2 2 0 0 0-2 2zm0 0a2 2 0 0 0 2 2h13"/><path d="M9 8h6"/></svg>',
         sessions: '<svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
         audit: '<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+        executions: '<svg viewBox="0 0 24 24"><path d="M13 3l7 7-9 9H4v-7l9-9z"/><path d="M16 5l3 3"/></svg>',
         storage: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
         tools: '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z"/></svg>',
         mcp: '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
@@ -42,6 +43,7 @@ window.AppShell = {
         memory: "PageMemory", knowledge: "PageKnowledge", sessions: "PageSessions",
         audit: "PageAudit", storage: "PageStorage", tools: "PageTools", mcp: "PageMcp",
         orchestrate: "PageOrchestrate", inbox: "PageInbox",
+        executions: "PageExecutions",
       };
       return map[this.page] || "PageOverview";
     },
@@ -69,7 +71,7 @@ window.AppShell = {
         },
         {
           key: "run", label: t("nav_group_run"),
-          items: [item("tasks", "nav_tasks"), item("orchestrate", "nav_orchestrate")],
+          items: [item("tasks", "nav_tasks"), item("orchestrate", "nav_orchestrate"), item("executions", "nav_executions")],
         },
         {
           key: "sys", label: t("nav_group_sys"),
