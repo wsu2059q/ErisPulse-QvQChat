@@ -15,11 +15,11 @@ from fakes import FakeChatEvent, FakeMain, FakeSDK, make_config
 def _inbox_main(**cfg):
     """FakeMain + InboxMixin 运行时状态（_pending/_chat_locks 等）。"""
     main = FakeMain(**cfg)
-    main.state.pending = {}
-    main.state.chat_locks = {}
-    main.state.rate_window = {}
-    main.state.rate_notice_shown = {}
-    main.state.waiting = {}
+    main.rt.pending = {}
+    main.rt.chat_locks = {}
+    main.rt.rate_window = {}
+    main.rt.rate_notice_shown = {}
+    main.rt.waiting = {}
     # _batch_message 依赖的 Mixin 方法：FakeMain 不是 Main 子类，绑定为实例属性
     from QvQChat.chat.inbox import InboxMixin
 
@@ -28,7 +28,7 @@ def _inbox_main(**cfg):
     main._live_conflict = Main._live_conflict.__get__(main)
     # 防抖定时器不真跑（测试同步 flush）；绑定为空协程避免 spawn 报缺方法
     main._flush_later = lambda chat_key, window: _noop()
-    main._lock_for = lambda chat_key: main.state.chat_locks.setdefault(chat_key, __import__("asyncio").Lock())
+    main._lock_for = lambda chat_key: main.rt.chat_locks.setdefault(chat_key, __import__("asyncio").Lock())
     main.spawn = lambda coro: asyncio.get_event_loop().create_task(coro)
     return main
 
@@ -188,7 +188,7 @@ async def test_stale_interject_dropped():
     key = "onebot11:group:1"
     ev = FakeChatEvent(text="插话话题", group=True, group_id="1", user_id="9")
     Main._batch_message(main, ev, key, "插话话题", [], origin="plugin")
-    main.state.pending[key]["ts"] = time.time() - 999  # 人为变陈旧
+    main.rt.pending[key]["ts"] = time.time() - 999  # 人为变陈旧
     called = []
 
     async def fake_process(event, items, chat_key, origin="chat"):
@@ -204,7 +204,7 @@ async def test_stale_user_message_never_dropped():
     key = "onebot11:group:1"
     ev = FakeChatEvent(text="在吗", group=True, group_id="1", user_id="9", at=True)
     Main._batch_message(main, ev, key, "在吗", [], origin="chat")
-    main.state.pending[key]["ts"] = time.time() - 9999  # 再久也要答
+    main.rt.pending[key]["ts"] = time.time() - 9999  # 再久也要答
     called = []
 
     async def fake_process(event, items, chat_key, origin="chat"):

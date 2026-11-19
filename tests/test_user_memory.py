@@ -84,11 +84,11 @@ async def test_prepare_injects_user_memory_only_when_key_given():
 def make_pipeline_main(**overrides):
     """绑好 inbox 方法链的主干（复用 handover 测试的驱动模式）。"""
     main = FakeMain(**overrides)
-    main.state.pending = {}
-    main.state.waiting = {}
-    main.state.chat_locks = {}
-    main.state.rate_window = {}
-    main.state.rate_notice_shown = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
+    main.rt.chat_locks = {}
+    main.rt.rate_window = {}
+    main.rt.rate_notice_shown = {}
     from QvQChat.chat.inbox import INBOX_BOUND_METHODS
 
     for name in INBOX_BOUND_METHODS:

@@ -17,7 +17,9 @@ QvQChat/
 ├── engine/                  # 模型引擎层
 │   ├── base.py              # ChatRequest / ChatResponse / ToolCall / TaskSpec / EngineError
 │   ├── openai.py            # OpenAI 兼容引擎（连续 system 合并、流式增量、思考过滤、工具调用解析）
-│   ├── pool.py              # ModelPool：Provider/模型 CRUD、models.dev 目录、按 needs/prefer/池序分派、熔断与故障转移
+│   ├── pool.py              # ModelPool 门面：目录（catalog）× 分派（dispatch）两半组装，公开签名不变
+│   ├── catalog.py           # ProviderCatalog：提供商 CRUD、全局链、presets、models.dev 目录富化、成本/能力
+│   ├── dispatch.py          # DispatchGate：并发闸门、熔断、负载分流、难度路由、任务分派、chat 链
 │   └── tokens.py              # token 估算（CJK/ASCII 启发式，可选 tiktoken）——预算与压缩共用
 │
 ├── agent/                   # 智能体层
@@ -26,7 +28,9 @@ QvQChat/
 │   └── persona.py           # PersonaManager：人格 CRUD、默认人格、会话绑定、内置通用助手
 │
 ├── conversation/            # 会话与上下文层
-│   ├── service.py           # ConversationService：上下文存取/冷启动回填/发送窗口、prepare 组装、finalize 落账
+│   ├── service.py           # ConversationService 门面：prepare 组装、finalize 落账、压缩/摘要/事实（存储与装配在半区）
+│   ├── repository.py        # SessionRepository：状态读写、会话索引、上下文 append/裁剪、身份迁移、key 工具
+│   ├── assembler.py         # PromptAssembler：build_system_parts 部件装配、人格增强、上传落盘、多模态重建
 │   ├── delivery.py          # Delivery：回复投递（[[转发]]/[[直发]] 标记、分段、平台合并、复述抑制）
 │   ├── compactor.py         # Compactor：上下文压缩（微压缩 + 模型摘要）
 │   ├── budget.py         # ContextPacker：按模型 context_length 的优先级预算装填（system 十类部件 + 历史从新到旧）
@@ -48,13 +52,16 @@ QvQChat/
 │
 ├── bridge/                  # 外部能力桥
 │   ├── ecosystem.py         # 生态服务桥 + 扩展规范收集（工具/人格/Schema）
+│   ├── docs.py              # 内置 ErisPulse 文档检索：docs-generated 分支包同步 + 本地缓存 + 分块检索
 │   └── mcp.py               # MCP 客户端：stdio / Streamable HTTP，工具发现与调用
 │
 ├── scheduler.py             # 定时任务：存储、轮询触发、运行记录、cron-lite 解析器、ErisPulse-Cron 托管
 ├── skills.py                # SkillManager：技能目录（内置+文件+自定义）、启用开关、正文注入
+├── runtime_state.py         # RuntimeState：Main 进程内瞬态容器（锁表/限频/合并窗/缓存/接管表）
 │
 └── dashboard/
     ├── manager.py           # REST/SSE 路由（统一鉴权 guard）+ /QvQChat/view 独立页 + 会话分享页 + OpenAI 兼容端点
+    ├── trash.py             # TrashStore：删除回收站（暂存/TTL/列表）+ per-kind restore 注册表
     ├── live.py              # LiveStream / LiveRegistry：会话级流式状态与 SSE 订阅（打断/排队）
     └── templates/           # web/（Vue3 + Naive UI，vendored 无构建步骤）+ share.html 分享页
 ```

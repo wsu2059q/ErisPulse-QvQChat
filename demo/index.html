@@ -650,6 +650,161 @@ html[data-theme="light"] .qvq-bg-layer.qvq-bg-fallback {
 .qvq-row .live-dot.idle { animation: none; opacity: 0.35; }
 
 /* 让渡横幅 / 子会话徽标 */
+/* 用量页图表：14 天柱状 + 模型环形 */
+.us-chart-card { margin-bottom: 12px; }
+.us-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 120px;
+  padding: 4px 2px 0;
+}
+.us-col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+.us-col i {
+  display: block;
+  width: 100%;
+  max-width: 26px;
+  border-radius: 5px 5px 2px 2px;
+  background: var(--qvq-accent);
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+.us-col:hover i { opacity: 1; }
+.us-col span { font-size: 9.5px; color: var(--qvq-tx-t); white-space: nowrap; }
+.us-donut-wrap { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; }
+.us-donut {
+  flex: 0 0 auto;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  position: relative;
+}
+.us-donut::after {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border-radius: 50%;
+  background: var(--qvq-solid);
+}
+.us-donut i {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--qvq-tx);
+  z-index: 1;
+}
+.us-donut-legend { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.us-donut-legend .lg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--qvq-tx-s);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.us-donut-legend .lg i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 2px; background: var(--qvq-accent); }
+.us-donut-legend .lg i.c1 { background: var(--qvq-warn); }
+.us-donut-legend .lg i.c2 { background: var(--qvq-ok); }
+.us-donut-legend .lg i.c3 { background: #9a7ade; }
+.us-donut-legend .lg i.c4 { background: #5fa8d3; }
+/* 最近调用明细：两行结构（名字+元信息 / 摘要全文） */
+.us-rec { padding: 8px 4px; border-bottom: 1px solid var(--qvq-bd); }
+.us-rec:last-child { border-bottom: 0; }
+.us-rec .r1 { display: flex; align-items: baseline; gap: 10px; }
+.us-rec .r1 .nm {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--qvq-tx);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.us-rec .r1 .nm:hover { color: var(--qvq-accent); }
+.us-rec .r1 .meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  color: var(--qvq-tx-t);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.us-rec .r2 {
+  margin-top: 3px;
+  color: var(--qvq-tx-s);
+  font-size: 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 用量页：汇总 kpi + 模型/会话分布条 */
+.us-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+.us-kpi {
+  padding: 12px 16px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: var(--qvq-radius, 12px);
+  background: var(--qvq-bg-s);
+}
+.us-kpi .v { font-size: 20px; font-weight: 700; color: var(--qvq-tx); font-variant-numeric: tabular-nums; }
+.us-kpi .l { font-size: 11.5px; color: var(--qvq-tx-t); margin-top: 2px; }
+.us-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+@media (max-width: 900px) { .us-grid { grid-template-columns: 1fr; } .us-kpis { grid-template-columns: 1fr 1fr 1fr; gap: 8px; } .us-kpi { padding: 10px 12px; } .us-kpi .v { font-size: 16px; } }
+.us-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12.5px;
+}
+.us-row .nm {
+  flex: 0 0 42%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--qvq-tx-s);
+}
+.us-row.us-click { cursor: pointer; border-radius: 8px; }
+.us-row.us-click:hover .nm { color: var(--qvq-accent); }
+.us-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--qvq-bg-s);
+  border: 1px solid var(--qvq-bd);
+  overflow: hidden;
+}
+.us-bar i { display: block; height: 100%; border-radius: 99px; background: var(--qvq-accent); }
+.us-row .v { flex: 0 0 auto; color: var(--qvq-tx); font-variant-numeric: tabular-nums; font-size: 12px; }
+.us-row .v .io { font-style: normal; color: var(--qvq-tx-t); font-size: 10.5px; }
+
 /* 人工接管横幅：开启后面板发送以 bot 身份直发（AI 不响应） */
 .chat-manualbar {
   display: flex;
@@ -2147,11 +2302,17 @@ body::-webkit-scrollbar,
 .msg.user { align-items: flex-end; }
 .msg-acts {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
   margin: 3px 4px 0;
+  /* 消息列布局 align-items:flex-start 会让本行按内容宽溢出容器（后面的按钮被吃掉）：
+     align-self:stretch 约束行宽=容器宽，配合 wrap 让放不下的按钮自然掉行 */
+  align-self: stretch;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
+.msg.user .msg-acts { justify-content: flex-end; }
 .msg:hover .msg-acts { opacity: 1; }
 .msg-acts button {
   padding: 0;
@@ -2169,9 +2330,8 @@ body::-webkit-scrollbar,
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 260px;
+  flex: 0 0 auto;
+  max-width: 100%;
   cursor: default;
 }
 
@@ -2447,6 +2607,10 @@ body::-webkit-scrollbar,
   /* 消息区窄屏：收边距让气泡占满，正文行高略收 */
   .chat-thread { padding: 12px 12px 6px; }
   .msg-body { max-width: 92%; font-size: 13px; line-height: 1.6; }
+  /* 占用条窄屏：进度条收短，文案缩排不溢出 */
+  .chat-ctxbar { gap: 8px; padding: 5px 10px; }
+  .chat-ctxbar-track { flex: 0 0 72px; max-width: 72px; }
+  .chat-ctxbar .tx { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* ---- 触屏利好：触控目标放大到 ≥36px，消息操作常显（触屏没有 hover）---- */
   .chat-head-ctl .n-select { min-height: 38px; --n-height: 38px; font-size: 13px; }
   .chat-head-ctl .n-base-selection { min-height: 38px; --n-height: 38px; }
@@ -2459,8 +2623,9 @@ body::-webkit-scrollbar,
   .chat-side-head .n-input, .chat-side-head .n-base-selection { min-height: 38px; --n-height: 38px; }
   .chat-composer .n-input .n-input__input-el, .chat-composer textarea { min-height: 24px; font-size: 14px; }
   .chat-send { min-height: 40px; }
-  .msg-acts { opacity: 1; gap: 14px; }
+  .msg-acts { opacity: 1; gap: 4px 14px; }
   .msg-acts button { font-size: 12.5px; padding: 6px 2px; }
+  .msg-acts .msg-model { line-height: 1.2; }
   .chat-sitem { padding: 11px 10px; }
   .chat-group { padding: 9px 10px; }
   /* Naive 弹层菜单项：触屏点得中 */
@@ -3484,7 +3649,22 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
   }
   var usageDays = [];
   [4.1, 12.7, 18.5, 0.3, 0.2, 0.1, 0.26, 0, 0, 0, 0, 0, 0.4, 1.1].forEach(function (m, i) {
-    usageDays.push({ date: dayKey(13 - i), tokens: Math.round(m * 1e6), calls: Math.round(m * 47) });
+    var toks = Math.round(m * 1e6);
+    var entry = { date: dayKey(13 - i), tokens: toks, calls: Math.round(m * 47) };
+    if (toks > 0) {
+      entry.by_model = {
+        "deepseek:deepseek-chat": { tokens: Math.round(toks * 0.62), in: Math.round(toks * 0.5), out: Math.round(toks * 0.12) },
+        "deepseek:deepseek-reasoner": { tokens: Math.round(toks * 0.26), in: Math.round(toks * 0.2), out: Math.round(toks * 0.06) },
+        "siliconflow:Qwen/Qwen2.5-72B-Instruct": { tokens: Math.round(toks * 0.12), in: Math.round(toks * 0.09), out: Math.round(toks * 0.03) },
+      };
+      entry.by_chat = {
+        "onebot11:group:1049": Math.round(toks * 0.44),
+        "onebot11:private:643319481": Math.round(toks * 0.27),
+        "onebot11:group:8871": Math.round(toks * 0.16),
+        "dashboard:private:web": Math.round(toks * 0.13),
+      };
+    }
+    usageDays.push(entry);
   });
 
   var CONFIG_DRAFT = {
@@ -3845,6 +4025,12 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
           usage_today: { tokens: 1106792, limit: 10000000, calls: 52 },
         });
         case "/api/qvq/usage": return json({ days: usageDays, limit: 10000000 });
+        case "/api/qvq/usage/records": return json({ items: [
+          { chat_key: "onebot11:group:1049", name: "ErisPulse 丨 喵之领域已展开", ts: NOW - 600, model: "deepseek:deepseek-chat", tokens: 9492, preview: "收到，这就去测喵。容器里没 ping 命令，换个方式测连通性。B 站通的，状态很健康喵。" },
+          { chat_key: "dashboard:private:web", name: "网页对话", ts: NOW - 1800, model: "deepseek:deepseek-chat", tokens: 8517, preview: "好喵，给你个常用的：批量重命名文件小脚本。改下文件夹路径就能跑。" },
+          { chat_key: "onebot11:private:643319481", name: "小樱", ts: NOW - 4200, model: "deepseek:deepseek-reasoner", tokens: 15230, preview: "论文初稿收到啦，晚上给你标注意见喵。第二节的实验设计可以再收紧一点。" },
+          { chat_key: "onebot11:group:8871", name: "开发组", ts: NOW - 9000, model: "siliconflow:Qwen/Qwen2.5-72B-Instruct", tokens: 6310, preview: "锁库问题定位了：SQLite 写锁竞争 + 同步接口阻塞，改 storage.aset 异步调用以彻底解耦。" },
+        ] });
         case "/api/qvq/costs": return json({
           daily: usageDays.map(function (d) { return { date: d.date, cost: round4(d.tokens / 1e6 * 0.42) }; }),
           by_model: { "custom:glm-5.3-flash": 1.9753, "deepseek:deepseek-chat": 1.2841, "siliconflow:Qwen/Qwen3.5-35B-A3B": 0.6411, "scnet:GLM-5.3-Flash": 0.0756 },
@@ -4106,7 +4292,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "今日用量", chart_usage: "用量", chart_cost: "成本", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "调用", chart_tip_pct: "占上限", sec_level_strict: "严格", sec_level_standard: "标准", sec_level_permissive: "宽松", backup_export: "导出配置", backup_import: "导入配置", audit_filter: "过滤工具/用户…", col_preview: "最近消息",
       subtitle: "通用智能体",
       nav_overview: "概览", nav_chat: "对话", nav_models: "模型池", nav_personas: "人格",
-      nav_tools: "工具", nav_extensions: "扩展", nav_tasks: "定时任务", nav_memory: "记忆", nav_sessions: "会话", nav_plugins: "插件", nav_inbox: "收件箱", nav_backup: "备份", add_title: "添加", item_desc: "描述", loading: "加载中…", sess_group_group: "群聊", sess_group_private: "私聊", sess_group_pinned: "置顶", sess_recent: "最近", sess_all: "全部", filter_title: "筛选", sess_toggle: "会话列表", ctx_usage_line: "上下文 {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "最后一轮回复的输入量占模型上下文窗口的比例", unread_tip: "有新消息", manual_on: "人工接管中——发送将以机器人身份直接发出（AI 不响应）", manual_exit: "退出接管", manual_flag: "人工接管", manual_flag_hint: "开启后面板发送以机器人身份直发到平台并写入上下文，AI 不再响应这些消息", manual_ph: "以机器人身份发送…", quote_btn: "引用", quote_bar: "引用：", quote_who_user: "对方", quote_who_ai: "智能体", quote_head: "引用 {who}", filter_account: "账户", filter_sort: "排序", sort_updated: "最近活跃", sort_turns: "最多轮次", sort_name: "会话名",
+      nav_tools: "工具", nav_extensions: "扩展", nav_tasks: "定时任务", nav_memory: "记忆", nav_sessions: "会话", nav_plugins: "插件", nav_inbox: "收件箱", nav_backup: "备份", add_title: "添加", item_desc: "描述", loading: "加载中…", sess_group_group: "群聊", sess_group_private: "私聊", sess_group_pinned: "置顶", sess_recent: "最近", sess_all: "全部", filter_title: "筛选", sess_toggle: "会话列表", ctx_usage_line: "上下文 {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "最后一轮回复的输入量占模型上下文窗口的比例", unread_tip: "有新消息", nav_usage: "用量", usage_sub: "模型调用的 token 消费分布与最近调用明细——看看消费都花在哪了", usage_today_tokens: "今日 tokens", usage_chart_title: "14 天趨勢", usage_chart_title: "14 天趋势", usage_today_calls: "今日调用", usage_daily_limit: "日上限", usage_models_title: "按模型分布（14 天）", usage_chats_title: "按会话分布（14 天 top 8）", usage_records_title: "最近调用明细", usage_empty: "暂无数据", usage_records_empty: "还没有调用记录：AI 回复后会出现在这里", exec_sub: "跨会话 AI 活动流水（模型 / token / 摘要），点击跳对应会话", exec_all: "全部", exec_empty: "暂无记录", manual_on: "人工接管中——发送将以机器人身份直接发出（AI 不响应）", manual_exit: "退出接管", manual_flag: "人工接管", manual_flag_hint: "开启后面板发送以机器人身份直发到平台并写入上下文，AI 不再响应这些消息", manual_ph: "以机器人身份发送…", quote_btn: "引用", quote_bar: "引用：", quote_who_user: "对方", quote_who_ai: "智能体", quote_head: "引用 {who}", filter_account: "账户", filter_sort: "排序", sort_updated: "最近活跃", sort_turns: "最多轮次", sort_name: "会话名",
       nav_knowledge: "知识库", knowledge_desc: "共享资料库：相关片段会自动注入对话，也可用 knowledge_search 检索", kb_add: "添加条目", kb_search_ph: "检索…", kb_stats_line: "条目 {e} · 分块 {c}", kb_list_empty: "还没有条目，点上方按钮添加", kb_title_label: "标题", kb_source_label: "来源（可选）", kb_content_label: "内容", kb_need_title_content: "需要标题与内容", kb_triggers_label: "触发关键词（可选，世界书）", kb_triggers_ph: "如：魔王, 北塔（逗号分隔，命中即注入）", kb_priority_label: "触发优先级（大优先）", kb_cooldown_label: "触发冷却分钟（留空用默认，0 不冷却）", kb_edit: "编辑条目", kb_scope_label: "可见域", kb_scope_chat: "会话/平台（填 chat_key 或平台名，如 bilibili）", kb_scope_ph: "留空=全局", kb_scope_chip_private: "私有",
       nav_audit: "审计", audit_clear: "清空记录", nav_settings: "设置",
       sess_members: "成员", sess_members_hint: "成员白名单（每行一个用户 ID，* 表示全员；留空恢复全员）", sess_sources_hint: "接受其它会话的输入（每行一个 chat_key，如 onebot11:group:123；这些会话的消息会路由到本会话）", kb_export: "导出", kb_import: "导入",
@@ -4214,7 +4400,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "今日用量", chart_usage: "用量", chart_cost: "成本", sec_level_strict: "嚴格", sec_level_standard: "標準", sec_level_permissive: "寬鬆", backup_export: "匯出配置", backup_import: "匯入配置", audit_filter: "過濾工具/使用者…", col_preview: "最近訊息",
       subtitle: "通用智慧代理",
       nav_overview: "概覽", nav_chat: "對話", nav_models: "模型池", nav_personas: "人格",
-      nav_tools: "工具", nav_extensions: "擴展", nav_tasks: "定時任務", nav_memory: "記憶", nav_sessions: "會話", nav_plugins: "外掛", nav_inbox: "收件匣", nav_backup: "備份", add_title: "新增", item_desc: "描述", loading: "載入中…", sess_group_group: "群聊", sess_group_private: "私聊", sess_group_pinned: "置頂", sess_recent: "最近", sess_all: "全部", filter_title: "篩選", sess_toggle: "會話列表", ctx_usage_line: "上下文 {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "最後一輪回覆的輸入量佔模型上下文視窗的比例", unread_tip: "有新訊息", manual_on: "人工接管中——發送將以機器人身分直接發出（AI 不響應）", manual_exit: "退出接管", manual_flag: "人工接管", manual_flag_hint: "開啟後面板發送以機器人身分直發到平台並寫入上下文，AI 不再響應這些訊息", manual_ph: "以機器人身分發送…", quote_btn: "引用", quote_bar: "引用：", quote_who_user: "對方", quote_who_ai: "智慧核心", quote_head: "引用 {who}", filter_account: "帳號", filter_sort: "排序", sort_updated: "最近活躍", sort_turns: "最多輪次", sort_name: "會話名",
+      nav_tools: "工具", nav_extensions: "擴展", nav_tasks: "定時任務", nav_memory: "記憶", nav_sessions: "會話", nav_plugins: "外掛", nav_inbox: "收件匣", nav_backup: "備份", add_title: "新增", item_desc: "描述", loading: "載入中…", sess_group_group: "群聊", sess_group_private: "私聊", sess_group_pinned: "置頂", sess_recent: "最近", sess_all: "全部", filter_title: "篩選", sess_toggle: "會話列表", ctx_usage_line: "上下文 {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "最後一輪回覆的輸入量佔模型上下文視窗的比例", unread_tip: "有新訊息", nav_usage: "用量", usage_sub: "模型調用的 token 消費分佈與最近調用明細——看看消費都花在哪了", usage_today_tokens: "今日 tokens", usage_today_calls: "今日調用", usage_daily_limit: "日上限", usage_models_title: "按模型分佈（14 天）", usage_chats_title: "按會話分佈（14 天 top 8）", usage_records_title: "最近調用明細", usage_empty: "暫無數據", usage_records_empty: "還沒有調用記錄：AI 回覆後會出現在這裡", exec_sub: "跨會話 AI 活動流水（模型 / token / 摘要），點擊跳對應會話", exec_all: "全部", exec_empty: "暫無記錄", manual_on: "人工接管中——發送將以機器人身分直接發出（AI 不響應）", manual_exit: "退出接管", manual_flag: "人工接管", manual_flag_hint: "開啟後面板發送以機器人身分直發到平台並寫入上下文，AI 不再響應這些訊息", manual_ph: "以機器人身分發送…", quote_btn: "引用", quote_bar: "引用：", quote_who_user: "對方", quote_who_ai: "智慧核心", quote_head: "引用 {who}", filter_account: "帳號", filter_sort: "排序", sort_updated: "最近活躍", sort_turns: "最多輪次", sort_name: "會話名",
       nav_knowledge: "知識庫", knowledge_desc: "共享資料庫：相關片段會自動注入對話，也可用 knowledge_search 檢索", kb_add: "新增條目", kb_search_ph: "檢索…", kb_stats_line: "條目 {e} · 分塊 {c}", kb_list_empty: "還沒有條目，點上方按鈕新增", kb_title_label: "標題", kb_source_label: "來源（可選）", kb_content_label: "內容", kb_need_title_content: "需要標題與內容", kb_triggers_label: "觸發關鍵詞（可選，世界書）", kb_triggers_ph: "如：魔王, 北塔（逗號分隔，命中即注入）", kb_priority_label: "觸發優先級（大優先）", kb_cooldown_label: "觸發冷卻分鐘（留空用預設，0 不冷卻）", kb_edit: "編輯條目", kb_scope_label: "可見域", kb_scope_chat: "會話/平台（填 chat_key 或平台名，如 bilibili）", kb_scope_ph: "留空=全域", kb_scope_chip_private: "私有",
       nav_audit: "審計", audit_clear: "清空記錄", nav_settings: "設定",
       sess_members: "成員", sess_members_hint: "成員白名單（每行一個使用者 ID，* 表示全員；留空恢復全員）", sess_sources_hint: "接受其它會話的輸入（每行一個 chat_key，如 onebot11:group:123；這些會話的訊息會路由到本會話）", kb_export: "匯出", kb_import: "匯入",
@@ -4322,7 +4508,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "Today usage", chart_usage: "Usage", chart_cost: "Cost", chart_limit_legend: "Daily limit {n} · {d} days over", chart_tip_calls: "Calls", chart_tip_pct: "% of limit", sec_level_strict: "Strict", sec_level_standard: "Standard", sec_level_permissive: "Permissive", backup_export: "Export config", backup_import: "Import config", audit_filter: "Filter tool/user…", col_preview: "Last message",
       subtitle: "universal agent",
       nav_overview: "Overview", nav_chat: "Chat", nav_models: "Models", nav_personas: "Personas",
-      nav_tools: "Tools", nav_extensions: "Extensions", nav_tasks: "Tasks", nav_memory: "Memory", nav_sessions: "Sessions", nav_plugins: "Plugins", nav_inbox: "Inbox", nav_backup: "Backup", add_title: "Add", item_desc: "Description", loading: "Loading…", sess_group_group: "Group chats", sess_group_private: "Direct chats", sess_group_pinned: "Pinned", sess_recent: "Recent", sess_all: "All", filter_title: "Filter", sess_toggle: "Sessions", ctx_usage_line: "Context {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "Input tokens of the last reply vs the model context window", unread_tip: "New messages", manual_on: "Manual takeover — messages are sent as the bot (AI will not respond)", manual_exit: "Exit takeover", manual_flag: "Manual takeover", manual_flag_hint: "When on, composer messages go straight to the platform as the bot and into context; the AI will not respond to them", manual_ph: "Send as the bot…", quote_btn: "Quote", quote_bar: "Quoting: ", quote_who_user: "them", quote_who_ai: "the assistant", quote_head: "Quoting {who}", filter_account: "Account", filter_sort: "Sort", sort_updated: "Latest activity", sort_turns: "Most turns", sort_name: "Name",
+      nav_tools: "Tools", nav_extensions: "Extensions", nav_tasks: "Tasks", nav_memory: "Memory", nav_sessions: "Sessions", nav_plugins: "Plugins", nav_inbox: "Inbox", nav_backup: "Backup", add_title: "Add", item_desc: "Description", loading: "Loading…", sess_group_group: "Group chats", sess_group_private: "Direct chats", sess_group_pinned: "Pinned", sess_recent: "Recent", sess_all: "All", filter_title: "Filter", sess_toggle: "Sessions", ctx_usage_line: "Context {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "Input tokens of the last reply vs the model context window", unread_tip: "New messages", nav_usage: "Usage", usage_sub: "Where your tokens go: per-model / per-session breakdown and recent calls", usage_today_tokens: "Today tokens", usage_chart_title: "14-day trend", usage_today_calls: "Today calls", usage_daily_limit: "Daily limit", usage_models_title: "By model (14 days)", usage_chats_title: "By session (top 8, 14 days)", usage_records_title: "Recent calls", usage_empty: "No data", usage_records_empty: "No calls yet: AI replies will show up here", exec_sub: "Cross-session AI activity (model / tokens / summary); click to open the session", exec_all: "All", exec_empty: "No records yet", manual_on: "Manual takeover — messages are sent as the bot (AI will not respond)", manual_exit: "Exit takeover", manual_flag: "Manual takeover", manual_flag_hint: "When on, composer messages go straight to the platform as the bot and into context; the AI will not respond to them", manual_ph: "Send as the bot…", quote_btn: "Quote", quote_bar: "Quoting: ", quote_who_user: "them", quote_who_ai: "the assistant", quote_head: "Quoting {who}", filter_account: "Account", filter_sort: "Sort", sort_updated: "Latest activity", sort_turns: "Most turns", sort_name: "Name",
       nav_knowledge: "Knowledge", knowledge_desc: "Shared library: relevant passages are auto-injected into chats and searchable via knowledge_search", kb_add: "Add entry", kb_search_ph: "Search…", kb_stats_line: "{e} entries · {c} chunks", kb_list_empty: "No entries yet — use the button above to add one", kb_title_label: "Title", kb_source_label: "Source (optional)", kb_content_label: "Content", kb_need_title_content: "Title and content are required", kb_triggers_label: "Trigger keywords (optional, lorebook)", kb_triggers_ph: "e.g. demon king, north tower (comma separated)", kb_priority_label: "Trigger priority (higher first)", kb_cooldown_label: "Trigger cooldown minutes (blank = default, 0 = none)", kb_edit: "Edit entry", kb_scope_label: "Visibility", kb_scope_chat: "Session/platform (chat_key or platform name, e.g. bilibili)", kb_scope_ph: "blank = global", kb_scope_chip_private: "private",
       nav_audit: "Audit", audit_clear: "Clear log", nav_settings: "Settings",
       sess_members: "Members", sess_members_hint: "Member allowlist (one user ID per line, * = everyone; empty resets to everyone)", sess_sources_hint: "Accept input from other chats (one chat_key per line, e.g. onebot11:group:123; their messages route into this chat)", kb_export: "Export", kb_import: "Import",
@@ -4430,7 +4616,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "今日の使用量", chart_usage: "使用量", chart_cost: "コスト", chart_limit_legend: "日上限 {n} · 超過 {d} 日", chart_tip_calls: "呼び出し", chart_tip_pct: "上限比", sec_level_strict: "厳格", sec_level_standard: "標準", sec_level_permissive: "緩和", backup_export: "設定をエクスポート", backup_import: "設定をインポート", audit_filter: "絞り込み…", col_preview: "最新メッセージ",
       subtitle: "汎用エージェント",
       nav_overview: "概要", nav_chat: "チャット", nav_models: "モデル", nav_personas: "ペルソナ",
-      nav_tools: "ツール", nav_extensions: "拡張", nav_tasks: "タスク", nav_memory: "記憶", nav_sessions: "セッション", nav_plugins: "プラグイン", nav_inbox: "受信箱", nav_backup: "バックアップ", add_title: "追加", item_desc: "説明", loading: "読み込み中…", sess_group_group: "グループ", sess_group_private: "個人", sess_group_pinned: "ピン留め", sess_recent: "最近", sess_all: "すべて", filter_title: "絞り込み", sess_toggle: "セッション", ctx_usage_line: "コンテキスト {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "直近の応答入力トークンのモデル文脈窓に対する割合", unread_tip: "新しいメッセージ", manual_on: "手動交代中——送信はボットとして直接送られます（AI は応答しません）", manual_exit: "交代を終了", manual_flag: "手動交代", manual_flag_hint: "オンにすると、入力内容がボットとしてプラットフォームへ送信され文脈に記録されます（AI は応答しません）", manual_ph: "ボットとして送信…", quote_btn: "引用", quote_bar: "引用：", quote_who_user: "相手", quote_who_ai: "アシスタント", quote_head: "引用 {who}", filter_account: "アカウント", filter_sort: "並び順", sort_updated: "最新活動", sort_turns: "ターン数", sort_name: "セッション名",
+      nav_tools: "ツール", nav_extensions: "拡張", nav_tasks: "タスク", nav_memory: "記憶", nav_sessions: "セッション", nav_plugins: "プラグイン", nav_inbox: "受信箱", nav_backup: "バックアップ", add_title: "追加", item_desc: "説明", loading: "読み込み中…", sess_group_group: "グループ", sess_group_private: "個人", sess_group_pinned: "ピン留め", sess_recent: "最近", sess_all: "すべて", filter_title: "絞り込み", sess_toggle: "セッション", ctx_usage_line: "コンテキスト {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "直近の応答入力トークンのモデル文脈窓に対する割合", unread_tip: "新しいメッセージ", nav_usage: "使用量", usage_sub: "モデル別 / セッション別のトークン消費と最近の呼び出し明細", usage_today_tokens: "今日のトークン", usage_chart_title: "14 日トレンド", usage_today_calls: "今日の呼び出し", usage_daily_limit: "日次上限", usage_models_title: "モデル別（14 日）", usage_chats_title: "セッション別（上位 8・14 日）", usage_records_title: "最近の呼び出し", usage_empty: "データなし", usage_records_empty: "まだ記録がありません：AI が応答するとここに表示されます", exec_sub: "セッション横断の AI 活動履歴（モデル / トークン / 概要）、クリックで該当セッションへ", exec_all: "すべて", exec_empty: "記録なし", manual_on: "手動交代中——送信はボットとして直接送られます（AI は応答しません）", manual_exit: "交代を終了", manual_flag: "手動交代", manual_flag_hint: "オンにすると、入力内容がボットとしてプラットフォームへ送信され文脈に記録されます（AI は応答しません）", manual_ph: "ボットとして送信…", quote_btn: "引用", quote_bar: "引用：", quote_who_user: "相手", quote_who_ai: "アシスタント", quote_head: "引用 {who}", filter_account: "アカウント", filter_sort: "並び順", sort_updated: "最新活動", sort_turns: "ターン数", sort_name: "セッション名",
       nav_knowledge: "ナレッジ", knowledge_desc: "共有ライブラリ：関連する断片は会話に自動注入され、knowledge_search でも検索できます", kb_add: "項目を追加", kb_search_ph: "検索…", kb_stats_line: "項目 {e} · チャンク {c}", kb_list_empty: "まだ項目がありません。上のボタンから追加してください", kb_title_label: "タイトル", kb_source_label: "ソース（任意）", kb_content_label: "内容", kb_need_title_content: "タイトルと内容が必要です", kb_triggers_label: "トリガーキーワード（任意・ワールドブック）", kb_triggers_ph: "例：魔王, 北塔（カンマ区切り、一致で注入）", kb_priority_label: "トリガー優先度（大きい順）", kb_cooldown_label: "トリガークールダウン分（空欄でデフォルト、0 で無効）", kb_edit: "項目を編集", kb_scope_label: "公開範囲", kb_scope_chat: "セッション/プラットフォーム（chat_key またはプラットフォーム名、例: bilibili）", kb_scope_ph: "空欄=グローバル", kb_scope_chip_private: "非公開",
       nav_audit: "監査", audit_clear: "記録消去", nav_settings: "設定",
       sess_members: "メンバー", sess_members_hint: "メンバー許可リスト（1 行に 1 つのユーザー ID、* は全員。空で全員に戻す）", sess_sources_hint: "他のセッションの入力を受け入れる（1 行に 1 つの chat_key、例 onebot11:group:123。そのメッセージはこのセッションに転送されます）", kb_export: "エクスポート", kb_import: "インポート",
@@ -4538,7 +4724,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       stat_usage: "Расход сегодня", chart_usage: "Расход", chart_cost: "Стоимость", chart_limit_legend: "Дневной лимит {n} · превышений: {d}", chart_tip_calls: "Вызовы", chart_tip_pct: "% от лимита", sec_level_strict: "Строгий", sec_level_standard: "Стандартный", sec_level_permissive: "Свободный", backup_export: "Экспорт конфига", backup_import: "Импорт конфига", audit_filter: "Фильтр инструмента/пользователя…", col_preview: "Последнее сообщение",
       subtitle: "универсальный агент",
       nav_overview: "Обзор", nav_chat: "Чат", nav_models: "Модели", nav_personas: "Личности",
-      nav_tools: "Инструменты", nav_extensions: "Расширения", nav_tasks: "Задачи", nav_memory: "Память", nav_sessions: "Сессии", nav_plugins: "Плагины", nav_inbox: "Входящие", nav_backup: "Резерв", add_title: "Добавить", item_desc: "Описание", loading: "Загрузка…", sess_group_group: "Группы", sess_group_private: "Личные", sess_group_pinned: "Закреплённые", sess_recent: "Недавние", sess_all: "Все", filter_title: "Фильтр", sess_toggle: "Сессии", ctx_usage_line: "Контекст {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "Входные токены последнего ответа к окну контекста модели", unread_tip: "Новые сообщения", manual_on: "Ручной режим — сообщения отправляются от имени бота (ИИ не отвечает)", manual_exit: "Выйти из режима", manual_flag: "Ручной режим", manual_flag_hint: "Включите, чтобы отправлять сообщения от имени бота прямо на платформу и в контекст; ИИ на них не отвечает", manual_ph: "Отправить как бот…", quote_btn: "Цитата", quote_bar: "Цитата: ", quote_who_user: "собеседник", quote_who_ai: "ассистент", quote_head: "Цитата {who}", filter_account: "Аккаунт", filter_sort: "Сортировка", sort_updated: "По активности", sort_turns: "По оборотам", sort_name: "По имени",
+      nav_tools: "Инструменты", nav_extensions: "Расширения", nav_tasks: "Задачи", nav_memory: "Память", nav_sessions: "Сессии", nav_plugins: "Плагины", nav_inbox: "Входящие", nav_backup: "Резерв", add_title: "Добавить", item_desc: "Описание", loading: "Загрузка…", sess_group_group: "Группы", sess_group_private: "Личные", sess_group_pinned: "Закреплённые", sess_recent: "Недавние", sess_all: "Все", filter_title: "Фильтр", sess_toggle: "Сессии", ctx_usage_line: "Контекст {pct}% · {used} / {ctx} tokens", ctx_usage_tip: "Входные токены последнего ответа к окну контекста модели", unread_tip: "Новые сообщения", nav_usage: "Расход", usage_sub: "Куда уходят токены: разбивка по моделям / сессиям и последние вызовы", usage_today_tokens: "Токены за сегодня", usage_chart_title: "Тренд за 14 дней", usage_today_calls: "Вызовы за сегодня", usage_daily_limit: "Дневной лимит", usage_models_title: "По моделям (14 дней)", usage_chats_title: "По сессиям (топ 8, 14 дней)", usage_records_title: "Последние вызовы", usage_empty: "Нет данных", usage_records_empty: "Пока нет вызовов: появятся после ответов ИИ", exec_sub: "Межсессионная активность ИИ (модель / токены / сводка), клик открывает сессию", exec_all: "Все", exec_empty: "Записей нет", manual_on: "Ручной режим — сообщения отправляются от имени бота (ИИ не отвечает)", manual_exit: "Выйти из режима", manual_flag: "Ручной режим", manual_flag_hint: "Включите, чтобы отправлять сообщения от имени бота прямо на платформу и в контекст; ИИ на них не отвечает", manual_ph: "Отправить как бот…", quote_btn: "Цитата", quote_bar: "Цитата: ", quote_who_user: "собеседник", quote_who_ai: "ассистент", quote_head: "Цитата {who}", filter_account: "Аккаунт", filter_sort: "Сортировка", sort_updated: "По активности", sort_turns: "По оборотам", sort_name: "По имени",
       nav_knowledge: "База знаний", knowledge_desc: "Общая библиотека: подходящие фрагменты автоматически попадают в диалог, доступен поиск через knowledge_search", kb_add: "Добавить запись", kb_search_ph: "Поиск…", kb_stats_line: "Записей: {e} · Фрагментов: {c}", kb_list_empty: "Записей пока нет — добавьте через кнопку выше", kb_title_label: "Заголовок", kb_source_label: "Источник (необязательно)", kb_content_label: "Содержимое", kb_need_title_content: "Нужны заголовок и содержимое", kb_triggers_label: "Ключевые слова триггера (опционально, лорбук)", kb_triggers_ph: "напр.: демон, башня (через запятую)", kb_priority_label: "Приоритет триггера (выше — раньше)", kb_cooldown_label: "Кулдаун триггера, мин (пусто — по умолчанию, 0 — нет)", kb_edit: "Изменить запись", kb_scope_label: "Область видимости", kb_scope_chat: "Сессия/платформа (chat_key или имя платформы, напр. bilibili)", kb_scope_ph: "пусто = глобально", kb_scope_chip_private: "приватно",
       nav_audit: "Аудит", audit_clear: "Очистить журнал", nav_settings: "Настройки",
       sess_members: "Участники", sess_members_hint: "Белый список участников (один ID в строке, * = все; пусто — вернуть всех)", sess_sources_hint: "Принимать ввод из других чатов (один chat_key в строке, напр. onebot11:group:123; их сообщения направляются в этот чат)", kb_export: "Экспорт", kb_import: "Импорт",
@@ -5079,7 +5265,7 @@ window.AppShell = {
         knowledge: '<svg viewBox="0 0 24 24"><path d="M4 19V6a2 2 0 0 1 2-2h13v13H6a2 2 0 0 0-2 2zm0 0a2 2 0 0 0 2 2h13"/><path d="M9 8h6"/></svg>',
         sessions: '<svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
         audit: '<svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
-        executions: '<svg viewBox="0 0 24 24"><path d="M13 3l7 7-9 9H4v-7l9-9z"/><path d="M16 5l3 3"/></svg>',
+        usage: '<svg viewBox="0 0 24 24"><path d="M13 3l7 7-9 9H4v-7l9-9z"/><path d="M16 5l3 3"/></svg>',
         storage: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>',
         tools: '<svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z"/></svg>',
         mcp: '<svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>',
@@ -5102,7 +5288,7 @@ window.AppShell = {
         memory: "PageMemory", knowledge: "PageKnowledge", sessions: "PageSessions",
         audit: "PageAudit", storage: "PageStorage", tools: "PageTools", mcp: "PageMcp",
         orchestrate: "PageOrchestrate", inbox: "PageInbox",
-        executions: "PageExecutions",
+        usage: "PageUsage",
       };
       return map[this.page] || "PageOverview";
     },
@@ -5115,7 +5301,7 @@ window.AppShell = {
         tasks: t("nav_tasks"), memory: t("nav_memory"), knowledge: t("nav_knowledge"),
         sessions: t("nav_sessions"), audit: t("nav_audit"), storage: t("nav_storage"),
         tools: t("nav_tools"), mcp: t("nav_mcp"), orchestrate: t("nav_orchestrate"),
-        inbox: t("nav_inbox"), executions: t("nav_executions"),
+        inbox: t("nav_inbox"), usage: t("nav_usage"),
       };
       return labels[this.page] || "QvQChat";
     },
@@ -5138,12 +5324,12 @@ window.AppShell = {
           items: [
             item("memory", "nav_memory"), item("knowledge", "nav_knowledge"),
             item("sessions", "nav_sessions"), item("audit", "nav_audit"),
-            item("inbox", "nav_inbox"), item("storage", "nav_storage"),
+            item("usage", "nav_usage"), item("inbox", "nav_inbox"), item("storage", "nav_storage"),
           ],
         },
         {
           key: "run", label: t("nav_group_run"),
-          items: [item("tasks", "nav_tasks"), item("orchestrate", "nav_orchestrate"), item("executions", "nav_executions")],
+          items: [item("tasks", "nav_tasks"), item("orchestrate", "nav_orchestrate")],
         },
         {
           key: "sys", label: t("nav_group_sys"),
@@ -5168,7 +5354,7 @@ window.AppShell = {
           tasks: t("nav_tasks"), memory: t("nav_memory"), knowledge: t("nav_knowledge"),
           sessions: t("nav_sessions"), audit: t("nav_audit"), storage: t("nav_storage"),
           tools: t("nav_tools"), mcp: t("nav_mcp"), orchestrate: t("nav_orchestrate"),
-          inbox: t("nav_inbox"), executions: t("nav_executions"),
+          inbox: t("nav_inbox"), usage: t("nav_usage"),
         };
         document.title = "QvQChat · " + (labels[val] || "QvQChat");
       },
@@ -6392,7 +6578,21 @@ window.PageChat = {
       var parts = [];
       if (u.prompt_tokens != null) parts.push("in " + u.prompt_tokens);
       if (u.completion_tokens != null) parts.push("out " + u.completion_tokens);
+      if (u.total_tokens != null) parts.push("total " + u.total_tokens);
       return t("chat_model_meta") + (parts.length ? "\n" + parts.join(" / ") : "");
+    },
+    metaBrief(meta) {
+      // 行内 token 摘要：有进出明细直接显示 ↑输入 ↓输出（比 total 更有用——
+      // total 是两者之和，悬浮可见完整三项）；旧数据只有 total 时退回 total
+      var u = (meta && meta.usage) || {};
+      var fmt = function (n) { return Number(n).toLocaleString(); };
+      if (u.prompt_tokens != null && u.completion_tokens != null) {
+        return " · ↑" + fmt(u.prompt_tokens) + " ↓" + fmt(u.completion_tokens);
+      }
+      if (u.total_tokens != null) {
+        return " · " + fmt(u.total_tokens) + " tok";
+      }
+      return "";
     },
     regenerate() {
       var self = this;
@@ -7238,7 +7438,7 @@ window.PageChat = {
     '        </div>',
     '        <div class="msg-acts">',
     '          <span v-if="m.meta && m.meta.model" class="msg-model"',
-    '                :title="modelMetaTip(m)">{{ m.meta.model }}{{ m.meta.usage && m.meta.usage.total_tokens != null ? " · " + Number(m.meta.usage.total_tokens).toLocaleString() + " tok" : "" }}</span>',
+    '                :title="modelMetaTip(m)">{{ m.meta.model }}{{ metaBrief(m.meta) }}</span>',
     '          <button v-if="m.role === \'user\'" type="button" @click="startEdit(i)">{{ t("edit") }}</button>',
     '          <button type="button" @click="quoteMsg(m)">{{ t("quote_btn") }}</button>',
     '          <button type="button" @click="copyText(m.content)">{{ t("chat_copy") }}</button>',
@@ -11670,6 +11870,195 @@ window.PageInbox = {
     '</div>',
   ].join(""),
 };
+</script><script>/* 用量：token 消费去哪了——今日汇总 / 模型分布 / 会话分布 / 最近调用明细 */
+window.PageUsage = {
+  name: "PageUsage",
+  data() {
+    return {
+      days: [],
+      limit: 0,
+      records: [],
+      loading: true,
+    };
+  },
+  computed: {
+    today() {
+      return this.days.length ? this.days[this.days.length - 1] : null;
+    },
+    byModel() {
+      // 14 天累计 by_model：[{model, tokens, in, out}] 按 tokens 倒序
+      var acc = {};
+      (this.days || []).forEach(function (d) {
+        var bm = d.by_model || {};
+        Object.keys(bm).forEach(function (m) {
+          var e = bm[m] || {};
+          var row = acc[m] || (acc[m] = { model: m, tokens: 0, in: 0, out: 0 });
+          row.tokens += Number(e.tokens || 0);
+          row.in += Number(e.in || 0);
+          row.out += Number(e.out || 0);
+        });
+      });
+      var list = Object.keys(acc).map(function (m) { return acc[m]; });
+      list.sort(function (a, b) { return b.tokens - a.tokens; });
+      var total = list.reduce(function (s, x) { return s + x.tokens; }, 0) || 1;
+      list.forEach(function (x) { x.pct = Math.round(x.tokens * 100 / total); });
+      return list;
+    },
+    chartBars() {
+      // 14 天 tokens 柱状（高度按最大值归一）
+      var days = this.days || [];
+      var max = Math.max.apply(null, days.map(function (d) { return Number(d.tokens || 0); }).concat([1]));
+      return days.map(function (d) {
+        return { date: d.date, tokens: Number(d.tokens || 0), h: Math.max(2, Math.round(Number(d.tokens || 0) * 100 / max)) };
+      });
+    },
+    donutStyle() {
+      // 模型分布环形图：conic-gradient 按占比扇形铺色
+      var colors = ["var(--qvq-accent)", "var(--qvq-warn)", "var(--qvq-ok)", "#9a7ade", "#5fa8d3"];
+      var segs = [];
+      var acc = 0;
+      var list = this.byModel;
+      for (var i = 0; i < list.length; i++) {
+        var pct = Number(list[i].pct || 0);
+        var c = colors[i % colors.length];
+        segs.push(c + " " + acc + "% " + (acc + pct) + "%");
+        acc += pct;
+      }
+      if (acc < 100 && segs.length) segs.push("var(--qvq-bg) " + acc + "% 100%");
+      return segs.length ? "conic-gradient(" + segs.join(", ") + ")" : "none";
+    },
+    byChat() {
+      // 14 天累计 by_chat top 8：[{chat_key, tokens, pct}]
+      var acc = {};
+      (this.days || []).forEach(function (d) {
+        var bc = d.by_chat || {};
+        Object.keys(bc).forEach(function (k) {
+          acc[k] = (acc[k] || 0) + Number(bc[k] || 0);
+        });
+      });
+      var list = Object.keys(acc).map(function (k) { return { chat_key: k, tokens: acc[k] }; });
+      list.sort(function (a, b) { return b.tokens - a.tokens; });
+      list = list.slice(0, 8);
+      var total = list.reduce(function (s, x) { return s + x.tokens; }, 0) || 1;
+      list.forEach(function (x) { x.pct = Math.round(x.tokens * 100 / total); });
+      return list;
+    },
+  },
+  mounted() {
+    this.load();
+  },
+  methods: {
+    load() {
+      var self = this;
+      QvQ.swr(self, "usage_page", "/api/qvq/usage", function (d) {
+        self.days = (d && d.days) || [];
+        self.limit = (d && d.limit) || 0;
+      });
+      QvQ.swr(self, "usage_records", "/api/qvq/usage/records", function (d) {
+        self.records = (d && d.items) || [];
+      });
+    },
+    lgClass(m) {
+      var idx = this.byModel.indexOf(m) % 5;
+      return "c" + idx;
+    },
+    colTitle(b) {
+      return b.date + " · " + this.fmtNum(b.tokens);
+    },
+    fmtTs(ts) {
+      if (!ts) return "";
+      var d = new Date(ts * 1000);
+      var p = function (n) { return (n < 10 ? "0" : "") + n; };
+      return (d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    },
+    fmtNum(n) { return Number(n || 0).toLocaleString(); },
+    chatName(key) {
+      var hit = this.records.filter(function (r) { return r.chat_key === key; })[0];
+      return (hit && hit.name) || key;
+    },
+    openSession(key) {
+      QvQ.store.pendingChat = key;
+      QvQ.store.page = "chat";
+    },
+  },
+  template: [
+    '<div class="qvq-page-body">',
+    '  <div class="qvq-page-head">',
+    '    <div>',
+    '      <div class="qvq-page-title">{{ t("nav_usage") }}</div>',
+    '      <div class="qvq-page-sub">{{ t("usage_sub") }}</div>',
+    '    </div>',
+    '    <div class="qvq-cfg-tools">',
+    '      <n-button size="small" @click="load">{{ t("refresh") }}</n-button>',
+    '    </div>',
+    '  </div>',
+    '  <div class="qvq-loading" v-if="loading"><i></i>{{ t("loading") }}</div>',
+    '  <template v-else>',
+    '    <div class="us-kpis">',
+    '      <div class="us-kpi">',
+    '        <div class="v">{{ fmtNum(today ? today.tokens : 0) }}</div>',
+    '        <div class="l">{{ t("usage_today_tokens") }}</div>',
+    '      </div>',
+    '      <div class="us-kpi">',
+    '        <div class="v">{{ fmtNum(today ? today.calls : 0) }}</div>',
+    '        <div class="l">{{ t("usage_today_calls") }}</div>',
+    '      </div>',
+    '      <div class="us-kpi">',
+    '        <div class="v">{{ fmtNum(limit) }}</div>',
+    '        <div class="l">{{ t("usage_daily_limit") }}</div>',
+    '      </div>',
+    '    </div>',
+    '    <n-card size="small" class="qvq-glass-card us-chart-card">',
+    '      <div class="qvq-card-title">{{ t("usage_chart_title") }}</div>',
+    '      <div class="us-chart">',
+    '        <div v-for="b in chartBars" :key="b.date" class="us-col" :title="colTitle(b)">',
+    '          <i :style="{ height: b.h + \'%\' }"></i>',
+    '          <span>{{ b.date.slice(5) }}</span>',
+    '        </div>',
+    '      </div>',
+    '    </n-card>',
+    '    <div class="us-grid">',
+    '      <n-card size="small" class="qvq-glass-card">',
+    '        <div class="qvq-card-title">{{ t("usage_models_title") }}</div>',
+    '        <div class="us-donut-wrap" v-if="byModel.length">',
+    '          <div class="us-donut" :style="{ background: donutStyle }"><i>{{ byModel.length }}</i></div>',
+    '          <div class="us-donut-legend">',
+    '            <span v-for="m in byModel" :key="m.model" class="lg"><i :class="lgClass(m)"></i>{{ m.model }} · {{ m.pct }}%</span>',
+    '          </div>',
+    '        </div>',
+    '        <div v-if="!byModel.length" class="qvq-empty">{{ t("usage_empty") }}</div>',
+    '        <div v-for="m in byModel" :key="m.model" class="us-row">',
+    '          <span class="nm" :title="m.model">{{ m.model }}</span>',
+    '          <div class="us-bar"><i :style="{ width: m.pct + \'%\' }"></i></div>',
+    '          <span class="v">{{ fmtNum(m.tokens) }} <i class="io">↑{{ fmtNum(m.in) }} ↓{{ fmtNum(m.out) }}</i></span>',
+    '        </div>',
+    '      </n-card>',
+    '      <n-card size="small" class="qvq-glass-card">',
+    '        <div class="qvq-card-title">{{ t("usage_chats_title") }}</div>',
+    '        <div v-if="!byChat.length" class="qvq-empty">{{ t("usage_empty") }}</div>',
+    '        <div v-for="c in byChat" :key="c.chat_key" class="us-row us-click" @click="openSession(c.chat_key)" :title="c.chat_key">',
+    '          <span class="nm">{{ chatName(c.chat_key) }}</span>',
+    '          <div class="us-bar"><i :style="{ width: c.pct + \'%\' }"></i></div>',
+    '          <span class="v">{{ fmtNum(c.tokens) }}</span>',
+    '        </div>',
+    '      </n-card>',
+    '    </div>',
+    '    <n-card size="small" class="qvq-glass-card">',
+    '      <div class="qvq-card-title">{{ t("usage_records_title") }}</div>',
+    '      <div v-if="!records.length" class="qvq-empty">{{ t("usage_records_empty") }}</div>',
+    '      <div v-for="(x, i) in records" :key="i" class="us-rec">',
+    '        <div class="r1">',
+    '          <button type="button" class="nm" @click="openSession(x.chat_key)"',
+    '                  :title="x.chat_key">{{ x.name }}</button>',
+    '          <span class="meta">{{ x.model }} · {{ fmtNum(x.tokens) }} tok · {{ fmtTs(x.ts) }}</span>',
+    '        </div>',
+    '        <div class="r2">{{ x.preview }}</div>',
+    '      </div>',
+    '    </n-card>',
+    '  </template>',
+    '</div>',
+  ].join(""),
+};
 </script><script>/* 配置控件：按 widget 渲染单项，值经 update:modelValue 回传 */
 window.SchemaForm = {
   name: "SchemaForm",
@@ -11880,7 +12269,7 @@ window.Mascot = {
     "PagePersonas", "PageConfig", "PagePlugins", "PageSkills", "PageTasks",
     "PageMemory", "PageKnowledge", "PageSessions", "PageAudit", "PageStorage",
     "PageTools", "PageMcp", "PageOrchestrate", "BackupPanel", "PageInbox",
-    "SchemaForm", "QuickPanel", "Mascot",
+    "PageUsage", "SchemaForm", "QuickPanel", "Mascot",
   ];
   names.forEach(function (name) {
     if (window[name]) app.component(name, window[name]);

@@ -650,6 +650,161 @@ html[data-theme="light"] .qvq-bg-layer.qvq-bg-fallback {
 .qvq-row .live-dot.idle { animation: none; opacity: 0.35; }
 
 /* 让渡横幅 / 子会话徽标 */
+/* 用量页图表：14 天柱状 + 模型环形 */
+.us-chart-card { margin-bottom: 12px; }
+.us-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 120px;
+  padding: 4px 2px 0;
+}
+.us-col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+.us-col i {
+  display: block;
+  width: 100%;
+  max-width: 26px;
+  border-radius: 5px 5px 2px 2px;
+  background: var(--qvq-accent);
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+.us-col:hover i { opacity: 1; }
+.us-col span { font-size: 9.5px; color: var(--qvq-tx-t); white-space: nowrap; }
+.us-donut-wrap { display: flex; align-items: center; gap: 18px; margin-bottom: 8px; }
+.us-donut {
+  flex: 0 0 auto;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  position: relative;
+}
+.us-donut::after {
+  content: "";
+  position: absolute;
+  inset: 16px;
+  border-radius: 50%;
+  background: var(--qvq-solid);
+}
+.us-donut i {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--qvq-tx);
+  z-index: 1;
+}
+.us-donut-legend { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.us-donut-legend .lg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--qvq-tx-s);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.us-donut-legend .lg i { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 2px; background: var(--qvq-accent); }
+.us-donut-legend .lg i.c1 { background: var(--qvq-warn); }
+.us-donut-legend .lg i.c2 { background: var(--qvq-ok); }
+.us-donut-legend .lg i.c3 { background: #9a7ade; }
+.us-donut-legend .lg i.c4 { background: #5fa8d3; }
+/* 最近调用明细：两行结构（名字+元信息 / 摘要全文） */
+.us-rec { padding: 8px 4px; border-bottom: 1px solid var(--qvq-bd); }
+.us-rec:last-child { border-bottom: 0; }
+.us-rec .r1 { display: flex; align-items: baseline; gap: 10px; }
+.us-rec .r1 .nm {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--qvq-tx);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.us-rec .r1 .nm:hover { color: var(--qvq-accent); }
+.us-rec .r1 .meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  color: var(--qvq-tx-t);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.us-rec .r2 {
+  margin-top: 3px;
+  color: var(--qvq-tx-s);
+  font-size: 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 用量页：汇总 kpi + 模型/会话分布条 */
+.us-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+.us-kpi {
+  padding: 12px 16px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: var(--qvq-radius, 12px);
+  background: var(--qvq-bg-s);
+}
+.us-kpi .v { font-size: 20px; font-weight: 700; color: var(--qvq-tx); font-variant-numeric: tabular-nums; }
+.us-kpi .l { font-size: 11.5px; color: var(--qvq-tx-t); margin-top: 2px; }
+.us-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+@media (max-width: 900px) { .us-grid { grid-template-columns: 1fr; } .us-kpis { grid-template-columns: 1fr 1fr 1fr; gap: 8px; } .us-kpi { padding: 10px 12px; } .us-kpi .v { font-size: 16px; } }
+.us-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12.5px;
+}
+.us-row .nm {
+  flex: 0 0 42%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--qvq-tx-s);
+}
+.us-row.us-click { cursor: pointer; border-radius: 8px; }
+.us-row.us-click:hover .nm { color: var(--qvq-accent); }
+.us-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--qvq-bg-s);
+  border: 1px solid var(--qvq-bd);
+  overflow: hidden;
+}
+.us-bar i { display: block; height: 100%; border-radius: 99px; background: var(--qvq-accent); }
+.us-row .v { flex: 0 0 auto; color: var(--qvq-tx); font-variant-numeric: tabular-nums; font-size: 12px; }
+.us-row .v .io { font-style: normal; color: var(--qvq-tx-t); font-size: 10.5px; }
+
 /* 人工接管横幅：开启后面板发送以 bot 身份直发（AI 不响应） */
 .chat-manualbar {
   display: flex;
@@ -2147,11 +2302,17 @@ body::-webkit-scrollbar,
 .msg.user { align-items: flex-end; }
 .msg-acts {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
   margin: 3px 4px 0;
+  /* 消息列布局 align-items:flex-start 会让本行按内容宽溢出容器（后面的按钮被吃掉）：
+     align-self:stretch 约束行宽=容器宽，配合 wrap 让放不下的按钮自然掉行 */
+  align-self: stretch;
   opacity: 0;
   transition: opacity 0.15s ease;
 }
+.msg.user .msg-acts { justify-content: flex-end; }
 .msg:hover .msg-acts { opacity: 1; }
 .msg-acts button {
   padding: 0;
@@ -2169,9 +2330,8 @@ body::-webkit-scrollbar,
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 260px;
+  flex: 0 0 auto;
+  max-width: 100%;
   cursor: default;
 }
 
@@ -2447,6 +2607,10 @@ body::-webkit-scrollbar,
   /* 消息区窄屏：收边距让气泡占满，正文行高略收 */
   .chat-thread { padding: 12px 12px 6px; }
   .msg-body { max-width: 92%; font-size: 13px; line-height: 1.6; }
+  /* 占用条窄屏：进度条收短，文案缩排不溢出 */
+  .chat-ctxbar { gap: 8px; padding: 5px 10px; }
+  .chat-ctxbar-track { flex: 0 0 72px; max-width: 72px; }
+  .chat-ctxbar .tx { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* ---- 触屏利好：触控目标放大到 ≥36px，消息操作常显（触屏没有 hover）---- */
   .chat-head-ctl .n-select { min-height: 38px; --n-height: 38px; font-size: 13px; }
   .chat-head-ctl .n-base-selection { min-height: 38px; --n-height: 38px; }
@@ -2459,8 +2623,9 @@ body::-webkit-scrollbar,
   .chat-side-head .n-input, .chat-side-head .n-base-selection { min-height: 38px; --n-height: 38px; }
   .chat-composer .n-input .n-input__input-el, .chat-composer textarea { min-height: 24px; font-size: 14px; }
   .chat-send { min-height: 40px; }
-  .msg-acts { opacity: 1; gap: 14px; }
+  .msg-acts { opacity: 1; gap: 4px 14px; }
   .msg-acts button { font-size: 12.5px; padding: 6px 2px; }
+  .msg-acts .msg-model { line-height: 1.2; }
   .chat-sitem { padding: 11px 10px; }
   .chat-group { padding: 9px 10px; }
   /* Naive 弹层菜单项：触屏点得中 */

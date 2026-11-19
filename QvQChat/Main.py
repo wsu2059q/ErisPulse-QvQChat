@@ -226,8 +226,8 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         self.logger = sdk.logger.get_child("QvQChat")
         self.started_at = time.time()  # 运行时长（状态卡）
 # 进程内瞬态状态集中一处（RuntimeState）：锁表/限频/合并窗/缓存/缓冲等
-# 与进程同寿、不需持久化的容器都在这里，mixin 与面板端点统一 self.state.<名> 访问
-        self.state = RuntimeState()
+# 与进程同寿、不需持久化的容器都在这里，mixin 与面板端点统一 self.rt.<名> 访问
+        self.rt = RuntimeState()
         self.pool = None
         self.registry = None
         self.personas = None
@@ -244,16 +244,16 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
     @property
     def takeover(self) -> dict:
 # 兼容读口：接管表本体在 state.takeover（面板/生态模块仍按 main.takeover 读）
-        return self.state.takeover
+        return self.rt.takeover
 
     @property
     def plugin_settings_catalog(self) -> dict:
 # 兼容读写口：qvq_settings 归属标记本体在 state.plugin_settings_catalog
-        return self.state.plugin_settings_catalog
+        return self.rt.plugin_settings_catalog
 
     @plugin_settings_catalog.setter
     def plugin_settings_catalog(self, value: dict) -> None:
-        self.state.plugin_settings_catalog = value or {}
+        self.rt.plugin_settings_catalog = value or {}
 
     @staticmethod
     def get_load_strategy() -> ModuleLoadStrategy:
@@ -339,11 +339,11 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             await self.mcp.close_all()
         except Exception as e:
             self.logger.debug(f"mcp close_all failed: {e}")
-        for entry in self.state.pending.values():
+        for entry in self.rt.pending.values():
             timer = entry.get("timer")
             if timer is not None:
                 timer.cancel()
-        self.state.pending.clear()
+        self.rt.pending.clear()
         for entry in list(self.takeover.values()):
             lease = entry.get("lease")
             if lease is not None:
@@ -989,7 +989,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 
         now = _time.time()
         recent = [
-            txt for ts, txt in (self.state.proactive_recent.get(chat_key) or ())
+            txt for ts, txt in (self.rt.proactive_recent.get(chat_key) or ())
             if now - ts < 1800
         ]
         if recent:
@@ -1003,8 +1003,8 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             scene=scene,
         )
         if str(reply or "").strip() not in ("", ".", "。", "-"):
-            self.state.proactive_recent.setdefault(chat_key, []).append((now, utils.truncate(str(reply).strip(), 120)))
-            del self.state.proactive_recent[chat_key][:-8]
+            self.rt.proactive_recent.setdefault(chat_key, []).append((now, utils.truncate(str(reply).strip(), 120)))
+            del self.rt.proactive_recent[chat_key][:-8]
         _log_proactive(True, "")
         return reply
 

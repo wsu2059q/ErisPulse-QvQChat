@@ -73,9 +73,9 @@ def test_json_line_garbage_returns_empty():
 
 async def test_demote_moves_task_to_background_and_replies_once():
     main = _bind_inbox(FakeMain())
-    main.state.pending = {}
-    main.state.waiting = {}
-    main.state.interrupted_notes = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
+    main.rt.interrupted_notes = {}
     main.live_registry = None
     live = _Live()
     ev = FakeChatEvent(text="帮我查下充值方式", group=False)
@@ -100,8 +100,8 @@ async def test_demote_moves_task_to_background_and_replies_once():
 
 async def test_queue_decision_is_silent_and_enqueues():
     main = _bind_inbox(FakeMain())
-    main.state.pending = {}
-    main.state.waiting = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
     main.cfg.interrupt_mode = "auto"
     live = _Live()
     ev = FakeChatEvent(text="哈哈哈", group=False)
@@ -110,28 +110,28 @@ async def test_queue_decision_is_silent_and_enqueues():
     assert proceed is False and not live.cancelled
 # 完全静默：queue 不发任何回执（line 即便非空也丢弃）
     assert ev.replies == []
-    assert main.state.waiting.get("k")
+    assert main.rt.waiting.get("k")
 
 
 async def test_interrupt_decision_stores_note_and_replies():
     main = _bind_inbox(FakeMain())
-    main.state.pending = {}
-    main.state.waiting = {}
-    main.state.interrupted_notes = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
+    main.rt.interrupted_notes = {}
     live = _Live()
     ev = FakeChatEvent(text="停！别写了", group=False)
     proceed = await Main._handle_auto_decision(main, "k", ev, [{"text": "停", "images": []}],
                                                live, "interrupt", "")
     assert proceed is True and live.cancelled
     assert len(ev.replies) == 1
-    assert "做到一半的进度" in main.state.interrupted_notes["k"]
+    assert "做到一半的进度" in main.rt.interrupted_notes["k"]
 
 
 async def test_demote_with_empty_line_falls_back_to_template():
     main = _bind_inbox(FakeMain())
-    main.state.pending = {}
-    main.state.waiting = {}
-    main.state.interrupted_notes = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
+    main.rt.interrupted_notes = {}
     live = _Live()
     ev = FakeChatEvent(text="在吗", group=False)
     await Main._handle_auto_decision(main, "k", ev, [{"text": "在吗", "images": []}],
@@ -141,9 +141,9 @@ async def test_demote_with_empty_line_falls_back_to_template():
 
 async def test_demote_failure_does_not_block_new_message():
     main = _bind_inbox(FakeMain())
-    main.state.pending = {}
-    main.state.waiting = {}
-    main.state.interrupted_notes = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
+    main.rt.interrupted_notes = {}
 
     async def _boom(**kwargs):
         raise RuntimeError("spawn failed")
@@ -166,8 +166,8 @@ async def test_demote_failure_does_not_block_new_message():
 
 async def test_announce_never_sends_raw_reasoning(monkeypatch=None):
     main = _bind_inbox(FakeMain())
-    main.state.waiting = {}
-    main.state.interrupted_notes = {}
+    main.rt.waiting = {}
+    main.rt.interrupted_notes = {}
 
     class _Resp:
         content = (
@@ -192,7 +192,7 @@ async def test_announce_never_sends_raw_reasoning(monkeypatch=None):
 
 async def test_announce_falls_back_to_template_on_garbage():
     main = _bind_inbox(FakeMain())
-    main.state.waiting = {}
+    main.rt.waiting = {}
 
     class _Resp:
         content = "（模型抽风，输出整段废话没有 JSON）" * 10
@@ -210,8 +210,8 @@ async def test_announce_falls_back_to_template_on_garbage():
 
 async def test_enqueue_announces_only_for_first_message():
     main = _bind_inbox(FakeMain())
-    main.state.pending = {}
-    main.state.waiting = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
     announcements = []
 
     async def _fake_announce(chat_key, event, items):

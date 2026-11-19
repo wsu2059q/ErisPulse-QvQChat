@@ -88,34 +88,34 @@ class _Registry:
 
 async def test_live_conflict_interrupt_mode_cancels_and_notes():
     main = _bind_inbox(FakeMain())
-    main.state.pending = {}
-    main.state.waiting = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
     main.cfg.interrupt_mode = "interrupt"
     live = _Live()
     main.live_registry = _Registry(live)
     ev = FakeChatEvent(text="先停一下，我问个别的事", group=False)
     proceed = await Main._live_conflict(main, "k", ev, [{"text": "先停一下", "images": []}])
     assert proceed is True and live.cancelled
-    assert "做到一半的进度" in main.state.interrupted_notes["k"]
+    assert "做到一半的进度" in main.rt.interrupted_notes["k"]
 
 
 async def test_live_conflict_queue_mode_enqueues():
     main = _bind_inbox(FakeMain())
-    main.state.pending = {}
-    main.state.waiting = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
     main.cfg.interrupt_mode = "queue"
     live = _Live()
     main.live_registry = _Registry(live)
     ev = FakeChatEvent(text="好的", group=False)
     proceed = await Main._live_conflict(main, "k", ev, [{"text": "好的", "images": []}])
     assert proceed is False and not live.cancelled
-    assert main.state.waiting.get("k")
+    assert main.rt.waiting.get("k")
 
 
 async def test_live_conflict_auto_mode_queues_or_interrupts():
     main = _bind_inbox(FakeMain())
-    main.state.pending = {}
-    main.state.waiting = {}
+    main.rt.pending = {}
+    main.rt.waiting = {}
     main.cfg.interrupt_mode = "auto"
     live = _Live()
     main.live_registry = _Registry(live)
@@ -129,9 +129,9 @@ async def test_live_conflict_auto_mode_queues_or_interrupts():
     main._auto_interrupt_decide = decide_queue
     ev = FakeChatEvent(text="顺便说一句", group=False)
     assert await Main._live_conflict(main, "k", ev, [{"text": "顺便说一句", "images": []}]) is False
-    assert main.state.waiting.get("k") and not live.cancelled
+    assert main.rt.waiting.get("k") and not live.cancelled
 
-    main.state.waiting = {}
+    main.rt.waiting = {}
     main._auto_interrupt_decide = decide_interrupt
     assert await Main._live_conflict(main, "k2", ev, [{"text": "这个更重要", "images": []}]) is True
     assert live.cancelled
@@ -139,7 +139,7 @@ async def test_live_conflict_auto_mode_queues_or_interrupts():
 
 async def test_live_conflict_no_running_task_proceeds():
     main = FakeMain()
-    main.state.pending = {}
+    main.rt.pending = {}
     main.live_registry = _Registry(_Live())
     main.live_registry._live.status = "idle"
     ev = FakeChatEvent(text="hi", group=False)
@@ -262,7 +262,7 @@ def _events_main_with_alias():
     main._inbox_load = EventsMixin._inbox_load.__get__(main)
     main._inbox_alias_keys = EventsMixin._inbox_alias_keys.__get__(main)
     main._iter_adapters = EventsMixin._iter_adapters.__get__(main)
-    main.state.event_inbox = {}
+    main.rt.event_inbox = {}
 
     class AcctCfg:
         def __init__(self, bot_id):

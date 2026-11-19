@@ -285,4 +285,4 @@ async def test_speak_period_reply_not_tracked():
 
     main.run_prompt = silent_prompt
     await Main.speak(main, "onebot11:group:1", reason="测试")
-    assert not main.state.proactive_recent.get("onebot11:group:1")
+    assert not main.rt.proactive_recent.get("onebot11:group:1")

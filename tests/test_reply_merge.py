@@ -12,8 +12,8 @@ from test_aggregate import make_main
 def make_merge_main(**overrides):
     overrides.setdefault("aggregate_window", 0.05)  # 短聚合窗：回灌后立刻出回合
     main = make_main(**overrides)
-    main.state.merge_timers = {}
-    main.state.last_reply_ts = {}
+    main.rt.merge_timers = {}
+    main.rt.last_reply_ts = {}
 # make_main 的绑定清单没覆盖合并窗相关方法：unbound 调用前补绑
     for name in ("_batch_message", "_flush_later", "_flush_pending", "_drain_waiting",
                  "_enqueue_waiting", "_announce_queued", "_arm_merge_timer"):
@@ -36,24 +36,24 @@ async def test_flush_holds_during_merge_window():
     # flush 用手动触发（真实 0.05s 聚合窗在全量并行下事件循环被抢占数秒就会
     # 先到点 drain——时间轮询怎么放宽都是竞态，同步调用完全确定）。
     main = make_merge_main(reply_merge_window=60.0)
-    main.state.last_reply_ts["onebot11:group:1"] = time.time() - 0.2  # 刚回复 0.2s
+    main.rt.last_reply_ts["onebot11:group:1"] = time.time() - 0.2  # 刚回复 0.2s
     ev = FakeChatEvent(text="再来一条", user_id="u2", at=True)
     await Main._on_message(main, ev)
-    assert main.state.pending.get("onebot11:group:1"), "消息先进聚合窗"
-    for key in list(main.state.pending):  # 手动到点 flush（绕开真实定时器）
-        main.state.pending[key]["timer"] = None
+    assert main.rt.pending.get("onebot11:group:1"), "消息先进聚合窗"
+    for key in list(main.rt.pending):  # 手动到点 flush（绕开真实定时器）
+        main.rt.pending[key]["timer"] = None
         await Main._flush_pending(main, key)
-    assert main.state.waiting.get("onebot11:group:1"), "消息必须挂入等待队列"
+    assert main.rt.waiting.get("onebot11:group:1"), "消息必须挂入等待队列"
     assert not main.captured, "合并窗口内不得开新回合"
-    assert "onebot11:group:1" in main.state.merge_timers
-    for task in list(main.state.merge_timers.values()):  # 清理挂起定时器防 loop 警告
+    assert "onebot11:group:1" in main.rt.merge_timers
+    for task in list(main.rt.merge_timers.values()):  # 清理挂起定时器防 loop 警告
         task.cancel()
 
 
 async def test_merge_timer_drains_into_single_turn():
     """窗口到点：等待队列整体回灌为一次聚合回合（一个回复）。"""
     main = make_merge_main(reply_merge_window=0.15)
-    main.state.last_reply_ts["onebot11:group:1"] = time.time() - 0.05
+    main.rt.last_reply_ts["onebot11:group:1"] = time.time() - 0.05
     ev1 = FakeChatEvent(text="第一句", user_id="u2", user_name="路人甲", at=True)
     ev2 = FakeChatEvent(text="第二句", user_id="u3", user_name="路人乙", at=True)
     await Main._on_message(main, ev1)
@@ -61,10 +61,10 @@ async def test_merge_timer_drains_into_single_turn():
     await Main._on_message(main, ev2)
     await asyncio.sleep(0.05)
     # 聚合窗口(5s)未到，手动 flush 让两条都进等待队列
-    for key in list(main.state.pending):
-        main.state.pending[key]["timer"] = None
+    for key in list(main.rt.pending):
+        main.rt.pending[key]["timer"] = None
         await Main._flush_pending(main, key)
-    assert main.state.waiting.get("onebot11:group:1"), "两条都应挂入等待队列"
+    assert main.rt.waiting.get("onebot11:group:1"), "两条都应挂入等待队列"
     assert len(main.captured) == 0
     await asyncio.sleep(0.3)  # 合并定时器到点回灌
     await asyncio.sleep(0.2)  # 回灌后聚合窗口走完再处理
@@ -80,14 +80,14 @@ async def test_merge_timer_drains_into_single_turn():
 async def test_no_merge_window_processes_immediately():
     """reply_merge_window=0（关闭）：回复后立刻可开新回合，不挂队列。"""
     main = make_merge_main(reply_merge_window=0.0)
-    main.state.last_reply_ts["onebot11:group:1"] = time.time()  # 刚回复
+    main.rt.last_reply_ts["onebot11:group:1"] = time.time()  # 刚回复
     ev = FakeChatEvent(text="直接答", user_id="u2", at=True)
     await Main._on_message(main, ev)
     await asyncio.sleep(0.05)
-    for key in list(main.state.pending):
-        main.state.pending[key]["timer"] = None
+    for key in list(main.rt.pending):
+        main.rt.pending[key]["timer"] = None
         await Main._flush_pending(main, key)
-    assert not main.state.waiting.get("onebot11:group:1")
+    assert not main.rt.waiting.get("onebot11:group:1")
     await asyncio.sleep(0.15)
     assert main.captured, "窗口关闭时消息照常处理"
 
@@ -97,14 +97,14 @@ async def test_drain_waiting_merges_attribution():
     main = make_merge_main()
     ev1 = FakeChatEvent(text="排队一", user_id="u2", user_name="甲", at=True)
     ev2 = FakeChatEvent(text="排队二", user_id="u3", user_name="乙", at=True)
-    main.state.waiting["onebot11:group:1"] = [
+    main.rt.waiting["onebot11:group:1"] = [
         (ev1, [{"text": "排队一", "images": [], "sender_id": "u2", "sender_name": "甲"}]),
         (ev2, [{"text": "排队二", "images": [], "sender_id": "u3", "sender_name": "乙"}]),
     ]
     Main._drain_waiting(main, "onebot11:group:1")
-    assert not main.state.waiting.get("onebot11:group:1")
-    assert not main.state.merge_timers.get("onebot11:group:1")
-    entry = main.state.pending["onebot11:group:1"]
+    assert not main.rt.waiting.get("onebot11:group:1")
+    assert not main.rt.merge_timers.get("onebot11:group:1")
+    entry = main.rt.pending["onebot11:group:1"]
     assert len(entry["items"]) == 2
     assert {i["sender_name"] for i in entry["items"]} == {"甲", "乙"}
 

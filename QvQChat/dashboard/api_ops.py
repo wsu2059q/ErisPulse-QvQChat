@@ -14,7 +14,7 @@ AUDIT_STORAGE_KEY = "QvQChat:audit"
 class OpsApiMixin:
     """依赖宿主提供 self.main / self.sdk / self._query / self._live。"""
 
-    async def executions_get(self, request):
+    async def usage_records_get(self, request):
         """AI 活动流水：最近活跃会话的 assistant 条目合并倒序（执行记录页数据源）。"""
         try:
             limit = max(1, min(int(self._query(request, "limit") or 60), 200))

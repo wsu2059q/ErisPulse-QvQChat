@@ -527,7 +527,21 @@ window.PageChat = {
       var parts = [];
       if (u.prompt_tokens != null) parts.push("in " + u.prompt_tokens);
       if (u.completion_tokens != null) parts.push("out " + u.completion_tokens);
+      if (u.total_tokens != null) parts.push("total " + u.total_tokens);
       return t("chat_model_meta") + (parts.length ? "\n" + parts.join(" / ") : "");
+    },
+    metaBrief(meta) {
+      // 行内 token 摘要：有进出明细直接显示 ↑输入 ↓输出（比 total 更有用——
+      // total 是两者之和，悬浮可见完整三项）；旧数据只有 total 时退回 total
+      var u = (meta && meta.usage) || {};
+      var fmt = function (n) { return Number(n).toLocaleString(); };
+      if (u.prompt_tokens != null && u.completion_tokens != null) {
+        return " · ↑" + fmt(u.prompt_tokens) + " ↓" + fmt(u.completion_tokens);
+      }
+      if (u.total_tokens != null) {
+        return " · " + fmt(u.total_tokens) + " tok";
+      }
+      return "";
     },
     regenerate() {
       var self = this;
@@ -1373,7 +1387,7 @@ window.PageChat = {
     '        </div>',
     '        <div class="msg-acts">',
     '          <span v-if="m.meta && m.meta.model" class="msg-model"',
-    '                :title="modelMetaTip(m)">{{ m.meta.model }}{{ m.meta.usage && m.meta.usage.total_tokens != null ? " · " + Number(m.meta.usage.total_tokens).toLocaleString() + " tok" : "" }}</span>',
+    '                :title="modelMetaTip(m)">{{ m.meta.model }}{{ metaBrief(m.meta) }}</span>',
     '          <button v-if="m.role === \'user\'" type="button" @click="startEdit(i)">{{ t("edit") }}</button>',
     '          <button type="button" @click="quoteMsg(m)">{{ t("quote_btn") }}</button>',
     '          <button type="button" @click="copyText(m.content)">{{ t("chat_copy") }}</button>',

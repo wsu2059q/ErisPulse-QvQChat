@@ -562,7 +562,7 @@ class FakeMain:
         self.mcp = MCPManager(self)
         from QvQChat.runtime_state import RuntimeState
 
-        self.state = RuntimeState()
+        self.rt = RuntimeState()
         self.takeover = {}
         self.plugin_settings_catalog = {}
         self.audits = []

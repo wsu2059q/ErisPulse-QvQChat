@@ -173,7 +173,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             ("POST", "/api/qvq/inbox/clear", self.inbox_clear),
             ("GET", "/api/qvq/session/messages", self.session_messages),
             ("GET", "/api/qvq/prompt/preview", self.prompt_preview),
-            ("GET", "/api/qvq/executions", self.executions_get),
+            ("GET", "/api/qvq/usage/records", self.usage_records_get),
             ("POST", "/api/qvq/profile/edit", self.profile_edit),
             ("POST", "/api/qvq/session/messages/delete", self.session_message_delete),
             ("POST", "/api/qvq/session/context/edit", self.session_context_edit),
@@ -423,6 +423,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             "components/PageKnowledge", "components/PageSessions", "components/PageAudit",
             "components/PageStorage", "components/PageTools", "components/PageMcp",
             "components/PageOrchestrate", "components/BackupPanel", "components/PageInbox",
+            "components/PageUsage",
             "components/SchemaForm", "components/QuickPanel",
             "components/Mascot", "main",
         )

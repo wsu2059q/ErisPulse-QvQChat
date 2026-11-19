@@ -26,7 +26,22 @@
   }
   var usageDays = [];
   [4.1, 12.7, 18.5, 0.3, 0.2, 0.1, 0.26, 0, 0, 0, 0, 0, 0.4, 1.1].forEach(function (m, i) {
-    usageDays.push({ date: dayKey(13 - i), tokens: Math.round(m * 1e6), calls: Math.round(m * 47) });
+    var toks = Math.round(m * 1e6);
+    var entry = { date: dayKey(13 - i), tokens: toks, calls: Math.round(m * 47) };
+    if (toks > 0) {
+      entry.by_model = {
+        "deepseek:deepseek-chat": { tokens: Math.round(toks * 0.62), in: Math.round(toks * 0.5), out: Math.round(toks * 0.12) },
+        "deepseek:deepseek-reasoner": { tokens: Math.round(toks * 0.26), in: Math.round(toks * 0.2), out: Math.round(toks * 0.06) },
+        "siliconflow:Qwen/Qwen2.5-72B-Instruct": { tokens: Math.round(toks * 0.12), in: Math.round(toks * 0.09), out: Math.round(toks * 0.03) },
+      };
+      entry.by_chat = {
+        "onebot11:group:1049": Math.round(toks * 0.44),
+        "onebot11:private:643319481": Math.round(toks * 0.27),
+        "onebot11:group:8871": Math.round(toks * 0.16),
+        "dashboard:private:web": Math.round(toks * 0.13),
+      };
+    }
+    usageDays.push(entry);
   });
 
   var CONFIG_DRAFT = {
@@ -387,6 +402,12 @@
           usage_today: { tokens: 1106792, limit: 10000000, calls: 52 },
         });
         case "/api/qvq/usage": return json({ days: usageDays, limit: 10000000 });
+        case "/api/qvq/usage/records": return json({ items: [
+          { chat_key: "onebot11:group:1049", name: "ErisPulse 丨 喵之领域已展开", ts: NOW - 600, model: "deepseek:deepseek-chat", tokens: 9492, preview: "收到，这就去测喵。容器里没 ping 命令，换个方式测连通性。B 站通的，状态很健康喵。" },
+          { chat_key: "dashboard:private:web", name: "网页对话", ts: NOW - 1800, model: "deepseek:deepseek-chat", tokens: 8517, preview: "好喵，给你个常用的：批量重命名文件小脚本。改下文件夹路径就能跑。" },
+          { chat_key: "onebot11:private:643319481", name: "小樱", ts: NOW - 4200, model: "deepseek:deepseek-reasoner", tokens: 15230, preview: "论文初稿收到啦，晚上给你标注意见喵。第二节的实验设计可以再收紧一点。" },
+          { chat_key: "onebot11:group:8871", name: "开发组", ts: NOW - 9000, model: "siliconflow:Qwen/Qwen2.5-72B-Instruct", tokens: 6310, preview: "锁库问题定位了：SQLite 写锁竞争 + 同步接口阻塞，改 storage.aset 异步调用以彻底解耦。" },
+        ] });
         case "/api/qvq/costs": return json({
           daily: usageDays.map(function (d) { return { date: d.date, cost: round4(d.tokens / 1e6 * 0.42) }; }),
           by_model: { "custom:glm-5.3-flash": 1.9753, "deepseek:deepseek-chat": 1.2841, "siliconflow:Qwen/Qwen3.5-35B-A3B": 0.6411, "scnet:GLM-5.3-Flash": 0.0756 },
