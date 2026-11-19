@@ -2448,6 +2448,46 @@ body::-webkit-scrollbar,
 }
 .prompt-full textarea { font-size: 11.5px !important; line-height: 1.5 !important; }
 
+/* 对话 4a：组头时间线 / 连续消息贴合 / 回到底部 / 演示模式 */
+.msg-dayline {
+  text-align: center;
+  margin: 12px 0 6px;
+  font-size: 11px;
+  color: var(--qvq-tx-t);
+}
+.msg.cont { margin-top: 2px; }
+.chat-down {
+  position: sticky;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: 50%;
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: var(--qvq-shadow);
+}
+.chat-down:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
+.chat-demo-btn {
+  border: 1px solid var(--qvq-bd);
+  border-radius: 8px;
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.chat-demo-btn.on { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+.chat-wrap.demo .msg.user .msg-text,
+.chat-wrap.demo .msg.user .msg-atts { filter: blur(8px); }
+.chat-wrap.demo .msg.user:hover .msg-text,
+.chat-wrap.demo .msg.user:hover .msg-atts { filter: none; }
+
+
 /* 画像编辑：段落头 + 行编辑器 */
 .mem-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .mem-editrow { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }

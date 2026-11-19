@@ -1,4 +1,24 @@
 /* 对话页：会话列表 / 消息流 / SSE 流式 / 附件 / 任务面板 / 会话操作 / 排队 / 分享 */
+function fmtRelTs(ts) {
+  if (!ts) return "";
+  var d = new Date(ts * 1000);
+  var now = new Date();
+  var p = function (n) { return (n < 10 ? "0" : "") + n; };
+  var hm = p(d.getHours()) + ":" + p(d.getMinutes());
+  var same = function (a, b) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  };
+  var yest = new Date(now); yest.setDate(now.getDate() - 1);
+  if (same(d, now)) {
+    var diff = (now - d) / 60000;
+    if (diff < 1) return t("ts_just_now");
+    if (diff < 60) return t("ts_min_ago").replace("{n}", Math.floor(diff));
+    return hm;
+  }
+  if (same(d, yest)) return t("ts_yesterday") + " " + hm;
+  return (d.getMonth() + 1) + "-" + d.getDate() + " " + hm;
+}
+
 window.PageChat = {
   name: "PageChat",
   data() {
@@ -33,6 +53,7 @@ window.PageChat = {
       mentionOpen: false,
       mentionQ: "",
       atBottom: true,
+      demoMode: false,
       queue: [],
       todos: [],
       hv: null,
@@ -133,6 +154,23 @@ window.PageChat = {
         return { label: s.name || s.chat_key, value: s.chat_key };
       });
     },
+    groupedMessages() {
+      // 消息分组：连续同角色且间隔 <=10 分钟归为一组；组首带相对时间行
+      var out = [];
+      var prev = null;
+      this.messages.forEach(function (m) {
+        var vm = Object.assign({}, m, { newGroup: true, rel: "" });
+        var ts = Number(m.ts) || 0;
+        if (prev) {
+          var gap = ts && Number(prev.ts) ? ts - Number(prev.ts) : 1e9;
+          if (m.role === prev.role && gap <= 600) vm.newGroup = false;
+        }
+        if (ts) vm.rel = fmtRelTs(ts);
+        out.push(vm);
+        prev = m;
+      });
+      return out;
+    },
     sessGroups() {
       // 侧栏分组（对齐旧版）：置顶 / 群聊 / 私聊 / 已归档，各自可折叠
       var groups = [
@@ -193,6 +231,9 @@ window.PageChat = {
     },
   },
   mounted() {
+    try { this.demoMode = localStorage.getItem("qvq_demo_mode") === "1"; } catch (e) {}
+    this.applyDemoClass();
+
     var self = this;
     try {
       var savedEffort = localStorage.getItem("qvq_chat_effort");
@@ -346,6 +387,16 @@ window.PageChat = {
     copyText(text) {
       var self = this;
       QvQ.copy(text, function (ok) { if (ok) self.toast = t("copied"); });
+    },
+    applyDemoClass() {
+      var wrap = document.querySelector(".chat-wrap");
+      if (wrap) wrap.classList.toggle("demo", !!this.demoMode);
+    },
+    toggleDemo() {
+      this.demoMode = !this.demoMode;
+      try { localStorage.setItem("qvq_demo_mode", this.demoMode ? "1" : "0"); } catch (e) {}
+      this.applyDemoClass();
+      QvQ.toast(t("demo_toggled"));
     },
     modelMetaTip(m) {
       // 消息出处悬浮提示：模型 + token 明细
@@ -1049,6 +1100,8 @@ window.PageChat = {
     '        <n-select :value="effort" :options="effortOptions" size="small" style="width:116px"',
     '                  @update:value="onEffort"/>',
     '        <n-select v-model:value="persona" :options="personaOptions" size="small" style="width:128px"/>',
+    '        <button type="button" class="chat-demo-btn" :class="{ on: demoMode }"',
+    '                :title="t(\'demo_title\')" @click="toggleDemo">👁</button>',
     '        <n-popover trigger="click" placement="bottom-end" :show="todoOpen" @update:show="todoOpen = $event">',
     '          <template #trigger>',
     '            <button type="button" class="chat-todo-btn" :class="{ on: todoOpen || todoLeft }"',
@@ -1101,7 +1154,9 @@ window.PageChat = {
     '      </div>',
     '      <button v-if="hasMore" type="button" class="chat-more" @click="loadMore">',
     '        {{ loadingMsgs ? "…" : t("load_more") }}</button>',
-    '      <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">',
+    '      <template v-for="(m, i) in groupedMessages" :key="i">',
+    '        <div v-if="m.newGroup && m.rel" class="msg-dayline"><span>{{ m.rel }}</span></div>',
+    '        <div class="msg" :class="[m.role, { cont: !m.newGroup }]">',
     '        <div class="msg-body">',
     '          <div class="msg-atts" v-if="m.atts && m.atts.length">',
     '            <img v-for="(a, j) in m.atts" :key="j" class="msg-img" :src="a.data" :alt="a.name"/>',
@@ -1132,7 +1187,8 @@ window.PageChat = {
     '          <button v-if="m.role === \'assistant\' && i === messages.length - 1 && !sending"',
     '                  type="button" @click="regenerate">{{ t("regen") }}</button>',
     '        </div>',
-    '      </div>',
+    '        </div>',
+    '      </template>',
     '      <div class="msg assistant live" v-if="live">',
     '        <div class="msg-body">',
     '          <details class="live-think" v-if="live.reasoning">',

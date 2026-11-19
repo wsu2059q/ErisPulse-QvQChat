@@ -84,6 +84,24 @@ window.AppShell = {
       ];
     },
   },
+  watch: {
+    // 动态标签标题：浏览器标签页随当前页面/会话更新
+    page: {
+      immediate: true,
+      handler(val) {
+        var labels = {
+          overview: t("nav_overview"), chat: t("nav_chat"),
+          providers: t("nav_models"), platforms: t("nav_platforms"), personas: t("nav_personas"),
+          config: t("nav_settings"), plugins: t("nav_plugins"), skills: t("nav_skills"),
+          tasks: t("nav_tasks"), memory: t("nav_memory"), knowledge: t("nav_knowledge"),
+          sessions: t("nav_sessions"), audit: t("nav_audit"), storage: t("nav_storage"),
+          tools: t("nav_tools"), mcp: t("nav_mcp"), orchestrate: t("nav_orchestrate"),
+          inbox: t("nav_inbox"), executions: t("nav_executions"),
+        };
+        document.title = "QvQChat · " + (labels[val] || "QvQChat");
+      },
+    },
+  },
   methods: {
     go(key) {
       QvQ.store.page = key;
