@@ -1507,195 +1507,17 @@ class InboxMixin(RecoveryMixin):
                 self.delivery.begin_budget(chat_key, float(getattr(self.cfg, "humanize_budget_seconds", 7.0) or 0))
             except Exception:
                 pass
-            ctx = self._chat_ctx(event, chat_key, origin)
-# 群判定兜底：通知/请求事件（如群内戳一戳）没有 is_group_message 的会话语义，
-# 但带 group_id——按群场景处理（is_private_message 排除假 group_id 的私聊桩）
-            is_group = event.is_group_message() or (
-                not event.is_private_message() and bool(str(event.get_group_id() or ""))
-            )
-            sender_id = str(event.get_user_id() or "")
-            sender_name = self._sender_name(event)
-            group_id = str(event.get_group_id() or "") if is_group else ""
-            if getattr(self.cfg, "owner_only", False) and not self.is_admin(sender_id, "chat", event.get_platform() or ""):
-                await event.reply(texts.t("owner_only_msg"))
+            built = await self._scene_context(event, items, chat_key, origin)
+            if built is None:
                 return
-            scene = ""
-            if is_group:
-                group_name = await self._resolve_group_name(event, chat_key, group_id)
-                if group_name:
-                    scene = texts.t("scene_group", name=group_name, id=group_id)
-                elif group_id:
-                    scene = texts.t("scene_group_noid", id=group_id)
-                if getattr(self.cfg, "scene_platform_prefix", True):
-                    scene = texts.t("scene_platform_line", platform=str(event.get_platform() or "")) + scene
-                scene += texts.t("scene_speaker_note")
-# 触发来源认知：插件插话（origin=plugin）不是"有人在跟你说话"——否则模型会当成被点名
-                if origin == "plugin":
-                    scene += texts.t("scene_plugin_trigger", name=sender_name or sender_id, id=sender_id)
-                else:
-                    # 发言者认知：明确"当前说话的人"，防止把历史对话者误认成当前发言者
-                    scene += texts.t("scene_group_attribution", name=sender_name or sender_id, id=sender_id)
-                    # 提及感知 + 拟人语气：@ 命中是分内问答，未 @（旁听/插件插话）要像群友随口接话
-                    if event.is_at_message():
-                        scene += texts.t("scene_at_direct")
-                    else:
-                        scene += texts.t("scene_at_narrate")
-                # 引用回复认知：优先注入被引原文，提取不到再退回泛化提示
-                if any(isinstance(seg, dict) and seg.get("type") == "reply" for seg in (event.get_message() or [])):
-                    quoted = await self._quote_content(event)
-                    if quoted:
-                        scene += texts.t("scene_quote_content", content=quoted)
-                    else:
-                        scene += texts.t("scene_quote_note")
-# 场景注记随 ctx 走：spawn_agent 时注入子智能体（群名/发言人/触发方式）
-                ctx.scene_note = scene
-# 群语气画像：后台学习出的本群说话风格（很小的一段，低token也不影响语气一致性）
-                group_style = self.sessions.group_style_of(chat_key)
-                if group_style:
-                    scene += texts.t("scene_group_style", style=group_style)
-# 成员名册：模型"认识"这个群的常客（最近发言者反查昵称；API 名单有权限时更全）
-                roster = await self._group_roster(chat_key, str(event.get_platform() or ""), str(group_id or ""))
-                if roster:
-                    scene += texts.t("scene_roster", roster=roster)
-                if getattr(self.cfg, "group_isolation", False):
-                    scene += texts.t("scene_isolation_note")
-            else:
-                if sender_name:
-                    scene = texts.t("scene_private", name=sender_name, id=sender_id)
-# 活跃屏蔽告知（群/私聊都注入）：模型知道自己屏蔽了谁，且收不到 TA 的消息
-            mutes_note = self._mutes_note(chat_key)
-            if mutes_note:
-                scene += mutes_note
-# 重逢感知：距上次对话超过阈值时告知模型——隔三天回来接得像隔三秒一样是拟人化穿帮点
-            reunion = self._reunion_note(chat_key)
-            if reunion:
-                scene += reunion
-# 短时效场景注记消费（撤回等认知事件，事件侧写入、本轮消费即清）
-            memo = self._scene_memo_pop(chat_key)
-            if memo:
-                scene += memo
-# 非消息事件来源注记（通知/请求唤醒的回合）：让模型知道这不是用户发言
-            ev_type = ""
-            try:
-                ev_type = str(event.get_type() or "")
-            except Exception:
-                ev_type = ""
-            if ev_type and ev_type != "message":
-                scene += texts.t("scene_notice_trigger", summary=self._event_summary(event, ev_type))
-                ctx.scene_note = scene
-# 本账户身份认知：多账户部署下让 AI 明确"现在说话的这个账户是谁"，
-# @ 的 id 与自己 user_id 不同时知道是在喊别人（防代替回应/认错历史）。
-# 放在 scene 全部组装完之后、统一写回 ctx（群聊分支的赋值在更早处）
-            try:
-                getter = getattr(event, "get_self_user_id", None)
-                self_uid = str(getter() or "") if callable(getter) else ""
-                self_acct = str(event.get_self_account_id() or "")
-                self_nick = str(event.get_user_nickname() or "")
-                if self_uid or self_acct:
-                    scene += texts.t("scene_self_identity", user_id=self_uid or "-", nickname=self_nick or "-", account=self_acct or "-")
-            except Exception:
-                pass
-# 多人分流：聚合回合合并了多个独立发言者时，提示逐人分段回应（防"只答最后一个人"）
-            if is_group and len(items) > 1:
-                speakers = {str(i.get("sender_id") or "") for i in items if isinstance(i, dict) and i.get("sender_id")}
-                if len(speakers) > 1:
-                    scene += texts.t("scene_multi_speakers", n=len(speakers))
-            ctx.scene_note = scene
-            combined_text = "\n".join(str(i.get("text") or "") for i in items if i.get("text"))
-            try:
-                await self.sdk.lifecycle.emit(
-                    "qvq.message",
-                    {
-                        "chat_key": chat_key,
-                        "platform": event.get_platform() or "",
-                        "sender_id": sender_id,
-                        "sender_name": sender_name,
-                        "text": combined_text,
-                        "is_group": is_group,
-                        "merged": len(items) > 1,
-                    },
-                )
-            except Exception as e:
-                self.logger.debug(f"emit qvq.message failed: {e}")
-            labeled_parts = []
-            all_images: list = []
-            for item in items:
-                item_text = str(item.get("text") or "")
-                if item_text:
-                    labeled_parts.append(
-                        self.sessions.label_incoming(
-                            item_text,
-                            sender_id=item["sender_id"] if is_group else "",
-                            sender_name=item["sender_name"] if is_group else "",
-                        )
-                    )
-                for image in item.get("images") or []:
-                    if len(all_images) < 3:
-                        all_images.append(image)
-            labeled = "\n".join(labeled_parts)
-            images = [
-                converted
-                for raw in all_images
-                for converted in [self._to_model_image(raw)]
-                if converted
-            ]
-            limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
-            session_budget = int(get_policy(self.sdk, chat_key).get("session_budget") or 0)
-            if limit or session_budget:
-                used_today = int(self._usage_today().get("tokens", 0) or 0)
-                by_chat_today = (self._usage_today().get("by_chat") or {})
-                used_session = int(by_chat_today.get(chat_key, 0) or 0)
-                admin = self.is_admin(sender_id, "chat", event.get_platform() or "")
-                global_over = limit > 0 and used_today >= limit and not admin
-                session_over = session_budget > 0 and used_session >= session_budget and not admin
-                auto_budget = bool(getattr(self.cfg, "budget_auto_on_limit", False))
-                if (global_over or session_over) and not auto_budget:
-# 语义分档：插件插话（origin=plugin）是智能体主动发起的——超限态下静默跳过，
-# 既不消耗也不给群友回"到达上限"；用户自己触发的回合才拦截并提示（每天每会话至多一次）。
-# budget_auto_on_limit 开启时不拦截：超限自动转入低token模式继续对话（见 budget_effective）
-                    if origin == "plugin":
-                        self.logger.info(f"over token limit, plugin turn skipped ({chat_key})")
-                        return
-                    notice_key = f"QvQChat:usage:limit_noticed:{time.strftime('%Y-%m-%d')}:{chat_key}"
-                    if not self.sdk.storage.get(notice_key, False):
-                        self.sdk.storage.set(notice_key, True)
-                        if session_over and not global_over:
-                            await event.reply(texts.t("session_limit_reached", used=used_session, limit=session_budget))
-                        else:
-                            await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
-                    return
-# 锁外中断判定留下的上下文（旧任务被叫停时做到哪）
-            interrupted_note = self.state.interrupted_notes.pop(chat_key, "") or ""
-            live = None
-            registry = getattr(self, "live_registry", None)
-            if registry is not None:
-                old_live = registry.get(chat_key)
-                if old_live and old_live.status == "running" and old_live.text.strip():
-                    mode = str(getattr(self.cfg, "interrupt_mode", "auto") or "auto")
-                    if mode == "queue":
-                        self._enqueue_waiting(chat_key, event, items)
-                        return
-                    if mode == "auto":
-# AI 三选判定：回执与旧任务去向统一走 _handle_auto_decision（与锁外 _live_conflict 同一套逻辑）
-                        decision, _why, line = await self._auto_interrupt_decide(chat_key, old_live, labeled)
-                        if not await self._handle_auto_decision(chat_key, event, items, old_live, decision, line, labeled):
-                            return
-# 中断注记由 helper 写入 state.interrupted_notes（与锁外路径同一条管道），这里取回直用
-                        if self.state.interrupted_notes:
-                            interrupted_note = self.state.interrupted_notes.pop(chat_key, "") or interrupted_note
-                    else:
-                        old_live.cancel()
-                        interrupted_note = texts.t(
-                            "interrupted_note",
-                            content=utils.truncate(old_live.text.strip(), 500),
-                        )
-                live = registry.start(chat_key)
-                live.task = asyncio.current_task()
-# 任务发起时的原始文本：auto demote 让路时靠它把旧任务转交后台续跑
-                live.prompt = labeled
-                on_delta, on_reset, on_tool_event, on_reasoning = live_bind(live)
-            else:
-                on_delta = on_reset = on_tool_event = on_reasoning = None
+            ctx, is_group, sender_id, sender_name, scene = built
+            labeled, images, combined_text = await self._emit_and_label(event, items, chat_key, is_group, sender_id, sender_name)
+            if await self._over_budget_gate(event, chat_key, sender_id, origin):
+                return
+            settled = await self._interrupt_settle(chat_key, event, items, labeled)
+            if settled is None:
+                return
+            live, (on_delta, on_reset, on_tool_event, on_reasoning), interrupted_note = settled
             # 会话让渡路由：让渡进行中本轮改走 _process_handover（上下文/人格/记忆
             # 全部绕开，让渡内容不进主会话）；到期（轮数尽/空闲超时）先收场再落回主链路
             ho_state = self._handover_state(chat_key)
@@ -1742,52 +1564,8 @@ class InboxMixin(RecoveryMixin):
             await self._maybe_send_opening(event, chat_key, prepared, persona)
             if interrupted_note:
                 contexts.append({"role": "user", "content": interrupted_note})
-            async def on_tool_round(calls):
-                if getattr(self.cfg, "tool_notice_mode", "brief") != "all":
-                    return
-                labels = [
-                    f"{call['name']}({call['arguments']})" if call["arguments"] else call["name"]
-                    for call in calls[:3]
-                ]
-                suffix = " …" if len(calls) > 3 else ""
-                await event.reply(texts.t("processing_notice", tools="、".join(labels) + suffix))
-
-            speech_sent = False
-            last_speech = ""# 最近一条已投递阶段发言的规范化文本（同回合去重：复述跳过/双胞胎跳过）
-
-            async def on_intermediate(speech):
-# 对话风格：off 静默 / first_last 只投第一句开场（其后阶段发言静默，最终结论走正常回复）/
-# brief 及以上全部投递。speech_sent 防重：同一轮多次发言只算一次
-                nonlocal speech_sent, last_speech
-                mode = getattr(self.cfg, "tool_notice_mode", "brief")
-                if mode == "off" or (mode == "first_last" and speech_sent):
-                    return
-                text = utils.truncate(str(speech).strip(), 1200)
-# 阶段发言同样不能带假媒体：模型写「[语音] 喵？…」「[表情包]」假装发过媒体、
-# 「（语音已发）」假宣告会从这里原样发出，先清扫再投递
-                try:
-                    text = utils.strip_fake_media_prefix(utils.strip_fake_media_claims(text))
-                except Exception as e:
-                    self.logger.debug(f"fake media strip failed: {e}")
-                if not text:
-                    return
-# 同回合去重：规范化后与上一条已投递阶段发言相同 → 跳过（模型每轮工具重试
-# 都复述同一句话时，brief 档会连发 N 遍）
-                normalized = utils.collapse_spaces(text)
-                if normalized and normalized == last_speech:
-                    return
-                try:
-# 走投递层单条发送（方法降级+重试链）：裸 event.reply 在部分适配器上不生效，
-# 且失败无信号——这正是"普通消息能发、第一句发不出"的根因
-                    ok = await self.delivery._send_plain(event, text)
-                    if ok:
-                        speech_sent = True
-                        last_speech = normalized
-                    if bool(getattr(self.cfg, "log_debug", False)):
-                        self.logger.debug(f"intermediate speech delivered={ok} ({len(text)} chars, mode={mode})")
-                except Exception as e:
-# 投递失败必须留痕，不能无声消失
-                    self.logger.warning(f"intermediate speech send failed: {e}")
+            on_tool_round = self._tool_round_noticer(event)
+            relay_send, relay_last = self._intermediate_relayer(event)
 
 # 悬空回复标记：生成开始落盘（记录将送入模型的 labeled 文本），实例崩溃重启后
 # 据此重跑该轮；完成/异常/取消均在 finally 清除，保证正常路径无残留
@@ -1813,7 +1591,7 @@ class InboxMixin(RecoveryMixin):
                         ctx=ctx,
                         persona_tools=persona.get("tools"),
                         on_tool_round=on_tool_round,
-                        on_intermediate=on_intermediate,
+                        on_intermediate=relay_send,
                         on_delta=on_delta,
                         on_reset=on_reset,
                         on_tool_event=on_tool_event,
@@ -1912,7 +1690,7 @@ class InboxMixin(RecoveryMixin):
                     self.logger.debug(f"fake media strip failed: {e}")
 # 同回合去重：最终回复与最后一条已投递阶段发言规范化后相同 → 阶段发言已代表过它，
 # 不重复投递最终条（"阶段发言+最终回复"双胞胎）；会话历史与回执广播照常
-                duplicate_final = bool(last_speech) and utils.collapse_spaces(reply) == last_speech
+                duplicate_final = bool(relay_last()) and utils.collapse_spaces(reply) == relay_last()
 # 静默终局：模型自主跳过（[[不回复]]）或清理后为空 → 不发送、不写占位进上下文
 # （占位文案刷屏事故+污染历史；usage 照记）。空回复带模型名记 warning——
 # "配了新模型之后一直空回复"的排障起点
@@ -1987,6 +1765,276 @@ class InboxMixin(RecoveryMixin):
                     await event.reply(texts.t("run_failed", error=utils.truncate(str(e), 200)))
             except Exception as inner:
                 self.logger.debug(f"run_failed notice reply failed: {inner}")
+
+    async def _scene_context(self, event, items, chat_key: str, origin: str):
+        """场景组装步（SceneBuilder）：ctx 构建 + 群聊/私聊场景 + 各类认知注记。
+
+        返回 (ctx, is_group, sender_id, sender_name, scene)；owner_only 拦截时返回 None
+        （提示已在内部发出，调用方直接结束本轮）。"""
+        ctx = self._chat_ctx(event, chat_key, origin)
+# 群判定兜底：通知/请求事件（如群内戳一戳）没有 is_group_message 的会话语义，
+# 但带 group_id——按群场景处理（is_private_message 排除假 group_id 的私聊桩）
+        is_group = event.is_group_message() or (
+            not event.is_private_message() and bool(str(event.get_group_id() or ""))
+        )
+        sender_id = str(event.get_user_id() or "")
+        sender_name = self._sender_name(event)
+        group_id = str(event.get_group_id() or "") if is_group else ""
+        if getattr(self.cfg, "owner_only", False) and not self.is_admin(sender_id, "chat", event.get_platform() or ""):
+            await event.reply(texts.t("owner_only_msg"))
+            return
+        scene = ""
+        if is_group:
+            group_name = await self._resolve_group_name(event, chat_key, group_id)
+            if group_name:
+                scene = texts.t("scene_group", name=group_name, id=group_id)
+            elif group_id:
+                scene = texts.t("scene_group_noid", id=group_id)
+            if getattr(self.cfg, "scene_platform_prefix", True):
+                scene = texts.t("scene_platform_line", platform=str(event.get_platform() or "")) + scene
+            scene += texts.t("scene_speaker_note")
+# 触发来源认知：插件插话（origin=plugin）不是"有人在跟你说话"——否则模型会当成被点名
+            if origin == "plugin":
+                scene += texts.t("scene_plugin_trigger", name=sender_name or sender_id, id=sender_id)
+            else:
+                # 发言者认知：明确"当前说话的人"，防止把历史对话者误认成当前发言者
+                scene += texts.t("scene_group_attribution", name=sender_name or sender_id, id=sender_id)
+                # 提及感知 + 拟人语气：@ 命中是分内问答，未 @（旁听/插件插话）要像群友随口接话
+                if event.is_at_message():
+                    scene += texts.t("scene_at_direct")
+                else:
+                    scene += texts.t("scene_at_narrate")
+            # 引用回复认知：优先注入被引原文，提取不到再退回泛化提示
+            if any(isinstance(seg, dict) and seg.get("type") == "reply" for seg in (event.get_message() or [])):
+                quoted = await self._quote_content(event)
+                if quoted:
+                    scene += texts.t("scene_quote_content", content=quoted)
+                else:
+                    scene += texts.t("scene_quote_note")
+# 场景注记随 ctx 走：spawn_agent 时注入子智能体（群名/发言人/触发方式）
+            ctx.scene_note = scene
+# 群语气画像：后台学习出的本群说话风格（很小的一段，低token也不影响语气一致性）
+            group_style = self.sessions.group_style_of(chat_key)
+            if group_style:
+                scene += texts.t("scene_group_style", style=group_style)
+# 成员名册：模型"认识"这个群的常客（最近发言者反查昵称；API 名单有权限时更全）
+            roster = await self._group_roster(chat_key, str(event.get_platform() or ""), str(group_id or ""))
+            if roster:
+                scene += texts.t("scene_roster", roster=roster)
+            if getattr(self.cfg, "group_isolation", False):
+                scene += texts.t("scene_isolation_note")
+        else:
+            if sender_name:
+                scene = texts.t("scene_private", name=sender_name, id=sender_id)
+# 活跃屏蔽告知（群/私聊都注入）：模型知道自己屏蔽了谁，且收不到 TA 的消息
+        mutes_note = self._mutes_note(chat_key)
+        if mutes_note:
+            scene += mutes_note
+# 重逢感知：距上次对话超过阈值时告知模型——隔三天回来接得像隔三秒一样是拟人化穿帮点
+        reunion = self._reunion_note(chat_key)
+        if reunion:
+            scene += reunion
+# 短时效场景注记消费（撤回等认知事件，事件侧写入、本轮消费即清）
+        memo = self._scene_memo_pop(chat_key)
+        if memo:
+            scene += memo
+# 非消息事件来源注记（通知/请求唤醒的回合）：让模型知道这不是用户发言
+        ev_type = ""
+        try:
+            ev_type = str(event.get_type() or "")
+        except Exception:
+            ev_type = ""
+        if ev_type and ev_type != "message":
+            scene += texts.t("scene_notice_trigger", summary=self._event_summary(event, ev_type))
+            ctx.scene_note = scene
+# 本账户身份认知：多账户部署下让 AI 明确"现在说话的这个账户是谁"，
+# @ 的 id 与自己 user_id 不同时知道是在喊别人（防代替回应/认错历史）。
+# 放在 scene 全部组装完之后、统一写回 ctx（群聊分支的赋值在更早处）
+        try:
+            getter = getattr(event, "get_self_user_id", None)
+            self_uid = str(getter() or "") if callable(getter) else ""
+            self_acct = str(event.get_self_account_id() or "")
+            self_nick = str(event.get_user_nickname() or "")
+            if self_uid or self_acct:
+                scene += texts.t("scene_self_identity", user_id=self_uid or "-", nickname=self_nick or "-", account=self_acct or "-")
+        except Exception:
+            pass
+# 多人分流：聚合回合合并了多个独立发言者时，提示逐人分段回应（防"只答最后一个人"）
+        if is_group and len(items) > 1:
+            speakers = {str(i.get("sender_id") or "") for i in items if isinstance(i, dict) and i.get("sender_id")}
+            if len(speakers) > 1:
+                scene += texts.t("scene_multi_speakers", n=len(speakers))
+        ctx.scene_note = scene
+        return ctx, is_group, sender_id, sender_name, scene
+
+    async def _emit_and_label(self, event, items: list, chat_key: str, is_group: bool, sender_id: str, sender_name: str) -> tuple:
+        """回声 + 标注步：qvq.message 生命周期回声；items 归并为 labeled 文本与图片列表。"""
+        combined_text = "\n".join(str(i.get("text") or "") for i in items if i.get("text"))
+        try:
+            await self.sdk.lifecycle.emit(
+                "qvq.message",
+                {
+                    "chat_key": chat_key,
+                    "platform": event.get_platform() or "",
+                    "sender_id": sender_id,
+                    "sender_name": sender_name,
+                    "text": combined_text,
+                    "is_group": is_group,
+                    "merged": len(items) > 1,
+                },
+            )
+        except Exception as e:
+            self.logger.debug(f"emit qvq.message failed: {e}")
+        labeled_parts = []
+        all_images: list = []
+        for item in items:
+            item_text = str(item.get("text") or "")
+            if item_text:
+                labeled_parts.append(
+                    self.sessions.label_incoming(
+                        item_text,
+                        sender_id=item["sender_id"] if is_group else "",
+                        sender_name=item["sender_name"] if is_group else "",
+                    )
+                )
+            for image in item.get("images") or []:
+                if len(all_images) < 3:
+                    all_images.append(image)
+        labeled = "\n".join(labeled_parts)
+        images = [
+            converted
+            for raw in all_images
+            for converted in [self._to_model_image(raw)]
+            if converted
+        ]
+        return labeled, images, combined_text
+
+    async def _over_budget_gate(self, event, chat_key: str, sender_id: str, origin: str) -> bool:
+        """预算闸门步：日/会话超限拦截（True=本轮跳过）。拦截语义见内注。"""
+        limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
+        session_budget = int(get_policy(self.sdk, chat_key).get("session_budget") or 0)
+        if limit or session_budget:
+            used_today = int(self._usage_today().get("tokens", 0) or 0)
+            by_chat_today = (self._usage_today().get("by_chat") or {})
+            used_session = int(by_chat_today.get(chat_key, 0) or 0)
+            admin = self.is_admin(sender_id, "chat", event.get_platform() or "")
+            global_over = limit > 0 and used_today >= limit and not admin
+            session_over = session_budget > 0 and used_session >= session_budget and not admin
+            auto_budget = bool(getattr(self.cfg, "budget_auto_on_limit", False))
+            if (global_over or session_over) and not auto_budget:
+# 语义分档：插件插话（origin=plugin）是智能体主动发起的——超限态下静默跳过，
+# 既不消耗也不给群友回"到达上限"；用户自己触发的回合才拦截并提示（每天每会话至多一次）。
+# budget_auto_on_limit 开启时不拦截：超限自动转入低token模式继续对话（见 budget_effective）
+                if origin == "plugin":
+                    self.logger.info(f"over token limit, plugin turn skipped ({chat_key})")
+                    return
+                notice_key = f"QvQChat:usage:limit_noticed:{time.strftime('%Y-%m-%d')}:{chat_key}"
+                if not self.sdk.storage.get(notice_key, False):
+                    self.sdk.storage.set(notice_key, True)
+                    if session_over and not global_over:
+                        await event.reply(texts.t("session_limit_reached", used=used_session, limit=session_budget))
+                    else:
+                        await event.reply(texts.t("daily_limit_reached", used=used_today, limit=limit))
+                return
+        return False
+
+    async def _interrupt_settle(self, chat_key: str, event, items: list, labeled: str):
+        """中断判定 + live 注册步：queue 排队 / auto AI 三选 / interrupt 直接中断。
+
+        返回 (live, (on_delta, on_reset, on_tool_event, on_reasoning), interrupted_note)；
+        排队/接管完成后本轮到此为止，返回 None。"""
+# 锁外中断判定留下的上下文（旧任务被叫停时做到哪）
+        interrupted_note = self.state.interrupted_notes.pop(chat_key, "") or ""
+        live = None
+        registry = getattr(self, "live_registry", None)
+        if registry is not None:
+            old_live = registry.get(chat_key)
+            if old_live and old_live.status == "running" and old_live.text.strip():
+                mode = str(getattr(self.cfg, "interrupt_mode", "auto") or "auto")
+                if mode == "queue":
+                    self._enqueue_waiting(chat_key, event, items)
+                    return None
+                if mode == "auto":
+# AI 三选判定：回执与旧任务去向统一走 _handle_auto_decision（与锁外 _live_conflict 同一套逻辑）
+                    decision, _why, line = await self._auto_interrupt_decide(chat_key, old_live, labeled)
+                    if not await self._handle_auto_decision(chat_key, event, items, old_live, decision, line, labeled):
+                        return None
+# 中断注记由 helper 写入 state.interrupted_notes（与锁外路径同一条管道），这里取回直用
+                    if self.state.interrupted_notes:
+                        interrupted_note = self.state.interrupted_notes.pop(chat_key, "") or interrupted_note
+                else:
+                    old_live.cancel()
+                    interrupted_note = texts.t(
+                        "interrupted_note",
+                        content=utils.truncate(old_live.text.strip(), 500),
+                    )
+            live = registry.start(chat_key)
+            live.task = asyncio.current_task()
+# 任务发起时的原始文本：auto demote 让路时靠它把旧任务转交后台续跑
+            live.prompt = labeled
+            on_delta, on_reset, on_tool_event, on_reasoning = live_bind(live)
+        else:
+            on_delta = on_reset = on_tool_event = on_reasoning = None
+        return live, (on_delta, on_reset, on_tool_event, on_reasoning), interrupted_note
+
+    def _tool_round_noticer(self, event):
+        """工具回合通知闭包（tool_notice_mode=all 时播报本轮工具调用）。"""
+        async def on_tool_round(calls):
+            if getattr(self.cfg, "tool_notice_mode", "brief") != "all":
+                return
+            labels = [
+                f"{call['name']}({call['arguments']})" if call["arguments"] else call["name"]
+                for call in calls[:3]
+            ]
+            suffix = " …" if len(calls) > 3 else ""
+            await event.reply(texts.t("processing_notice", tools="、".join(labels) + suffix))
+
+        return on_tool_round
+
+
+    def _intermediate_relayer(self, event):
+        """阶段发言投递器：off 静默 / first_last 只投首句 / brief 及以上全投。
+
+        返回 (send, last)：send 投一条阶段发言（清扫/去重后走投递层单条发送）；
+        last() 取最近一条已投递规范化文本（最终条"双胞胎"判定用）。"""
+        speech_sent = False
+        last_speech = ""# 最近一条已投递阶段发言的规范化文本（同回合去重：复述跳过/双胞胎跳过）
+        async def on_intermediate(speech):
+# 对话风格：off 静默 / first_last 只投第一句开场（其后阶段发言静默，最终结论走正常回复）/
+# brief 及以上全部投递。speech_sent 防重：同一轮多次发言只算一次
+            nonlocal speech_sent, last_speech
+            mode = getattr(self.cfg, "tool_notice_mode", "brief")
+            if mode == "off" or (mode == "first_last" and speech_sent):
+                return
+            text = utils.truncate(str(speech).strip(), 1200)
+# 阶段发言同样不能带假媒体：模型写「[语音] 喵？…」「[表情包]」假装发过媒体、
+# 「（语音已发）」假宣告会从这里原样发出，先清扫再投递
+            try:
+                text = utils.strip_fake_media_prefix(utils.strip_fake_media_claims(text))
+            except Exception as e:
+                self.logger.debug(f"fake media strip failed: {e}")
+            if not text:
+                return
+# 同回合去重：规范化后与上一条已投递阶段发言相同 → 跳过（模型每轮工具重试
+# 都复述同一句话时，brief 档会连发 N 遍）
+            normalized = utils.collapse_spaces(text)
+            if normalized and normalized == last_speech:
+                return
+            try:
+# 走投递层单条发送（方法降级+重试链）：裸 event.reply 在部分适配器上不生效，
+# 且失败无信号——这正是"普通消息能发、第一句发不出"的根因
+                ok = await self.delivery._send_plain(event, text)
+                if ok:
+                    speech_sent = True
+                    last_speech = normalized
+                if bool(getattr(self.cfg, "log_debug", False)):
+                    self.logger.debug(f"intermediate speech delivered={ok} ({len(text)} chars, mode={mode})")
+            except Exception as e:
+# 投递失败必须留痕，不能无声消失
+                self.logger.warning(f"intermediate speech send failed: {e}")
+        def last():
+            return last_speech
+        return on_intermediate, last
 
 # ===== 会话让渡（handover）：触发放行 / 路由 / 收场，状态见 conversation/handover.py =====
 
@@ -2599,3 +2647,4 @@ INBOX_BOUND_METHODS = tuple(
     for name in dir(InboxMixin)
     if name.startswith("_") and not name.startswith("__") and callable(getattr(InboxMixin, name, None))
 )
+
