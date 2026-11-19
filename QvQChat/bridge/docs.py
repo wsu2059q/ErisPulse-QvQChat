@@ -19,6 +19,10 @@ from .. import texts, utils
 
 META_KEY = "QvQChat:docs_meta"
 DEFAULT_DOCS_DIR = "data/QvQChat/docs"
+# 文档分发分支（CI 每次 docs build 后 force-push 单 commit，只含 docs/ 与 README）：
+# 整仓库 tag ZIP 几十 MB 且 codeload 大文件慢速链路不稳（27KB/s 实测），30s 超时必挂——
+# 分支 ZIP 只有几百 KB，弱网也能下完；tag 回退保留（离线分支被删/需要版本对齐文档时）
+DOCS_BRANCH_ZIP = "https://codeload.github.com/ErisPulse/ErisPulse/zip/refs/heads/docs-generated"
 GITHUB_ZIP = "https://codeload.github.com/ErisPulse/ErisPulse/zip/refs/tags/{tag}"
 MCP_CACHE = Path.home() / ".cache" / "erispulse-mcp" / "docs"
 CHUNK_CHARS = 1200
@@ -195,9 +199,11 @@ class ErisPulseDocs:
         if custom.startswith(("http://", "https://")):
             urls = [custom]
         else:
-            tags = [f"v{version}"] if version and version != "latest" else []
-            tags.append(version)
-            urls = [GITHUB_ZIP.format(tag=tag) for tag in tags]
+# 首选文档分发分支（体积小两个量级，弱网可下完）；tag 回退保证"文档与安装版本严格对齐"
+# 的场景仍可用（慢，但兜底存在）。latest 无 tag 可对齐，只走分支
+            urls = [DOCS_BRANCH_ZIP]
+            if version and version != "latest":
+                urls.extend([GITHUB_ZIP.format(tag=f"v{version}"), GITHUB_ZIP.format(tag=version)])
         last_error = ""
         for url in urls:
             try:
@@ -208,7 +214,7 @@ class ErisPulseDocs:
                 if written:
                     self._set_meta(version=version, source=url, synced_at=time.time())
                     self._invalidate()
-                    self.main.logger.info(f"docs synced for framework {version}: {written} files")
+                    self.main.logger.info(f"docs synced for framework {version}: {written} files ({url})")
                     return {"enabled": True, "source": "github", "version": version,
                             "root": str(self._cache_root(version)), "files": written}
             except Exception as e:
@@ -221,7 +227,7 @@ class ErisPulseDocs:
                 "root": str(root) if root else "", "error": last_error}
 
     async def _fetch_bytes(self, url: str) -> bytes:
-        timeout = float(getattr(self.config, "docs_timeout", 30) or 30)
+        timeout = float(getattr(self.config, "docs_timeout", 300) or 300)
         client = getattr(self.sdk, "client", None)
         if client is not None and hasattr(client, "get"):
             resp = await client.get(url, timeout=timeout)
