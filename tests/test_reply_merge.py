@@ -38,8 +38,9 @@ async def test_flush_holds_during_merge_window():
     main.state.last_reply_ts["onebot11:group:1"] = time.time() - 0.2  # 刚回复 0.2s
     ev = FakeChatEvent(text="再来一条", user_id="u2", at=True)
     await Main._on_message(main, ev)
-    # 聚合窗(0.05s)关闭 → flush → 命中合并窗 hold（轮询等调度，防负载抖动）
-    held = await _wait_for(lambda: main.state.waiting.get("onebot11:group:1"))
+    # 聚合窗(0.05s)关闭 → flush → 命中合并窗 hold（轮询等调度；全量并行下
+    # 事件循环可能被抢占数秒，等待上限放宽到 10s——断言的是顺序不是时延）
+    held = await _wait_for(lambda: main.state.waiting.get("onebot11:group:1"), timeout=10.0)
     assert held, "消息必须挂入等待队列"
     assert not main.captured, "合并窗口内不得开新回合"
     assert "onebot11:group:1" in main.state.merge_timers

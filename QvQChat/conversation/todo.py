@@ -1,7 +1,8 @@
 """会话级 TODO 清单存储（AI 长任务进度管理的状态面）。
 
 键 ``QvQChat:todo:{chat_key}`` 单 KV / 会话；条目
-``{id, content(≤200), status: pending|in_progress|completed, created, updated}``。
+``{id, content(≤200), status: pending|in_progress|completed, created, updated}``
+（形状权威定义见 TodoItem，存储/返回仍为 dict——KV/HTTP 形状不变）。
 容量 TODO_MAX=50（FIFO 淘汰最旧已完成，保 in_progress 与 pending）。
 渲染 ``render()`` 输出复选框文本，经 SystemPart("todo") 注入系统提示，
 让主智能体随时知道当前任务进度（budget PRIORITY 4.2，紧随 facts）。
@@ -9,6 +10,9 @@
 
 from __future__ import annotations
 
+import time
+import uuid
+from dataclasses import dataclass, field
 from typing import Any
 
 TODO_PREFIX = "QvQChat:todo:"
@@ -16,6 +20,30 @@ TODO_MAX = 50
 CONTENT_MAX = 200
 STATUSES = ("pending", "in_progress", "completed")
 _STATUS_MARK = {"pending": "[ ]", "in_progress": "[~]", "completed": "[x]"}
+
+
+@dataclass
+class TodoItem:
+    """TODO 条目形状权威（KV 中为 to_dict 形态；读取侧保持 dict 不包对象）。"""
+
+    id: str
+    content: str
+    status: str = "pending"
+    created: float = field(default_factory=time.time)
+    updated: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict:
+        return {"id": self.id, "content": self.content, "status": self.status,
+                "created": self.created, "updated": self.updated}
+
+    @classmethod
+    def create(cls, content: str, status: str = "pending", now: float | None = None) -> dict | None:
+        """新建条目 dict：内容清洗（trim/≤200）+ 状态合法性；不合法返回 None。"""
+        text = str(content or "").strip()[:CONTENT_MAX]
+        if not text or status not in STATUSES:
+            return None
+        ts = time.time() if now is None else now
+        return cls(id="", content=text, status=status, created=ts, updated=ts).to_dict()
 
 
 class TodoStore:
@@ -45,11 +73,11 @@ class TodoStore:
         ]
         out: list = []
         for content in contents:
-            text = str(content or "").strip()[:CONTENT_MAX]
-            if not text:
+            item = TodoItem.create(content, now=now)
+            if item is None:
                 continue
-            out.append({"id": self._new_id(out), "content": text,
-                        "status": "pending", "created": now, "updated": now})
+            item["id"] = self._new_id(out)
+            out.append(item)
         for item in kept[:5]:  # 进行中的任务保留（AI 全量重写时不易丢正在做的）
             out.append({**item, "id": self._new_id(out), "updated": now})
         self._save(chat_key, out)
@@ -74,13 +102,11 @@ class TodoStore:
         return None
 
     def add(self, chat_key: str, content: str, status: str = "pending") -> dict | None:
-        text = str(content or "").strip()[:CONTENT_MAX]
-        if not text or status not in STATUSES:
+        item = TodoItem.create(content, status=status)
+        if item is None:
             return None
         items = self._load(chat_key)
-        now = self._now()
-        item = {"id": self._new_id(items), "content": text, "status": status,
-                "created": now, "updated": now}
+        item["id"] = self._new_id(items)
         items.append(item)
         self._save(chat_key, items)
         return item
@@ -109,14 +135,10 @@ class TodoStore:
 
     @staticmethod
     def _now() -> float:
-        import time
-
         return time.time()
 
     @staticmethod
     def _new_id(existing: list) -> str:
-        import uuid
-
         used = {str(i.get("id")) for i in existing}
         while True:
             new = uuid.uuid4().hex[:6]

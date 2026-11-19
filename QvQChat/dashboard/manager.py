@@ -573,11 +573,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
 
     @staticmethod
     def _v1_message_text(content) -> str:
-        if isinstance(content, list):
-            return "\n".join(
-                str(p.get("text") or "") for p in content if isinstance(p, dict) and p.get("type") == "text"
-            )
-        return str(content or "")
+        return utils.content_text(content, sep="\n")
 
     async def v1_models(self, request):
         if not self._v1_authorized(request):

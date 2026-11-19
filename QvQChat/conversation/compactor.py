@@ -222,11 +222,7 @@ class Compactor:
 
     @staticmethod
     def _content_text(content) -> str:
-        if isinstance(content, list):
-            return " ".join(
-                str(p.get("text") or "") for p in content if isinstance(p, dict) and p.get("type") == "text"
-            )
-        return str(content or "")
+        return utils.content_text(content)
 
     def _threshold(self) -> int:
         """压缩阈值：显式正数直接用；0 = auto，按当前对话模型 context_length 推导。

@@ -932,10 +932,7 @@ class SessionsApiMixin:
         for message in reversed(contexts):
             if not isinstance(message, dict):
                 continue
-            content = message.get("content")
-            if isinstance(content, list):
-                content = " ".join(str(p.get("text") or "") for p in content if isinstance(p, dict) and p.get("type") == "text")
-            size = len(str(content or ""))
+            size = len(utils.content_text(message.get("content")))
             if picked and used + size > budget:
                 break
             picked.append(message)
@@ -1116,9 +1113,8 @@ class SessionsApiMixin:
 
     @staticmethod
     def _share_plain_text(content) -> str:
-        if isinstance(content, list):
-            return " ".join(str(p.get("text") or "") for p in content if isinstance(p, dict) and p.get("type") == "text").strip()
-        return str(content or "")
+        text = utils.content_text(content)
+        return text.strip() if isinstance(content, list) else text
 
     async def share_page(self, request):
         from starlette.responses import HTMLResponse
