@@ -39,40 +39,19 @@ FAVICON_HREF = "data:image/svg+xml," + quote(FAVICON_SVG)
 TOKEN_KEY = "QvQChat:auth_token"
 
 
-# ===== 删除回收站（撤销删除）：删除前暂存载荷，10 分钟内可还原 =====
+# ===== 删除回收站（撤销删除）：暂存/还原实现见 trash.py（TrashStore + restore 注册表）=====
 
-TRASH_PREFIX = "QvQChat:trash:"
-TRASH_TTL = 600.0
+from .trash import TrashStore, build_restore_registry
 
 
 class TrashMixin:
-    """依赖宿主提供 self.main / self.sdk。"""
+    """回收站路由（暂存在 self._trash / 还原表在 self._restore_fns，DashboardManager 构造）。依赖宿主提供 self.main / self.sdk。"""
 
     def _trash_put(self, kind: str, payload) -> str:
-        import secrets as _secrets
-
-        token = _secrets.token_urlsafe(9)
-        try:
-            self.sdk.storage.set(TRASH_PREFIX + token, {"kind": kind, "payload": payload, "ts": __import__("time").time()})
-        except Exception:
-            pass
-        return token
+        return self._trash.put(kind, payload)
 
     def _trash_pop(self, token: str):
-        key = TRASH_PREFIX + str(token or "")
-        entry = None
-        try:
-            entry = self.sdk.storage.get(key, None)
-            self.sdk.storage.delete(key)
-        except Exception:
-            entry = None
-        if not isinstance(entry, dict):
-            return None
-        import time as _time
-
-        if _time.time() - float(entry.get("ts") or 0) > TRASH_TTL:
-            return None
-        return entry
+        return self._trash.pop(token)
 
     async def trash_delete(self, request):
         body = await request.json()
@@ -82,35 +61,8 @@ class TrashMixin:
 
     async def trash_list(self, request):
         """R9D 回收站浏览：kind/摘要/剩余秒（按 trash_retention_days 计）。"""
-        import time as _time
-
         days = int(getattr(self.main.cfg, "trash_retention_days", 14) or 0)
-        now = _time.time()
-        out = []
-        for key in self.sdk.storage.keys():
-            if not (isinstance(key, str) and key.startswith(TRASH_PREFIX)):
-                continue
-            entry = self.sdk.storage.get(key, None)
-            if not isinstance(entry, dict):
-                continue
-            ts = float(entry.get("ts") or 0)
-            payload = entry.get("payload")
-            summary = ""
-            if isinstance(payload, dict):
-                summary = str(payload.get("chat_key") or payload.get("name") or payload.get("title") or "")
-                if payload.get("entries") is not None:
-                    summary += f" ({len(payload['entries'])} entries)"
-                if payload.get("items") is not None:
-                    summary += f" ({len(payload['items'])} items)"
-            out.append({
-                "token": key[len(TRASH_PREFIX):],
-                "kind": str(entry.get("kind") or ""),
-                "summary": summary or "-",
-                "ts": ts,
-                "expires_in": max(0, int(ts + days * 86400 - now)) if days else -1,
-            })
-        out.sort(key=lambda item: -item["ts"])
-        return {"items": out[:200], "retention_days": days}
+        return {"items": self._trash.list(days), "retention_days": days}
 
     async def trash_restore(self, request):
         body = await request.json()
@@ -118,31 +70,11 @@ class TrashMixin:
         if entry is None:
             return ({"error": "undo expired or invalid"}, 410)
         kind = str(entry.get("kind") or "")
-        payload = entry.get("payload")
+        restore = self._restore_fns.get(kind)
+        if restore is None:
+            return ({"error": f"unknown kind: {kind}"}, 400)
         try:
-            if kind == "session":
-                from ..conversation.service import CONV_PREFIX
-
-                self.sdk.storage.set(CONV_PREFIX + str(payload.get("chat_key") or ""), payload.get("state"))
-            elif kind == "skill":
-                self.main.skills.save_skill(str(payload.get("name") or ""), str(payload.get("description") or ""), str(payload.get("body") or ""))
-            elif kind == "persona":
-                restored = self.main.personas.save(dict(payload))
-                payload = restored
-            elif kind == "provider":
-                self.main.pool.save_provider(dict(payload))
-            elif kind == "kb":
-                self.main.knowledge.restore_entry(dict(payload))
-            elif kind == "binding":
-                self.main.personas.bind(str(payload.get("chat_key") or ""), str(payload.get("persona") or "") or None)
-            elif kind == "kb_batch":
-                for kb_entry in payload.get("entries") or []:
-                    self.main.knowledge.restore_entry(dict(kb_entry))
-            elif kind == "skill_batch":
-                for sk in payload.get("items") or []:
-                    self.main.skills.save_skill(str(sk.get("name") or ""), str(sk.get("description") or ""), str(sk.get("body") or ""))
-            else:
-                return ({"error": f"unknown kind: {kind}"}, 400)
+            restore(entry.get("payload"))
         except Exception as e:
             return ({"error": str(e)}, 500)
         return {"ok": True, "kind": kind}
@@ -163,6 +95,9 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         self._view_cache: tuple | None = None
 # 存储总览 60s TTL 缓存（写操作后主动失效，见 api_ops.storage_overview）
         self._storage_overview: tuple | None = None
+# 回收站：暂存 + per-kind 还原注册表（新删除类型在 trash.build_restore_registry 注册）
+        self._trash = TrashStore(self.sdk)
+        self._restore_fns = build_restore_registry(main)
         from .live import LiveRegistry
 
         self._live = getattr(main, "live_registry", None) or LiveRegistry()
