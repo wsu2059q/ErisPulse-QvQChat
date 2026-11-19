@@ -245,7 +245,7 @@ async def test_final_reply_duplicate_of_intermediate_skipped():
     ev = await _run_pipeline(main, "叫一声")
     hits = [r for r in ev.replies if "喵呜" in str(r)]
     assert len(hits) == 1, ev.replies
-    assert main._last_reply_ts  # 跳过投递后管线照常收束（合并窗口起点已记录）
+    assert main.state.last_reply_ts  # 跳过投递后管线照常收束（合并窗口起点已记录）
 
 
 async def test_final_reply_distinct_from_intermediate_still_delivered():

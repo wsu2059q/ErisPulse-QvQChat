@@ -13,12 +13,13 @@ from QvQChat.dashboard.manager import DashboardManager
 from QvQChat.engine.base import ChatRequest, ChatResponse, ToolCall
 from QvQChat.engine.openai import OpenAIEngine
 from QvQChat.conversation.service import ConversationService
+from QvQChat.runtime_state import RuntimeState
 
 from fakes import FakeMain, make_config, make_ctx
 
 
 def make_harness(**overrides):
-    return SimpleNamespace(cfg=make_config(**overrides), logger=FakeMain().logger, _chat_locks={})
+    return SimpleNamespace(cfg=make_config(**overrides), logger=FakeMain().logger, state=RuntimeState())
 
 
 def test_lock_same_key_same_object():

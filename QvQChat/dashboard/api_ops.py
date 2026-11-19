@@ -579,7 +579,7 @@ class StorageApiMixin:
         import time as _time
 
         now = _time.time()
-        cached = getattr(self, "_storage_overview", None)
+        cached = self._storage_overview
         if cached and now - cached[0] < 60:
             return cached[1]
         stats: dict[str, dict] = {}

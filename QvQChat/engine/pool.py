@@ -65,7 +65,7 @@ class ModelPool:
 
         now = _time.time()
         state = []
-        for model_id, info in self.__dict__.setdefault("_breaker", {}).items():
+        for model_id, info in self._breaker.items():
             until = float(info.get("until") or 0)
             if until <= now:
                 continue
@@ -74,7 +74,7 @@ class ModelPool:
 
     def breaker_reset(self, model_id: str = "") -> int:
         """手动清除熔断状态（编排页健康卡重置按钮）：清全部或指定模型。"""
-        breaker = self.__dict__.setdefault("_breaker", {})
+        breaker = self._breaker
         if model_id:
             removed = 1 if breaker.pop(str(model_id), None) is not None else 0
             return removed
@@ -85,23 +85,23 @@ class ModelPool:
     def _record_fail(self, model_id: str) -> None:
         import time as _time
 
-        info = self.__dict__.setdefault("_breaker", {}).setdefault(model_id, {"fails": 0, "until": 0})
+        info = self._breaker.setdefault(model_id, {"fails": 0, "until": 0})
         info["fails"] = int(info.get("fails", 0)) + 1
         if info["fails"] >= self.BREAKER_THRESHOLD:
             cooldown = min(self.BREAKER_BASE_COOLDOWN * (2 ** (info["fails"] - self.BREAKER_THRESHOLD)), self.BREAKER_MAX_COOLDOWN)
             info["until"] = _time.time() + cooldown
 
     def _record_success(self, model_id: str) -> None:
-        self.__dict__.setdefault("_breaker", {}).pop(model_id, None)
+        self._breaker.pop(model_id, None)
 # 已验证集：该模型至少真实成功过一次。负载分流只允许"服务过"的 provider
 # 抢占链首——新加的 provider active=0 永远最闲，否则并发一来就被导到
 # 从未验证的模型上（全局间歇性空回复事故：谁最闲就轮到谁，而它没跑通过）
-        self.__dict__.setdefault("_ever_ok", set()).add(str(model_id))
+        self._ever_ok.add(str(model_id))
 
     def _is_open(self, model_id: str) -> bool:
         import time as _time
 
-        info = self.__dict__.setdefault("_breaker", {}).get(model_id)
+        info = self._breaker.get(model_id)
         return bool(info and float(info.get("until") or 0) > _time.time())
 
     def _migrate_legacy(self) -> None:
@@ -817,8 +817,6 @@ class ModelPool:
             return False
 
     async def chat(self, request: ChatRequest, on_delta=None, on_reset=None, on_reasoning=None, priority: int = 0) -> ChatResponse:
-        if getattr(self, "_provider_active", None) is None:
-            self._provider_active = {}  # 兼容绕过 __init__ 构造的池
         primary = self.resolve_model(request.model, request.needs)
         chain = [primary]
         if getattr(self.config, "model_failover", True):
@@ -876,12 +874,7 @@ class ModelPool:
             elif primary_keep and primary_active >= threshold:
                 self.sdk.logger.debug(f"load steering skipped: {chain[0]['provider']} is steer-keep (active={primary_active})")
         errors: list[str] = []
-# 绕过 __init__ 构造的池（测试/老式用法）可能没有 gate：懒补一个不限流闸门
-        gate = getattr(self, "gate", None)
-        if gate is None:
-            self.gate = gate = PriorityGate(0)
-        if getattr(self, "_provider_active", None) is None:
-            self._provider_active = {}
+        gate = self.gate
         gate.set_limit(int(getattr(self.config, "max_concurrent_requests", 0) or 0))
         await gate.acquire(priority)
         try:

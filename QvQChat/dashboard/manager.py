@@ -161,6 +161,8 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         self.sdk = main.sdk
         self._token_announced = False
         self._view_cache: tuple | None = None
+# 存储总览 60s TTL 缓存（写操作后主动失效，见 api_ops.storage_overview）
+        self._storage_overview: tuple | None = None
         from .live import LiveRegistry
 
         self._live = getattr(main, "live_registry", None) or LiveRegistry()
@@ -431,7 +433,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
 # 模板组装缓存：/view 每请求读 ~30 个文件是面板打开慢的主因之一；
 # 签名只 stat 文件（mtime_ns），无变化直接回缓存
         sig = self._view_sig()
-        cached = getattr(self, "_view_cache", None)
+        cached = self._view_cache
         if cached is not None and cached[0] == sig:
             return cached[1]
         try:

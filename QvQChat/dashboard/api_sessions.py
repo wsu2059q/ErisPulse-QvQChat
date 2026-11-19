@@ -298,11 +298,9 @@ class SessionsApiMixin:
         return {"ok": True, "result": result}
 
     def _inbox_cache_drop(self, account: str) -> None:
-        # AI 侧读的是 main._event_inbox 里的同一个 list 对象：面板删改后必须
+        # AI 侧读的是 main.state.event_inbox 里的同一个 list 对象：面板删改后必须
         # 失效缓存，否则下次 AI 读取/保存会把删除的条目原样写回
-        cache = getattr(self.main, "_event_inbox", None)
-        if isinstance(cache, dict):
-            cache.pop(account, None)
+        self.main.state.event_inbox.pop(account, None)
 
     async def inbox_delete(self, request):
         body = await request.json()

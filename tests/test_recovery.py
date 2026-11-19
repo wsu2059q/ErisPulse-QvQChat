@@ -20,11 +20,11 @@ CHAT_KEY = "onebot11:private:u1"
 def make_chat_main(fail_run=False):
     """完整 _on_message 驱动（复用 test_aggregate 范式）；Runner 顺带观测执行期 inflight 标记。"""
     main = FakeMain(aggregate_window=0)
-    main._pending = {}
-    main._waiting = {}
-    main._chat_locks = {}
-    main._rate_window = {}
-    main._rate_notice_shown = {}
+    main.state.pending = {}
+    main.state.waiting = {}
+    main.state.chat_locks = {}
+    main.state.rate_window = {}
+    main.state.rate_notice_shown = {}
     for name in INBOX_BOUND_METHODS:
         static_attr = inspect.getattr_static(Main, name)
         if isinstance(static_attr, staticmethod):

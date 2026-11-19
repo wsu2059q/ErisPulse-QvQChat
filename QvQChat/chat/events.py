@@ -84,7 +84,7 @@ def _friend_greet_hit(main, event) -> bool:
     决策回执已经是欢迎。群聊会话不受影响；未挂账（无状态字典）恒 False。"""
     if _ev_str(event, lambda: event.get_group_id()):
         return False
-    store = getattr(main, "_recent_friend_greeted", None)
+    store = main.state.recent_friend_greeted
     if not store:
         return False
     platform = _ev_str(event, lambda: event.get_platform())
@@ -103,7 +103,7 @@ async def _flush_join_buffer(main, chat_key: str) -> None:
     一次 _batch_message 让 AI 一个回合欢迎所有人（单人同路径，names 只有一个）。
     self-join 不进缓冲（单独走 notice_self_join），不会在这里混批。"""
     await asyncio.sleep(_join_window(main.cfg))
-    buffered = (getattr(main, "_join_buffer", None) or {}).pop(chat_key, None)
+    buffered = main.state.join_buffer.pop(chat_key, None)
     if not buffered:
         return
     events = [e for e in (buffered.get("events") or []) if e is not None]
@@ -256,9 +256,7 @@ class EventsMixin:
                 yield adapter
 
     def _inbox_load(self, account: str) -> list:
-        if getattr(self, "_event_inbox", None) is None:
-            self._event_inbox = {}
-        cached = self._event_inbox.get(account)
+        cached = self.state.event_inbox.get(account)
         if cached is not None:
             return cached
         entries: list = []
@@ -274,7 +272,7 @@ class EventsMixin:
         for entry in entries:
             dedup[str(entry.get("id") or "")] = entry
         entries = sorted(dedup.values(), key=lambda e: float(e.get("ts") or 0))
-        self._event_inbox[account] = entries
+        self.state.event_inbox[account] = entries
         return entries
 
     def _inbox_save(self, account: str) -> None:
@@ -382,14 +380,12 @@ class EventsMixin:
 
     def _notice_rate_ok(self, chat_key: str) -> bool:
         now = time.time()
-        if getattr(self, "_notice_rate", None) is None:
-            self._notice_rate = {}
-        stamps = [t for t in self._notice_rate.get(chat_key, []) if now - t < NOTICE_RATE_WINDOW]
+        stamps = [t for t in self.state.notice_rate.get(chat_key, []) if now - t < NOTICE_RATE_WINDOW]
         if len(stamps) >= NOTICE_RATE_LIMIT:
-            self._notice_rate[chat_key] = stamps
+            self.state.notice_rate[chat_key] = stamps
             return False
         stamps.append(now)
-        self._notice_rate[chat_key] = stamps
+        self.state.notice_rate[chat_key] = stamps
         return True
 
     def _maybe_wake_on_notice(self, event, chat_key: str, entry: dict) -> None:
@@ -437,9 +433,7 @@ class EventsMixin:
                 )
                 return
 # 他人入群：先过门（上面）再入合并缓冲，限频挪到 flush 统一判，一次欢迎整批
-            buffer_map = getattr(self, "_join_buffer", None)
-            if buffer_map is None:
-                buffer_map = self._join_buffer = {}
+            buffer_map = self.state.join_buffer
             buffered = buffer_map.get(chat_key)
             if buffered is None:
                 buffer_map[chat_key] = {
@@ -549,12 +543,10 @@ class EventsMixin:
 # 被欢迎两三句。顺手清掉过期挂账，防字典随时间无限膨胀
         user_id = str(entry.get("user_id") or "")
         if not group_id and user_id:
-            if getattr(self, "_recent_friend_greeted", None) is None:
-                self._recent_friend_greeted = {}
             now = time.time()
-            self._recent_friend_greeted[f"{platform}:{user_id}"] = now
-            self._recent_friend_greeted = {
-                key: stamp for key, stamp in self._recent_friend_greeted.items()
+            self.state.recent_friend_greeted[f"{platform}:{user_id}"] = now
+            self.state.recent_friend_greeted = {
+                key: stamp for key, stamp in self.state.recent_friend_greeted.items()
                 if now - float(stamp) < FRIEND_GREET_SUPPRESS
             }
         if source_chat:

@@ -63,6 +63,8 @@ class AgentRunner:
         self.pool = pool
         self.registry = registry
         self.config = config
+# auto 探测记忆：prefill 失败过的模型本进程内不再重试（见 _prefill_blocked）
+        self._prefill_failures: set[str] = set()
 # 动态工具注入（auto：可见工具数超阈值才启用；fail-open）
         from .toolselect import ToolSelector
 
@@ -1005,15 +1007,11 @@ class AgentRunner:
 
     def _prefill_blocked(self, model: str | None) -> bool:
         """auto 探测记忆：已失败过 prefill 的模型在本进程内跳过重试。"""
-        return bool(model) and model in getattr(self, "_prefill_failures", set())
+        return bool(model) and model in self._prefill_failures
 
     def _mark_prefill_blocked(self, model: str | None) -> None:
         if model:
-            failures = getattr(self, "_prefill_failures", None)
-            if failures is None:
-                failures = set()
-                self._prefill_failures = failures
-            failures.add(model)
+            self._prefill_failures.add(model)
 
     def _pool_has_vision(self) -> bool:
 # 修近似探测——优先 pool.has_model(["vision"])（老式池对象退回旧近似逻辑）
