@@ -151,78 +151,82 @@ class PersonaManager:
 
     def save(self, data: dict) -> dict:
         persona_id = str(data.get("id") or utils.new_id())
-        stored = self.sdk.storage.get(PERSONAS_KEY, {})
-        if not isinstance(stored, dict):
-            stored = {}
+
+        def _merge(stored: dict) -> dict:
+            if not isinstance(stored, dict):
+                stored = {}
 # 合并语义：未显式提供的新字段沿用存量（防部分保存误清空）；name/system 仍按原 falsy 回退链
-        existing = stored.get(persona_id) if isinstance(stored.get(persona_id), dict) else {}
+            existing = stored.get(persona_id) if isinstance(stored.get(persona_id), dict) else {}
 
-        def _merged_list(key: str, cleaner) -> list:
-            if isinstance(data.get(key), list):
-                return cleaner(data[key])
-            if isinstance(existing.get(key), list):
-                return cleaner(existing[key])
-            return []
+            def _merged_list(key: str, cleaner) -> list:
+                if isinstance(data.get(key), list):
+                    return cleaner(data[key])
+                if isinstance(existing.get(key), list):
+                    return cleaner(existing[key])
+                return []
 
-        opening = _merged_list("opening", _clean_str_list)
-        banned = _merged_list("banned_words", _clean_str_list)
-        catchphrases = _merged_list("catchphrases", _clean_str_list)
-        tools_raw = data.get("tools") if isinstance(data.get("tools"), list) and data["tools"] else None
-        if tools_raw is None:
-            prior = existing.get("tools")
-            tools_raw = prior if isinstance(prior, list) and prior else None
-        if isinstance(data.get("examples"), list):
-            examples = _clean_examples(data["examples"])
-        elif isinstance(existing.get("examples"), list):
-            examples = _clean_examples(existing["examples"])
-        else:
-            examples = []
-        if isinstance(data.get("style"), dict):
-            style = _clean_style(data["style"])
-        elif isinstance(existing.get("style"), dict):
-            style = _clean_style(existing["style"])
-        else:
-            style = {}
+            opening = _merged_list("opening", _clean_str_list)
+            banned = _merged_list("banned_words", _clean_str_list)
+            catchphrases = _merged_list("catchphrases", _clean_str_list)
+            tools_raw = data.get("tools") if isinstance(data.get("tools"), list) and data["tools"] else None
+            if tools_raw is None:
+                prior = existing.get("tools")
+                tools_raw = prior if isinstance(prior, list) and prior else None
+            if isinstance(data.get("examples"), list):
+                examples = _clean_examples(data["examples"])
+            elif isinstance(existing.get("examples"), list):
+                examples = _clean_examples(existing["examples"])
+            else:
+                examples = []
+            if isinstance(data.get("style"), dict):
+                style = _clean_style(data["style"])
+            elif isinstance(existing.get("style"), dict):
+                style = _clean_style(existing["style"])
+            else:
+                style = {}
 
-        def _merged_str(key: str) -> str:
-            if key in data and data[key] is not None:
-                return _clean_str(data[key])
-            return _clean_str(existing.get(key))
+            def _merged_str(key: str) -> str:
+                if key in data and data[key] is not None:
+                    return _clean_str(data[key])
+                return _clean_str(existing.get(key))
 
-        def _merged_num(key: str):
-            """人格级模型参数覆盖：显式提供合法正值优先；显式非法/非正=清除；未提供沿用存量。"""
-            if key in data:
+            def _merged_num(key: str):
+                """人格级模型参数覆盖：显式提供合法正值优先；显式非法/非正=清除；未提供沿用存量。"""
+                if key in data:
+                    try:
+                        value = float(data[key])
+                        if value > 0:
+                            return value
+                    except (TypeError, ValueError):
+                        pass
+                    return None
                 try:
-                    value = float(data[key])
-                    if value > 0:
-                        return value
+                    value = float(existing.get(key))
+                    return value if value > 0 else None
                 except (TypeError, ValueError):
-                    pass
-                return None
-            try:
-                value = float(existing.get(key))
-                return value if value > 0 else None
-            except (TypeError, ValueError):
-                return None
+                    return None
 
-        stored[persona_id] = {
-            "name": str(data.get("name") or existing.get("name") or (texts.t("persona_default_name") if persona_id == ASSISTANT_ID else persona_id)),
-            "system": str(data.get("system") or existing.get("system") or texts.t("persona_default_system")),
-            "opening": opening,
-            "tools": [str(t) for t in tools_raw] if tools_raw else None,
-            "owner_title": _merged_str("owner_title"),
-            "style": style,
-            "examples": examples,
-            "banned_words": banned,
-            "catchphrases": catchphrases,
-            "nickname": _merged_str("nickname"),
-            "avatar": _merged_str("avatar"),
-            "prefill": _merged_str("prefill"),
-            "temperature": _merged_num("temperature"),
-            "max_tokens": _merged_num("max_tokens"),
-        }
-        self.sdk.storage.set(PERSONAS_KEY, stored)
-        result = dict(stored[persona_id])
+            stored[persona_id] = {
+                "name": str(data.get("name") or existing.get("name") or (texts.t("persona_default_name") if persona_id == ASSISTANT_ID else persona_id)),
+                "system": str(data.get("system") or existing.get("system") or texts.t("persona_default_system")),
+                "opening": opening,
+                "tools": [str(t) for t in tools_raw] if tools_raw else None,
+                "owner_title": _merged_str("owner_title"),
+                "style": style,
+                "examples": examples,
+                "banned_words": banned,
+                "catchphrases": catchphrases,
+                "nickname": _merged_str("nickname"),
+                "avatar": _merged_str("avatar"),
+                "prefill": _merged_str("prefill"),
+                "temperature": _merged_num("temperature"),
+                "max_tokens": _merged_num("max_tokens"),
+            }
+            return stored
+
+# 键级 RMW（面板/工具并发保存同一人格表不再互相覆盖）
+        stored = utils.storage_update(self.sdk, PERSONAS_KEY, _merge, {})
+        result = dict(stored.get(persona_id) or {})
         result["id"] = persona_id
         if persona_id in BUILTIN_IDS:
             result["builtin"] = True
@@ -230,14 +234,18 @@ class PersonaManager:
         return result
 
     def delete(self, persona_id: str) -> bool:
-        stored = self.sdk.storage.get(PERSONAS_KEY, {})
-        if not isinstance(stored, dict):
-            return False
-        if persona_id not in stored:
-            return False
-        del stored[persona_id]
-        self.sdk.storage.set(PERSONAS_KEY, stored)
-        return True
+        found: list = []
+
+        def _drop(stored) -> dict:
+            if not isinstance(stored, dict):
+                return {}
+            if persona_id in stored:
+                del stored[persona_id]
+                found.append(True)
+            return stored
+
+        utils.storage_update(self.sdk, PERSONAS_KEY, _drop, {})
+        return bool(found)
 
     def bind(self, chat_key: str, persona_id: str | None) -> None:
         if persona_id:

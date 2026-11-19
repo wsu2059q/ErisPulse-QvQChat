@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import re
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -15,6 +16,30 @@ OUTPUT_LIMIT = 8000
 
 # 发送通道偏好（Markdown/Html/Text）：send_message 尝试顺序，delivery 与工具共用
 REPLY_PREFERENCE = ("Markdown", "Html", "Text")
+
+
+# ===== storage 键级读改写（RMW）=====
+# 并发任务对同一键各自 get→modify→set 会互相覆盖（审计丢条目/分享配额回退/
+# 用量计数少记）。per-key 进程锁串行化：临界区只有两次 KV 调用，无 await，
+# threading.Lock 对 async 与线程调用方都安全。键集合有界（audit/shares/当日
+# 用量/人格表/收件箱账户），锁表不清理。
+_RMW_LOCKS: dict[str, threading.Lock] = {}
+_RMW_LOCKS_GUARD = threading.Lock()
+
+
+def storage_update(sdk: Any, key: str, fn, default: Any) -> Any:
+    """storage 键级读改写：fn(current) -> new，读改写全程持该键的进程锁。
+
+    fn 内自行判型兜底（存储值可能损坏/为缺省形状）；异常向上抛，
+    由调用方的既有 try 决定吞咽策略。返回 fn 的结果（新值）。"""
+    with _RMW_LOCKS_GUARD:
+        lock = _RMW_LOCKS.get(key)
+        if lock is None:
+            _RMW_LOCKS[key] = lock = threading.Lock()
+    with lock:
+        new = fn(sdk.storage.get(key, default))
+        sdk.storage.set(key, new)
+        return new
 
 
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
