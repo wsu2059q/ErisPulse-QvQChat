@@ -298,25 +298,45 @@ html[data-theme="light"] .qvq-bg-layer.qvq-bg-fallback {
     gap: 10px;
     padding: 10px;
   }
-  .qvq-nav-desk { display: none; }
-  .qvq-burger {
+  /* 移动端顶栏：汉堡 + 当前页面名（内容整体让位，不再悬浮压内容） */
+  .qvq-appbar {
     position: fixed;
-    left: 12px;
-    top: 12px;
-    z-index: 60;
-    width: 36px;
-    height: 36px;
-    border: 1px solid var(--qvq-bd);
-    border-radius: 10px;
+    left: 0;
+    right: 0;
+    top: 0;
+    z-index: 65;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 50px;
+    padding: 0 12px;
     background: var(--qvq-solid);
+    border-bottom: 1px solid var(--qvq-bd);
+  }
+  .qvq-appbar-burger {
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
     color: var(--qvq-tx);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: var(--qvq-shadow);
   }
-  .qvq-burger svg { width: 18px; height: 18px; }
+  .qvq-appbar-burger svg { width: 20px; height: 20px; }
+  .qvq-appbar-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--qvq-tx);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .qvq-burger { display: none; }
+  .qvq-shell { padding-top: 60px; }
+  .qvq-nav-desk { display: none; }
   .qvq-mask {
     position: fixed;
     inset: 0;
@@ -352,7 +372,7 @@ html[data-theme="light"] .qvq-bg-layer.qvq-bg-fallback {
   .qvq-login-card { padding: 24px 20px; }
 }
 @media (min-width: 761px) {
-  .qvq-burger, .qvq-mask, .qvq-nav-drawer { display: none; }
+  .qvq-burger, .qvq-mask, .qvq-nav-drawer, .qvq-appbar { display: none; }
 }
 
 .qvq-fade-enter-active, .qvq-fade-leave-active { transition: opacity 0.2s ease; }
@@ -2337,8 +2357,7 @@ body::-webkit-scrollbar,
   .chat-side-toggle .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chat-sess-pick { display: none !important; }
   .chat-head-tx { display: none; }
-  /* 全局汉堡（fixed 12,12，宽 36）压着头部左上角：首行让出按钮位 */
-  .chat-head { gap: 8px; padding: 8px 10px 8px 52px; }
+  .chat-head { gap: 8px; padding: 8px 10px; }
   /* 控件收纳：select 三件均分一行，按钮跟随其后不掉宽条 */
   .chat-head-ctl {
     display: flex;
@@ -2352,6 +2371,26 @@ body::-webkit-scrollbar,
   /* 消息区窄屏：收边距让气泡占满，正文行高略收 */
   .chat-thread { padding: 12px 12px 6px; }
   .msg-body { max-width: 92%; font-size: 13px; line-height: 1.6; }
+  /* ---- 触屏利好：触控目标放大到 ≥36px，消息操作常显（触屏没有 hover）---- */
+  .chat-head-ctl .n-select { min-height: 38px; --n-height: 38px; font-size: 13px; }
+  .chat-head-ctl .n-base-selection { min-height: 38px; --n-height: 38px; }
+  .chat-head-ctl > button,
+  .chat-demo-btn, .chat-todo-btn, .chat-side-toggle, .chat-new, .chat-filter-btn {
+    min-width: 38px;
+    min-height: 38px;
+  }
+  .chat-side-toggle { padding: 8px 14px 8px 12px; }
+  .chat-side-head .n-input, .chat-side-head .n-base-selection { min-height: 38px; --n-height: 38px; }
+  .chat-composer .n-input .n-input__input-el, .chat-composer textarea { min-height: 24px; font-size: 14px; }
+  .chat-send { min-height: 40px; }
+  .msg-acts { opacity: 1; gap: 14px; }
+  .msg-acts button { font-size: 12.5px; padding: 6px 2px; }
+  .chat-sitem { padding: 11px 10px; }
+  .chat-group { padding: 9px 10px; }
+  /* Naive 弹层菜单项：触屏点得中 */
+  .n-dropdown-option { min-height: 40px !important; }
+  .n-dropdown-option-body { padding: 8px 14px !important; font-size: 13.5px !important; }
+  .n-popover .n-button { min-height: 36px; }
   .doc-save { display: none; }
   .qvq-doc .doc-tools { width: 100%; }
 }

@@ -32,16 +32,18 @@ async def _wait_for(pred, timeout: float = 3.0) -> bool:
 
 async def test_flush_holds_during_merge_window():
     """刚回复过的会话：聚合窗口关闭后直接挂等待队列，不开新回合。"""
-    # 合并窗给足 60s：断言的是"消息被 hold 住"，而非它何时放行。窗口过短时全量并行下
-    # 事件循环被抢占 >1s 就会先到点 drain，导致偶发红灯（与实现无关的计时竞态）。
+    # 合并窗给足 60s：断言的是"消息被 hold 住"，而非它何时放行。
+    # flush 用手动触发（真实 0.05s 聚合窗在全量并行下事件循环被抢占数秒就会
+    # 先到点 drain——时间轮询怎么放宽都是竞态，同步调用完全确定）。
     main = make_merge_main(reply_merge_window=60.0)
     main.state.last_reply_ts["onebot11:group:1"] = time.time() - 0.2  # 刚回复 0.2s
     ev = FakeChatEvent(text="再来一条", user_id="u2", at=True)
     await Main._on_message(main, ev)
-    # 聚合窗(0.05s)关闭 → flush → 命中合并窗 hold（轮询等调度；全量并行下
-    # 事件循环可能被抢占数秒，等待上限放宽到 10s——断言的是顺序不是时延）
-    held = await _wait_for(lambda: main.state.waiting.get("onebot11:group:1"), timeout=10.0)
-    assert held, "消息必须挂入等待队列"
+    assert main.state.pending.get("onebot11:group:1"), "消息先进聚合窗"
+    for key in list(main.state.pending):  # 手动到点 flush（绕开真实定时器）
+        main.state.pending[key]["timer"] = None
+        await Main._flush_pending(main, key)
+    assert main.state.waiting.get("onebot11:group:1"), "消息必须挂入等待队列"
     assert not main.captured, "合并窗口内不得开新回合"
     assert "onebot11:group:1" in main.state.merge_timers
     for task in list(main.state.merge_timers.values()):  # 清理挂起定时器防 loop 警告
