@@ -14,6 +14,39 @@ AUDIT_STORAGE_KEY = "QvQChat:audit"
 class OpsApiMixin:
     """依赖宿主提供 self.main / self.sdk / self._query / self._live。"""
 
+    async def executions_get(self, request):
+        """AI 活动流水：最近活跃会话的 assistant 条目合并倒序（执行记录页数据源）。"""
+        try:
+            limit = max(1, min(int(self._query(request, "limit") or 60), 200))
+        except ValueError:
+            limit = 60
+        items = []
+        for session in self.main.sessions.list_sessions()[:50]:
+            key = str(session.get("chat_key") or "")
+            if key.startswith("sub:"):
+                continue
+            try:
+                contexts = self.main.sessions.get_contexts(key)
+            except Exception:
+                continue
+            name = str(session.get("name") or key)
+            for entry in contexts[-6:]:
+                if not isinstance(entry, dict) or entry.get("role") != "assistant":
+                    continue
+                meta = entry.get("meta") if isinstance(entry.get("meta"), dict) else {}
+                usage = meta.get("usage") if isinstance(meta.get("usage"), dict) else {}
+                preview = self.main.sessions._text_of(entry.get("content"))
+                items.append({
+                    "chat_key": key,
+                    "name": name,
+                    "ts": float(entry.get("ts") or 0),
+                    "model": str(meta.get("model") or ""),
+                    "tokens": usage.get("total_tokens"),
+                    "preview": str(preview)[:140],
+                })
+        items.sort(key=lambda x: x.get("ts") or 0, reverse=True)
+        return {"items": items[:limit]}
+
     async def usage_get(self, request):
         return {
             "days": self.main._usage_history(14),

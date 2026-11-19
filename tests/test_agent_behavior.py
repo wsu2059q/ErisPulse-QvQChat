@@ -554,3 +554,29 @@ def test_multi_speaker_scene_hint():
     assert len(speakers) == 2
     scene = texts.t("scene_multi_speakers", n=len(speakers))
     assert "2" in scene
+
+
+def test_forward_segments_text_and_at_fallback():
+    """合并转发兜底：节点内文本/at 递归提取；空正文时以转发文本触发。"""
+    main = make_main()
+    from QvQChat.chat.inbox import InboxMixin
+    main._collect_segments = InboxMixin._collect_segments.__get__(main)
+    main._forward_payload = InboxMixin._forward_payload.__get__(main)
+
+    class Seg(dict):
+        pass
+
+    class FwdEvent:
+        def get_message(self):
+            return [{
+                "type": "forward",
+                "data": {"content": [
+                    {"type": "node", "data": {"user_id": "643319481", "content": [
+                        {"type": "text", "data": {"text": "宝宝好"}},
+                        {"type": "at", "data": {"qq": "643319481"}},
+                    ]}},
+                ]},
+            }]
+
+    texts, targets = main._forward_payload(FwdEvent())
+    assert "宝宝好" in texts and "643319481" in targets

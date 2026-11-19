@@ -329,8 +329,10 @@ class Delivery:
                 except Exception:
                     continue
                 if isinstance(info, dict):
-                    user_id = str(info.get("user_id") or info.get("id") or "")
-                    nickname = str(info.get("nickname") or info.get("name") or "")
+# 信封兼容：OB11 回包昵称在 data 层（{status, data:{user_id, nickname}}），顶层直查拿不到
+                    data = info.get("data") if isinstance(info.get("data"), dict) else info
+                    user_id = str(data.get("user_id") or data.get("id") or info.get("id") or "")
+                    nickname = str(data.get("nickname") or data.get("name") or info.get("name") or "")
                 if user_id or nickname:
                     break
         self._identity[platform] = (user_id, nickname)

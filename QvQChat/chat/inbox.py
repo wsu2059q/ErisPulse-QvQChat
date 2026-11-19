@@ -702,10 +702,19 @@ class InboxMixin(RecoveryMixin):
             return g
         return per if TRIGGER_RANK[per] >= TRIGGER_RANK[g] else g
 
-    def _is_direct_address(self, event, text: str, quoted_me: bool = False) -> bool:
-        """群里是否被点名：@机器人、命中唤醒前缀，或引用了本账户的消息。"""
+    def _is_direct_address(self, event, text: str, quoted_me: bool = False,
+                           at_targets: list | None = None) -> bool:
+        """群里是否被点名：@机器人、命中唤醒前缀，或引用了本账户的消息。
+
+        at_targets 为段树递归收集的目标（含合并转发节点内部）——部分平台
+        is_at_message 判定不覆盖转发/贴纸形态，这里按目标兜底。
+        """
         if quoted_me or event.is_at_message():
             return True
+        if at_targets:
+            me = str(self._event_self_id(event) or "")
+            if me and me in at_targets:
+                return True
         for prefix in getattr(self.cfg, "wake_prefixes", []) or []:
             if prefix and text.startswith(prefix):
                 return True
@@ -770,13 +779,16 @@ class InboxMixin(RecoveryMixin):
         claims[key] = now
         return True
 
-    def _should_trigger(self, event, chat_key: str, text: str, quoted_me: bool = False) -> bool:
+    def _should_trigger(self, event, chat_key: str, text: str, quoted_me: bool = False,
+                        at_targets: list | None = None) -> bool:
         if chat_key in self.takeover:
             return True
         if event.is_private_message():
             return bool(getattr(self.cfg, "reply_private", True))
         if event.is_group_message():
-            if getattr(self.cfg, "reply_at", True) and (event.is_at_message() or quoted_me):
+            if getattr(self.cfg, "reply_at", True) and (
+                event.is_at_message() or quoted_me or (at_targets and str(self._event_self_id(event) or "") in at_targets)
+            ):
                 return True
             for prefix in getattr(self.cfg, "wake_prefixes", []) or []:
                 if prefix and text.startswith(prefix):
@@ -817,6 +829,14 @@ class InboxMixin(RecoveryMixin):
             if is_self_event(self.cfg, self.sdk, event):
                 return
             text = (event.get_alt_message() or "").strip()
+# 合并转发兜底：转发消息正文嵌在 forward/node 节点内，常规提取常为空——
+# 递归段树取正文与 at 目标（空消息不触发、@ 判定失效都在这里补齐）
+            at_targets, forward_used = [], False
+            if not text or "forward" in str(getattr(event, "_raw_type", "") or ""):
+                fwd_text, at_targets = self._forward_payload(event)
+                if fwd_text and not text:
+                    text = "[转发] " + fwd_text
+                    forward_used = True
             if self._is_command_message(event, text):
                 return
             self._cleanup_takeovers()
@@ -920,10 +940,10 @@ class InboxMixin(RecoveryMixin):
                 and (self._handover_state(chat_key) or {}).get("listen") == "all"
             )
             if mode == "at_only" and event.is_group_message() and not (
-                self._is_direct_address(event, text, quoted_me) or ho_all
+                self._is_direct_address(event, text, quoted_me, at_targets) or ho_all
             ):
                 return
-            if not ho_all and not self._should_trigger(event, chat_key, text, quoted_me):
+            if not ho_all and not self._should_trigger(event, chat_key, text, quoted_me, at_targets):
 #  扩展点 B：未被 @/前缀命中时问询参与决策提供者（默认关闭），
 # speak 则过输出预算后以 origin="plugin" 进入聚合回复，不消耗发送者限频
                 manager = getattr(self, "participation", None)
@@ -2424,6 +2444,42 @@ class InboxMixin(RecoveryMixin):
         now = time.time()
         fresh = [x for x in items if isinstance(x, dict) and now - float(x.get("ts") or 0) < 600] if isinstance(items, list) else []
         return "".join(str(x.get("text") or "") for x in fresh)
+
+    def _collect_segments(self, segs, texts: list, targets: list, depth: int = 0) -> None:
+        """递归收集消息段文本与 at 目标——合并转发（forward/node 嵌套）同样覆盖。"""
+        if depth > 4:
+            return
+        for seg in segs or []:
+            if not isinstance(seg, dict):
+                continue
+            stype = seg.get("type")
+            data = seg.get("data") if isinstance(seg.get("data"), dict) else {}
+            if stype in ("mention", "at"):
+                uid = str(data.get("user_id") or data.get("qq") or "")
+                if uid:
+                    targets.append(uid)
+            elif stype == "text":
+                txt = str(data.get("text") or "")
+                if txt.strip():
+                    texts.append(txt.strip())
+            inner = data.get("content")
+            if isinstance(inner, list):
+                self._collect_segments(inner, texts, targets, depth + 1)
+            elif isinstance(inner, str) and inner.strip() and stype in ("forward", "node"):
+                texts.append(inner.strip())
+
+    def _forward_payload(self, event) -> tuple[str, list]:
+        """转发消息兜底：常规 alt_message 提取不到正文/at 时，从段树递归取。
+
+        :return: (拼接文本, at 目标列表)；无转发段时文本为空串
+        """
+        texts: list = []
+        targets: list = []
+        try:
+            self._collect_segments(event.get_message() or [], texts, targets)
+        except Exception:
+            return "", []
+        return chr(10).join(texts), list(dict.fromkeys(targets))
 
     def _reunion_note(self, chat_key: str) -> str:
         """重逢注记：state.updated 距今超过 scene_reunion_hours 时生成时长文案。"""
