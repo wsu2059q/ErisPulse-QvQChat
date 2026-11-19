@@ -277,11 +277,11 @@ class QvQConfig(BaseConfig):
 
 # 内置 ErisPulse 文档（不经 MCP：按已安装框架版本自动同步框架仓库 docs/ 并本地检索）
     docs_builtin: bool = field(default=True, metadata=_desc("docs_builtin", "内置 ErisPulse 文档检索：注册 search_erispulse_docs 等工具，AI 写模块/查 API 时先查证文档", "mcp", 2, "switch"))
-    docs_auto_sync: bool = field(default=True, metadata=_desc("docs_auto_sync", "文档自动同步：启动时与每日检查，本地文档版本与已安装框架版本不一致时自动下载对应 tag 的文档包（网络失败保留旧版，不阻塞）", "mcp", 3, "switch"))
+    docs_auto_sync: bool = field(default=True, metadata=_desc("docs_auto_sync", "文档自动同步：启动时与每日检查，本地文档缺失或版本变化时自动下载文档包（优先 docs-generated 分支包，网络失败保留旧版，不阻塞）", "mcp", 3, "switch"))
     docs_lang: str = field(default="zh-CN", metadata=_desc("docs_lang", "文档语言目录（框架仓库 docs/ 下的语言目录，如 zh-CN / en / ja）", "mcp", 4, "select", ["zh-CN", "zh-TW", "en", "ja", "ru"]))
     docs_dir: str = field(default="data/QvQChat/docs", metadata=_desc("docs_dir", "文档缓存目录（按 版本/语言 存放）", "mcp", 5))
-    docs_source: str = field(default="", metadata=_desc("docs_source", "文档来源覆盖：本地 docs 目录（开发环境可指向框架仓库 docs/，零网络）或自定义 zip URL；留空按 GitHub tag 下载", "mcp", 6))
-    docs_timeout: int = field(default=30, metadata=_desc("docs_timeout", "文档下载超时（秒）", "mcp", 7, "number"))
+    docs_source: str = field(default="", metadata=_desc("docs_source", "文档来源覆盖：本地 docs 目录（开发环境可指向框架仓库 docs/，零网络）或自定义 zip URL；留空优先 docs-generated 分支包，tag 包兜底", "mcp", 6))
+    docs_timeout: int = field(default=300, metadata=_desc("docs_timeout", "文档下载超时（秒）：默认走 docs-generated 分支包（几百 KB，弱网数十秒内）；tag 兜底包大，弱网建议 ≥300", "mcp", 7, "number"))
 
     task_check_interval: int = field(default=20, metadata=_desc("task_check_interval", "任务轮询间隔（秒）", "task", 1, "number"))
     task_use_cron_module: bool = field(default=True, metadata=_desc("task_use_cron_module", "装有 ErisPulse-Cron 时把 cron 任务交给它托管", "task", 2, "switch"))
