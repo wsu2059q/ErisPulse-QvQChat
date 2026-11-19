@@ -47,6 +47,19 @@ window.AppShell = {
       };
       return map[this.page] || "PageOverview";
     },
+    pageTitle() {
+      // 移动端顶栏：当前页面名（与标签标题同一映射）
+      var labels = {
+        overview: t("nav_overview"), chat: t("nav_chat"),
+        providers: t("nav_models"), platforms: t("nav_platforms"), personas: t("nav_personas"),
+        config: t("nav_settings"), plugins: t("nav_plugins"), skills: t("nav_skills"),
+        tasks: t("nav_tasks"), memory: t("nav_memory"), knowledge: t("nav_knowledge"),
+        sessions: t("nav_sessions"), audit: t("nav_audit"), storage: t("nav_storage"),
+        tools: t("nav_tools"), mcp: t("nav_mcp"), orchestrate: t("nav_orchestrate"),
+        inbox: t("nav_inbox"), executions: t("nav_executions"),
+      };
+      return labels[this.page] || "QvQChat";
+    },
     navGroups() {
       var self = this;
       var item = function (id, labelKey) {
@@ -117,6 +130,13 @@ window.AppShell = {
     '      <LoginPage @done="login"/>',
     '    </div>',
     '    <div v-else class="qvq-shell">',
+    '      <header class="qvq-appbar">',
+    '        <button type="button" class="qvq-appbar-burger" @click="drawerOpen = true">',
+    '          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">',
+    '            <path d="M4 7h16M4 12h16M4 17h16"/></svg>',
+    '        </button>',
+    '        <span class="qvq-appbar-title">{{ pageTitle }}</span>',
+    '      </header>',
     '      <button type="button" class="qvq-burger" @click="drawerOpen = true">',
     '        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">',
     '          <path d="M4 7h16M4 12h16M4 17h16"/></svg>',
