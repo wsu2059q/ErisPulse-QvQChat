@@ -25,6 +25,11 @@ window.PageChat = {
     return {
       sessions: [],
       q: "",
+      acctFilter: "",
+      sortBy: "updated",
+      filterOpen: false,
+      sideOpen: false,
+      accountsOverview: null,
       activeKey: "",
       messages: [],
       total: 0,
@@ -171,25 +176,57 @@ window.PageChat = {
       });
       return out;
     },
-    sessGroups() {
-      // 侧栏分组（对齐旧版）：置顶 / 群聊 / 私聊 / 已归档，各自可折叠
-      var groups = [
-        { key: "pinned", label: t("sess_group_pinned"), items: [] },
-        { key: "group", label: t("sess_group_group"), items: [] },
-        { key: "private", label: t("sess_group_private"), items: [] },
-        { key: "archived", label: t("chat_archived"), items: [] },
+    sortOptions() {
+      return [
+        { label: t("sort_updated"), value: "updated" },
+        { label: t("sort_turns"), value: "turns" },
+        { label: t("sort_name"), value: "name" },
       ];
-      this.sessions.forEach(function (s) {
-        if (s.archived) groups[3].items.push(s);
-        else if (s.pinned) groups[0].items.push(s);
-        else (String(s.detail_type) === "group" ? groups[1] : groups[2]).items.push(s);
+    },
+    filterActive() {
+      return !!(this.acctFilter || this.sortBy !== "updated");
+    },
+    filterLabel() {
+      var bits = [];
+      if (this.acctFilter) bits.push("@" + this.acctFilter);
+      if (this.sortBy !== "updated") {
+        var hit = this.sortOptions.filter(function (o) { return o.value === this.sortBy; }, this)[0];
+        bits.push(hit ? hit.label : "");
+      }
+      return t("filter_title") + ": " + bits.join(" · ");
+    },
+    sessAccounts() {
+      // 账户筛选 chips：全集账户表（响应自带 accounts 概览，不随搜索过滤缩水）；
+      // 过滤按会话键 @后缀 匹配。单账户/无后缀会话不出 chips。
+      var list = ((this.accountsOverview || {}).accounts) || [];
+      return list.map(function (a) { return String(a.account || ""); }).filter(Boolean);
+    },
+    sessGroups() {
+      // 侧栏分组（扁平化）：置顶 / 最近（群聊+私聊合并，谁先说话谁在顶部）/ 已归档
+      // 最近组排序：正在对话的（live 流式中）最前；其余按筛选排序
+      // （updated=谁先说话谁在顶部 / turns=最多轮次 / name=会话名）
+      var acct = this.acctFilter;
+      var sortBy = this.sortBy;
+      var pool = this.sessions.filter(function (s) {
+        if (!acct) return true;
+        var tail = String(s.chat_key || "").split(":").pop() || "";
+        var at = tail.indexOf("@");
+        return at >= 0 && tail.slice(at + 1) === acct;
       });
-      // 组内排序：正在对话的（live 流式中）最前，其余按最近回复时间倒序
       var byFresh = function (a, b) {
         if (!!a.live !== !!b.live) return a.live ? -1 : 1;
+        if (sortBy === "turns") return (b.turns || 0) - (a.turns || 0);
+        if (sortBy === "name") return String(a.name || a.chat_key).localeCompare(String(b.name || b.chat_key));
         return (b.updated || 0) - (a.updated || 0);
       };
-      groups.forEach(function (g) { g.items.sort(byFresh); });
+      var pinned = pool.filter(function (s) { return s.pinned && !s.archived; });
+      var recent = pool.filter(function (s) { return !s.pinned && !s.archived; }).sort(byFresh);
+      var archived = pool.filter(function (s) { return !!s.archived; });
+      var groups = [
+        { key: "pinned", label: t("sess_group_pinned"), items: pinned },
+        { key: "recent", label: t("sess_recent"), items: recent },
+        { key: "archived", label: t("chat_archived"), items: archived },
+      ];
       return groups.filter(function (g) { return g.items.length; });
     },
     todoLeft() {
@@ -275,15 +312,34 @@ window.PageChat = {
       if (this.q.trim()) url += "&q=" + encodeURIComponent(this.q.trim());
       return api(url).then(function (d) {
         self.sessions = (d && d.sessions) || [];
+        self.accountsOverview = (d && d.accounts) || null;
         self.loadingSessions = false;
         if (!self.activeKey && !QvQ.store.pendingChat && self.sessions.length) {
           self.open(self.sessions[0].chat_key);
         }
       });
     },
+    clearFilter() {
+      this.acctFilter = "";
+      this.sortBy = "updated";
+    },
+    onSearchInput() {
+// 内容级全局搜索每次输入都要扫会话正文：300ms 防抖；清空立即刷新不等
+      var self = this;
+      if (this._searchTimer) clearTimeout(this._searchTimer);
+      if (!this.q.trim()) {
+        this.loadSessions();
+        return;
+      }
+      this._searchTimer = setTimeout(function () {
+        self._searchTimer = null;
+        self.loadSessions();
+      }, 300);
+    },
     open(key) {
       if (!key) return;
       this.activeKey = key;
+      this.sideOpen = false; // 移动端抽屉选完即收
       QvQ.store.pendingChat = "";
       this.messages = [];
       this.total = 0;
@@ -1055,11 +1111,42 @@ window.PageChat = {
   },
   template: [
     '<div class="chat-wrap">',
-    '  <aside class="chat-side">',
+    '  <transition name="qvq-fade">',
+    '    <div v-if="sideOpen" class="chat-mask" @click="sideOpen = false"></div>',
+    '  </transition>',
+    '  <aside class="chat-side" :class="{ open: sideOpen }">',
     '    <div class="chat-side-head">',
     '      <n-input v-model:value="q" size="small" clearable :placeholder="t(\'search_ph\')"',
-    '               @update:value="loadSessions"/>',
+    '               @update:value="onSearchInput"/>',
+    '      <n-popover trigger="click" placement="bottom-end" :show="filterOpen" @update:show="filterOpen = $event" style="max-width: 280px">',
+    '        <template #trigger>',
+    '          <button type="button" class="chat-filter-btn" :class="{ on: filterActive }"',
+    '                  :title="t(\'filter_title\')" @click="filterOpen = !filterOpen">',
+    '            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>',
+    '          </button>',
+    '        </template>',
+    '        <div class="sess-filter-panel">',
+    '          <div class="sess-filter-sec" v-if="sessAccounts.length > 1">',
+    '            <div class="sess-filter-label">{{ t("filter_account") }}</div>',
+    '            <div class="sess-filter-opts">',
+    '              <button v-for="a in [\'\'].concat(sessAccounts)" :key="a || \'@all\'" type="button" class="sess-acct-chip"',
+    '                      :class="{ on: acctFilter === a }" @click="acctFilter = a">{{ a || t("sess_all") }}</button>',
+    '            </div>',
+    '          </div>',
+    '          <div class="sess-filter-sec">',
+    '            <div class="sess-filter-label">{{ t("filter_sort") }}</div>',
+    '            <div class="sess-filter-opts">',
+    '              <button v-for="o in sortOptions" :key="o.value" type="button" class="sess-acct-chip"',
+    '                      :class="{ on: sortBy === o.value }" @click="sortBy = o.value">{{ o.label }}</button>',
+    '            </div>',
+    '          </div>',
+    '        </div>',
+    '      </n-popover>',
     '      <button type="button" class="chat-new" :title="t(\'chat_new\')" @click="newSession">+</button>',
+    '    </div>',
+    '    <div class="sess-filter-row" v-if="filterActive">',
+    '      <button type="button" class="sess-acct-chip on" @click="filterOpen = true">',
+    '        {{ filterLabel }}<i class="x" @click.stop="clearFilter">×</i></button>',
     '    </div>',
     '    <div class="chat-list">',
     '      <template v-for="g in sessGroups" :key="g.key">',
@@ -1073,6 +1160,7 @@ window.PageChat = {
     '                    @click="open(s.chat_key)">',
     '              <span class="nm">{{ s.name || s.chat_key }}<i v-if="s.kind === \'handover\'" class="chat-subtag hv">{{ t("hv_badge") }}</i><i v-else-if="s.kind === \'sub\'" class="chat-subtag">{{ t("sub_badge") }}</i></span>',
     '              <span class="mt"><span class="live-dot" v-if="s.live"></span>{{ s.turns || 0 }}</span>',
+    '              <span v-if="s.snippet" class="chat-sitem-snippet">{{ s.snippet }}</span>',
     '            </button>',
     '            <div class="chat-sitem-acts">',
     '              <n-dropdown trigger="click" placement="bottom-end" size="small"',
@@ -1088,6 +1176,11 @@ window.PageChat = {
     '  </aside>',
     '  <section class="chat-main">',
     '    <header class="chat-head">',
+    '      <button type="button" class="chat-side-toggle" :title="t(\'sess_toggle\')" @click="sideOpen = true">',
+    '        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">',
+    '          <path d="M4 6h16M4 12h10M4 18h16"/></svg>',
+    '        <span class="nm">{{ activeName || t("nav_chat") }}</span>',
+    '      </button>',
     '      <n-select class="chat-sess-pick" :value="activeKey" :options="sessionOptions"',
     '                size="small" filterable @update:value="open"/>',
     '      <div class="chat-head-tx">',

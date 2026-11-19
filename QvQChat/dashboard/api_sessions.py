@@ -62,15 +62,45 @@ class SessionsApiMixin:
             start_i = 0
         archived_only = str(self._query(request, "archived") or "").strip() == "1"
         rows = [s for s in sessions if s.get("archived")] if archived_only else sessions
-        # 搜索过滤（对话页侧栏搜索框）：会话显示名/chat_key 不区分大小写包含匹配；
-        # 名字尚未异步解析落定时退回 chat_key 匹配，任一命中即保留
+        # 搜索过滤（对话页侧栏搜索框）：名字/chat_key 不区分大小写包含匹配；
+        # 名字不中时全局搜消息正文（contexts 内容，最近 300 条/会话）——命中行带
+        # snippet（首个命中消息前后截断摘要），DeepSeek 式"找那句在哪说的"。
+        # 名字尚未异步解析落定时退回 chat_key 匹配，任一命中即保留。
         query = str(self._query(request, "q") or "").strip().lower()
         if query:
+            text_of = self.main.sessions._text_of
+            scanned: dict[str, str] = {}
+
+            def _body_scan(chat_key: str) -> str:
+                # 内容扫描结果进程内缓存（同 key 二次输入防抖免重扫；列表请求高频不进此路径）
+                if chat_key not in scanned:
+                    try:
+                        contexts = self.main.sessions.get_contexts(chat_key) or []
+                    except Exception:
+                        contexts = []
+                    scanned[chat_key] = "\n".join(
+                        text_of(c.get("content")) for c in contexts[-300:] if isinstance(c, dict)
+                    )
+                return scanned[chat_key]
+
             def _hit(s: dict) -> bool:
                 name = str(s.get("name") or "").lower()
                 key = str(s.get("chat_key") or "").lower()
-                return query in name or query in key
+                if query in name or query in key:
+                    return True
+                body = _body_scan(str(s.get("chat_key") or ""))
+                return query in body.lower()
+
             rows = [s for s in rows if _hit(s)]
+            for s in rows:
+                if query in str(s.get("name") or "").lower() or query in str(s.get("chat_key") or "").lower():
+                    continue  # 名字/key 命中：不扫正文，snippet 留空
+                body = _body_scan(str(s.get("chat_key") or ""))
+                idx = body.lower().find(query)
+                if idx >= 0:
+                    head = max(0, idx - 40)
+                    snippet = body[head:idx + len(query) + 60].replace("\n", " ").strip()
+                    s["snippet"] = ("…" + snippet + "…") if head > 0 or idx + len(query) + 60 < len(body) else snippet
         total = len(rows)
         if limit_n:
             start_i = max(0, min(start_i, total))
