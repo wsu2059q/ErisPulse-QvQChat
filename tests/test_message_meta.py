@@ -51,7 +51,6 @@ def test_prepare_debug_returns_parts_without_persist():
     manager = ConversationService(main)
     key = "s-dbg"
     manager.append_user(key, "早")
-    import asyncio
     prepared = asyncio.run(manager.prepare(key, "调试预览", persist=False, debug=True))
     kinds = [p["kind"] for p in prepared["debug"]["parts"]]
     assert "persona" in kinds and "capability" in kinds
@@ -70,7 +69,6 @@ def test_profile_edit_replaces_section():
     profile = main.conversations.profile
     profile._save("snowluma:10001", {"traits": [{"text": "夜猫子", "ts": 0}], "facts": [{"text": "在做框架", "ts": 0}]})
     from QvQChat.dashboard.api_sessions import SessionsApiMixin
-    import asyncio
 
     api = SessionsApiMixin.__new__(SessionsApiMixin)
     api.main = main
@@ -108,7 +106,7 @@ def test_task_model_type_tier_group_vs_private():
 
 def test_budget_quiet_hours():
     """时段礼仪：静默窗内参与预算直接拒；窗外不受影响。"""
-    import asyncio, time
+    import time
     main = FakeMain()
     main.cfg.participation_quiet_hours = "23:00-07:00"
     budget = main.conversations and None
