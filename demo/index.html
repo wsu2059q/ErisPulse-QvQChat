@@ -2010,6 +2010,7 @@ body::-webkit-scrollbar,
 .msg-img { max-width: 180px; max-height: 180px; border-radius: 8px; display: block; }
 .msg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .msg-tool {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2021,10 +2022,18 @@ body::-webkit-scrollbar,
   background: transparent;
   color: var(--qvq-tx-s);
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, border-radius 0.15s ease;
 }
-.msg-tool[open] { border-color: var(--qvq-bd-h); color: var(--qvq-tx); }
-.msg-tool summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+/* 展开态：方一些的圆角 + IO 需要内边距，胶囊形会把内容裁得难看 */
+.msg-tool[open] {
+  border-radius: 12px;
+  border-color: var(--qvq-bd-h);
+  color: var(--qvq-tx);
+  padding: 6px 12px;
+  display: block;
+}
+.msg-tool summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.msg-tool[open] summary { margin-bottom: 6px; }
 .msg-tool summary::after {
   content: "›";
   font-size: 12px;
@@ -3042,7 +3051,20 @@ body::-webkit-scrollbar,
 }
 .msg-tool summary::-webkit-details-marker { display: none; }
 .msg-tool summary i { font-style: normal; color: var(--qvq-tx-t); }
-.msg-tool-io { display: flex; gap: 6px; margin-top: 4px; }
+/* IO 展开区：固定最大高度内部滚动（消息不被撑爆），展开渐显+位移动画 */
+.msg-tool-io {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  max-height: 220px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.msg-tool[open] .msg-tool-io { animation: tool-io-in 0.2s ease both; }
+@keyframes tool-io-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
 .msg-tool-io b { color: var(--qvq-tx-t); font-size: 11px; }
 .msg-tool-io pre {
   flex: 1 1 auto;
