@@ -8,6 +8,7 @@ from .. import texts, utils# noqa: F401 — utils 供后续扩展；texts 为 ch
 from .api_config import ConfigApiMixin
 from .api_ops import OpsApiMixin, StorageApiMixin
 from .api_sessions import SessionsApiMixin
+from .trash import TrashStore, build_restore_registry
 from .api_common import ApiError
 TEMPLATES = Path(__file__).parent / "templates"
 
@@ -40,8 +41,6 @@ TOKEN_KEY = "QvQChat:auth_token"
 
 
 # ===== 删除回收站（撤销删除）：暂存/还原实现见 trash.py（TrashStore + restore 注册表）=====
-
-from .trash import TrashStore, build_restore_registry
 
 
 class TrashMixin:
