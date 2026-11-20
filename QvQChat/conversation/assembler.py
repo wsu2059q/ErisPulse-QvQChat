@@ -339,8 +339,6 @@ class PromptAssembler:
         if callable(getattr(pool, "background_blocked", None)) and pool.background_blocked():
             self.main.logger.debug("background skip: title-task (saturated)")
             return
-        from ..engine.base import ChatRequest
-
         request = ChatRequest(
             messages=[
                 {"role": "system", "content": texts.t("title_system")},
@@ -391,8 +389,6 @@ class PromptAssembler:
                 transcript.append(f"{role}: {text}")
         if len(transcript) < 6:
             return
-        from ..engine.base import ChatRequest
-
         request = ChatRequest(
             messages=[
                 {"role": "system", "content": texts.t("group_style_system")},

@@ -822,8 +822,6 @@ class ConversationService:
     @staticmethod
     def _seed_fp_of(text: str) -> str:
         """seed 去重指纹：剥掉 label_incoming 的发言者标注后取尾部（与裸文本可比）。"""
-        import re as _re
-
         s = str(text or "").strip()
         s = _re.sub(r"^\[[^\]]*\]\s*", "", s)
         s = _re.sub(r"^[^\[\n]{1,40}\(\d{5,}\):\s*", "", s)

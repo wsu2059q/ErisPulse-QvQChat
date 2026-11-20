@@ -825,12 +825,11 @@ class InboxMixin(RecoveryMixin):
             text = (event.get_alt_message() or "").strip()
 # 合并转发兜底：转发消息正文嵌在 forward/node 节点内，常规提取常为空——
 # 递归段树取正文与 at 目标（空消息不触发、@ 判定失效都在这里补齐）
-            at_targets, forward_used = [], False
+            at_targets = []
             if not text or "forward" in str(getattr(event, "_raw_type", "") or ""):
                 fwd_text, at_targets = self._forward_payload(event)
                 if fwd_text and not text:
                     text = "[转发] " + fwd_text
-                    forward_used = True
             if self._is_command_message(event, text):
                 return
             self._cleanup_takeovers()
