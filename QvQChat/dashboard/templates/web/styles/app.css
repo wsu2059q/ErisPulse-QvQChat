@@ -2010,14 +2010,28 @@ body::-webkit-scrollbar,
 .msg-img { max-width: 180px; max-height: 180px; border-radius: 8px; display: block; }
 .msg-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .msg-tool {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11.5px;
-  padding: 2px 9px;
+  padding: 3px 10px;
   margin: 4px 6px 2px 0;
-  border-radius: 10px;
-  background: var(--qvq-bg-s);
+  border-radius: 99px;
+  border: 1px solid var(--qvq-bd);
+  background: transparent;
   color: var(--qvq-tx-s);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
+.msg-tool[open] { border-color: var(--qvq-bd-h); color: var(--qvq-tx); }
+.msg-tool summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+.msg-tool summary::after {
+  content: "›";
+  font-size: 12px;
+  color: var(--qvq-tx-t);
+  transition: transform 0.15s ease;
+}
+.msg-tool[open] summary::after { transform: rotate(90deg); }
 .msg-tool summary .sdot {
   width: 6px;
   height: 6px;
@@ -2102,6 +2116,15 @@ body::-webkit-scrollbar,
   background: var(--qvq-warn);
 }
 .live-tool .sdot.ok { background: var(--qvq-ok); animation: none; }
+/* 待输出（思考/首字前）：独立光标行，参考 builder 的呼吸块 */
+.live-pending {
+  width: 10px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--qvq-accent);
+  animation: live-pending-blink 1.1s steps(2) infinite;
+}
+@keyframes live-pending-blink { 50% { opacity: 0.15; } }
 .live-typing { display: flex; gap: 4px; padding: 6px 0; }
 .live-typing span {
   width: 6px;
@@ -2145,28 +2168,41 @@ body::-webkit-scrollbar,
   line-height: 16px;
   cursor: pointer;
 }
+/* 输入胶囊（参考 builder）：ta 上、工具行下（附件左 / Enter 提示+发送右），一体大圆角 */
 .chat-input {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 6px 6px 6px 10px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 10px 8px 14px;
   border: 1px solid var(--qvq-bd);
-  border-radius: 14px;
+  border-radius: 18px;
   background: var(--qvq-bg-s);
-  transition: border-color 0.16s ease;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
-.chat-input:focus-within { border-color: var(--qvq-accent); }
+.chat-input:focus-within { border-color: var(--qvq-accent); box-shadow: 0 0 0 3px var(--qvq-accent-soft); }
+.chat-input-foot { display: flex; align-items: center; gap: 8px; }
+.chat-input-tools { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; }
+.chat-enter-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--qvq-tx-t);
+  font-size: 11px;
+  user-select: none;
+}
+.chat-enter-hint svg { width: 13px; height: 13px; }
 .chat-clip {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  margin-bottom: 3px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   color: var(--qvq-tx-t);
   cursor: pointer;
 }
+.chat-clip:hover { background: var(--qvq-accent-soft); }
 .chat-clip svg { width: 17px; height: 17px; }
 .chat-clip:hover { color: var(--qvq-accent); }
 .chat-ta {
