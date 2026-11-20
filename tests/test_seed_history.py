@@ -211,8 +211,6 @@ async def test_scene_attribution_without_isolation():
 
 
 def test_normalize_state_strips_legacy_seed_labels():
-    from QvQChat.conversation.service import ConversationService
-
     note = texts.t("seed_bot_note")
     header = texts.t("seed_history_header")
     state = SessionRepository._normalize_state({
