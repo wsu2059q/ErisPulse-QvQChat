@@ -4003,3 +4003,16 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
 .us-row .io.cost { color: var(--qvq-ok); margin-left: 6px; }
 .us-flow-filter { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
 .us-flow-filter code { font-size: 11px; color: var(--qvq-accent); }
+
+/* ---- 会话级用量徽标（对话页头部，超限警示）---- */
+.chat-sess-budget {
+  border: none;
+  cursor: pointer;
+  padding: 3px 10px;
+  text-align: left;
+}
+.chat-sess-budget .tx { flex: 1 1 auto; }
+.chat-sess-budget.over {
+  background: color-mix(in srgb, var(--qvq-er) 14%, transparent);
+}
+.chat-sess-budget.over .tx { color: var(--qvq-er); font-weight: 600; }

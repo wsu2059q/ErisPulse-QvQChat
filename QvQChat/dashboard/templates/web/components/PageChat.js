@@ -88,6 +88,7 @@ window.PageChat = {
       confirmKey: "",
       collapsed: {},
       cfgOpen: false,
+      sessUsage: null,
       cfgPol: { muted: false, low_token: false, priority: "normal", session_budget: 0 },
       cfgSet: { density: "", model: "", effort: "", trigger_mode: "", listen_off: false, manual: false, persona: "" },
       cfgMembers: "",
@@ -196,6 +197,15 @@ window.PageChat = {
         { label: t("sort_turns"), value: "turns" },
         { label: t("sort_name"), value: "name" },
       ];
+    },
+    /* 会话级今日用量：sessUsage={used, budget}；会话设置打开/切换会话时刷新 */
+    sessUsageInfo() {
+      if (!this.sessUsage) return null;
+      var used = Number(this.sessUsage.used || 0);
+      var budget = Number(this.sessUsage.budget || 0);
+      if (!used) return null;
+      var pct = budget > 0 ? Math.min(100, Math.round(used * 100 / budget)) : 0;
+      return { used: used, budget: budget, pct: pct, over: budget > 0 && pct >= 80 };
     },
     ctxUsage() {
       // 上下文占用：最后一轮回复的输入 tokens / 模型 context_length。
@@ -419,6 +429,8 @@ window.PageChat = {
       this.editing = null;
       this.quote = null;
       this.activeKey = key;
+      this.sessUsage = null;
+      this.$nextTick(this.loadSessUsage);
       this.markSeen(key);
       this.sideOpen = false; // 移动端抽屉选完即收
       QvQ.store.pendingChat = "";
@@ -625,10 +637,22 @@ window.PageChat = {
     },
 
     /* ---- 会话设置抽屉：策略 / 密度模型触发 / 监听 / 成员 / 跨会话路由 / 人格 ---- */
+    loadSessUsage() {
+      var self = this;
+      if (!this.activeKey) return;
+      api("/api/qvq/usage?days=1&flow=0").then(function (d) {
+        var days = (d && d.days) || [];
+        var today = days.length ? days[days.length - 1] : {};
+        var used = Number(((today.by_chat || {})[self.activeKey]) || 0);
+        var pol = (self.active && self.active.policy) || {};
+        self.sessUsage = { used: used, budget: Number(pol.session_budget || 0) };
+      });
+    },
     openCfg() {
       var a = this.active || {};
       var pol = a.policy || {};
       var ui = a.ui || {};
+      this.loadSessUsage();
       this.cfgPol = {
         muted: !!pol.muted,
         low_token: !!pol.low_token,
@@ -1355,6 +1379,12 @@ window.PageChat = {
     '      <div class="chat-ctxbar-track"><i :style="{ width: ctxUsage.pct + \'%\' }" :class="{ warn: ctxUsage.pct >= 80 }"></i></div>',
     '      <span class="tx">{{ t("ctx_usage_line").replace("{pct}", ctxUsage.pct).replace("{used}", Number(ctxUsage.used).toLocaleString()).replace("{ctx}", Number(ctxUsage.ctx).toLocaleString()) }}</span>',
     '    </div>',
+    '    <button type="button" class="chat-ctxbar chat-sess-budget" v-if="sessUsageInfo"',
+    '            :class="{ over: sessUsageInfo.over }" :title="t(&quot;sess_budget_tip&quot;)" @click="openCfg">',
+    '      <span class="tx">{{ t("sess_budget_line").replace("{used}", Number(sessUsageInfo.used).toLocaleString())',
+    '        .replace("{pct}", sessUsageInfo.pct)',
+    '        .replace("{budget}", sessUsageInfo.budget > 0 ? Number(sessUsageInfo.budget).toLocaleString() : t("sess_budget_none")) }}</span>',
+    '    </button>',
     '    <div class="chat-hv" v-if="hv && hv.active">',
     '      <button type="button" class="chat-hv-main" @click="open(hv.sub_key)" :title="t(\'viewing_sub\')">',
     '        <span class="nm">{{ t("hv_active") }}</span>',
@@ -1550,7 +1580,10 @@ window.PageChat = {
     '            <n-select v-model:value="cfgPol.priority" :options="cfgPriorityOptions" size="small"/>',
     '          </div>',
     '          <div class="prov-field">',
-    '            <label>{{ t("sess_policy_budget") }}</label>',
+    '            <label>{{ t("sess_policy_budget") }}',
+    '              <span class="qvq-meta-line" v-if="sessUsageInfo">',
+    '                {{ t("sess_budget_used_today").replace("{used}", Number(sessUsageInfo.used).toLocaleString())',
+    '                  .replace("{pct}", sessUsageInfo.pct) }}</span></label>',
     '            <n-input-number v-model:value="cfgPol.session_budget" :min="0" size="small" style="width:100%"/>',
     '          </div>',
     '        </div>',
