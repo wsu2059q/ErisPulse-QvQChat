@@ -3946,6 +3946,63 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
   white-space: nowrap;
   font-size: 12.5px;
 }
+
+/* ---- 用量页可操作性：告警置顶 / KPI 可点 / 下钻高亮 / 明细过滤 ---- */
+.us-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  border-radius: var(--qvq-r-card);
+  border: 1px solid color-mix(in srgb, var(--qvq-warn) 45%, transparent);
+  background: color-mix(in srgb, var(--qvq-warn) 12%, var(--qvq-surface));
+}
+.us-alert.over {
+  border-color: color-mix(in srgb, var(--qvq-er) 45%, transparent);
+  background: color-mix(in srgb, var(--qvq-er) 12%, var(--qvq-surface));
+}
+.us-alert-ico {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  background: var(--qvq-warn);
+  color: #fff;
+}
+.us-alert.over .us-alert-ico { background: var(--qvq-er); }
+.us-alert-tx { flex: 1 1 auto; font-size: 13px; color: var(--qvq-tx); }
+.us-alert-tx b { margin-right: 4px; }
+.us-kpi-btn { cursor: pointer; text-align: left; border: 1px solid var(--qvq-bd); }
+.us-kpi-btn:hover { border-color: var(--qvq-accent); }
+.us-kpi-btn .l { color: var(--qvq-tx-s); }
+.us-kpi-btn:hover .l { color: var(--qvq-accent); }
+.us-origin-legend .lg {
+  border: 1px solid transparent;
+  border-radius: var(--qvq-r-pill);
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--qvq-tx-s);
+}
+.us-origin-legend .lg:hover { color: var(--qvq-tx); }
+.us-origin-legend .lg.on {
+  border-color: var(--qvq-accent);
+  color: var(--qvq-accent);
+  background: var(--qvq-accent-soft);
+}
+.us-row.us-drill.on {
+  border: 1px solid var(--qvq-accent);
+  background: var(--qvq-accent-soft);
+}
+.us-row .io.cost { color: var(--qvq-ok); margin-left: 6px; }
+.us-flow-filter { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
+.us-flow-filter code { font-size: 11px; color: var(--qvq-accent); }
 </style></head><body><div class="qvq-bg-layer" id="qvq-bg-layer" aria-hidden="true"></div>
 <div id="app"><div class="qvq-splash" aria-hidden="true">
   <svg class="qvq-splash-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -5237,11 +5294,11 @@ function detectLang() {
   return "zh-CN";
 }
 
-I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { openapi_title: "开放 API（OpenAI 兼容）", openapi_auth_hint: "鉴权用 Bearer view_token（本页搜索 view_token 设置）；model 传 auto 走智能体链路", kb_test_btn: "检索测试", kb_test_ph: "输入一句话，看哪些条目会被命中注入", kb_test_run: "测试", kb_test_none: "没有命中：调整条目内容或触发词后再试", eco_cards_title: "生态模块", quick_open: "快速跳转", quick_placeholder: "搜索页面、会话、知识与技能…", quick_group_pages: "页面", quick_group_sessions: "会话", quick_group_knowledge: "知识", quick_group_skills: "技能", quick_group_actions: "动作", quick_act_new_chat: "新建试聊", quick_act_theme: "切换主题", quick_act_lang: "切换语言", quick_hint: "↑↓ 选择 · Enter 打开 · Esc 关闭", quick_no_result: "没有匹配的结果", quick_turns: "{n} 轮", audit_tool_all: "全部工具", audit_since: "开始日期", audit_until: "结束日期", audit_export: "导出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "来源构成", usage_origin_chat: "对话", usage_origin_dashboard: "面板", usage_origin_task: "定时任务", usage_origin_proactive: "主动发言", usage_origin_subagent: "子智能体", usage_origin_handover: "让渡", usage_budget_title: "预算", usage_budget_none: "未设任何预算：在设置 → 用量与会话策略里配置后这里显示进度", usage_budget_global: "全局日上限", usage_budget_user: "用户配额（最高者）", kb_scope_all: "全部", kb_scope_global: "全局", kb_scope_platform: "平台", kb_scope_session: "会话", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "会话作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "选择平台，可输入新平台名", kb_scope_session_ph: "选择会话，可输入 chat_key", kb_scope_global_hint: "对所有会话可见", kb_scope_empty: "该作用域暂无条目", chat_sandbox_group: "试聊", sandbox_badge: "试聊", sandbox_with: "试聊 · {n}", persona_chat: "试聊此人格", persona_unbound: "未绑定会话（全局兜底时不显示在此）", task_overdue: "已过期", ident_empty: "暂无同源建议；也可手动迁移或归并账户", ident_manual: "手动迁移…", bind_inherit_hint: "留空继承上层绑定（平台级 → 全局默认）", plugin_cfg: "配置", plugin_ext_sub: "生态模块向 AI 贡献的工具/技能/知识/人格一览（只读，随模块卸载消失）", prov_rank_tip: "故障转移链序（数字越小优先级越高，可在编排页调整）", orch_idx_tip: "故障转移顺序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "该域现有 {n} 个条目，清空后不可恢复", settings_unsaved_items: "项未保存", settings_reset: "还原", nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线", usage_records_title: "最近调用明细", mem_profile_clear: "清空画像", theme_follow: "跟随外壳", theme_light: "亮色", theme_dark: "深色", theme_title: "外观：{mode}（点击切换）", aria_menu: "打开菜单", aria_close: "关闭" });
-I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { openapi_title: "開放 API（OpenAI 相容）", openapi_auth_hint: "鑑權用 Bearer view_token（本頁搜尋 view_token 設定）；model 傳 auto 走智能體鏈路", kb_test_btn: "檢索測試", kb_test_ph: "輸入一句話，看哪些條目會被命中注入", kb_test_run: "測試", kb_test_none: "沒有命中：調整條目內容或觸發詞後再試", eco_cards_title: "生態模組", quick_open: "快速跳轉", quick_placeholder: "搜尋頁面、會話、知識與技能…", quick_group_pages: "頁面", quick_group_sessions: "會話", quick_group_knowledge: "知識", quick_group_skills: "技能", quick_group_actions: "動作", quick_act_new_chat: "新增試聊", quick_act_theme: "切換主題", quick_act_lang: "切換語言", quick_hint: "↑↓ 選擇 · Enter 開啟 · Esc 關閉", quick_no_result: "沒有符合的結果", quick_turns: "{n} 輪", audit_tool_all: "全部工具", audit_since: "開始日期", audit_until: "結束日期", audit_export: "匯出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "來源構成", usage_origin_chat: "對話", usage_origin_dashboard: "面板", usage_origin_task: "定時任務", usage_origin_proactive: "主動發言", usage_origin_subagent: "子智能體", usage_origin_handover: "讓渡", usage_budget_title: "預算", usage_budget_none: "未設任何預算：在設定 → 用量與會話策略裡配置後這裡顯示進度", usage_budget_global: "全域日上限", usage_budget_user: "用戶配額（最高者）", kb_scope_all: "全部", kb_scope_global: "全域", kb_scope_platform: "平台", kb_scope_session: "會話", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "會話作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "選擇平台，可輸入新平台名", kb_scope_session_ph: "選擇會話，可輸入 chat_key", kb_scope_global_hint: "對所有會話可見", kb_scope_empty: "該作用域暫無條目", chat_sandbox_group: "試聊", sandbox_badge: "試聊", sandbox_with: "試聊 · {n}", persona_chat: "試聊此人格", persona_unbound: "未綁定會話", task_overdue: "已過期", ident_empty: "暫無同源建議；也可手動遷移或歸併賬戶", ident_manual: "手動遷移…", bind_inherit_hint: "留空繼承上層綁定（平台級 → 全域預設）", plugin_cfg: "配置", plugin_ext_sub: "生態模組向 AI 貢獻的工具/技能/知識/人格一覽（唯讀，隨模組卸載消失）", prov_rank_tip: "故障轉移鏈序（數字越小優先級越高，可在編排頁調整）", orch_idx_tip: "故障轉移順序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "該域現有 {n} 個條目，清空後無法復原", settings_unsaved_items: "項未保存", settings_reset: "還原", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", prompt_chars: "字元", prompt_preview: "預覽提示詞", prompt_required: "必填", prompt_scene_note: "scene 為運行時部件：實際對話時才注入群名/發言人/@感知/引用等場景註記", prompt_turns: "輪歷史", usage_chart_title: "14 天趨勢", nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線", mem_profile_clear: "清空畫像", theme_follow: "跟隨外殼", theme_light: "亮色", theme_dark: "深色", theme_title: "外觀：{mode}（點擊切換）", aria_menu: "開啟選單", aria_close: "關閉" });
-I18N["en"] = Object.assign(I18N["en"] || {}, { openapi_title: "Open API (OpenAI-compatible)", openapi_auth_hint: "Auth via Bearer view_token (search view_token on this page); model \"auto\" routes through the agent chain", kb_test_btn: "Retrieval test", kb_test_ph: "Type a sentence to see which entries get hit", kb_test_run: "Test", kb_test_none: "No hits: adjust entry content or triggers", eco_cards_title: "Ecosystem modules", quick_open: "Quick jump", quick_placeholder: "Search pages, sessions, knowledge and skills…", quick_group_pages: "Pages", quick_group_sessions: "Sessions", quick_group_knowledge: "Knowledge", quick_group_skills: "Skills", quick_group_actions: "Actions", quick_act_new_chat: "New sandbox chat", quick_act_theme: "Switch theme", quick_act_lang: "Switch language", quick_hint: "↑↓ navigate · Enter open · Esc close", quick_no_result: "No matches", quick_turns: "{n} turns", audit_tool_all: "All tools", audit_since: "From", audit_until: "To", audit_export: "Export CSV", usage_range_7d: "7 days", usage_range_14d: "14 days", usage_range_30d: "30 days", usage_origin_title: "By origin", usage_origin_chat: "Chat", usage_origin_dashboard: "Panel", usage_origin_task: "Scheduled", usage_origin_proactive: "Proactive", usage_origin_subagent: "Sub-agent", usage_origin_handover: "Handover", usage_budget_title: "Budgets", usage_budget_none: "No budgets configured: set them in Settings → Usage and session policy", usage_budget_global: "Global daily limit", usage_budget_user: "User quota (top user)", kb_scope_all: "All", kb_scope_global: "Global", kb_scope_platform: "Platform", kb_scope_session: "Sessions", kb_scope_group_platforms: "Platform scopes", kb_scope_group_sessions: "Session scopes", kb_scope_left_all: "All", kb_scope_platform_ph: "Pick a platform or type a new name", kb_scope_session_ph: "Pick a session or type a chat_key", kb_scope_global_hint: "Visible to all sessions", kb_scope_empty: "No entries in this scope", chat_sandbox_group: "Sandbox", sandbox_badge: "Sandbox", sandbox_with: "Sandbox · {n}", persona_chat: "Chat with this persona", persona_unbound: "No session bound", task_overdue: "Overdue", ident_empty: "No same-origin suggestions; migrate or merge accounts manually", ident_manual: "Migrate manually…", bind_inherit_hint: "Leave empty to inherit upper binding (platform → global default)", plugin_cfg: "Configure", plugin_ext_sub: "Tools/skills/knowledge/personas contributed to the AI by ecosystem modules (read-only, removed with the module)", prov_rank_tip: "Failover chain order (lower number = higher priority, adjustable on Orchestrate)", orch_idx_tip: "Failover order", orch_move_up: "Move up", orch_move_down: "Move down", storage_confirm_count: "{n} entries in this domain; clearing is not reversible", settings_unsaved_items: "unsaved", settings_reset: "Revert", share_chat_tokens: "Max tokens visitor chat may consume", share_rounds: "Rounds a visitor may continue chatting (0 = read-only)", share_rounds_hint: "Visitors continue as plain text without tools; stops when rounds or budget run out", nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone", usage_records_title: "Recent calls", mem_profile_clear: "Clear profile", theme_follow: "Follow shell", theme_light: "Light", theme_dark: "Dark", theme_title: "Appearance: {mode} (click to switch)", aria_menu: "Open menu", aria_close: "Close" });
-I18N["ja"] = Object.assign(I18N["ja"] || {}, { openapi_title: "オープン API（OpenAI 互換）", openapi_auth_hint: "認証は Bearer view_token（このページで view_token を検索）。model は auto でエージェント経由", kb_test_btn: "検索テスト", kb_test_ph: "一文を入力してヒットする項目を確認", kb_test_run: "テスト", kb_test_none: "ヒットなし：本文やトリガーを調整してください", eco_cards_title: "エコシステムモジュール", quick_open: "クイックジャンプ", quick_placeholder: "ページ・セッション・知識・スキルを検索…", quick_group_pages: "ページ", quick_group_sessions: "セッション", quick_group_knowledge: "ナレッジ", quick_group_skills: "スキル", quick_group_actions: "アクション", quick_act_new_chat: "新規サンドボックス", quick_act_theme: "テーマ切替", quick_act_lang: "言語切替", quick_hint: "↑↓ 選択 · Enter 開く · Esc 閉じる", quick_no_result: "該当なし", quick_turns: "{n} ターン", audit_tool_all: "すべてのツール", audit_since: "開始日", audit_until: "終了日", audit_export: "CSV 出力", usage_range_7d: "直近7日", usage_range_14d: "直近14日", usage_range_30d: "直近30日", usage_origin_title: "ソース別構成", usage_origin_chat: "会話", usage_origin_dashboard: "パネル", usage_origin_task: "定時タスク", usage_origin_proactive: "プロアクティブ", usage_origin_subagent: "サブエージェント", usage_origin_handover: "ハンドオーバー", usage_budget_title: "予算", usage_budget_none: "予算未設定：設定 → 使用量とセッション方針で構成すると表示されます", usage_budget_global: "グローバル日次上限", usage_budget_user: "ユーザー枠（上位）", kb_scope_all: "すべて", kb_scope_global: "グローバル", kb_scope_platform: "プラットフォーム", kb_scope_session: "セッション", kb_scope_group_platforms: "プラットフォームスコープ", kb_scope_group_sessions: "セッションスコープ", kb_scope_left_all: "すべて", kb_scope_platform_ph: "プラットフォームを選択（新規入力可）", kb_scope_session_ph: "セッションを選択（chat_key 直入力可）", kb_scope_global_hint: "全セッションから参照可", kb_scope_empty: "このスコープには項目がありません", chat_sandbox_group: "サンドボックス", sandbox_badge: " sandbox", sandbox_with: " sandbox · {n}", persona_chat: "この人格で試す", persona_unbound: "未バインド", task_overdue: "期限超過", ident_empty: "同源候補なし。手動移行またはアカウント統合も可能", ident_manual: "手動で移行…", bind_inherit_hint: "空欄で上位バインディングを継承（プラットフォーム → グローバル既定）", plugin_cfg: "設定", plugin_ext_sub: "エコシステムモジュールが AI に提供するツール/スキル/知識/人格の一覧（読み取り専用、アンインストールで消失）", prov_rank_tip: "フェイルオーバー順（数字小＝優先度高、編成ページで変更可）", orch_idx_tip: "フェイルオーバー順", orch_move_up: "上へ", orch_move_down: "下へ", storage_confirm_count: "このドメインには {n} 件あります。消去すると元に戻せません", settings_unsaved_items: "件未保存", settings_reset: "取消", nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中", mem_profile_clear: "プロフィールを消去", theme_follow: "シェルに追随", theme_light: "ライト", theme_dark: "ダーク", theme_title: "外観：{mode}（クリックで切替）", aria_menu: "メニューを開く", aria_close: "閉じる" });
-I18N["ru"] = Object.assign(I18N["ru"] || {}, { openapi_title: "Открытый API (совместимый с OpenAI)", openapi_auth_hint: "Авторизация: Bearer view_token (найдите view_token на этой странице); model auto — через цепочку агента", kb_test_btn: "Тест поиска", kb_test_ph: "Введите фразу — увидите, какие записи сработают", kb_test_run: "Тест", kb_test_none: "Нет попаданий: поправьте текст или триггеры", eco_cards_title: "Модули экосистемы", quick_open: "Быстрый переход", quick_placeholder: "Поиск: страницы, сессии, знания, навыки…", quick_group_pages: "Страницы", quick_group_sessions: "Сессии", quick_group_knowledge: "Знания", quick_group_skills: "Навыки", quick_group_actions: "Действия", quick_act_new_chat: "Новая песочница", quick_act_theme: "Сменить тему", quick_act_lang: "Сменить язык", quick_hint: "↑↓ выбор · Enter открыть · Esc закрыть", quick_no_result: "Ничего не найдено", quick_turns: "{n} ходов", audit_tool_all: "Все инструменты", audit_since: "С", audit_until: "По", audit_export: "Экспорт CSV", usage_range_7d: "7 дней", usage_range_14d: "14 дней", usage_range_30d: "30 дней", usage_origin_title: "По источникам", usage_origin_chat: "Чат", usage_origin_dashboard: "Панель", usage_origin_task: "По расписанию", usage_origin_proactive: "Проактивные", usage_origin_subagent: "Субагент", usage_origin_handover: "Передача", usage_budget_title: "Бюджеты", usage_budget_none: "Бюджеты не заданы: настройте в Настройках → Расход и политика сессий", usage_budget_global: "Глобальный дневной лимит", usage_budget_user: "Квота пользователя (лидер)", kb_scope_all: "Все", kb_scope_global: "Глобально", kb_scope_platform: "Платформы", kb_scope_session: "Сессии", kb_scope_group_platforms: "Скоупы платформ", kb_scope_group_sessions: "Скоупы сессий", kb_scope_left_all: "Все", kb_scope_platform_ph: "Выберите платформу или введите новую", kb_scope_session_ph: "Выберите сессию или введите chat_key", kb_scope_global_hint: "Видимо всем сессиям", kb_scope_empty: "В этом скоупе нет записей", chat_sandbox_group: "Песочница", sandbox_badge: "Песочница", sandbox_with: "Песочница · {n}", persona_chat: "Чат с этой личностью", persona_unbound: "Нет привязок", task_overdue: "Просрочено", ident_empty: "Нет однородных предложений; переносите или объединяйте вручную", ident_manual: "Перенести вручную…", bind_inherit_hint: "Пусто — наследуется верхняя привязка (платформа → глобальная)", plugin_cfg: "Настроить", plugin_ext_sub: "Инструменты/навыки/знания/личности от модулей экосистемы (только чтение, исчезают с удалением модуля)", prov_rank_tip: "Порядок отказоустойчивости (меньше число = выше приоритет, меняется в Оркестрации)", orch_idx_tip: "Порядок отказоустойчивости", orch_move_up: "Вверх", orch_move_down: "Вниз", storage_confirm_count: "В домене {n} записей; очистка необратима", settings_unsaved_items: "не сохранено", settings_reset: "Отменить", inbox_handled: "Обработано", load_older: "Загрузить более старые", nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке", mem_profile_clear: "Очистить профиль", theme_follow: "Как в оболочке", theme_light: "Светлая", theme_dark: "Тёмная", theme_title: "Оформление: {mode} (нажмите для смены)", aria_menu: "Открыть меню", aria_close: "Закрыть" });
+I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { usage_updated_at: "更新于 {t}", usage_alert_over: "已用预算 {p}%", usage_alert_act: "调整限额", usage_edit_limit_tip: "点击修改全局日上限", usage_origin_hint: "点来源可筛明细", usage_cost_est: "估算", usage_drill_tip: "点击查看该模型的调用明细", usage_filter_clear: "清除筛选", usage_budget_edit_global: "修改全局日上限", usage_budget_edit_one: "调整 {n} 的限额", usage_budget_edit_hint: "0 = 不限；改的是每日 token 限额，次日生效口径不变（按当日累计）", usage_budget_saved: "预算已更新", openapi_title: "开放 API（OpenAI 兼容）", openapi_auth_hint: "鉴权用 Bearer view_token（本页搜索 view_token 设置）；model 传 auto 走智能体链路", kb_test_btn: "检索测试", kb_test_ph: "输入一句话，看哪些条目会被命中注入", kb_test_run: "测试", kb_test_none: "没有命中：调整条目内容或触发词后再试", eco_cards_title: "生态模块", quick_open: "快速跳转", quick_placeholder: "搜索页面、会话、知识与技能…", quick_group_pages: "页面", quick_group_sessions: "会话", quick_group_knowledge: "知识", quick_group_skills: "技能", quick_group_actions: "动作", quick_act_new_chat: "新建试聊", quick_act_theme: "切换主题", quick_act_lang: "切换语言", quick_hint: "↑↓ 选择 · Enter 打开 · Esc 关闭", quick_no_result: "没有匹配的结果", quick_turns: "{n} 轮", audit_tool_all: "全部工具", audit_since: "开始日期", audit_until: "结束日期", audit_export: "导出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "来源构成", usage_origin_chat: "对话", usage_origin_dashboard: "面板", usage_origin_task: "定时任务", usage_origin_proactive: "主动发言", usage_origin_subagent: "子智能体", usage_origin_handover: "让渡", usage_budget_title: "预算", usage_budget_none: "未设任何预算：在设置 → 用量与会话策略里配置后这里显示进度", usage_budget_global: "全局日上限", usage_budget_user: "用户配额（最高者）", kb_scope_all: "全部", kb_scope_global: "全局", kb_scope_platform: "平台", kb_scope_session: "会话", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "会话作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "选择平台，可输入新平台名", kb_scope_session_ph: "选择会话，可输入 chat_key", kb_scope_global_hint: "对所有会话可见", kb_scope_empty: "该作用域暂无条目", chat_sandbox_group: "试聊", sandbox_badge: "试聊", sandbox_with: "试聊 · {n}", persona_chat: "试聊此人格", persona_unbound: "未绑定会话（全局兜底时不显示在此）", task_overdue: "已过期", ident_empty: "暂无同源建议；也可手动迁移或归并账户", ident_manual: "手动迁移…", bind_inherit_hint: "留空继承上层绑定（平台级 → 全局默认）", plugin_cfg: "配置", plugin_ext_sub: "生态模块向 AI 贡献的工具/技能/知识/人格一览（只读，随模块卸载消失）", prov_rank_tip: "故障转移链序（数字越小优先级越高，可在编排页调整）", orch_idx_tip: "故障转移顺序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "该域现有 {n} 个条目，清空后不可恢复", settings_unsaved_items: "项未保存", settings_reset: "还原", nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线", usage_records_title: "最近调用明细", mem_profile_clear: "清空画像", theme_follow: "跟随外壳", theme_light: "亮色", theme_dark: "深色", theme_title: "外观：{mode}（点击切换）", aria_menu: "打开菜单", aria_close: "关闭" });
+I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { usage_updated_at: "更新於 {t}", usage_alert_over: "已用預算 {p}%", usage_alert_act: "調整限額", usage_edit_limit_tip: "點擊修改全域日上限", usage_origin_hint: "點來源可篩明細", usage_cost_est: "估算", usage_drill_tip: "點擊查看該模型的調用明細", usage_filter_clear: "清除篩選", usage_budget_edit_global: "修改全域日上限", usage_budget_edit_one: "調整 {n} 的限額", usage_budget_edit_hint: "0 = 不限；每日 token 限額，即時生效", usage_budget_saved: "預算已更新", openapi_title: "開放 API（OpenAI 相容）", openapi_auth_hint: "鑑權用 Bearer view_token（本頁搜尋 view_token 設定）；model 傳 auto 走智能體鏈路", kb_test_btn: "檢索測試", kb_test_ph: "輸入一句話，看哪些條目會被命中注入", kb_test_run: "測試", kb_test_none: "沒有命中：調整條目內容或觸發詞後再試", eco_cards_title: "生態模組", quick_open: "快速跳轉", quick_placeholder: "搜尋頁面、會話、知識與技能…", quick_group_pages: "頁面", quick_group_sessions: "會話", quick_group_knowledge: "知識", quick_group_skills: "技能", quick_group_actions: "動作", quick_act_new_chat: "新增試聊", quick_act_theme: "切換主題", quick_act_lang: "切換語言", quick_hint: "↑↓ 選擇 · Enter 開啟 · Esc 關閉", quick_no_result: "沒有符合的結果", quick_turns: "{n} 輪", audit_tool_all: "全部工具", audit_since: "開始日期", audit_until: "結束日期", audit_export: "匯出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "來源構成", usage_origin_chat: "對話", usage_origin_dashboard: "面板", usage_origin_task: "定時任務", usage_origin_proactive: "主動發言", usage_origin_subagent: "子智能體", usage_origin_handover: "讓渡", usage_budget_title: "預算", usage_budget_none: "未設任何預算：在設定 → 用量與會話策略裡配置後這裡顯示進度", usage_budget_global: "全域日上限", usage_budget_user: "用戶配額（最高者）", kb_scope_all: "全部", kb_scope_global: "全域", kb_scope_platform: "平台", kb_scope_session: "會話", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "會話作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "選擇平台，可輸入新平台名", kb_scope_session_ph: "選擇會話，可輸入 chat_key", kb_scope_global_hint: "對所有會話可見", kb_scope_empty: "該作用域暫無條目", chat_sandbox_group: "試聊", sandbox_badge: "試聊", sandbox_with: "試聊 · {n}", persona_chat: "試聊此人格", persona_unbound: "未綁定會話", task_overdue: "已過期", ident_empty: "暫無同源建議；也可手動遷移或歸併賬戶", ident_manual: "手動遷移…", bind_inherit_hint: "留空繼承上層綁定（平台級 → 全域預設）", plugin_cfg: "配置", plugin_ext_sub: "生態模組向 AI 貢獻的工具/技能/知識/人格一覽（唯讀，隨模組卸載消失）", prov_rank_tip: "故障轉移鏈序（數字越小優先級越高，可在編排頁調整）", orch_idx_tip: "故障轉移順序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "該域現有 {n} 個條目，清空後無法復原", settings_unsaved_items: "項未保存", settings_reset: "還原", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", prompt_chars: "字元", prompt_preview: "預覽提示詞", prompt_required: "必填", prompt_scene_note: "scene 為運行時部件：實際對話時才注入群名/發言人/@感知/引用等場景註記", prompt_turns: "輪歷史", usage_chart_title: "14 天趨勢", nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線", mem_profile_clear: "清空畫像", theme_follow: "跟隨外殼", theme_light: "亮色", theme_dark: "深色", theme_title: "外觀：{mode}（點擊切換）", aria_menu: "開啟選單", aria_close: "關閉" });
+I18N["en"] = Object.assign(I18N["en"] || {}, { usage_updated_at: "updated {t}", usage_alert_over: "budget {p}% used", usage_alert_act: "Adjust limit", usage_edit_limit_tip: "Click to edit the global daily limit", usage_origin_hint: "click an origin to filter the flow", usage_cost_est: "est.", usage_drill_tip: "Click to see calls of this model", usage_filter_clear: "Clear filter", usage_budget_edit_global: "Edit global daily limit", usage_budget_edit_one: "Adjust limit for {n}", usage_budget_edit_hint: "0 = unlimited; daily token quota, applies immediately", usage_budget_saved: "Budget updated", openapi_title: "Open API (OpenAI-compatible)", openapi_auth_hint: "Auth via Bearer view_token (search view_token on this page); model \"auto\" routes through the agent chain", kb_test_btn: "Retrieval test", kb_test_ph: "Type a sentence to see which entries get hit", kb_test_run: "Test", kb_test_none: "No hits: adjust entry content or triggers", eco_cards_title: "Ecosystem modules", quick_open: "Quick jump", quick_placeholder: "Search pages, sessions, knowledge and skills…", quick_group_pages: "Pages", quick_group_sessions: "Sessions", quick_group_knowledge: "Knowledge", quick_group_skills: "Skills", quick_group_actions: "Actions", quick_act_new_chat: "New sandbox chat", quick_act_theme: "Switch theme", quick_act_lang: "Switch language", quick_hint: "↑↓ navigate · Enter open · Esc close", quick_no_result: "No matches", quick_turns: "{n} turns", audit_tool_all: "All tools", audit_since: "From", audit_until: "To", audit_export: "Export CSV", usage_range_7d: "7 days", usage_range_14d: "14 days", usage_range_30d: "30 days", usage_origin_title: "By origin", usage_origin_chat: "Chat", usage_origin_dashboard: "Panel", usage_origin_task: "Scheduled", usage_origin_proactive: "Proactive", usage_origin_subagent: "Sub-agent", usage_origin_handover: "Handover", usage_budget_title: "Budgets", usage_budget_none: "No budgets configured: set them in Settings → Usage and session policy", usage_budget_global: "Global daily limit", usage_budget_user: "User quota (top user)", kb_scope_all: "All", kb_scope_global: "Global", kb_scope_platform: "Platform", kb_scope_session: "Sessions", kb_scope_group_platforms: "Platform scopes", kb_scope_group_sessions: "Session scopes", kb_scope_left_all: "All", kb_scope_platform_ph: "Pick a platform or type a new name", kb_scope_session_ph: "Pick a session or type a chat_key", kb_scope_global_hint: "Visible to all sessions", kb_scope_empty: "No entries in this scope", chat_sandbox_group: "Sandbox", sandbox_badge: "Sandbox", sandbox_with: "Sandbox · {n}", persona_chat: "Chat with this persona", persona_unbound: "No session bound", task_overdue: "Overdue", ident_empty: "No same-origin suggestions; migrate or merge accounts manually", ident_manual: "Migrate manually…", bind_inherit_hint: "Leave empty to inherit upper binding (platform → global default)", plugin_cfg: "Configure", plugin_ext_sub: "Tools/skills/knowledge/personas contributed to the AI by ecosystem modules (read-only, removed with the module)", prov_rank_tip: "Failover chain order (lower number = higher priority, adjustable on Orchestrate)", orch_idx_tip: "Failover order", orch_move_up: "Move up", orch_move_down: "Move down", storage_confirm_count: "{n} entries in this domain; clearing is not reversible", settings_unsaved_items: "unsaved", settings_reset: "Revert", share_chat_tokens: "Max tokens visitor chat may consume", share_rounds: "Rounds a visitor may continue chatting (0 = read-only)", share_rounds_hint: "Visitors continue as plain text without tools; stops when rounds or budget run out", nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone", usage_records_title: "Recent calls", mem_profile_clear: "Clear profile", theme_follow: "Follow shell", theme_light: "Light", theme_dark: "Dark", theme_title: "Appearance: {mode} (click to switch)", aria_menu: "Open menu", aria_close: "Close" });
+I18N["ja"] = Object.assign(I18N["ja"] || {}, { usage_updated_at: "{t} 更新", usage_alert_over: "予算 {p}% 消化", usage_alert_act: "上限を調整", usage_edit_limit_tip: "クリックでグローバル日次上限を変更", usage_origin_hint: "ソースをクリックで明細を絞り込み", usage_cost_est: "推定", usage_drill_tip: "クリックでこのモデルの呼び出し明細を表示", usage_filter_clear: "絞り込み解除", usage_budget_edit_global: "グローバル日次上限を変更", usage_budget_edit_one: "{n} の上限を調整", usage_budget_edit_hint: "0 = 無制限。日次トークン枠、即時反映", usage_budget_saved: "予算を更新しました", openapi_title: "オープン API（OpenAI 互換）", openapi_auth_hint: "認証は Bearer view_token（このページで view_token を検索）。model は auto でエージェント経由", kb_test_btn: "検索テスト", kb_test_ph: "一文を入力してヒットする項目を確認", kb_test_run: "テスト", kb_test_none: "ヒットなし：本文やトリガーを調整してください", eco_cards_title: "エコシステムモジュール", quick_open: "クイックジャンプ", quick_placeholder: "ページ・セッション・知識・スキルを検索…", quick_group_pages: "ページ", quick_group_sessions: "セッション", quick_group_knowledge: "ナレッジ", quick_group_skills: "スキル", quick_group_actions: "アクション", quick_act_new_chat: "新規サンドボックス", quick_act_theme: "テーマ切替", quick_act_lang: "言語切替", quick_hint: "↑↓ 選択 · Enter 開く · Esc 閉じる", quick_no_result: "該当なし", quick_turns: "{n} ターン", audit_tool_all: "すべてのツール", audit_since: "開始日", audit_until: "終了日", audit_export: "CSV 出力", usage_range_7d: "直近7日", usage_range_14d: "直近14日", usage_range_30d: "直近30日", usage_origin_title: "ソース別構成", usage_origin_chat: "会話", usage_origin_dashboard: "パネル", usage_origin_task: "定時タスク", usage_origin_proactive: "プロアクティブ", usage_origin_subagent: "サブエージェント", usage_origin_handover: "ハンドオーバー", usage_budget_title: "予算", usage_budget_none: "予算未設定：設定 → 使用量とセッション方針で構成すると表示されます", usage_budget_global: "グローバル日次上限", usage_budget_user: "ユーザー枠（上位）", kb_scope_all: "すべて", kb_scope_global: "グローバル", kb_scope_platform: "プラットフォーム", kb_scope_session: "セッション", kb_scope_group_platforms: "プラットフォームスコープ", kb_scope_group_sessions: "セッションスコープ", kb_scope_left_all: "すべて", kb_scope_platform_ph: "プラットフォームを選択（新規入力可）", kb_scope_session_ph: "セッションを選択（chat_key 直入力可）", kb_scope_global_hint: "全セッションから参照可", kb_scope_empty: "このスコープには項目がありません", chat_sandbox_group: "サンドボックス", sandbox_badge: " sandbox", sandbox_with: " sandbox · {n}", persona_chat: "この人格で試す", persona_unbound: "未バインド", task_overdue: "期限超過", ident_empty: "同源候補なし。手動移行またはアカウント統合も可能", ident_manual: "手動で移行…", bind_inherit_hint: "空欄で上位バインディングを継承（プラットフォーム → グローバル既定）", plugin_cfg: "設定", plugin_ext_sub: "エコシステムモジュールが AI に提供するツール/スキル/知識/人格の一覧（読み取り専用、アンインストールで消失）", prov_rank_tip: "フェイルオーバー順（数字小＝優先度高、編成ページで変更可）", orch_idx_tip: "フェイルオーバー順", orch_move_up: "上へ", orch_move_down: "下へ", storage_confirm_count: "このドメインには {n} 件あります。消去すると元に戻せません", settings_unsaved_items: "件未保存", settings_reset: "取消", nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中", mem_profile_clear: "プロフィールを消去", theme_follow: "シェルに追随", theme_light: "ライト", theme_dark: "ダーク", theme_title: "外観：{mode}（クリックで切替）", aria_menu: "メニューを開く", aria_close: "閉じる" });
+I18N["ru"] = Object.assign(I18N["ru"] || {}, { usage_updated_at: "обновлено {t}", usage_alert_over: "бюджет использован на {p}%", usage_alert_act: "Изменить лимит", usage_edit_limit_tip: "Нажмите, чтобы изменить дневной лимит", usage_origin_hint: "клик по источнику фильтрует список", usage_cost_est: "оценка", usage_drill_tip: "Клик — вызовы этой модели", usage_filter_clear: "Сбросить фильтр", usage_budget_edit_global: "Изменить дневной лимит", usage_budget_edit_one: "Лимит для {n}", usage_budget_edit_hint: "0 = без лимита; дневная квота токенов", usage_budget_saved: "Бюджет обновлён", openapi_title: "Открытый API (совместимый с OpenAI)", openapi_auth_hint: "Авторизация: Bearer view_token (найдите view_token на этой странице); model auto — через цепочку агента", kb_test_btn: "Тест поиска", kb_test_ph: "Введите фразу — увидите, какие записи сработают", kb_test_run: "Тест", kb_test_none: "Нет попаданий: поправьте текст или триггеры", eco_cards_title: "Модули экосистемы", quick_open: "Быстрый переход", quick_placeholder: "Поиск: страницы, сессии, знания, навыки…", quick_group_pages: "Страницы", quick_group_sessions: "Сессии", quick_group_knowledge: "Знания", quick_group_skills: "Навыки", quick_group_actions: "Действия", quick_act_new_chat: "Новая песочница", quick_act_theme: "Сменить тему", quick_act_lang: "Сменить язык", quick_hint: "↑↓ выбор · Enter открыть · Esc закрыть", quick_no_result: "Ничего не найдено", quick_turns: "{n} ходов", audit_tool_all: "Все инструменты", audit_since: "С", audit_until: "По", audit_export: "Экспорт CSV", usage_range_7d: "7 дней", usage_range_14d: "14 дней", usage_range_30d: "30 дней", usage_origin_title: "По источникам", usage_origin_chat: "Чат", usage_origin_dashboard: "Панель", usage_origin_task: "По расписанию", usage_origin_proactive: "Проактивные", usage_origin_subagent: "Субагент", usage_origin_handover: "Передача", usage_budget_title: "Бюджеты", usage_budget_none: "Бюджеты не заданы: настройте в Настройках → Расход и политика сессий", usage_budget_global: "Глобальный дневной лимит", usage_budget_user: "Квота пользователя (лидер)", kb_scope_all: "Все", kb_scope_global: "Глобально", kb_scope_platform: "Платформы", kb_scope_session: "Сессии", kb_scope_group_platforms: "Скоупы платформ", kb_scope_group_sessions: "Скоупы сессий", kb_scope_left_all: "Все", kb_scope_platform_ph: "Выберите платформу или введите новую", kb_scope_session_ph: "Выберите сессию или введите chat_key", kb_scope_global_hint: "Видимо всем сессиям", kb_scope_empty: "В этом скоупе нет записей", chat_sandbox_group: "Песочница", sandbox_badge: "Песочница", sandbox_with: "Песочница · {n}", persona_chat: "Чат с этой личностью", persona_unbound: "Нет привязок", task_overdue: "Просрочено", ident_empty: "Нет однородных предложений; переносите или объединяйте вручную", ident_manual: "Перенести вручную…", bind_inherit_hint: "Пусто — наследуется верхняя привязка (платформа → глобальная)", plugin_cfg: "Настроить", plugin_ext_sub: "Инструменты/навыки/знания/личности от модулей экосистемы (только чтение, исчезают с удалением модуля)", prov_rank_tip: "Порядок отказоустойчивости (меньше число = выше приоритет, меняется в Оркестрации)", orch_idx_tip: "Порядок отказоустойчивости", orch_move_up: "Вверх", orch_move_down: "Вниз", storage_confirm_count: "В домене {n} записей; очистка необратима", settings_unsaved_items: "не сохранено", settings_reset: "Отменить", inbox_handled: "Обработано", load_older: "Загрузить более старые", nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке", mem_profile_clear: "Очистить профиль", theme_follow: "Как в оболочке", theme_light: "Светлая", theme_dark: "Тёмная", theme_title: "Оформление: {mode} (нажмите для смены)", aria_menu: "Открыть меню", aria_close: "Закрыть" });
 
 function t(k) {
   return (I18N[QvQ.store.lang] && I18N[QvQ.store.lang][k]) || I18N.en[k] || k;
@@ -12864,7 +12921,7 @@ window.PageInbox = {
     '</div>',
   ].join(""),
 };
-</script><script>/* 用量：token 消费去哪了——KPI/来源构成 / 趋势 / 模型分布 / 会话分布 / 预算 / 调用流水 */
+</script><script>/* 用量：token 消费去哪了——告警置顶 / KPI / 来源构成 / 趋势 / 模型分布（成本+下钻）/ 会话分布 / 预算（可改）/ 调用流水（可筛可导出） */
 window.PageUsage = {
   name: "PageUsage",
   data() {
@@ -12875,16 +12932,51 @@ window.PageUsage = {
       flow: [],
       rangeDays: 14,
       budgets: [],
+      costs: {},
+      updatedAt: 0,
       loading: true,
+      // 明细联动筛选（模型/来源分布行点击驱动）
+      fModel: "",
+      fOrigin: "",
+      fToday: false,
+      // 预算编辑弹窗（kind=global/session，session 行内联改限额）
+      editOpen: false,
+      editKind: "global",
+      editChat: null,
+      editValue: 0,
+      editBusy: false,
     };
   },
   computed: {
     today() {
       return this.days.length ? this.days[this.days.length - 1] : null;
     },
+    todayKey() {
+      var d = new Date();
+      var p = function (n) { return (n < 10 ? "0" : "") + n; };
+      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+    },
+    /* 超限告警（置顶）：会话/用户预算 >=80% 或全局 >=80%——看到问题第一眼 */
+    alerts() {
+      var out = [];
+      var self = this;
+      this.budgets.forEach(function (b) {
+        if (b.pct >= 80) out.push({
+          level: b.pct >= 100 ? "over" : "warn",
+          label: b.name, pct: b.pct,
+          kind: "session", chat: b,
+        });
+      });
+      if (this.limit > 0 && this.limitPct >= 80) out.push({
+        level: this.limitPct >= 100 ? "over" : "warn",
+        label: t("usage_budget_global"), pct: this.limitPct, kind: "global",
+      });
+      out.sort(function (a, b) { return b.pct - a.pct; });
+      return out;
+    },
     byModel() {
-      // 区间累计 by_model：[{model, tokens, in, out}] 按 tokens 倒序
       var acc = {};
+      var self = this;
       (this.days || []).forEach(function (d) {
         var bm = d.by_model || {};
         Object.keys(bm).forEach(function (m) {
@@ -12898,11 +12990,16 @@ window.PageUsage = {
       var list = Object.keys(acc).map(function (m) { return acc[m]; });
       list.sort(function (a, b) { return b.tokens - a.tokens; });
       var total = list.reduce(function (s, x) { return s + x.tokens; }, 0) || 1;
-      list.forEach(function (x) { x.pct = Math.round(x.tokens * 100 / total); });
+      list.forEach(function (x) {
+        x.pct = Math.round(x.tokens * 100 / total);
+        x.cost = Number(self.costs[x.model] || 0);
+      });
       return list;
     },
+    costTotal() {
+      return this.byModel.reduce(function (s, x) { return s + Number(x.cost || 0); }, 0);
+    },
     byOrigin() {
-      // 区间累计来源构成（对话/面板/定时任务/主动发言/子智能体/让渡）
       var acc = {};
       (this.days || []).forEach(function (d) {
         var bo = d.by_origin || {};
@@ -12918,7 +13015,6 @@ window.PageUsage = {
       return list;
     },
     originBar() {
-      // 来源构成堆叠条：conic-gradient 五色（分类柔色板）
       var colors = ["var(--qvq-accent)", "var(--qvq-cat-1)", "var(--qvq-cat-2)", "var(--qvq-cat-3)", "var(--qvq-cat-4)", "var(--qvq-tx-t)"];
       var segs = [];
       var acc = 0;
@@ -12936,7 +13032,6 @@ window.PageUsage = {
       return colors[i % colors.length];
     },
     chartBars() {
-      // 区间 tokens 柱状（高度按最大值归一）
       var days = this.days || [];
       var max = Math.max.apply(null, days.map(function (d) { return Number(d.tokens || 0); }).concat([1]));
       return days.map(function (d) {
@@ -12958,7 +13053,6 @@ window.PageUsage = {
       return segs.length ? "conic-gradient(" + segs.join(", ") + ")" : "none";
     },
     byChat() {
-      // 区间累计 by_chat top 8：[{chat_key, tokens, pct}]
       var acc = {};
       (this.days || []).forEach(function (d) {
         var bc = d.by_chat || {};
@@ -12974,7 +13068,6 @@ window.PageUsage = {
       return list;
     },
     byUserTop() {
-      // 用户消耗 top（user_daily_budget 进度数据源）
       var acc = {};
       (this.days || []).forEach(function (d) {
         var bu = d.by_user || {};
@@ -12994,6 +13087,20 @@ window.PageUsage = {
       var top = this.byUserTop[0];
       return this.userLimit > 0 ? Math.min(100, Math.round(Number(top ? top.tokens : 0) * 100 / this.userLimit)) : 0;
     },
+    /* 明细：联动筛选（模型/来源/仅今天）后倒序 */
+    shownFlow() {
+      var fModel = this.fModel;
+      var fOrigin = this.fOrigin;
+      var todayKey = this.todayKey;
+      return (this.flow || []).filter(function (x) {
+        if (fModel && x.model !== fModel) return false;
+        if (fOrigin && x.origin !== fOrigin) return false;
+        return true;
+      }).sort(function (a, b) { return b.ts - a.ts; }).slice(0, 60);
+    },
+    flowFilterOn() {
+      return !!(this.fModel || this.fOrigin);
+    },
   },
   mounted() {
     this.load();
@@ -13001,14 +13108,17 @@ window.PageUsage = {
   methods: {
     load() {
       var self = this;
-      QvQ.swr(self, "usage_page:" + this.rangeDays, "/api/qvq/usage?days=" + this.rangeDays + "&flow=2", function (d) {
+      QvQ.swr(self, "usage_page:" + this.rangeDays, "/api/qvq/usage?days=" + this.rangeDays + "&flow=7", function (d) {
         self.days = (d && d.days) || [];
         self.limit = (d && d.limit) || 0;
         self.userLimit = (d && d.user_limit) || 0;
         self.flow = (d && d.flow) || [];
+        self.updatedAt = Date.now();
+      });
+      api("/api/qvq/costs").then(function (d) {
+        self.costs = (d && d.by_model) || {};
       });
       api("/api/qvq/sessions?limit=200").then(function (d) {
-        // 会话预算进度：只列设了 session_budget 的会话（今日 by_chat 对比）
         var today = self.today ? (self.today.by_chat || {}) : {};
         self.budgets = ((d && d.sessions) || [])
           .filter(function (s) { return s.policy && Number(s.policy.session_budget || 0) > 0; })
@@ -13024,6 +13134,89 @@ window.PageUsage = {
     setRange(n) {
       this.rangeDays = n;
       this.load();
+    },
+    /* KPI 下钻：今日 tokens → 明细过滤今天（流水带 origin，滚到明细） */
+    drillTodayTokens() {
+      this.clearFilter();
+      this.fOrigin = "chat";
+      this.$nextTick(function () {
+        var el = document.getElementById("us-flow");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    },
+    /* 下钻联动：模型/来源分布行点击 → 明细过滤；再点同项取消 */
+    drillModel(m) {
+      this.fModel = this.fModel === m ? "" : m;
+      this.fOrigin = "";
+      this.$nextTick(function () {
+        var el = document.getElementById("us-flow");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    },
+    drillOrigin(o) {
+      this.fOrigin = this.fOrigin === o ? "" : o;
+      this.fModel = "";
+      this.$nextTick(function () {
+        var el = document.getElementById("us-flow");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    },
+    clearFilter() {
+      this.fModel = "";
+      this.fOrigin = "";
+    },
+    /* KPI 可点：上限 → 直接改 */
+    openEditGlobal() {
+      this.editKind = "global";
+      this.editChat = null;
+      this.editValue = this.limit;
+      this.editOpen = true;
+    },
+    openEditBudget(b) {
+      this.editKind = "session";
+      this.editChat = b;
+      this.editValue = b.cap;
+      this.editOpen = true;
+    },
+    saveBudget() {
+      var self = this;
+      this.editBusy = true;
+      var done = function () {
+        self.editBusy = false;
+        self.editOpen = false;
+        QvQ.toast(t("usage_budget_saved"));
+        self.updatedAt = 0; // 失效 swr 缓存时间戳显示
+        self.load();
+      };
+      if (this.editKind === "global") {
+        api("/api/qvq/config", "POST", { daily_token_limit: Number(this.editValue) || 0 }).then(done);
+      } else {
+        api("/api/qvq/session/policy", "POST", {
+          chat_key: this.editChat.chat_key, session_budget: Number(this.editValue) || 0,
+        }).then(done);
+      }
+    },
+    alertAct(a) {
+      if (a.kind === "session") this.openEditBudget(a.chat);
+      else this.openEditGlobal();
+    },
+    exportCsv() {
+      var esc = function (v) {
+        var s = String(v == null ? "" : v);
+        return '"' + s.replace(/"/g, '""') + '"';
+      };
+      var head = ["ts", "chat_key", "origin", "model", "in", "out"];
+      var rows = this.shownFlow.map(function (x) {
+        return head.map(function (k) {
+          return esc(k === "ts" ? new Date(Number(x.ts) * 1000).toISOString().slice(0, 19) : x[k]);
+        }).join(",");
+      });
+      var blob = new Blob(["\ufeff" + [head.join(",")].concat(rows).join("\n")], { type: "text/csv;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "usage_flow.csv";
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
     },
     lgClass(m) {
       var idx = this.byModel.indexOf(m) % 5;
@@ -13042,10 +13235,19 @@ window.PageUsage = {
       var p = function (n) { return (n < 10 ? "0" : "") + n; };
       return (d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
     },
+    fmtUpdated() {
+      if (!this.updatedAt) return "";
+      var d = new Date(this.updatedAt);
+      var p = function (n) { return (n < 10 ? "0" : "") + n; };
+      return p(d.getHours()) + ":" + p(d.getMinutes());
+    },
     fmtNum(n) { return Number(n || 0).toLocaleString(); },
+    fmtCost(n) { return "$" + Number(n || 0).toFixed(2); },
     chatName(key) {
       var hit = this.budgets.filter(function (r) { return r.chat_key === key; })[0];
-      return (hit && hit.name) || key;
+      if (hit) return hit.name;
+      var c = this.byChat.filter(function (r) { return r.chat_key === key; })[0];
+      return (c && c.name) || key;
     },
     openSession(key) {
       QvQ.store.pendingChat = key;
@@ -13056,7 +13258,8 @@ window.PageUsage = {
     '<div class="qvq-page-body">',
     '  <div class="qvq-page-head">',
     '    <div>',
-    '      <div class="qvq-page-title">{{ t("nav_usage") }}</div>',
+    '      <div class="qvq-page-title">{{ t("nav_usage") }}',
+    '        <span class="qvq-meta-line" v-if="fmtUpdated()">{{ t("usage_updated_at").replace("{t}", fmtUpdated()) }}</span></div>',
     '      <div class="qvq-page-sub">{{ t("usage_sub") }}</div>',
     '    </div>',
     '    <div class="qvq-cfg-tools">',
@@ -13068,28 +13271,35 @@ window.PageUsage = {
     '      <n-button size="small" @click="load">{{ t("refresh") }}</n-button>',
     '    </div>',
     '  </div>',
+    '  <div class="us-alert" v-for="(a, i) in alerts" :key="i" :class="a.level">',
+    '    <span class="us-alert-ico">!</span>',
+    '    <span class="us-alert-tx"><b>{{ a.label }}</b> {{ t("usage_alert_over").replace("{p}", a.pct) }}</span>',
+    '    <button type="button" class="prov-act" @click="alertAct(a)">{{ t("usage_alert_act") }}</button>',
+    '  </div>',
     '  <div class="qvq-loading" v-if="loading"><i></i>{{ t("loading") }}</div>',
     '  <template v-else>',
     '    <div class="us-kpis">',
-    '      <div class="us-kpi">',
+    '      <button type="button" class="us-kpi us-kpi-btn" @click="drillTodayTokens">',
     '        <div class="v">{{ fmtNum(today ? today.tokens : 0) }}</div>',
-    '        <div class="l">{{ t("usage_today_tokens") }}</div>',
-    '      </div>',
+    '        <div class="l">{{ t("usage_today_tokens") }} →</div>',
+    '      </button>',
     '      <div class="us-kpi">',
     '        <div class="v">{{ fmtNum(today ? today.calls : 0) }}</div>',
     '        <div class="l">{{ t("usage_today_calls") }}</div>',
     '      </div>',
-    '      <div class="us-kpi">',
+    '      <button type="button" class="us-kpi us-kpi-btn" :title="t(\'usage_edit_limit_tip\')" @click="openEditGlobal">',
     '        <div class="v">{{ fmtNum(limit) }}</div>',
-    '        <div class="l">{{ t("usage_daily_limit") }}</div>',
-    '      </div>',
+    '        <div class="l">{{ t("usage_daily_limit") }} ✎</div>',
+    '      </button>',
     '    </div>',
     '    <n-card size="small" class="qvq-glass-card" v-if="byOrigin.length">',
-    '      <div class="qvq-card-title">{{ t("usage_origin_title") }}</div>',
+    '      <div class="qvq-card-title">{{ t("usage_origin_title") }}',
+    '        <span class="qvq-meta-line">{{ t("usage_origin_hint") }}</span></div>',
     '      <div class="us-origin-bar" :style="{ background: originBar }"></div>',
     '      <div class="us-origin-legend">',
-    '        <span v-for="(o, i) in byOrigin" :key="o.origin" class="lg">',
-    '          <i :style="{ background: originColor(i) }"></i>{{ originLabel(o.origin) }} · {{ o.pct }}%</span>',
+    '        <button v-for="(o, i) in byOrigin" :key="o.origin" type="button" class="lg"',
+    '                :class="{ on: fOrigin === o.origin }" @click="drillOrigin(o.origin)">',
+    '          <i :style="{ background: originColor(i) }"></i>{{ originLabel(o.origin) }} · {{ o.pct }}%</button>',
     '      </div>',
     '    </n-card>',
     '    <n-card size="small" class="qvq-glass-card us-chart-card">',
@@ -13103,7 +13313,8 @@ window.PageUsage = {
     '    </n-card>',
     '    <div class="us-grid">',
     '      <n-card size="small" class="qvq-glass-card">',
-    '        <div class="qvq-card-title">{{ t("usage_models_title") }}</div>',
+    '        <div class="qvq-card-title">{{ t("usage_models_title") }}',
+    '          <span class="qvq-meta-line" v-if="costTotal">{{ fmtCost(costTotal) }} · {{ t("usage_cost_est") }}</span></div>',
     '        <div class="us-donut-wrap" v-if="byModel.length">',
     '          <div class="us-donut" :style="{ background: donutStyle }"><i>{{ byModel.length }}</i></div>',
     '          <div class="us-donut-legend">',
@@ -13111,24 +13322,26 @@ window.PageUsage = {
     '          </div>',
     '        </div>',
     '        <div v-if="!byModel.length" class="qvq-empty">{{ t("usage_empty") }}</div>',
-    '        <div v-for="m in byModel" :key="m.model" class="us-row">',
+    '        <button v-for="m in byModel" :key="m.model" type="button" class="us-row us-click us-drill"',
+    '                :class="{ on: fModel === m.model }" @click="drillModel(m.model)" :title="t(\'usage_drill_tip\')">',
     '          <span class="nm" :title="m.model">{{ m.model }}</span>',
     '          <div class="us-bar"><i :style="{ width: m.pct + \'%\' }"></i></div>',
-    '          <span class="v">{{ fmtNum(m.tokens) }} <i class="io">↑{{ fmtNum(m.in) }} ↓{{ fmtNum(m.out) }}</i></span>',
-    '        </div>',
+    '          <span class="v">{{ fmtNum(m.tokens) }}<i class="io">↑{{ fmtNum(m.in) }} ↓{{ fmtNum(m.out) }}</i><i v-if="m.cost" class="io cost">{{ fmtCost(m.cost) }}</i></span>',
+    '        </button>',
     '      </n-card>',
     '      <n-card size="small" class="qvq-glass-card">',
     '        <div class="qvq-card-title">{{ t("usage_chats_title") }}</div>',
     '        <div v-if="!byChat.length" class="qvq-empty">{{ t("usage_empty") }}</div>',
-    '        <div v-for="c in byChat" :key="c.chat_key" class="us-row us-click" @click="openSession(c.chat_key)" :title="c.chat_key">',
+    '        <button v-for="c in byChat" :key="c.chat_key" type="button" class="us-row us-click" @click="openSession(c.chat_key)" :title="c.chat_key">',
     '          <span class="nm">{{ chatName(c.chat_key) }}</span>',
     '          <div class="us-bar"><i :style="{ width: c.pct + \'%\' }"></i></div>',
     '          <span class="v">{{ fmtNum(c.tokens) }}</span>',
-    '        </div>',
+    '        </button>',
     '      </n-card>',
     '    </div>',
     '    <n-card size="small" class="qvq-glass-card">',
-    '      <div class="qvq-card-title">{{ t("usage_budget_title") }}</div>',
+    '      <div class="qvq-card-title">{{ t("usage_budget_title") }}',
+    '        <button type="button" class="qvq-link" @click="openEditGlobal">{{ t("usage_budget_edit_global") }}</button></div>',
     '      <div v-if="!limit && !userLimit && !budgets.length" class="qvq-empty">{{ t("usage_budget_none") }}</div>',
     '      <template v-else>',
     '        <div class="us-row" v-if="limit">',
@@ -13145,13 +13358,19 @@ window.PageUsage = {
     '          <span class="nm">{{ b.name }}</span>',
     '          <div class="us-bar"><i :class="{ warn: b.pct >= 80 }" :style="{ width: b.pct + \'%\' }"></i></div>',
     '          <span class="v">{{ fmtNum(b.used) }} / {{ fmtNum(b.cap) }}</span>',
+    '          <button type="button" class="prov-act" @click="openEditBudget(b)">✎</button>',
     '        </div>',
     '      </template>',
     '    </n-card>',
-    '    <n-card size="small" class="qvq-glass-card">',
-    '      <div class="qvq-card-title">{{ t("usage_records_title") }}</div>',
-    '      <div v-if="!flow.length" class="qvq-empty">{{ t("usage_records_empty") }}</div>',
-    '      <div v-for="(x, i) in flow" :key="i" class="us-rec">',
+    '    <n-card size="small" class="qvq-glass-card" id="us-flow">',
+    '      <div class="qvq-card-title">{{ t("usage_records_title") }}',
+    '        <span class="us-flow-filter" v-if="flowFilterOn">',
+    '          <code v-if="fModel">{{ fModel }}</code>',
+    '          <code v-if="fOrigin">{{ originLabel(fOrigin) }}</code>',
+    '          <button type="button" class="qvq-link" @click="clearFilter">{{ t("usage_filter_clear") }}</button>',
+    '        </span></div>',
+    '      <div v-if="!shownFlow.length" class="qvq-empty">{{ t("usage_records_empty") }}</div>',
+    '      <div v-for="(x, i) in shownFlow" :key="i" class="us-rec">',
     '        <div class="r1">',
     '          <button type="button" class="nm" @click="openSession(x.chat_key)"',
     '                  :title="x.chat_key">{{ chatName(x.chat_key) }}</button>',
@@ -13161,6 +13380,22 @@ window.PageUsage = {
     '      </div>',
     '    </n-card>',
     '  </template>',
+    '  <n-modal v-model:show="editOpen" preset="card" class="qvq-modal-card" style="max-width:380px"',
+    '           :title="editKind === \'global\' ? t(\'usage_budget_edit_global\') : t(\'usage_budget_edit_one\').replace(\'{n}\', editChat ? editChat.name : \'\')" :bordered="false">',
+    '    <div class="prov-form">',
+    '      <div class="prov-field">',
+    '        <label>{{ editKind === \'global\' ? t("limit_edit_label") : t("sess_policy_budget_prompt") }}</label>',
+    '        <n-input-number v-model:value="editValue" :min="0" :step="10000" :show-button="false" style="width:100%"/>',
+    '      </div>',
+    '      <div class="qvq-meta-line">{{ t("usage_budget_edit_hint") }}</div>',
+    '    </div>',
+    '    <template #footer>',
+    '      <div class="qvq-modal-foot">',
+    '        <n-button size="small" @click="editOpen = false">{{ t("cancel") }}</n-button>',
+    '        <n-button size="small" type="primary" :loading="editBusy" @click="saveBudget">{{ t("save") }}</n-button>',
+    '      </div>',
+    '    </template>',
+    '  </n-modal>',
     '</div>',
   ].join(""),
 };
