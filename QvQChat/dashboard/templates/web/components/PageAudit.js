@@ -6,18 +6,18 @@ window.PageAudit = {
       rows: [], total: 0, offset: 0, q: "", picked: [], picking: false,
       busy: false, loading: false,
       detailOpen: false, detailRow: null, observer: null,
+      fTool: "", fKeyword: "", fSince: "", fUntil: "",
+      toolNames: [],
     };
   },
   computed: {
-    shown() {
-      var q = this.q.trim().toLowerCase();
-      if (!q) return this.rows;
-      return this.rows.filter(function (r) {
-        return ((r.tool || "") + " " + (r.user_id || "") + " " + JSON.stringify(r.detail || {})).toLowerCase().indexOf(q) >= 0;
-      });
-    },
     hasMore() {
       return this.rows.length < this.total;
+    },
+    toolOptions() {
+      return [{ label: t("audit_tool_all"), value: "" }].concat(
+        this.toolNames.map(function (n) { return { label: n, value: n }; })
+      );
     },
   },
   mounted() {
@@ -27,13 +27,50 @@ window.PageAudit = {
     if (this.observer) this.observer.disconnect();
   },
   methods: {
+    queryUrl(offset) {
+      var u = "/api/qvq/audit?limit=200&offset=" + offset;
+      if (this.fTool) u += "&tool=" + encodeURIComponent(this.fTool);
+      if (this.fKeyword.trim()) u += "&keyword=" + encodeURIComponent(this.fKeyword.trim());
+      if (this.fSince) u += "&since=" + Math.floor(new Date(this.fSince).getTime() / 1000);
+      if (this.fUntil) u += "&until=" + Math.floor(new Date(this.fUntil).getTime() / 1000);
+      return u;
+    },
     load() {
       var self = this;
       if (!this.offset) this.loading = true;
       if (this.offset) {
-        return api("/api/qvq/audit?limit=200&offset=" + this.offset).then(function (d) { self.applyPage(d); });
+        return api(this.queryUrl(this.offset)).then(function (d) { self.applyPage(d); });
       }
-      return QvQ.swr(self, "audit:0", "/api/qvq/audit?limit=200&offset=0", function (d) { self.applyPage(d); });
+      return QvQ.swr(self, "audit:" + this.fTool + ":" + this.fKeyword + ":" + this.fSince + ":" + this.fUntil, this.queryUrl(0), function (d) { self.applyPage(d); });
+    },
+    applyFilters() {
+      this.offset = 0;
+      this.rows = [];
+      this.total = 0;
+      this.load();
+    },
+    refreshTools() {
+      // 工具下拉选项：从当前累计行聚合（分页滚动后越用越全）
+      var seen = {};
+      this.rows.forEach(function (r) { if (r.tool) seen[r.tool] = 1; });
+      this.toolNames = Object.keys(seen).sort();
+    },
+    exportCsv() {
+      // 导出当前筛选下的首页数据（浏览器端拼 CSV；审计 API 无全量导出端点）
+      var esc = function (v) {
+        var s = String(v == null ? "" : v);
+        return '"' + s.replace(/"/g, '""') + '"';
+      };
+      var head = ["ts", "tool", "user_id", "chat_key", "origin", "detail"];
+      var lines = [head.join(",")].concat(this.rows.map(function (r) {
+        return head.map(function (k) { return esc(k === "detail" ? JSON.stringify(r.detail || {}) : r[k]); }).join(",");
+      }));
+      var blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "audit_" + new Date().toISOString().slice(0, 10) + ".csv";
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
     },
     applyPage(d) {
       var self = this;
@@ -43,6 +80,7 @@ window.PageAudit = {
       });
       self.rows = self.offset ? self.rows.concat(page) : page;
       self.total = (d && d.total) || 0;
+      self.refreshTools();
       self.$nextTick(self.watchSentinel);
     },
     watchSentinel() {
@@ -134,8 +172,16 @@ window.PageAudit = {
     '      <div class="qvq-page-sub">{{ total }} {{ t("audit_total") }}</div>',
     '    </div>',
     '    <div class="qvq-cfg-tools">',
-    '      <n-input v-model:value="q" size="small" clearable :placeholder="t(\'audit_filter\')" style="width:200px"/>',
+    '      <n-select :value="fTool" :options="toolOptions" size="small" filterable tag clearable',
+    '                style="width:150px" :placeholder="t(\'audit_tool_all\')" @update:value="fTool = $event || \'\'; applyFilters()"/>',
+    '      <n-input v-model:value="fKeyword" size="small" clearable :placeholder="t(\'audit_filter\')"',
+    '               style="width:170px" @keyup.enter="applyFilters" @clear="applyFilters"/>',
+    '      <input type="date" class="audit-date" :value="fSince" :aria-label="t(\'audit_since\')"',
+    '             @change="fSince = $event.target.value; applyFilters()"/>',
+    '      <input type="date" class="audit-date" :value="fUntil" :aria-label="t(\'audit_until\')"',
+    '             @change="fUntil = $event.target.value ? $event.target.value + \'T23:59:59\' : \'\'; applyFilters()"/>',
     '      <template v-if="!picking">',
+    '        <n-button size="small" :disabled="!rows.length" @click="exportCsv">{{ t("audit_export") }}</n-button>',
     '        <n-button size="small" :disabled="!rows.length" @click="picking = true">{{ t("batch_manage") }}</n-button>',
     '        <n-button size="small" type="error" ghost :loading="busy" @click="clearAll">{{ t("audit_clear") }}</n-button>',
     '      </template>',

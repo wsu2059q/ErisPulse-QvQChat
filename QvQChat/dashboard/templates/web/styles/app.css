@@ -3884,3 +3884,15 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
   display: inline-block;
   vertical-align: middle;
 }
+
+/* ---- 审计筛选：原生日期输入对齐 Naive 控件高度 ---- */
+.audit-date {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: 8px;
+  background: var(--qvq-surface);
+  color: var(--qvq-tx);
+  font-size: 12px;
+  font-family: var(--qvq-font);
+}

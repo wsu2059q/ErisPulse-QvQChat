@@ -2,7 +2,7 @@
 window.AppShell = {
   name: "AppShell",
   data() {
-    return { drawerOpen: false };
+    return { drawerOpen: false, quickOpen: false };
   },
   computed: {
     ICONS() {
@@ -115,6 +115,23 @@ window.AppShell = {
       },
     },
   },
+  mounted() {
+    // 全局 Ctrl/Cmd+K 呼出命令面板；输入框/文本域聚焦时不劫持
+    var self = this;
+    this._quickKey = function (e) {
+      if (!(e.ctrlKey || e.metaKey) || String(e.key || "").toLowerCase() !== "k") return;
+      var el = e.target;
+      var editable = el && (el.isContentEditable ||
+        el.tagName === "INPUT" || el.tagName === "TEXTAREA");
+      if (editable) return;
+      e.preventDefault();
+      self.quickOpen = !self.quickOpen;
+    };
+    window.addEventListener("keydown", this._quickKey, true);
+  },
+  beforeUnmount() {
+    window.removeEventListener("keydown", this._quickKey, true);
+  },
   methods: {
     go(key) {
       QvQ.store.page = key;
@@ -211,6 +228,9 @@ window.AppShell = {
     '        </transition>',
     '      </main>',
     '    </div>',
+    '    <transition name="qvq-fade">',
+    '      <quick-panel v-if="quickOpen" @close="quickOpen = false"/>',
+    '    </transition>',
     '    <div class="chat-toast qvq-toast" v-if="st.toast" @click="st.toast = \'\'">{{ st.toast }}</div>',
     '  </n-message-provider>',
     '</n-config-provider>',

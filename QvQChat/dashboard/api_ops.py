@@ -124,6 +124,7 @@ class OpsApiMixin:
         name = self.scheduler.run_now(task_id)
         if not name:
             return ({"error": "task not found"}, 404)
+        self.main.audit("tasks_run", {"id": task_id, "name": name})
         return {"ok": True, "name": name}
 
     async def tasks_delete(self, request):
@@ -197,6 +198,7 @@ class OpsApiMixin:
             cooldown_min=int(cooldown) if cooldown is not None else None,
             owner=str((body or {}).get("scope") or ""),
         )
+        self.main.audit("kb_add", {"id": entry.get("id"), "title": title, "scope": str((body or {}).get("scope") or "")})
         return {"ok": True, "entry": entry}
 
     async def kb_update(self, request):
@@ -221,6 +223,7 @@ class OpsApiMixin:
         entry = self.main.knowledge.update(kb_id, **updates)
         if entry is None:
             return ({"error": texts.t("kb_not_found", kb_id=kb_id)}, 404)
+        self.main.audit("kb_update", {"id": kb_id, "fields": sorted(updates.keys())})
         return {"ok": True, "entry": entry}
 
     async def kb_delete(self, request):
@@ -231,6 +234,7 @@ class OpsApiMixin:
         undo = ""
         if ok and entry:
             undo = self._trash_put("kb", dict(entry))
+            self.main.audit("kb_delete", {"id": kid, "title": str(entry.get("title") or "")})
         return {"ok": ok, "undo": undo if ok else ""}
 
     async def kb_export(self, request):

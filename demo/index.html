@@ -3884,6 +3884,18 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
   display: inline-block;
   vertical-align: middle;
 }
+
+/* ---- 审计筛选：原生日期输入对齐 Naive 控件高度 ---- */
+.audit-date {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: 8px;
+  background: var(--qvq-surface);
+  color: var(--qvq-tx);
+  font-size: 12px;
+  font-family: var(--qvq-font);
+}
 </style></head><body><div class="qvq-bg-layer" id="qvq-bg-layer" aria-hidden="true"></div>
 <div id="app"><div class="qvq-splash" aria-hidden="true">
   <svg class="qvq-splash-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -5158,11 +5170,11 @@ function detectLang() {
   return "zh-CN";
 }
 
-I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "来源构成", usage_origin_chat: "对话", usage_origin_dashboard: "面板", usage_origin_task: "定时任务", usage_origin_proactive: "主动发言", usage_origin_subagent: "子智能体", usage_origin_handover: "让渡", usage_budget_title: "预算", usage_budget_none: "未设任何预算：在设置 → 用量与会话策略里配置后这里显示进度", usage_budget_global: "全局日上限", usage_budget_user: "用户配额（最高者）", kb_scope_all: "全部", kb_scope_global: "全局", kb_scope_platform: "平台", kb_scope_session: "会话", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "会话作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "选择平台，可输入新平台名", kb_scope_session_ph: "选择会话，可输入 chat_key", kb_scope_global_hint: "对所有会话可见", kb_scope_empty: "该作用域暂无条目", chat_sandbox_group: "试聊", sandbox_badge: "试聊", sandbox_with: "试聊 · {n}", persona_chat: "试聊此人格", persona_unbound: "未绑定会话（全局兜底时不显示在此）", task_overdue: "已过期", ident_empty: "暂无同源建议；也可手动迁移或归并账户", ident_manual: "手动迁移…", bind_inherit_hint: "留空继承上层绑定（平台级 → 全局默认）", plugin_cfg: "配置", plugin_ext_sub: "生态模块向 AI 贡献的工具/技能/知识/人格一览（只读，随模块卸载消失）", prov_rank_tip: "故障转移链序（数字越小优先级越高，可在编排页调整）", orch_idx_tip: "故障转移顺序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "该域现有 {n} 个条目，清空后不可恢复", settings_unsaved_items: "项未保存", settings_reset: "还原", nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线", usage_records_title: "最近调用明细", mem_profile_clear: "清空画像", theme_follow: "跟随外壳", theme_light: "亮色", theme_dark: "深色", theme_title: "外观：{mode}（点击切换）", aria_menu: "打开菜单", aria_close: "关闭" });
-I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "來源構成", usage_origin_chat: "對話", usage_origin_dashboard: "面板", usage_origin_task: "定時任務", usage_origin_proactive: "主動發言", usage_origin_subagent: "子智能體", usage_origin_handover: "讓渡", usage_budget_title: "預算", usage_budget_none: "未設任何預算：在設定 → 用量與會話策略裡配置後這裡顯示進度", usage_budget_global: "全域日上限", usage_budget_user: "用戶配額（最高者）", kb_scope_all: "全部", kb_scope_global: "全域", kb_scope_platform: "平台", kb_scope_session: "會話", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "會話作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "選擇平台，可輸入新平台名", kb_scope_session_ph: "選擇會話，可輸入 chat_key", kb_scope_global_hint: "對所有會話可見", kb_scope_empty: "該作用域暫無條目", chat_sandbox_group: "試聊", sandbox_badge: "試聊", sandbox_with: "試聊 · {n}", persona_chat: "試聊此人格", persona_unbound: "未綁定會話", task_overdue: "已過期", ident_empty: "暫無同源建議；也可手動遷移或歸併賬戶", ident_manual: "手動遷移…", bind_inherit_hint: "留空繼承上層綁定（平台級 → 全域預設）", plugin_cfg: "配置", plugin_ext_sub: "生態模組向 AI 貢獻的工具/技能/知識/人格一覽（唯讀，隨模組卸載消失）", prov_rank_tip: "故障轉移鏈序（數字越小優先級越高，可在編排頁調整）", orch_idx_tip: "故障轉移順序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "該域現有 {n} 個條目，清空後無法復原", settings_unsaved_items: "項未保存", settings_reset: "還原", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", prompt_chars: "字元", prompt_preview: "預覽提示詞", prompt_required: "必填", prompt_scene_note: "scene 為運行時部件：實際對話時才注入群名/發言人/@感知/引用等場景註記", prompt_turns: "輪歷史", usage_chart_title: "14 天趨勢", nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線", mem_profile_clear: "清空畫像", theme_follow: "跟隨外殼", theme_light: "亮色", theme_dark: "深色", theme_title: "外觀：{mode}（點擊切換）", aria_menu: "開啟選單", aria_close: "關閉" });
-I18N["en"] = Object.assign(I18N["en"] || {}, { usage_range_7d: "7 days", usage_range_14d: "14 days", usage_range_30d: "30 days", usage_origin_title: "By origin", usage_origin_chat: "Chat", usage_origin_dashboard: "Panel", usage_origin_task: "Scheduled", usage_origin_proactive: "Proactive", usage_origin_subagent: "Sub-agent", usage_origin_handover: "Handover", usage_budget_title: "Budgets", usage_budget_none: "No budgets configured: set them in Settings → Usage and session policy", usage_budget_global: "Global daily limit", usage_budget_user: "User quota (top user)", kb_scope_all: "All", kb_scope_global: "Global", kb_scope_platform: "Platform", kb_scope_session: "Sessions", kb_scope_group_platforms: "Platform scopes", kb_scope_group_sessions: "Session scopes", kb_scope_left_all: "All", kb_scope_platform_ph: "Pick a platform or type a new name", kb_scope_session_ph: "Pick a session or type a chat_key", kb_scope_global_hint: "Visible to all sessions", kb_scope_empty: "No entries in this scope", chat_sandbox_group: "Sandbox", sandbox_badge: "Sandbox", sandbox_with: "Sandbox · {n}", persona_chat: "Chat with this persona", persona_unbound: "No session bound", task_overdue: "Overdue", ident_empty: "No same-origin suggestions; migrate or merge accounts manually", ident_manual: "Migrate manually…", bind_inherit_hint: "Leave empty to inherit upper binding (platform → global default)", plugin_cfg: "Configure", plugin_ext_sub: "Tools/skills/knowledge/personas contributed to the AI by ecosystem modules (read-only, removed with the module)", prov_rank_tip: "Failover chain order (lower number = higher priority, adjustable on Orchestrate)", orch_idx_tip: "Failover order", orch_move_up: "Move up", orch_move_down: "Move down", storage_confirm_count: "{n} entries in this domain; clearing is not reversible", settings_unsaved_items: "unsaved", settings_reset: "Revert", share_chat_tokens: "Max tokens visitor chat may consume", share_rounds: "Rounds a visitor may continue chatting (0 = read-only)", share_rounds_hint: "Visitors continue as plain text without tools; stops when rounds or budget run out", nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone", usage_records_title: "Recent calls", mem_profile_clear: "Clear profile", theme_follow: "Follow shell", theme_light: "Light", theme_dark: "Dark", theme_title: "Appearance: {mode} (click to switch)", aria_menu: "Open menu", aria_close: "Close" });
-I18N["ja"] = Object.assign(I18N["ja"] || {}, { usage_range_7d: "直近7日", usage_range_14d: "直近14日", usage_range_30d: "直近30日", usage_origin_title: "ソース別構成", usage_origin_chat: "会話", usage_origin_dashboard: "パネル", usage_origin_task: "定時タスク", usage_origin_proactive: "プロアクティブ", usage_origin_subagent: "サブエージェント", usage_origin_handover: "ハンドオーバー", usage_budget_title: "予算", usage_budget_none: "予算未設定：設定 → 使用量とセッション方針で構成すると表示されます", usage_budget_global: "グローバル日次上限", usage_budget_user: "ユーザー枠（上位）", kb_scope_all: "すべて", kb_scope_global: "グローバル", kb_scope_platform: "プラットフォーム", kb_scope_session: "セッション", kb_scope_group_platforms: "プラットフォームスコープ", kb_scope_group_sessions: "セッションスコープ", kb_scope_left_all: "すべて", kb_scope_platform_ph: "プラットフォームを選択（新規入力可）", kb_scope_session_ph: "セッションを選択（chat_key 直入力可）", kb_scope_global_hint: "全セッションから参照可", kb_scope_empty: "このスコープには項目がありません", chat_sandbox_group: "サンドボックス", sandbox_badge: " sandbox", sandbox_with: " sandbox · {n}", persona_chat: "この人格で試す", persona_unbound: "未バインド", task_overdue: "期限超過", ident_empty: "同源候補なし。手動移行またはアカウント統合も可能", ident_manual: "手動で移行…", bind_inherit_hint: "空欄で上位バインディングを継承（プラットフォーム → グローバル既定）", plugin_cfg: "設定", plugin_ext_sub: "エコシステムモジュールが AI に提供するツール/スキル/知識/人格の一覧（読み取り専用、アンインストールで消失）", prov_rank_tip: "フェイルオーバー順（数字小＝優先度高、編成ページで変更可）", orch_idx_tip: "フェイルオーバー順", orch_move_up: "上へ", orch_move_down: "下へ", storage_confirm_count: "このドメインには {n} 件あります。消去すると元に戻せません", settings_unsaved_items: "件未保存", settings_reset: "取消", nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中", mem_profile_clear: "プロフィールを消去", theme_follow: "シェルに追随", theme_light: "ライト", theme_dark: "ダーク", theme_title: "外観：{mode}（クリックで切替）", aria_menu: "メニューを開く", aria_close: "閉じる" });
-I18N["ru"] = Object.assign(I18N["ru"] || {}, { usage_range_7d: "7 дней", usage_range_14d: "14 дней", usage_range_30d: "30 дней", usage_origin_title: "По источникам", usage_origin_chat: "Чат", usage_origin_dashboard: "Панель", usage_origin_task: "По расписанию", usage_origin_proactive: "Проактивные", usage_origin_subagent: "Субагент", usage_origin_handover: "Передача", usage_budget_title: "Бюджеты", usage_budget_none: "Бюджеты не заданы: настройте в Настройках → Расход и политика сессий", usage_budget_global: "Глобальный дневной лимит", usage_budget_user: "Квота пользователя (лидер)", kb_scope_all: "Все", kb_scope_global: "Глобально", kb_scope_platform: "Платформы", kb_scope_session: "Сессии", kb_scope_group_platforms: "Скоупы платформ", kb_scope_group_sessions: "Скоупы сессий", kb_scope_left_all: "Все", kb_scope_platform_ph: "Выберите платформу или введите новую", kb_scope_session_ph: "Выберите сессию или введите chat_key", kb_scope_global_hint: "Видимо всем сессиям", kb_scope_empty: "В этом скоупе нет записей", chat_sandbox_group: "Песочница", sandbox_badge: "Песочница", sandbox_with: "Песочница · {n}", persona_chat: "Чат с этой личностью", persona_unbound: "Нет привязок", task_overdue: "Просрочено", ident_empty: "Нет однородных предложений; переносите или объединяйте вручную", ident_manual: "Перенести вручную…", bind_inherit_hint: "Пусто — наследуется верхняя привязка (платформа → глобальная)", plugin_cfg: "Настроить", plugin_ext_sub: "Инструменты/навыки/знания/личности от модулей экосистемы (только чтение, исчезают с удалением модуля)", prov_rank_tip: "Порядок отказоустойчивости (меньше число = выше приоритет, меняется в Оркестрации)", orch_idx_tip: "Порядок отказоустойчивости", orch_move_up: "Вверх", orch_move_down: "Вниз", storage_confirm_count: "В домене {n} записей; очистка необратима", settings_unsaved_items: "не сохранено", settings_reset: "Отменить", inbox_handled: "Обработано", load_older: "Загрузить более старые", nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке", mem_profile_clear: "Очистить профиль", theme_follow: "Как в оболочке", theme_light: "Светлая", theme_dark: "Тёмная", theme_title: "Оформление: {mode} (нажмите для смены)", aria_menu: "Открыть меню", aria_close: "Закрыть" });
+I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { quick_open: "快速跳转", quick_placeholder: "搜索页面、会话、知识与技能…", quick_group_pages: "页面", quick_group_sessions: "会话", quick_group_knowledge: "知识", quick_group_skills: "技能", quick_group_actions: "动作", quick_act_new_chat: "新建试聊", quick_act_theme: "切换主题", quick_act_lang: "切换语言", quick_hint: "↑↓ 选择 · Enter 打开 · Esc 关闭", quick_no_result: "没有匹配的结果", quick_turns: "{n} 轮", audit_tool_all: "全部工具", audit_since: "开始日期", audit_until: "结束日期", audit_export: "导出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "来源构成", usage_origin_chat: "对话", usage_origin_dashboard: "面板", usage_origin_task: "定时任务", usage_origin_proactive: "主动发言", usage_origin_subagent: "子智能体", usage_origin_handover: "让渡", usage_budget_title: "预算", usage_budget_none: "未设任何预算：在设置 → 用量与会话策略里配置后这里显示进度", usage_budget_global: "全局日上限", usage_budget_user: "用户配额（最高者）", kb_scope_all: "全部", kb_scope_global: "全局", kb_scope_platform: "平台", kb_scope_session: "会话", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "会话作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "选择平台，可输入新平台名", kb_scope_session_ph: "选择会话，可输入 chat_key", kb_scope_global_hint: "对所有会话可见", kb_scope_empty: "该作用域暂无条目", chat_sandbox_group: "试聊", sandbox_badge: "试聊", sandbox_with: "试聊 · {n}", persona_chat: "试聊此人格", persona_unbound: "未绑定会话（全局兜底时不显示在此）", task_overdue: "已过期", ident_empty: "暂无同源建议；也可手动迁移或归并账户", ident_manual: "手动迁移…", bind_inherit_hint: "留空继承上层绑定（平台级 → 全局默认）", plugin_cfg: "配置", plugin_ext_sub: "生态模块向 AI 贡献的工具/技能/知识/人格一览（只读，随模块卸载消失）", prov_rank_tip: "故障转移链序（数字越小优先级越高，可在编排页调整）", orch_idx_tip: "故障转移顺序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "该域现有 {n} 个条目，清空后不可恢复", settings_unsaved_items: "项未保存", settings_reset: "还原", nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线", usage_records_title: "最近调用明细", mem_profile_clear: "清空画像", theme_follow: "跟随外壳", theme_light: "亮色", theme_dark: "深色", theme_title: "外观：{mode}（点击切换）", aria_menu: "打开菜单", aria_close: "关闭" });
+I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { quick_open: "快速跳轉", quick_placeholder: "搜尋頁面、會話、知識與技能…", quick_group_pages: "頁面", quick_group_sessions: "會話", quick_group_knowledge: "知識", quick_group_skills: "技能", quick_group_actions: "動作", quick_act_new_chat: "新增試聊", quick_act_theme: "切換主題", quick_act_lang: "切換語言", quick_hint: "↑↓ 選擇 · Enter 開啟 · Esc 關閉", quick_no_result: "沒有符合的結果", quick_turns: "{n} 輪", audit_tool_all: "全部工具", audit_since: "開始日期", audit_until: "結束日期", audit_export: "匯出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "來源構成", usage_origin_chat: "對話", usage_origin_dashboard: "面板", usage_origin_task: "定時任務", usage_origin_proactive: "主動發言", usage_origin_subagent: "子智能體", usage_origin_handover: "讓渡", usage_budget_title: "預算", usage_budget_none: "未設任何預算：在設定 → 用量與會話策略裡配置後這裡顯示進度", usage_budget_global: "全域日上限", usage_budget_user: "用戶配額（最高者）", kb_scope_all: "全部", kb_scope_global: "全域", kb_scope_platform: "平台", kb_scope_session: "會話", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "會話作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "選擇平台，可輸入新平台名", kb_scope_session_ph: "選擇會話，可輸入 chat_key", kb_scope_global_hint: "對所有會話可見", kb_scope_empty: "該作用域暫無條目", chat_sandbox_group: "試聊", sandbox_badge: "試聊", sandbox_with: "試聊 · {n}", persona_chat: "試聊此人格", persona_unbound: "未綁定會話", task_overdue: "已過期", ident_empty: "暫無同源建議；也可手動遷移或歸併賬戶", ident_manual: "手動遷移…", bind_inherit_hint: "留空繼承上層綁定（平台級 → 全域預設）", plugin_cfg: "配置", plugin_ext_sub: "生態模組向 AI 貢獻的工具/技能/知識/人格一覽（唯讀，隨模組卸載消失）", prov_rank_tip: "故障轉移鏈序（數字越小優先級越高，可在編排頁調整）", orch_idx_tip: "故障轉移順序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "該域現有 {n} 個條目，清空後無法復原", settings_unsaved_items: "項未保存", settings_reset: "還原", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", prompt_chars: "字元", prompt_preview: "預覽提示詞", prompt_required: "必填", prompt_scene_note: "scene 為運行時部件：實際對話時才注入群名/發言人/@感知/引用等場景註記", prompt_turns: "輪歷史", usage_chart_title: "14 天趨勢", nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線", mem_profile_clear: "清空畫像", theme_follow: "跟隨外殼", theme_light: "亮色", theme_dark: "深色", theme_title: "外觀：{mode}（點擊切換）", aria_menu: "開啟選單", aria_close: "關閉" });
+I18N["en"] = Object.assign(I18N["en"] || {}, { quick_open: "Quick jump", quick_placeholder: "Search pages, sessions, knowledge and skills…", quick_group_pages: "Pages", quick_group_sessions: "Sessions", quick_group_knowledge: "Knowledge", quick_group_skills: "Skills", quick_group_actions: "Actions", quick_act_new_chat: "New sandbox chat", quick_act_theme: "Switch theme", quick_act_lang: "Switch language", quick_hint: "↑↓ navigate · Enter open · Esc close", quick_no_result: "No matches", quick_turns: "{n} turns", audit_tool_all: "All tools", audit_since: "From", audit_until: "To", audit_export: "Export CSV", usage_range_7d: "7 days", usage_range_14d: "14 days", usage_range_30d: "30 days", usage_origin_title: "By origin", usage_origin_chat: "Chat", usage_origin_dashboard: "Panel", usage_origin_task: "Scheduled", usage_origin_proactive: "Proactive", usage_origin_subagent: "Sub-agent", usage_origin_handover: "Handover", usage_budget_title: "Budgets", usage_budget_none: "No budgets configured: set them in Settings → Usage and session policy", usage_budget_global: "Global daily limit", usage_budget_user: "User quota (top user)", kb_scope_all: "All", kb_scope_global: "Global", kb_scope_platform: "Platform", kb_scope_session: "Sessions", kb_scope_group_platforms: "Platform scopes", kb_scope_group_sessions: "Session scopes", kb_scope_left_all: "All", kb_scope_platform_ph: "Pick a platform or type a new name", kb_scope_session_ph: "Pick a session or type a chat_key", kb_scope_global_hint: "Visible to all sessions", kb_scope_empty: "No entries in this scope", chat_sandbox_group: "Sandbox", sandbox_badge: "Sandbox", sandbox_with: "Sandbox · {n}", persona_chat: "Chat with this persona", persona_unbound: "No session bound", task_overdue: "Overdue", ident_empty: "No same-origin suggestions; migrate or merge accounts manually", ident_manual: "Migrate manually…", bind_inherit_hint: "Leave empty to inherit upper binding (platform → global default)", plugin_cfg: "Configure", plugin_ext_sub: "Tools/skills/knowledge/personas contributed to the AI by ecosystem modules (read-only, removed with the module)", prov_rank_tip: "Failover chain order (lower number = higher priority, adjustable on Orchestrate)", orch_idx_tip: "Failover order", orch_move_up: "Move up", orch_move_down: "Move down", storage_confirm_count: "{n} entries in this domain; clearing is not reversible", settings_unsaved_items: "unsaved", settings_reset: "Revert", share_chat_tokens: "Max tokens visitor chat may consume", share_rounds: "Rounds a visitor may continue chatting (0 = read-only)", share_rounds_hint: "Visitors continue as plain text without tools; stops when rounds or budget run out", nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone", usage_records_title: "Recent calls", mem_profile_clear: "Clear profile", theme_follow: "Follow shell", theme_light: "Light", theme_dark: "Dark", theme_title: "Appearance: {mode} (click to switch)", aria_menu: "Open menu", aria_close: "Close" });
+I18N["ja"] = Object.assign(I18N["ja"] || {}, { quick_open: "クイックジャンプ", quick_placeholder: "ページ・セッション・知識・スキルを検索…", quick_group_pages: "ページ", quick_group_sessions: "セッション", quick_group_knowledge: "ナレッジ", quick_group_skills: "スキル", quick_group_actions: "アクション", quick_act_new_chat: "新規サンドボックス", quick_act_theme: "テーマ切替", quick_act_lang: "言語切替", quick_hint: "↑↓ 選択 · Enter 開く · Esc 閉じる", quick_no_result: "該当なし", quick_turns: "{n} ターン", audit_tool_all: "すべてのツール", audit_since: "開始日", audit_until: "終了日", audit_export: "CSV 出力", usage_range_7d: "直近7日", usage_range_14d: "直近14日", usage_range_30d: "直近30日", usage_origin_title: "ソース別構成", usage_origin_chat: "会話", usage_origin_dashboard: "パネル", usage_origin_task: "定時タスク", usage_origin_proactive: "プロアクティブ", usage_origin_subagent: "サブエージェント", usage_origin_handover: "ハンドオーバー", usage_budget_title: "予算", usage_budget_none: "予算未設定：設定 → 使用量とセッション方針で構成すると表示されます", usage_budget_global: "グローバル日次上限", usage_budget_user: "ユーザー枠（上位）", kb_scope_all: "すべて", kb_scope_global: "グローバル", kb_scope_platform: "プラットフォーム", kb_scope_session: "セッション", kb_scope_group_platforms: "プラットフォームスコープ", kb_scope_group_sessions: "セッションスコープ", kb_scope_left_all: "すべて", kb_scope_platform_ph: "プラットフォームを選択（新規入力可）", kb_scope_session_ph: "セッションを選択（chat_key 直入力可）", kb_scope_global_hint: "全セッションから参照可", kb_scope_empty: "このスコープには項目がありません", chat_sandbox_group: "サンドボックス", sandbox_badge: " sandbox", sandbox_with: " sandbox · {n}", persona_chat: "この人格で試す", persona_unbound: "未バインド", task_overdue: "期限超過", ident_empty: "同源候補なし。手動移行またはアカウント統合も可能", ident_manual: "手動で移行…", bind_inherit_hint: "空欄で上位バインディングを継承（プラットフォーム → グローバル既定）", plugin_cfg: "設定", plugin_ext_sub: "エコシステムモジュールが AI に提供するツール/スキル/知識/人格の一覧（読み取り専用、アンインストールで消失）", prov_rank_tip: "フェイルオーバー順（数字小＝優先度高、編成ページで変更可）", orch_idx_tip: "フェイルオーバー順", orch_move_up: "上へ", orch_move_down: "下へ", storage_confirm_count: "このドメインには {n} 件あります。消去すると元に戻せません", settings_unsaved_items: "件未保存", settings_reset: "取消", nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中", mem_profile_clear: "プロフィールを消去", theme_follow: "シェルに追随", theme_light: "ライト", theme_dark: "ダーク", theme_title: "外観：{mode}（クリックで切替）", aria_menu: "メニューを開く", aria_close: "閉じる" });
+I18N["ru"] = Object.assign(I18N["ru"] || {}, { quick_open: "Быстрый переход", quick_placeholder: "Поиск: страницы, сессии, знания, навыки…", quick_group_pages: "Страницы", quick_group_sessions: "Сессии", quick_group_knowledge: "Знания", quick_group_skills: "Навыки", quick_group_actions: "Действия", quick_act_new_chat: "Новая песочница", quick_act_theme: "Сменить тему", quick_act_lang: "Сменить язык", quick_hint: "↑↓ выбор · Enter открыть · Esc закрыть", quick_no_result: "Ничего не найдено", quick_turns: "{n} ходов", audit_tool_all: "Все инструменты", audit_since: "С", audit_until: "По", audit_export: "Экспорт CSV", usage_range_7d: "7 дней", usage_range_14d: "14 дней", usage_range_30d: "30 дней", usage_origin_title: "По источникам", usage_origin_chat: "Чат", usage_origin_dashboard: "Панель", usage_origin_task: "По расписанию", usage_origin_proactive: "Проактивные", usage_origin_subagent: "Субагент", usage_origin_handover: "Передача", usage_budget_title: "Бюджеты", usage_budget_none: "Бюджеты не заданы: настройте в Настройках → Расход и политика сессий", usage_budget_global: "Глобальный дневной лимит", usage_budget_user: "Квота пользователя (лидер)", kb_scope_all: "Все", kb_scope_global: "Глобально", kb_scope_platform: "Платформы", kb_scope_session: "Сессии", kb_scope_group_platforms: "Скоупы платформ", kb_scope_group_sessions: "Скоупы сессий", kb_scope_left_all: "Все", kb_scope_platform_ph: "Выберите платформу или введите новую", kb_scope_session_ph: "Выберите сессию или введите chat_key", kb_scope_global_hint: "Видимо всем сессиям", kb_scope_empty: "В этом скоупе нет записей", chat_sandbox_group: "Песочница", sandbox_badge: "Песочница", sandbox_with: "Песочница · {n}", persona_chat: "Чат с этой личностью", persona_unbound: "Нет привязок", task_overdue: "Просрочено", ident_empty: "Нет однородных предложений; переносите или объединяйте вручную", ident_manual: "Перенести вручную…", bind_inherit_hint: "Пусто — наследуется верхняя привязка (платформа → глобальная)", plugin_cfg: "Настроить", plugin_ext_sub: "Инструменты/навыки/знания/личности от модулей экосистемы (только чтение, исчезают с удалением модуля)", prov_rank_tip: "Порядок отказоустойчивости (меньше число = выше приоритет, меняется в Оркестрации)", orch_idx_tip: "Порядок отказоустойчивости", orch_move_up: "Вверх", orch_move_down: "Вниз", storage_confirm_count: "В домене {n} записей; очистка необратима", settings_unsaved_items: "не сохранено", settings_reset: "Отменить", inbox_handled: "Обработано", load_older: "Загрузить более старые", nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке", mem_profile_clear: "Очистить профиль", theme_follow: "Как в оболочке", theme_light: "Светлая", theme_dark: "Тёмная", theme_title: "Оформление: {mode} (нажмите для смены)", aria_menu: "Открыть меню", aria_close: "Закрыть" });
 
 function t(k) {
   return (I18N[QvQ.store.lang] && I18N[QvQ.store.lang][k]) || I18N.en[k] || k;
@@ -5606,7 +5618,7 @@ function mdTable(rows) {
 window.AppShell = {
   name: "AppShell",
   data() {
-    return { drawerOpen: false };
+    return { drawerOpen: false, quickOpen: false };
   },
   computed: {
     ICONS() {
@@ -5719,6 +5731,23 @@ window.AppShell = {
       },
     },
   },
+  mounted() {
+    // 全局 Ctrl/Cmd+K 呼出命令面板；输入框/文本域聚焦时不劫持
+    var self = this;
+    this._quickKey = function (e) {
+      if (!(e.ctrlKey || e.metaKey) || String(e.key || "").toLowerCase() !== "k") return;
+      var el = e.target;
+      var editable = el && (el.isContentEditable ||
+        el.tagName === "INPUT" || el.tagName === "TEXTAREA");
+      if (editable) return;
+      e.preventDefault();
+      self.quickOpen = !self.quickOpen;
+    };
+    window.addEventListener("keydown", this._quickKey, true);
+  },
+  beforeUnmount() {
+    window.removeEventListener("keydown", this._quickKey, true);
+  },
   methods: {
     go(key) {
       QvQ.store.page = key;
@@ -5815,6 +5844,9 @@ window.AppShell = {
     '        </transition>',
     '      </main>',
     '    </div>',
+    '    <transition name="qvq-fade">',
+    '      <quick-panel v-if="quickOpen" @close="quickOpen = false"/>',
+    '    </transition>',
     '    <div class="chat-toast qvq-toast" v-if="st.toast" @click="st.toast = \'\'">{{ st.toast }}</div>',
     '  </n-message-provider>',
     '</n-config-provider>',
@@ -11300,18 +11332,18 @@ window.PageAudit = {
       rows: [], total: 0, offset: 0, q: "", picked: [], picking: false,
       busy: false, loading: false,
       detailOpen: false, detailRow: null, observer: null,
+      fTool: "", fKeyword: "", fSince: "", fUntil: "",
+      toolNames: [],
     };
   },
   computed: {
-    shown() {
-      var q = this.q.trim().toLowerCase();
-      if (!q) return this.rows;
-      return this.rows.filter(function (r) {
-        return ((r.tool || "") + " " + (r.user_id || "") + " " + JSON.stringify(r.detail || {})).toLowerCase().indexOf(q) >= 0;
-      });
-    },
     hasMore() {
       return this.rows.length < this.total;
+    },
+    toolOptions() {
+      return [{ label: t("audit_tool_all"), value: "" }].concat(
+        this.toolNames.map(function (n) { return { label: n, value: n }; })
+      );
     },
   },
   mounted() {
@@ -11321,13 +11353,50 @@ window.PageAudit = {
     if (this.observer) this.observer.disconnect();
   },
   methods: {
+    queryUrl(offset) {
+      var u = "/api/qvq/audit?limit=200&offset=" + offset;
+      if (this.fTool) u += "&tool=" + encodeURIComponent(this.fTool);
+      if (this.fKeyword.trim()) u += "&keyword=" + encodeURIComponent(this.fKeyword.trim());
+      if (this.fSince) u += "&since=" + Math.floor(new Date(this.fSince).getTime() / 1000);
+      if (this.fUntil) u += "&until=" + Math.floor(new Date(this.fUntil).getTime() / 1000);
+      return u;
+    },
     load() {
       var self = this;
       if (!this.offset) this.loading = true;
       if (this.offset) {
-        return api("/api/qvq/audit?limit=200&offset=" + this.offset).then(function (d) { self.applyPage(d); });
+        return api(this.queryUrl(this.offset)).then(function (d) { self.applyPage(d); });
       }
-      return QvQ.swr(self, "audit:0", "/api/qvq/audit?limit=200&offset=0", function (d) { self.applyPage(d); });
+      return QvQ.swr(self, "audit:" + this.fTool + ":" + this.fKeyword + ":" + this.fSince + ":" + this.fUntil, this.queryUrl(0), function (d) { self.applyPage(d); });
+    },
+    applyFilters() {
+      this.offset = 0;
+      this.rows = [];
+      this.total = 0;
+      this.load();
+    },
+    refreshTools() {
+      // 工具下拉选项：从当前累计行聚合（分页滚动后越用越全）
+      var seen = {};
+      this.rows.forEach(function (r) { if (r.tool) seen[r.tool] = 1; });
+      this.toolNames = Object.keys(seen).sort();
+    },
+    exportCsv() {
+      // 导出当前筛选下的首页数据（浏览器端拼 CSV；审计 API 无全量导出端点）
+      var esc = function (v) {
+        var s = String(v == null ? "" : v);
+        return '"' + s.replace(/"/g, '""') + '"';
+      };
+      var head = ["ts", "tool", "user_id", "chat_key", "origin", "detail"];
+      var lines = [head.join(",")].concat(this.rows.map(function (r) {
+        return head.map(function (k) { return esc(k === "detail" ? JSON.stringify(r.detail || {}) : r[k]); }).join(",");
+      }));
+      var blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "audit_" + new Date().toISOString().slice(0, 10) + ".csv";
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
     },
     applyPage(d) {
       var self = this;
@@ -11337,6 +11406,7 @@ window.PageAudit = {
       });
       self.rows = self.offset ? self.rows.concat(page) : page;
       self.total = (d && d.total) || 0;
+      self.refreshTools();
       self.$nextTick(self.watchSentinel);
     },
     watchSentinel() {
@@ -11428,8 +11498,16 @@ window.PageAudit = {
     '      <div class="qvq-page-sub">{{ total }} {{ t("audit_total") }}</div>',
     '    </div>',
     '    <div class="qvq-cfg-tools">',
-    '      <n-input v-model:value="q" size="small" clearable :placeholder="t(\'audit_filter\')" style="width:200px"/>',
+    '      <n-select :value="fTool" :options="toolOptions" size="small" filterable tag clearable',
+    '                style="width:150px" :placeholder="t(\'audit_tool_all\')" @update:value="fTool = $event || \'\'; applyFilters()"/>',
+    '      <n-input v-model:value="fKeyword" size="small" clearable :placeholder="t(\'audit_filter\')"',
+    '               style="width:170px" @keyup.enter="applyFilters" @clear="applyFilters"/>',
+    '      <input type="date" class="audit-date" :value="fSince" :aria-label="t(\'audit_since\')"',
+    '             @change="fSince = $event.target.value; applyFilters()"/>',
+    '      <input type="date" class="audit-date" :value="fUntil" :aria-label="t(\'audit_until\')"',
+    '             @change="fUntil = $event.target.value ? $event.target.value + \'T23:59:59\' : \'\'; applyFilters()"/>',
     '      <template v-if="!picking">',
+    '        <n-button size="small" :disabled="!rows.length" @click="exportCsv">{{ t("audit_export") }}</n-button>',
     '        <n-button size="small" :disabled="!rows.length" @click="picking = true">{{ t("batch_manage") }}</n-button>',
     '        <n-button size="small" type="error" ghost :loading="busy" @click="clearAll">{{ t("audit_clear") }}</n-button>',
     '      </template>',
@@ -13156,10 +13234,305 @@ window.SchemaForm = {
     '</div>',
   ].join(""),
 };
-</script><script>/* 快速跳转面板（Ctrl+K）：M3 实现，先占位 */
+</script><script>/* 全局命令面板（Ctrl/Cmd+K）：页面 / 会话 / 知识 / 技能 / 动作 五组结果，键盘流优先。
+   样式不进 app.css（本次只动两个文件），由此文件在加载时注入一次 <style>。
+   新文案键（未入 i18n.js，页面用 t(key) 即可）：
+   i18n: quick_open=快速跳转
+   i18n: quick_placeholder=搜索页面、会话、知识与技能…
+   i18n: quick_group_pages=页面
+   i18n: quick_group_sessions=会话
+   i18n: quick_group_knowledge=知识
+   i18n: quick_group_skills=技能
+   i18n: quick_group_actions=动作
+   i18n: quick_act_new_chat=新建试聊
+   i18n: quick_act_theme=切换主题
+   i18n: quick_act_lang=切换语言
+   i18n: quick_hint=↑↓ 选择 · Enter 打开 · Esc 关闭
+   i18n: quick_no_result=没有匹配的结果
+   i18n: quick_turns={n} 轮
+*/
+(function () {
+  if (document.getElementById("qvq-quick-style")) return;
+  var css = [
+    ".qvq-quick{position:fixed;inset:0;z-index:90;display:flex;align-items:flex-start;justify-content:center;",
+    "padding:12vh 16px 16px;background:rgba(6,8,12,.45)}",
+    ".qvq-quick-card{width:100%;max-width:560px;max-height:68vh;display:flex;flex-direction:column;",
+    "background:color-mix(in srgb,var(--qvq-surface) 88%,transparent);border:1px solid var(--qvq-bd);",
+    "border-radius:var(--qvq-radius-xl);box-shadow:var(--qvq-shadow);overflow:hidden}",
+    ".qvq-quick-head{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--qvq-bd);flex:none}",
+    ".qvq-quick-head-ico{width:17px;height:17px;flex:none;color:var(--qvq-tx-t);display:inline-flex}",
+    ".qvq-quick-ico svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}",
+    ".qvq-quick-input{flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--qvq-tx);",
+    "font-size:15px;font-family:var(--qvq-font)}",
+    ".qvq-quick-input::placeholder{color:var(--qvq-tx-t)}",
+    ".qvq-quick-list{flex:1;min-height:0;overflow-y:auto;padding:6px}",
+    ".qvq-quick-cat{font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;",
+    "color:var(--qvq-tx-t);padding:10px 10px 4px}",
+    ".qvq-quick-row{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:none;",
+    "border-radius:var(--qvq-r-ctl);background:transparent;color:var(--qvq-tx);cursor:pointer;",
+    "text-align:left;font-family:var(--qvq-font);font-size:13.5px}",
+    ".qvq-quick-row.on{background:var(--qvq-accent-soft);color:var(--qvq-accent)}",
+    ".qvq-quick-row-ico{width:16px;height:16px;flex:none;color:var(--qvq-tx-s);display:inline-flex}",
+    ".qvq-quick-row.on .qvq-quick-row-ico{color:var(--qvq-accent)}",
+    ".qvq-quick-row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}",
+    ".qvq-quick-row-label{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+    ".qvq-quick-row-sub{font-size:11.5px;color:var(--qvq-tx-s);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+    ".qvq-quick-empty{padding:30px 0;text-align:center;color:var(--qvq-tx-t);font-size:13px}",
+    ".qvq-quick-foot{flex:none;border-top:1px solid var(--qvq-bd);padding:8px 14px;font-size:11.5px;",
+    "color:var(--qvq-tx-t);display:flex;justify-content:flex-end}",
+    "@media (max-width:760px){.qvq-quick{padding:8vh 12px 12px}.qvq-quick-card{max-height:74vh}}",
+  ].join("");
+  var style = document.createElement("style");
+  style.id = "qvq-quick-style";
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+
 window.QuickPanel = {
   name: "QuickPanel",
-  template: '<div/>',
+  emits: ["close"],
+  data() {
+    return {
+      q: "",
+      sessions: [],
+      kb: [],
+      skills: [],
+      active: 0,
+      seq: 0,
+      timer: null,
+      docKey: null,
+    };
+  },
+  computed: {
+    st() { return QvQ.store; },
+    icons() {
+      var A = window.AppShell;
+      try { return (A && A.computed && A.computed.ICONS) ? A.computed.ICONS() : {}; }
+      catch (e) { return {}; }
+    },
+    /* 页面静态表：直接派生自 AppShell navGroups（19 页），保证与侧边栏零漂移 */
+    pages() {
+      var A = window.AppShell;
+      var groups = [];
+      if (A && A.computed && A.computed.navGroups) {
+        try { groups = A.computed.navGroups.call({ ICONS: this.icons }) || []; }
+        catch (e) { groups = []; }
+      }
+      var out = [];
+      groups.forEach(function (g) {
+        (g.items || []).forEach(function (it) {
+          out.push({ id: it.id, labelKey: it.labelKey, ico: it.ico });
+        });
+      });
+      return out;
+    },
+    actions() {
+      var ICONS = this.icons;
+      var st = QvQ.store;
+      var themeOrder = ["light", "dark", "follow"];
+      var nextTheme = themeOrder[(themeOrder.indexOf(st.themeMode || "follow") + 1) % themeOrder.length];
+      var langs = ["zh-CN", "zh-TW", "en", "ja", "ru"];
+      var langNames = { "zh-CN": "简体中文", "zh-TW": "繁體中文", "en": "English", "ja": "日本語", "ru": "Русский" };
+      var nextLang = langs[(langs.indexOf(st.lang) + 1) % langs.length];
+      return [
+        {
+          key: "act:new_chat", ico: ICONS.chat || "",
+          label: t("quick_act_new_chat"), sub: "",
+          run() {
+            api("/api/qvq/sessions/create", "POST", {}).then(function (d) {
+              if (d && d.chat_key) {
+                QvQ.store.pendingChat = d.chat_key;
+                QvQ.store.page = "chat";
+              }
+            });
+          },
+        },
+        {
+          key: "act:theme", ico: this.themeIco(),
+          label: t("quick_act_theme"), sub: t("theme_" + nextTheme),
+          run() {
+            QvQ.setTheme(nextTheme);
+            QvQ.toast(t("theme_title").replace("{mode}", t("theme_" + nextTheme)));
+          },
+        },
+        {
+          key: "act:lang", ico: "",
+          label: t("quick_act_lang"), sub: langNames[nextLang] || nextLang,
+          run() { QvQ.setLang(nextLang); },
+        },
+      ];
+    },
+    /* 扁平化结果：↑↓ 跨组连续移动 / Enter 执行都基于它 */
+    flat() {
+      var self = this;
+      var out = [];
+      var raw = this.q.trim();
+      var q = raw.toLowerCase();
+      var push = function (header, items) {
+        items.forEach(function (it, idx) {
+          var row = Object.assign({}, it);
+          if (idx === 0) row.header = header;
+          out.push(row);
+        });
+      };
+      var hit = function (text) {
+        return !q || String(text || "").toLowerCase().indexOf(q) >= 0;
+      };
+      // 页面（空输入 = 快捷入口语义，全部展示）
+      push(t("quick_group_pages"), this.pages.filter(function (p) {
+        return hit(p.id) || hit(t(p.labelKey));
+      }).map(function (p) {
+        return {
+          key: "page:" + p.id, ico: p.ico,
+          label: t(p.labelKey), sub: "",
+          run() { QvQ.store.page = p.id; },
+        };
+      }));
+      // 会话 / 知识 / 技能：仅有关键词时出现（会话与知识由后端内容级搜索）
+      if (raw) {
+        push(t("quick_group_sessions"), this.sessions.map(function (s) {
+          var key = s.chat_key || "";
+          return {
+            key: "session:" + key, ico: self.icons.chat || "",
+            label: s.name || key, sub: QvQ.fill("quick_turns", { n: s.turns || 0 }),
+            run() { QvQ.store.pendingChat = key; QvQ.store.page = "chat"; },
+          };
+        }));
+        push(t("quick_group_knowledge"), this.kb.map(function (e) {
+          var sub = String(e.content || "").replace(/\s+/g, " ").trim();
+          if (sub.length > 60) sub = sub.slice(0, 60) + "…";
+          return {
+            key: "kb:" + (e.id || e.title), ico: self.icons.knowledge || "",
+            label: e.title || String(e.id || ""), sub: sub,
+            run() { QvQ.store.page = "knowledge"; },
+          };
+        }));
+        push(t("quick_group_skills"), this.skills.filter(function (s) {
+          return hit((s.name || "") + " " + (s.description || ""));
+        }).slice(0, 3).map(function (s) {
+          return {
+            key: "skill:" + s.name, ico: self.icons.skills || "",
+            label: s.name || "", sub: String(s.description || ""),
+            run() { QvQ.store.page = "skills"; },
+          };
+        }));
+      }
+      // 动作
+      push(t("quick_group_actions"), this.actions.filter(function (a) {
+        return hit(a.label);
+      }).map(function (a) {
+        return { key: a.key, ico: a.ico, label: a.label, sub: a.sub, run: a.run };
+      }));
+      return out;
+    },
+  },
+  watch: {
+    /* 输入防抖 250ms 后再发搜索 */
+    q() {
+      var self = this;
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = setTimeout(function () { self.search(); }, 250);
+    },
+    /* 结果集变化时高亮回到首项 */
+    flat() { this.active = 0; },
+    /* 高亮项保持在可视区 */
+    active() { this.scrollActive(); },
+  },
+  mounted() {
+    var self = this;
+    this.$nextTick(function () {
+      if (self.$refs.qin) self.$refs.qin.focus();
+    });
+    api("/api/qvq/skills").then(function (d) {
+      self.skills = (d && d.skills) || [];
+    }).catch(function () {});
+    /* 面板打开期间接管按键：即使焦点落在 body 也能 Esc / ↑↓ / Enter */
+    this.docKey = function (e) {
+      var k = e.key;
+      if (k === "Escape") { e.preventDefault(); self.close(); return; }
+      if (k === "ArrowDown") { e.preventDefault(); self.move(1); return; }
+      if (k === "ArrowUp") { e.preventDefault(); self.move(-1); return; }
+      if (k === "Enter") { e.preventDefault(); self.exec(self.active); }
+    };
+    document.addEventListener("keydown", this.docKey, true);
+  },
+  beforeUnmount() {
+    if (this.timer) clearTimeout(this.timer);
+    if (this.docKey) document.removeEventListener("keydown", this.docKey, true);
+  },
+  methods: {
+    close() { this.$emit("close"); },
+    themeIco() {
+      var A = window.AppShell;
+      try {
+        return (A && A.methods && A.methods.themeIcon)
+          ? A.methods.themeIcon.call({ st: QvQ.store }) : "";
+      } catch (e) { return ""; }
+    },
+    move(d) {
+      var n = this.flat.length;
+      if (!n) return;
+      this.active = (this.active + d + n) % n;
+    },
+    exec(i) {
+      var row = this.flat[i];
+      if (!row) return;
+      this.close();
+      if (row.run) row.run();
+    },
+    search() {
+      var self = this;
+      var kw = this.q.trim();
+      if (!kw) { this.sessions = []; this.kb = []; return; }
+      var seq = ++this.seq;
+      api("/api/qvq/sessions?q=" + encodeURIComponent(kw)).then(function (d) {
+        if (seq !== self.seq) return;
+        self.sessions = ((d && d.sessions) || []).slice(0, 5);
+      });
+      api("/api/qvq/kb?q=" + encodeURIComponent(kw)).then(function (d) {
+        if (seq !== self.seq) return;
+        self.kb = ((d && d.entries) || []).slice(0, 3);
+      });
+    },
+    scrollActive() {
+      var self = this;
+      this.$nextTick(function () {
+        var list = self.$refs.list;
+        if (!list) return;
+        var rows = list.querySelectorAll(".qvq-quick-row");
+        var el = rows[self.active];
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+      });
+    },
+  },
+  template: [
+    '<div class="qvq-quick" @click.self="close">',
+    '  <div class="qvq-quick-card qvq-glass-card" role="dialog" aria-modal="true" :aria-label="t(\'quick_open\')">',
+    '    <div class="qvq-quick-head">',
+    '      <span class="qvq-quick-head-ico qvq-quick-ico">',
+    '        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+    '      </span>',
+    '      <input ref="qin" v-model="q" class="qvq-quick-input" type="text"',
+    '             :placeholder="t(\'quick_placeholder\')" :aria-label="t(\'quick_open\')"/>',
+    '    </div>',
+    '    <div class="qvq-quick-list" ref="list">',
+    '      <template v-for="(r, i) in flat" :key="r.key">',
+    '        <div v-if="r.header" class="qvq-quick-cat">{{ r.header }}</div>',
+    '        <button type="button" class="qvq-quick-row" :class="{ on: i === active }"',
+    '                @click="exec(i)" @mousemove="active = i">',
+    '          <span v-if="r.ico" class="qvq-quick-row-ico qvq-quick-ico" v-html="r.ico"></span>',
+    '          <span class="qvq-quick-row-main">',
+    '            <span class="qvq-quick-row-label">{{ r.label }}</span>',
+    '            <span v-if="r.sub" class="qvq-quick-row-sub">{{ r.sub }}</span>',
+    '          </span>',
+    '        </button>',
+    '      </template>',
+    '      <div v-if="!flat.length" class="qvq-quick-empty">{{ t("quick_no_result") }}</div>',
+    '    </div>',
+    '    <div class="qvq-quick-foot">{{ t("quick_hint") }}</div>',
+    '  </div>',
+    '</div>',
+  ].join(""),
 };
 </script><script>/* 吉祥物：小机器人，mood 控制待机动作，空闲时随机做一个动作 */
 window.Mascot = {

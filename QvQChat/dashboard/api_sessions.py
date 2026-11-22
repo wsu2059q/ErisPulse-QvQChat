@@ -816,6 +816,7 @@ class SessionsApiMixin:
         if "manual" in ui:
             self.main.sessions.set_flags(chat_key, {"manual": bool(ui["manual"])})
             saved["manual"] = bool(ui["manual"])
+        self.main.audit("session_settings", {"chat_key": chat_key, "keys": sorted(ui.keys())})
         return {"ok": True, "ui": saved}
 
     async def session_policy(self, request):
@@ -968,6 +969,7 @@ class SessionsApiMixin:
             removed = self.main.memory.forget(chat_key, query)
         else:
             removed = self.main.memory.clear(chat_key)
+        self.main.audit("memory_delete", {"chat_key": chat_key})
         return {"ok": True, "removed": removed}
 
 # ===== 会话分享 =====

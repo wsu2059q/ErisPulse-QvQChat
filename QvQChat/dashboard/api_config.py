@@ -211,6 +211,7 @@ class ConfigApiMixin:
                 undo = self._trash_put("binding", {"chat_key": chat_key, "persona": previous})
 # 仅写 KV 权威绑定；state.persona 镜像已废弃
         self.main.personas.bind(chat_key, persona)
+        self.main.audit("persona_bind", {"chat_key": chat_key, "persona": str(persona or "")})
         return {"ok": True, "undo": undo}
 
     async def tools_get(self, request):
