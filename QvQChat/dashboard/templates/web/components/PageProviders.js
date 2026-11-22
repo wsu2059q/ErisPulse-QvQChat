@@ -424,6 +424,7 @@ window.PageProviders = {
     '      <n-button size="small" type="primary" @click="add">{{ t("prov_add") }}</n-button>',
     '    </div>',
     '  </div>',
+    '<settings-section group="model" :title="t(&quot;ss_model&quot;)"/>',
     '  <div v-if="!loading && !providers.length" class="qvq-empty">{{ t("models_empty") }}</div>',
     '  <div class="prov-grid">',
     '    <article v-for="p in providers" :key="p.id" class="prov-card" :class="{ off: p.enabled === false }">',

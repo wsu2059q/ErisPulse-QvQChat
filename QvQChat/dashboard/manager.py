@@ -423,7 +423,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             "components/PageStorage", "components/PageTools", "components/PageMcp",
             "components/PageOrchestrate", "components/BackupPanel", "components/PageInbox",
             "components/PageUsage",
-            "components/SchemaForm", "components/QuickPanel",
+            "components/SettingsSection", "components/SchemaForm", "components/QuickPanel",
             "components/Mascot", "main",
         )
         js = "".join(

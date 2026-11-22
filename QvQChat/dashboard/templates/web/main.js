@@ -10,7 +10,7 @@
     "PagePersonas", "PageConfig", "PagePlugins", "PageSkills", "PageTasks",
     "PageMemory", "PageKnowledge", "PageSessions", "PageAudit", "PageStorage",
     "PageTools", "PageMcp", "PageOrchestrate", "BackupPanel", "PageInbox",
-    "PageUsage", "SchemaForm", "QuickPanel", "Mascot",
+    "PageUsage", "SchemaForm", "SettingsSection", "QuickPanel", "Mascot",
   ];
   names.forEach(function (name) {
     if (window[name]) app.component(name, window[name]);

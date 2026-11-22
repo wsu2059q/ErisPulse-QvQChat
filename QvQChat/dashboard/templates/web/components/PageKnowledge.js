@@ -182,6 +182,7 @@ window.PageKnowledge = {
     '      <input ref="importFile" type="file" accept=".json,application/json" style="display:none" @change="importKb"/>',
     '    </div>',
     '  </div>',
+    '<settings-section group="kb" :title="t(&quot;ss_kb&quot;)"/>',
     '  <div class="kb-batch-bar" v-if="batchMode">',
     '    <n-checkbox :checked="allPicked" @update:checked="toggleAll">{{ t("batch_select_all") }}</n-checkbox>',
     '    <span class="qvq-meta-line">{{ picked.length }} / {{ entries.length }}</span>',

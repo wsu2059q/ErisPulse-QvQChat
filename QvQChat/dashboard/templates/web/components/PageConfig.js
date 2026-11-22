@@ -9,6 +9,7 @@ window.PageConfig = {
       initial: {},
       errors: {},
       q: "",
+      expanded: {},
       active: "",
       saving: false,
       savedHint: "",
@@ -157,7 +158,16 @@ window.PageConfig = {
         var extra = f.choices.length + " " + t("cf_options_n");
         text = text ? text + " · " + extra : extra;
       }
+// 介绍太长挤爆单列：默认只显示首句（。！? 为界），完整内容点「详情」展开 + title 悬浮全量
+      var cut = text ? text.search(/[。！?]/) : -1;
+      if (cut >= 0 && cut + 1 < text.length) return text.slice(0, cut + 1);
       return text;
+    },
+    detailOf(f) {
+      var text = QvQ.fieldDesc(f.description, f.key);
+      var cut = text ? text.search(/[。！?]/) : -1;
+// 有第二句起的内容才算"还有详情"
+      return cut >= 0 && cut + 1 < text.length ? text.slice(cut + 1) : "";
     },
     spy() {
       if (!this.scroller) return;
@@ -283,7 +293,12 @@ window.PageConfig = {
     '              {{ titleOf(f) }}',
     '              <span class="doc-flag" v-if="f.dangerous">{{ t("settings_dangerous") }}</span>',
     '            </div>',
-    '            <div class="doc-row-hint" v-if="hintOf(f)" :title="f.description">{{ hintOf(f) }}</div>',
+    '            <div class="doc-row-hint" v-if="hintOf(f)">',
+    '              <span :title="f.description">{{ hintOf(f) }}</span>',
+    '              <button v-if="detailOf(f)" type="button" class="doc-hint-more"',
+    '                      @click="expanded[f.key] = !expanded[f.key]">{{ expanded[f.key] ? t("cf_detail_less") : t("cf_detail_more") }}</button>',
+    '            </div>',
+    '            <div class="doc-row-detail" v-if="expanded[f.key] && detailOf(f)">{{ detailOf(f) }}{{ t("cf_detail_effect") }}</div>',
     '          </div>',
     '          <div class="doc-ctl">',
     '            <schema-form :field="f" hide-head :model-value="draft[f.key]"',

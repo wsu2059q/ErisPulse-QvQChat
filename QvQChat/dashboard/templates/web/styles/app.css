@@ -764,6 +764,46 @@ html[data-theme="light"] .qvq-bg-layer.qvq-bg-fallback {
   overflow: hidden;
 }
 
+/* 设置页字段介绍：默认首句，详情点击展开（折叠意图见 PageConfig.hintOf） */
+.doc-hint-more {
+  border: 0;
+  background: transparent;
+  padding: 0 4px;
+  color: var(--qvq-accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.doc-row-detail {
+  margin-top: 3px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* 功能页内「相关设置」区块（SettingsSection，折叠默认收起） */
+.ss-card { margin-bottom: 14px; }
+.ss-head { display: flex; align-items: center; gap: 8px; }
+.ss-head .qvq-card-title { flex: 1 1 auto; }
+.ss-toggle {
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-bg-s);
+  border-radius: 8px;
+  color: var(--qvq-tx-s);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+.ss-toggle:hover { color: var(--qvq-accent); border-color: var(--qvq-bd-h); }
+.ss-body { margin-top: 10px; }
+.ss-foot { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.ss-saved { color: var(--qvq-ok); font-size: 12px; }
+
 /* 用量页：汇总 kpi + 模型/会话分布条 */
 .us-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
 .us-kpi {

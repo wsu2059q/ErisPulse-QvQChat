@@ -114,6 +114,7 @@ ORDER = (
     "components/PageStorage", "components/PageTools", "components/PageMcp",
     "components/PageOrchestrate", "components/BackupPanel", "components/PageInbox",
             "components/PageUsage",
+    "components/SettingsSection",
     "components/SchemaForm", "components/QuickPanel",
     "components/Mascot", "main",
 )
