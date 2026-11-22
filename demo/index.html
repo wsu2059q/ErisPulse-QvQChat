@@ -2741,7 +2741,7 @@ body::-webkit-scrollbar,
   .chat-head-ctl .n-select { min-height: 38px; --n-height: 38px; font-size: 13px; }
   .chat-head-ctl .n-base-selection { min-height: 38px; --n-height: 38px; }
   .chat-head-ctl > button,
-  .chat-demo-btn, .chat-todo-btn, .chat-side-toggle, .chat-new, .chat-filter-btn {
+  .chat-todo-btn, .chat-side-toggle, .chat-new, .chat-filter-btn {
     min-width: 38px;
     min-height: 38px;
   }
@@ -3022,20 +3022,6 @@ body::-webkit-scrollbar,
   box-shadow: var(--qvq-shadow);
 }
 .chat-down:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
-.chat-demo-btn {
-  border: 1px solid var(--qvq-bd);
-  border-radius: 8px;
-  background: var(--qvq-bg-s);
-  color: var(--qvq-tx-s);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 4px 8px;
-}
-.chat-demo-btn.on { border-color: var(--qvq-accent); color: var(--qvq-accent); }
-.chat-wrap.demo .msg.user .msg-text,
-.chat-wrap.demo .msg.user .msg-atts { filter: blur(8px); }
-.chat-wrap.demo .msg.user:hover .msg-text,
-.chat-wrap.demo .msg.user:hover .msg-atts { filter: none; }
 
 
 /* 画像编辑：段落头 + 行编辑器 */
@@ -6026,6 +6012,12 @@ window.LoginPage = {
   ].join(""),
 };
 </script><script>/* 概览：运行指标 / 用量与成本趋势 / 最近会话 / 即将执行 */
+/* i18n: 本文件新增文案键（i18n.js 各语言待补，zh-CN 建议值如下）
+ * ov_usage_drill_tip=查看用量明细与预算
+ * ov_turns_tip=历史轮数 · 点击进入对话
+ * ov_inbox_expand=展开收件箱快览
+ * ov_running_drill_tip=点击进入该会话
+ */
 window.PageOverview = {
   name: "PageOverview",
   data() {
@@ -6489,14 +6481,16 @@ window.PageOverview = {
     '      <div class="qvq-hero-title">{{ greeting }}</div>',
     '      <div class="qvq-hero-sub">{{ heroSub }}</div>',
     '    </div>',
-    '    <button type="button" class="qvq-hero-usage" @click="openLimit" :title="t(\'limit_edit_hint\')">',
-    '      <div class="num">{{ tokensText }}</div>',
+    '    <div class="qvq-hero-usage" @click="openLimit" :title="t(\'limit_edit_hint\')">',
+    '      <button type="button" class="ov-num-drill" @click.stop="go(\'usage\')" :title="t(\'ov_usage_drill_tip\')">',
+    '        <span class="num">{{ tokensText }}</span>',
+    '      </button>',
     '      <div class="cap">{{ t("home_usage_today") }} · {{ usagePct }}%</div>',
     '      <div class="cap-sub"><u>{{ limitText }}</u></div>',
     '      <n-progress type="line" :percentage="usagePct" :show-indicator="false" :height="6"',
     '                  :status="usagePct >= 100 ? \'error\' : (usagePct >= 80 ? \'warning\' : \'default\')"/>',
     '      <div class="qvq-hint-inline" v-if="savedHint">{{ savedHint }}</div>',
-    '    </button>',
+    '    </div>',
     '  </div>',
     '  <div class="qvq-stats">',
     '    <button v-for="k in kpis" :key="k.label" type="button"',
@@ -6518,10 +6512,14 @@ window.PageOverview = {
     '      <span class="nm">{{ t("health_cooldown") }}</span>',
     '      <span class="num">{{ coolingCount }}</span>',
     '    </button>',
-    '    <button type="button" class="qvq-op" :class="{ warn: inboxUnread > 0 }" @click="toggleInbox">',
-    '      <span class="nm">{{ t("inbox_title") }}</span>',
-    '      <span class="num">{{ inboxUnread }}</span>',
-    '    </button>',
+    '    <div class="qvq-op-group">',
+    '      <button type="button" class="qvq-op" :class="{ warn: inboxUnread > 0 }" @click="go({ go: \'inbox\' })">',
+    '        <span class="nm">{{ t("inbox_title") }}</span>',
+    '        <span class="num">{{ inboxUnread }}</span>',
+    '      </button>',
+    '      <button type="button" class="qvq-op qvq-op-more" :class="{ on: inboxOpen }"',
+    '              :title="t(\'ov_inbox_expand\')" @click="toggleInbox">▾</button>',
+    '    </div>',
     '  </div>',
     '  <n-card size="small" class="qvq-glass-card" style="margin-top:14px" v-if="inboxOpen">',
     '    <div class="qvq-card-head">',
@@ -6581,7 +6579,7 @@ window.PageOverview = {
     '      <button v-for="s in recent" :key="s.chat_key" type="button" class="qvq-row"',
     '              @click="openSession(s.chat_key)">',
     '        <span class="qvq-row-name">{{ s.name || s.chat_key }}</span>',
-    '        <span class="qvq-row-meta">{{ s.turns || 0 }}</span>',
+    '        <span class="qvq-row-meta"><span class="ov-turns" :title="t(\'ov_turns_tip\')">{{ s.turns || 0 }}</span></span>',
     '      </button>',
     '    </n-card>',
     '    <n-card size="small" class="qvq-glass-card">',
@@ -6604,7 +6602,7 @@ window.PageOverview = {
     '      </div>',
     '      <div v-if="!runningRows.length" class="qvq-empty">{{ t("running_none") }}</div>',
     '      <button v-for="(r, i) in runningRows" :key="r.session || i" type="button" class="qvq-row"',
-    '              @click="openSession(r.session)">',
+    '              :title="t(\'ov_running_drill_tip\')" @click="openSession(r.session)">',
     '        <span class="qvq-row-name"><span class="live-dot" :class="{ idle: r.status !== \'running\' }"></span> {{ r.session }}<i v-if="r.agent === \'sub\'" class="chat-subtag hv">{{ t("sub_badge") }}</i></span>',
     '        <span class="qvq-row-meta">{{ r.status }}</span>',
     '      </button>',
@@ -6700,7 +6698,6 @@ window.PageChat = {
       mentionOpen: false,
       mentionQ: "",
       atBottom: true,
-      demoMode: false,
       queue: [],
       todos: [],
       hv: null,
@@ -6948,8 +6945,6 @@ window.PageChat = {
     },
   },
   mounted() {
-    try { this.demoMode = localStorage.getItem("qvq_demo_mode") === "1"; } catch (e) {}
-    this.applyDemoClass();
 
     var self = this;
     try {
@@ -7171,16 +7166,6 @@ window.PageChat = {
     copyText(text) {
       var self = this;
       QvQ.copy(text, function (ok) { if (ok) self.toast = t("copied"); });
-    },
-    applyDemoClass() {
-      var wrap = document.querySelector(".chat-wrap");
-      if (wrap) wrap.classList.toggle("demo", !!this.demoMode);
-    },
-    toggleDemo() {
-      this.demoMode = !this.demoMode;
-      try { localStorage.setItem("qvq_demo_mode", this.demoMode ? "1" : "0"); } catch (e) {}
-      this.applyDemoClass();
-      QvQ.toast(t("demo_toggled"));
     },
     modelMetaTip(m) {
       // 消息出处悬浮提示：模型 + token 明细
@@ -7975,14 +7960,15 @@ window.PageChat = {
     '        <n-select :value="effort" :options="effortOptions" size="small" style="width:116px"',
     '                  @update:value="onEffort"/>',
     '        <n-select v-model:value="persona" :options="personaOptions" size="small" style="width:128px"/>',
-    '        <button type="button" class="chat-demo-btn" :class="{ on: demoMode }"',
-    '                :title="t(\'demo_title\')" @click="toggleDemo">👁</button>',
     '        <n-popover trigger="click" placement="bottom-end" :show="todoOpen" @update:show="todoOpen = $event">',
     '          <template #trigger>',
     '            <button type="button" class="chat-todo-btn" :class="{ on: todoOpen || todoLeft }"',
     '                    :title="t(\'todo_title\')" @click="toggleTodoPanel">',
     '              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"',
-    '                   stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
+    '                   stroke-linecap="round" stroke-linejoin="round">',
+    '                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>',
+    '                <rect x="9" y="3" width="6" height="4" rx="1"/>',
+    '                <path d="M9 14l2 2 4-4"/></svg>',
     '              <i v-if="todoLeft" class="chat-todo-n">{{ todoLeft }}</i></button>',
     '          </template>',
     '          <div class="todo-panel">',
@@ -8364,6 +8350,13 @@ window.PageChat = {
   ].join(""),
 };
 </script><script>/* 模型池：提供商卡片 / 提供商编辑 / 模型编辑 / 远程拉取 / 连通测试 */
+/* i18n: 本文件新增文案键（i18n.js 各语言待补，zh-CN 建议值如下）
+ * prov_set_default=设为默认模型
+ * models_default_set=已设为默认模型
+ * prov_default_badge=默认
+ * prov_params_empty=未配置上下文参数，点击编辑补全
+ * prov_chip_expand_tip=点击展开 / 收起模型参数
+ */
 window.PageProviders = {
   name: "PageProviders",
   data() {
@@ -8395,6 +8388,7 @@ window.PageProviders = {
       brokenLogo: {},
       delOpen: false,
       delTarget: null,
+      openChipId: "",
       vw: typeof window === "undefined" ? 1024 : window.innerWidth,
     };
   },
@@ -8701,10 +8695,28 @@ window.PageProviders = {
     },
     setDefault(value) {
       var self = this;
+      if (!value || value === this.defaultModel) return;
       this.defaultModel = value;
-      api("/api/qvq/config", "POST", { default_model: value }).then(function () {
+      api("/api/qvq/config", "POST", { default_model: value }).then(function (r) {
+        if (r && r.error) { QvQ.toast(r.error); return; }
+        QvQ.toast(t("models_default_set"));
         self.load();
       });
+    },
+    /* 模型 chip 可操作性：chipKey 统一 provider:model；点击 chip 展开/收起参数面板 */
+    chipKey(p, m) { return p.id + ":" + m.id; },
+    toggleChip(p, m) {
+      var key = this.chipKey(p, m);
+      this.openChipId = this.openChipId === key ? "" : key;
+    },
+    openChipModel(p) {
+      var key = this.openChipId;
+      if (!key || key.indexOf(p.id + ":") !== 0) return null;
+      var mid = key.slice(p.id.length + 1);
+      return (p.models || []).filter(function (m) { return m.id === mid; })[0] || null;
+    },
+    goOrchestrate() {
+      QvQ.store.page = "orchestrate";
     },
     refreshMeta() {
       var self = this;
@@ -12300,6 +12312,14 @@ window.PageMcp = {
   ].join(""),
 };
 </script><script>/* 编排：模型链拖拽排序 / 健康 / 运行状态 / 任务时间线 */
+/* i18n: 本文件新增文案键（i18n.js 各语言待补，zh-CN 建议值如下）
+ * orch_test_tip=测试该模型连通性
+ * orch_cool_reset_tip=熔断冷却中 · 点击立即重置
+ * breakers_reset_done=已重置熔断
+ * subjob_open_parent=父会话
+ * subjob_cancelled=已取消后台任务
+ * partic_budget_go_tip=点击前往用量页调整预算
+ */
 window.PageOrchestrate = {
   name: "PageOrchestrate",
   data() {
@@ -12314,6 +12334,7 @@ window.PageOrchestrate = {
       particip: null,
       dragIndex: -1,
       savedHint: "",
+      testState: {},
     };
   },
   mounted() {
@@ -12368,12 +12389,32 @@ window.PageOrchestrate = {
       QvQ.store.pendingChat = j.sub_key;
       QvQ.store.page = "chat";
     },
+    openParent(j) {
+      if (!j.parent_chat_key) return;
+      QvQ.store.pendingChat = j.parent_chat_key;
+      QvQ.store.page = "chat";
+    },
     cancelJob(j) {
       var self = this;
       api("/api/qvq/subjobs/cancel", "POST", { sub_key: j.sub_key }).then(function (r) {
-        if (r && r.error) { self.savedHint = r.error; return; }
+        if (r && r.error) { QvQ.toast(r.error); return; }
+        QvQ.toast(t("subjob_cancelled"));
         self.load();
       });
+    },
+    /* 链上模型即时连通测试：本页自持 state（键 provider:model），行内显示 ms / 失败 */
+    testChain(id) {
+      var self = this;
+      self.testState = Object.assign({}, self.testState, { [id]: { busy: true, text: t("prov_testing") } });
+      api("/api/qvq/models/test", "POST", { id: id }).then(function (r) {
+        var state = r && r.ok
+          ? { ok: true, text: t("model_test_ok") + " · " + r.ms + "ms" }
+          : { ok: false, text: (r && r.error) || t("model_test_fail") };
+        self.testState = Object.assign({}, self.testState, { [id]: state });
+      });
+    },
+    goUsageBudget() {
+      QvQ.store.page = "usage";
     },
     nameOf(id) {
       var m = this.models.filter(function (x) { return x.id === id; })[0];
@@ -12410,7 +12451,9 @@ window.PageOrchestrate = {
     },
     resetBreaker(id) {
       var self = this;
-      api("/api/qvq/breakers/reset", "POST", { model: id }).then(function () {
+      api("/api/qvq/breakers/reset", "POST", { model: id }).then(function (r) {
+        if (r && r.error) { QvQ.toast(r.error); return; }
+        QvQ.toast(t("breakers_reset_done"));
         self.load();
       });
     },
@@ -12434,11 +12477,18 @@ window.PageOrchestrate = {
     '             @dragover.prevent @drop="drop(i)">',
     '          <span class="orch-idx" :class="{ first: i === 0 }" :title="t(\'orch_idx_tip\')">{{ i + 1 }}</span>',
     '          <span class="orch-id" :class="{ cooldown: !!breakerOf(id) }">{{ nameOf(id) }}</span>',
+    '          <button type="button" class="prov-act orch-test" :title="t(\'orch_test_tip\')" @click.stop="testChain(id)">',
+    '            {{ (testState[id] && testState[id].busy) ? t("prov_testing") : t("prov_test") }}',
+    '          </button>',
+    '          <span v-if="testState[id] && !testState[id].busy" class="orch-test-res"',
+    '                :class="{ ok: testState[id].ok, err: testState[id].ok === false }" :title="testState[id].text">',
+    '            {{ testState[id].text }}</span>',
     '          <span class="orch-move">',
     '            <button type="button" class="prov-act" :disabled="i === 0" :aria-label="t(\'orch_move_up\')" @click.stop="moveItem(i, -1)">↑</button>',
     '            <button type="button" class="prov-act" :disabled="i === chain.length - 1" :aria-label="t(\'orch_move_down\')" @click.stop="moveItem(i, 1)">↓</button>',
     '          </span>',
-    '          <span v-if="breakerOf(id)" class="orch-cool"><i></i>{{ t("health_cooldown") }}</span>',
+    '          <button v-if="breakerOf(id)" type="button" class="orch-cool"',
+    '                  :title="t(\'orch_cool_reset_tip\')" @click.stop="resetBreaker(id)"><i></i>{{ t("health_cooldown") }}</button>',
     '          <button v-if="breakerOf(id)" type="button" class="qvq-link"',
     '                  @click="resetBreaker(id)">{{ t("breakers_reset") }}</button>',
     '        </div>',
@@ -12464,6 +12514,8 @@ window.PageOrchestrate = {
     '        <button type="button" class="nm orch-sub-open" @click="openSub(j)" :title="j.parent_chat_key">',
     '          {{ j.task || j.sub_key }}</button>',
     '        <span class="qvq-meta-line">{{ j.status }}<template v-if="j.ms"> · {{ j.ms }}ms</template></span>',
+    '        <button v-if="j.parent_chat_key" type="button" class="prov-act" :title="j.parent_chat_key"',
+    '                @click="openParent(j)">{{ t("subjob_open_parent") }}</button>',
     '        <button v-if="j.status === \'running\'" type="button" class="prov-act danger"',
     '                @click="cancelJob(j)">{{ t("cancel") }}</button>',
     '      </div>',
@@ -12492,8 +12544,10 @@ window.PageOrchestrate = {
     '      <div class="partic-stats">',
     '        <span class="partic-chip" :class="{ on: particip.enabled }">{{ particip.enabled ? t("partic_on") : t("partic_off") }}</span>',
     '        <span class="partic-chip">{{ t("partic_strategy") }}: {{ particip.strategy }}</span>',
-    '        <span class="partic-chip">{{ t("partic_hourly") }} {{ (particip.budget.limits || {}).hourly_limit ?? "-" }}</span>',
-    '        <span class="partic-chip">{{ t("partic_today") }} {{ particip.budget.proactive_today ?? 0 }}/{{ (particip.budget.limits || {}).proactive_daily_limit ?? "-" }}</span>',
+    '        <button type="button" class="partic-chip partic-chip-go" :title="t(\'partic_budget_go_tip\')"',
+    '                @click="goUsageBudget">{{ t("partic_hourly") }} {{ (particip.budget.limits || {}).hourly_limit ?? "-" }}</button>',
+    '        <button type="button" class="partic-chip partic-chip-go" :title="t(\'partic_budget_go_tip\')"',
+    '                @click="goUsageBudget">{{ t("partic_today") }} {{ particip.budget.proactive_today ?? 0 }}/{{ (particip.budget.limits || {}).proactive_daily_limit ?? "-" }}</button>',
     '      </div>',
     '      <div v-for="(d, i) in (particip.decisions || []).slice(0, 12)" :key="i" class="trash-row">',
     '        <span class="nm">{{ d.chat_key }}</span>',

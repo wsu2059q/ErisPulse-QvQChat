@@ -2741,7 +2741,7 @@ body::-webkit-scrollbar,
   .chat-head-ctl .n-select { min-height: 38px; --n-height: 38px; font-size: 13px; }
   .chat-head-ctl .n-base-selection { min-height: 38px; --n-height: 38px; }
   .chat-head-ctl > button,
-  .chat-demo-btn, .chat-todo-btn, .chat-side-toggle, .chat-new, .chat-filter-btn {
+  .chat-todo-btn, .chat-side-toggle, .chat-new, .chat-filter-btn {
     min-width: 38px;
     min-height: 38px;
   }
@@ -3022,20 +3022,6 @@ body::-webkit-scrollbar,
   box-shadow: var(--qvq-shadow);
 }
 .chat-down:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
-.chat-demo-btn {
-  border: 1px solid var(--qvq-bd);
-  border-radius: 8px;
-  background: var(--qvq-bg-s);
-  color: var(--qvq-tx-s);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 4px 8px;
-}
-.chat-demo-btn.on { border-color: var(--qvq-accent); color: var(--qvq-accent); }
-.chat-wrap.demo .msg.user .msg-text,
-.chat-wrap.demo .msg.user .msg-atts { filter: blur(8px); }
-.chat-wrap.demo .msg.user:hover .msg-text,
-.chat-wrap.demo .msg.user:hover .msg-atts { filter: none; }
 
 
 /* 画像编辑：段落头 + 行编辑器 */

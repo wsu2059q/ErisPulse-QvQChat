@@ -65,7 +65,6 @@ window.PageChat = {
       mentionOpen: false,
       mentionQ: "",
       atBottom: true,
-      demoMode: false,
       queue: [],
       todos: [],
       hv: null,
@@ -313,8 +312,6 @@ window.PageChat = {
     },
   },
   mounted() {
-    try { this.demoMode = localStorage.getItem("qvq_demo_mode") === "1"; } catch (e) {}
-    this.applyDemoClass();
 
     var self = this;
     try {
@@ -536,16 +533,6 @@ window.PageChat = {
     copyText(text) {
       var self = this;
       QvQ.copy(text, function (ok) { if (ok) self.toast = t("copied"); });
-    },
-    applyDemoClass() {
-      var wrap = document.querySelector(".chat-wrap");
-      if (wrap) wrap.classList.toggle("demo", !!this.demoMode);
-    },
-    toggleDemo() {
-      this.demoMode = !this.demoMode;
-      try { localStorage.setItem("qvq_demo_mode", this.demoMode ? "1" : "0"); } catch (e) {}
-      this.applyDemoClass();
-      QvQ.toast(t("demo_toggled"));
     },
     modelMetaTip(m) {
       // 消息出处悬浮提示：模型 + token 明细
@@ -1340,14 +1327,15 @@ window.PageChat = {
     '        <n-select :value="effort" :options="effortOptions" size="small" style="width:116px"',
     '                  @update:value="onEffort"/>',
     '        <n-select v-model:value="persona" :options="personaOptions" size="small" style="width:128px"/>',
-    '        <button type="button" class="chat-demo-btn" :class="{ on: demoMode }"',
-    '                :title="t(\'demo_title\')" @click="toggleDemo">👁</button>',
     '        <n-popover trigger="click" placement="bottom-end" :show="todoOpen" @update:show="todoOpen = $event">',
     '          <template #trigger>',
     '            <button type="button" class="chat-todo-btn" :class="{ on: todoOpen || todoLeft }"',
     '                    :title="t(\'todo_title\')" @click="toggleTodoPanel">',
     '              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"',
-    '                   stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
+    '                   stroke-linecap="round" stroke-linejoin="round">',
+    '                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>',
+    '                <rect x="9" y="3" width="6" height="4" rx="1"/>',
+    '                <path d="M9 14l2 2 4-4"/></svg>',
     '              <i v-if="todoLeft" class="chat-todo-n">{{ todoLeft }}</i></button>',
     '          </template>',
     '          <div class="todo-panel">',

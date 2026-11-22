@@ -1,4 +1,11 @@
 /* 模型池：提供商卡片 / 提供商编辑 / 模型编辑 / 远程拉取 / 连通测试 */
+/* i18n: 本文件新增文案键（i18n.js 各语言待补，zh-CN 建议值如下）
+ * prov_set_default=设为默认模型
+ * models_default_set=已设为默认模型
+ * prov_default_badge=默认
+ * prov_params_empty=未配置上下文参数，点击编辑补全
+ * prov_chip_expand_tip=点击展开 / 收起模型参数
+ */
 window.PageProviders = {
   name: "PageProviders",
   data() {
@@ -30,6 +37,7 @@ window.PageProviders = {
       brokenLogo: {},
       delOpen: false,
       delTarget: null,
+      openChipId: "",
       vw: typeof window === "undefined" ? 1024 : window.innerWidth,
     };
   },
@@ -336,10 +344,28 @@ window.PageProviders = {
     },
     setDefault(value) {
       var self = this;
+      if (!value || value === this.defaultModel) return;
       this.defaultModel = value;
-      api("/api/qvq/config", "POST", { default_model: value }).then(function () {
+      api("/api/qvq/config", "POST", { default_model: value }).then(function (r) {
+        if (r && r.error) { QvQ.toast(r.error); return; }
+        QvQ.toast(t("models_default_set"));
         self.load();
       });
+    },
+    /* 模型 chip 可操作性：chipKey 统一 provider:model；点击 chip 展开/收起参数面板 */
+    chipKey(p, m) { return p.id + ":" + m.id; },
+    toggleChip(p, m) {
+      var key = this.chipKey(p, m);
+      this.openChipId = this.openChipId === key ? "" : key;
+    },
+    openChipModel(p) {
+      var key = this.openChipId;
+      if (!key || key.indexOf(p.id + ":") !== 0) return null;
+      var mid = key.slice(p.id.length + 1);
+      return (p.models || []).filter(function (m) { return m.id === mid; })[0] || null;
+    },
+    goOrchestrate() {
+      QvQ.store.page = "orchestrate";
     },
     refreshMeta() {
       var self = this;
@@ -441,14 +467,34 @@ window.PageProviders = {
     '      <div class="prov-url" :title="p.base_url">{{ p.base_url }}</div>',
     '      <div class="prov-key">{{ p.api_key_masked || t("prov_key_empty") }}</div>',
     '      <div class="prov-models">',
-    '        <button v-for="m in shownModels(p)" :key="m.id" type="button"',
-    '                class="prov-chip" @click="openModel(p, m)">',
-    '          <span class="prov-chip-id">{{ m.id }}</span>',
-    '          <span class="prov-chip-rank" v-if="rankOf(p.id, m.id)" :title="t(\'prov_rank_tip\')">#{{ rankOf(p.id, m.id) }}</span>',
-    '        </button>',
+    '        <div v-for="m in shownModels(p)" :key="m.id" class="prov-chip"',
+    '             :class="{ on: openChipId === chipKey(p, m) }">',
+    '          <button type="button" class="prov-chip-main" :title="t(\'prov_chip_expand_tip\')"',
+    '                  @click="toggleChip(p, m)">',
+    '            <span class="prov-chip-id">{{ m.id }}</span>',
+    '            <span class="prov-chip-def" v-if="defaultModel === chipKey(p, m)">{{ t("prov_default_badge") }}</span>',
+    '          </button>',
+    '          <button v-if="rankOf(p.id, m.id)" type="button" class="prov-chip-rank"',
+    '                  :title="t(\'prov_rank_tip\')" @click.stop="goOrchestrate">#{{ rankOf(p.id, m.id) }}</button>',
+    '          <button type="button" class="prov-chip-star"',
+    '                  :title="defaultModel === chipKey(p, m) ? t(\'models_default\') : t(\'prov_set_default\') + \': \' + chipKey(p, m)"',
+    '                  :disabled="defaultModel === chipKey(p, m)" @click.stop="setDefault(chipKey(p, m))">★</button>',
+    '        </div>',
     '        <button v-if="hiddenCount(p)" type="button" class="prov-chip more"',
     '                @click="edit(p)">+{{ hiddenCount(p) }}</button>',
     '        <span class="prov-chip empty" v-if="!providerModels(p).length">{{ t("model_none") }}</span>',
+    '      </div>',
+    '      <div v-if="openChipModel(p)" class="prov-chip-params">',
+    '        <span class="pcp-name" :title="openChipModel(p).id">{{ openChipModel(p).id }}</span>',
+    '        <span class="pcp-item"><label>{{ t("model_context") }}</label>',
+    '          <b>{{ openChipModel(p).context_length ? Number(openChipModel(p).context_length).toLocaleString() : "-" }}</b></span>',
+    '        <span class="pcp-item"><label>{{ t("model_max_output") }}</label>',
+    '          <b>{{ openChipModel(p).max_output_tokens ? Number(openChipModel(p).max_output_tokens).toLocaleString() : "-" }}</b></span>',
+    '        <span class="pcp-item" v-if="openChipModel(p).cost && (openChipModel(p).cost.input || openChipModel(p).cost.output)">',
+    '          <label>{{ t("model_price") }}</label>',
+    '          <b>${{ openChipModel(p).cost.input || 0 }} / ${{ openChipModel(p).cost.output || 0 }}</b></span>',
+    '        <span class="pcp-empty" v-if="!openChipModel(p).context_length && !openChipModel(p).max_output_tokens">{{ t("prov_params_empty") }}</span>',
+    '        <button type="button" class="prov-act" @click="openModel(p, openChipModel(p))">{{ t("edit") }}</button>',
     '      </div>',
     '      <footer class="prov-foot">',
     '        <span class="prov-count">{{ providerModels(p).length }} {{ t("prov_models") }}</span>',

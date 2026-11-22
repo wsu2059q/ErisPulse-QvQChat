@@ -1,4 +1,10 @@
 /* 概览：运行指标 / 用量与成本趋势 / 最近会话 / 即将执行 */
+/* i18n: 本文件新增文案键（i18n.js 各语言待补，zh-CN 建议值如下）
+ * ov_usage_drill_tip=查看用量明细与预算
+ * ov_turns_tip=历史轮数 · 点击进入对话
+ * ov_inbox_expand=展开收件箱快览
+ * ov_running_drill_tip=点击进入该会话
+ */
 window.PageOverview = {
   name: "PageOverview",
   data() {
@@ -462,14 +468,16 @@ window.PageOverview = {
     '      <div class="qvq-hero-title">{{ greeting }}</div>',
     '      <div class="qvq-hero-sub">{{ heroSub }}</div>',
     '    </div>',
-    '    <button type="button" class="qvq-hero-usage" @click="openLimit" :title="t(\'limit_edit_hint\')">',
-    '      <div class="num">{{ tokensText }}</div>',
+    '    <div class="qvq-hero-usage" @click="openLimit" :title="t(\'limit_edit_hint\')">',
+    '      <button type="button" class="ov-num-drill" @click.stop="go(\'usage\')" :title="t(\'ov_usage_drill_tip\')">',
+    '        <span class="num">{{ tokensText }}</span>',
+    '      </button>',
     '      <div class="cap">{{ t("home_usage_today") }} · {{ usagePct }}%</div>',
     '      <div class="cap-sub"><u>{{ limitText }}</u></div>',
     '      <n-progress type="line" :percentage="usagePct" :show-indicator="false" :height="6"',
     '                  :status="usagePct >= 100 ? \'error\' : (usagePct >= 80 ? \'warning\' : \'default\')"/>',
     '      <div class="qvq-hint-inline" v-if="savedHint">{{ savedHint }}</div>',
-    '    </button>',
+    '    </div>',
     '  </div>',
     '  <div class="qvq-stats">',
     '    <button v-for="k in kpis" :key="k.label" type="button"',
@@ -491,10 +499,14 @@ window.PageOverview = {
     '      <span class="nm">{{ t("health_cooldown") }}</span>',
     '      <span class="num">{{ coolingCount }}</span>',
     '    </button>',
-    '    <button type="button" class="qvq-op" :class="{ warn: inboxUnread > 0 }" @click="toggleInbox">',
-    '      <span class="nm">{{ t("inbox_title") }}</span>',
-    '      <span class="num">{{ inboxUnread }}</span>',
-    '    </button>',
+    '    <div class="qvq-op-group">',
+    '      <button type="button" class="qvq-op" :class="{ warn: inboxUnread > 0 }" @click="go({ go: \'inbox\' })">',
+    '        <span class="nm">{{ t("inbox_title") }}</span>',
+    '        <span class="num">{{ inboxUnread }}</span>',
+    '      </button>',
+    '      <button type="button" class="qvq-op qvq-op-more" :class="{ on: inboxOpen }"',
+    '              :title="t(\'ov_inbox_expand\')" @click="toggleInbox">▾</button>',
+    '    </div>',
     '  </div>',
     '  <n-card size="small" class="qvq-glass-card" style="margin-top:14px" v-if="inboxOpen">',
     '    <div class="qvq-card-head">',
@@ -554,7 +566,7 @@ window.PageOverview = {
     '      <button v-for="s in recent" :key="s.chat_key" type="button" class="qvq-row"',
     '              @click="openSession(s.chat_key)">',
     '        <span class="qvq-row-name">{{ s.name || s.chat_key }}</span>',
-    '        <span class="qvq-row-meta">{{ s.turns || 0 }}</span>',
+    '        <span class="qvq-row-meta"><span class="ov-turns" :title="t(\'ov_turns_tip\')">{{ s.turns || 0 }}</span></span>',
     '      </button>',
     '    </n-card>',
     '    <n-card size="small" class="qvq-glass-card">',
@@ -577,7 +589,7 @@ window.PageOverview = {
     '      </div>',
     '      <div v-if="!runningRows.length" class="qvq-empty">{{ t("running_none") }}</div>',
     '      <button v-for="(r, i) in runningRows" :key="r.session || i" type="button" class="qvq-row"',
-    '              @click="openSession(r.session)">',
+    '              :title="t(\'ov_running_drill_tip\')" @click="openSession(r.session)">',
     '        <span class="qvq-row-name"><span class="live-dot" :class="{ idle: r.status !== \'running\' }"></span> {{ r.session }}<i v-if="r.agent === \'sub\'" class="chat-subtag hv">{{ t("sub_badge") }}</i></span>',
     '        <span class="qvq-row-meta">{{ r.status }}</span>',
     '      </button>',
