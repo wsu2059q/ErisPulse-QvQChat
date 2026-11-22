@@ -7,6 +7,8 @@ window.PageSkills = {
       q: "",
       drawer: false,
       form: { name: "", description: "", body: "", isNew: true },
+      pvOpen: false,
+      pvSkill: null,
       formErr: "",
       busy: false,
       loading: false,
@@ -48,6 +50,10 @@ window.PageSkills = {
       this.form = { name: "", description: "", body: "", isNew: true };
       this.formErr = "";
       this.drawer = true;
+    },
+    openPreview(sk) {
+      this.pvSkill = sk;
+      this.pvOpen = true;
     },
     openEdit(sk) {
       this.form = {
@@ -177,6 +183,7 @@ window.PageSkills = {
     '      <footer class="prov-foot">',
     '        <span class="prov-count">{{ sk.origin || "" }}</span>',
     '        <span class="prov-acts">',
+    '          <button type="button" class="prov-act" @click.stop="openPreview(sk)">{{ t("skills_preview") }}</button>',
     '          <button type="button" class="prov-act" @click.stop="openEdit(sk)">{{ t("edit") }}</button>',
     '          <button v-if="sk.origin !== \'external\'" type="button" class="prov-act danger" @click.stop="del(sk)">',
     '            {{ t("chat_delete") }}</button>',
@@ -211,5 +218,19 @@ window.PageSkills = {
     '    </n-drawer-content>',
     '  </n-drawer>',
     '</div>',
+  '  <n-modal v-model:show="pvOpen" preset="card" class="qvq-modal-card" style="max-width:520px"',
+    '           :title="t(&quot;skills_preview&quot;)" :bordered="false">',
+    '    <div class="prov-form" v-if="pvSkill">',
+    '      <div class="prov-field">',
+    '        <label>{{ t("skills_preview_listline") }}</label>',
+    '        <pre class="stor-pre">- {{ pvSkill.name }}: {{ pvSkill.description }}</pre>',
+    '      </div>',
+    '      <div class="prov-field">',
+    '        <label>{{ t("skills_body") }}</label>',
+    '        <pre class="stor-pre">{{ (pvSkill.body || "-").slice(0, 800) }}</pre>',
+    '      </div>',
+    '      <div class="qvq-meta-line">{{ t("skills_preview_hint") }}</div>',
+    '    </div>',
+    '  </n-modal>',
   ].join(""),
 };

@@ -2,7 +2,7 @@
 window.PageTools = {
   name: "PageTools",
   data() {
-    return { q: "", tools: [], disabled: [], busy: false };
+    return { q: "", tools: [], disabled: [], busy: false, expanded: {} };
   },
   computed: {
     groups() {
@@ -52,6 +52,19 @@ window.PageTools = {
         self.load();
       });
     },
+    toggleExpand(name) {
+      this.expanded[name] = !this.expanded[name];
+    },
+    paramRows(x) {
+      var schema = x.parameters || {};
+      var props = schema.properties || {};
+      var req = schema.required || [];
+      return Object.keys(props).map(function (k) {
+        var p = props[k] || {};
+        var type = Array.isArray(p.type) ? p.type.join("|") : (p.type || "any");
+        return { name: k, type: type, desc: p.description || "", req: req.indexOf(k) >= 0 };
+      });
+    },
   },
   template: [
     '<div class="qvq-page-body">',
@@ -73,13 +86,24 @@ window.PageTools = {
     '      <button v-if="g.origin === \'mcp\'" type="button" class="qvq-link"',
     '              @click="QvQ.store.page = \'mcp\'">{{ t("mcp_manage") }}</button>',
     '    </h2>',
-    '    <div v-for="x in g.items" :key="x.name" class="tool-row">',
+    '    <div v-for="x in g.items" :key="x.name" class="tool-row tool-expandable"',
+    '         :class="{ open: expanded[x.name] }" @click="toggleExpand(x.name)">',
     '      <div class="tool-main">',
     '        <div class="tool-name">{{ x.label || x.name }}',
     '          <code>{{ x.name }}</code>',
     '          <span v-if="x.danger" class="cf-badge">{{ t("settings_dangerous") }}</span>',
+    '          <span class="tool-expand-ico">▸</span>',
     '        </div>',
     '        <div class="tool-desc">{{ x.description }}</div>',
+    '        <div class="tool-params" v-if="expanded[x.name]" @click.stop>',
+    '          <div class="qvq-meta-line" v-if="x.access">{{ t("tools_access") }}: {{ x.access }}</div>',
+    '          <div v-for="pr in paramRows(x)" :key="pr.name" class="tool-param-row">',
+    '            <code>{{ pr.name }}</code><i v-if="pr.req" class="tool-param-req">*</i>',
+    '            <span class="tool-param-type">{{ pr.type }}</span>',
+    '            <span class="qvq-meta-line" v-if="pr.desc">{{ pr.desc }}</span>',
+    '          </div>',
+    '          <div class="qvq-empty" v-if="!paramRows(x).length">{{ t("tools_no_params") }}</div>',
+    '        </div>',
     '      </div>',
     '      <n-switch size="small" :value="!isOff(x.name)" @update:value="toggle(x, $event)"/>',
     '    </div>',

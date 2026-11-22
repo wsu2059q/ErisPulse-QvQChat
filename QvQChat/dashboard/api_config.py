@@ -226,6 +226,7 @@ class ConfigApiMixin:
                     "origin_label": texts.t(f"origin.{tool.origin}", default=tool.origin),
                     "danger": tool.danger,
                     "access": getattr(tool, "access", "admin"),
+                    "parameters": getattr(tool, "parameters", None) or {},
                 }
             )
         tools.sort(key=lambda t: (t["origin"], t["name"]))

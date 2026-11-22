@@ -161,7 +161,7 @@ window.PageStorage = {
     '      </tr>',
     '      <tr v-for="f in files" :key="f.id">',
     '        <td><b>{{ domainLabel(f.id) }}</b> <code class="stor-did">{{ f.id }}</code></td>',
-    '        <td>—</td>',
+    '        <td><span class="qvq-meta-line" :title="t(&quot;stor_files_hint&quot;)">{{ t("storage_files") }}</span></td>',
     '        <td>{{ fmtSize(f.bytes) }}</td>',
     '        <td class="stor-acts"></td>',
     '      </tr>',

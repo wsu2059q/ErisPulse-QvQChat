@@ -81,7 +81,7 @@ function naiveOverrides() {
       modalColor: "var(--qvq-surface, #1c2027)",
       popoverColor: "var(--qvq-solid, #1c2027)",
       borderColor: "var(--qvq-bd)",
-      borderRadius: "10px",
+      borderRadius: "12px",
       fontWeightStrong: "600",
     },
     Slider: {

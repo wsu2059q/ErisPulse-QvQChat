@@ -127,15 +127,17 @@
   ];
 
   var TOOLS = [
-    ["send_message", "发送平台消息", "builtin"], ["run_command", "执行 shell 命令", "builtin"],
-    ["run_python", "执行 Python 代码", "builtin"], ["web_search", "联网搜索", "builtin"],
+    ["send_message", "发送平台消息", "builtin", { type: "object", properties: { text: { type: "string", description: "消息正文（Markdown）" }, target: { type: "string", description: "可选：目标会话 chat_key，缺省发当前会话" } }, required: ["text"] }], ["run_command", "执行 shell 命令", "builtin"],
+    ["run_python", "执行 Python 代码", "builtin"], ["web_search", "联网搜索", "builtin", { type: "object", properties: { query: { type: "string", description: "搜索关键词" }, top_k: { type: "integer", description: "返回条数（默认 3）" } }, required: ["query"] }],
     ["web_fetch", "抓取网页正文", "builtin"], ["knowledge_search", "知识库检索", "builtin"],
     ["memory_write", "写入长期记忆", "builtin"], ["todo_write", "维护任务清单", "builtin"],
     ["spawn_agent", "派发后台子智能体", "builtin"], ["handover_session", "会话让渡（角色扮演）", "builtin"],
     ["schedule_create", "创建定时任务", "builtin"], ["image_gen", "生成图片", "skill"],
     ["stalker_check", "检查发布源更新", "skill"], ["search_erispulse_docs", "框架文档检索", "builtin"],
   ].map(function (t) {
-    return { name: t[0], label: t[1], origin: t[2], description: t[1] + "。", danger: t[0] === "run_command" };
+    return { name: t[0], label: t[1], origin: t[2], description: t[1] + "。", danger: t[0] === "run_command",
+             access: "admin",
+             parameters: t[3] || { type: "object", properties: {}, required: [] } };
   });
 
   var SESSIONS = [
@@ -419,7 +421,7 @@
           sessions: 412, tasks: TASKS.length, eco: { modules: 6, tools: 57 },
           extensions: [{ name: "QvQMemes" }, { name: "QvQStalker" }, { name: "MyServer" }], mcp: [],
           security_level: "standard", trust_agent: false, takeovers: 0,
-          usage_today: { tokens: 1106792, limit: 10000000, calls: 52 },
+          usage_today: { tokens: usageDays[usageDays.length - 1].tokens, limit: 10000000, calls: usageDays[usageDays.length - 1].calls },
         });
         case "/api/qvq/usage": return json({ days: usageDays, limit: 10000000, user_limit: 0, flow: usageFlow });
         case "/api/qvq/usage/records": return json({ items: [

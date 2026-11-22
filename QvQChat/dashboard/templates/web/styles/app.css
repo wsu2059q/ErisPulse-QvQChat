@@ -4261,3 +4261,47 @@ button.mcp-empty-cta {
   color: var(--qvq-tx-t);
 }
 button.mcp-empty-cta:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
+
+/* ---- 原生 button 充当数据行/卡片的默认外观重置（白底防线）---- */
+.qvq-shell button.us-row {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--qvq-r-ctl);
+  padding: 5px 8px;
+}
+.qvq-shell button.us-row:hover { background: var(--qvq-accent-soft); }
+.qvq-shell button.us-kpi { font: inherit; color: inherit; text-align: left; }
+.qvq-shell button { font-family: var(--qvq-font); }
+
+/* ---- 工具行展开参数 / 技能预览 ---- */
+.tool-row.tool-expandable { cursor: pointer; }
+.tool-expand-ico {
+  font-size: 11px;
+  color: var(--qvq-tx-t);
+  margin-left: 4px;
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+.tool-row.open .tool-expand-ico { transform: rotate(90deg); }
+.tool-params {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: var(--qvq-r-ctl);
+  background: color-mix(in srgb, var(--qvq-bg-s) 60%, transparent);
+}
+.tool-param-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+}
+.tool-param-row code { color: var(--qvq-accent); }
+.tool-param-req { color: var(--qvq-er); font-style: normal; font-size: 12px; }
+.tool-param-type { color: var(--qvq-tx-t); font-size: 11px; }

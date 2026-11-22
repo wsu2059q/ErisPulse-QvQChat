@@ -103,7 +103,7 @@ window.PageOverview = {
         { num: this.toolsTotal, label: t("stat_tools"), go: "tools" },
         { num: ((s.tools || {}).eco) || 0, label: t("stat_eco"), go: "tools" },
         { num: ((s.extensions || []).length), label: t("stat_extensions"), go: "tools" },
-        { num: s.sessions || 0, label: t("stat_sessions"), go: "sessions" },
+        { num: s.sessions || 0, label: t("stat_sessions"), go: "sessions", title: t("ov_sessions_tip") },
         { num: s.tasks || 0, label: t("stat_tasks"), go: "tasks" },
         { num: Array.isArray(mcp) ? mcp.length : 0, label: t("stat_mcp"), go: "mcp" },
         {
@@ -481,7 +481,7 @@ window.PageOverview = {
     '  </div>',
     '  <div class="qvq-stats">',
     '    <button v-for="k in kpis" :key="k.label" type="button"',
-    '            class="qvq-kpi" :class="{ warn: k.warn }" @click="go(k)">',
+    '            class="qvq-kpi" :class="{ warn: k.warn }" :title="k.title || k.label" @click="go(k)">',
     '      <div class="qvq-kpi-num">{{ k.num }}</div>',
     '      <div class="qvq-kpi-cap">{{ k.label }}</div>',
     '    </button>',
