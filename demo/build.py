@@ -119,6 +119,39 @@ ORDER = (
     "components/Mascot", "main",
 )
 
+
+def check_i18n_keys() -> None:
+    """五语言键完整性校验：任一语言缺失 zh-CN 全集里的键即构建失败（防界面裸键）。"""
+    import re
+
+    text = read("i18n.js")
+    # 字符串字面量里的 {placeholder} 会干扰花括号配平：先等长替换为空白（偏移不变）
+    cleaned = re.sub(r'"(?:[^"\\]|\\.)*"', lambda m: '"' + " " * (len(m.group(0)) - 2) + '"', text)
+    langs = {}
+    for m in re.finditer(r'"(zh-CN|zh-TW|en|ja|ru)":\s*\{', text):
+        name = m.group(1)
+        start = m.end() - 1
+        depth, i = 0, start
+        while i < len(cleaned):
+            if cleaned[i] == "{":
+                depth += 1
+            elif cleaned[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        body = text[start:i]
+        langs[name] = set(re.findall(r'([A-Za-z0-9_]+)\s*:', body))
+        for assign in re.findall(r'I18N\["%s"\]\s*=\s*Object\.assign\([^,]+,\s*\{(.*?)\}\);' % re.escape(name), text, re.S):
+            langs[name] |= set(re.findall(r'([A-Za-z0-9_]+)\s*:', assign))
+    base = langs.get("zh-CN", set())
+    missing = {ln: sorted(base - keys) for ln, keys in langs.items() if base - keys}
+    if missing:
+        raise SystemExit("i18n 缺键: " + json.dumps(missing, ensure_ascii=False))
+
+
+check_i18n_keys()
+
 css = read(os.path.join("styles", "app.css"))
 html = read("app.html")
 vendor = "".join(inline(read(os.path.join("vendor", n))) for n in ("vue.global.prod.js", "naive-ui.prod.js"))

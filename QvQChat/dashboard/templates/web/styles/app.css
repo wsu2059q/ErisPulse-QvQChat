@@ -15,6 +15,19 @@
   --qvq-glass: blur(14px) saturate(1.15);
   --qvq-shadow: 0 6px 18px -8px rgba(15, 23, 42, 0.18);
   --qvq-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --qvq-cat-1: #2d7d74;
+  --qvq-cat-2: #a06a22;
+  --qvq-cat-3: #ad5761;
+  --qvq-cat-4: #5a6fb5;
+  --qvq-ok: #178a52;
+  --qvq-warn: #d98a2b;
+  --qvq-er: #d9404e;
+  --qvq-surface-2: #ffffff;
+  --qvq-r-card: 16px;
+  --qvq-r-ctl: 12px;
+  --qvq-r-pill: 999px;
+  --qvq-t: 200ms;
+  --qvq-t-fast: 120ms;
 }
 [data-theme="dark"] {
   --qvq-bg: #0f1115;
@@ -28,6 +41,11 @@
   --qvq-accent: #4aa3dd;
   --qvq-accent-soft: rgba(74, 163, 221, 0.18);
   --qvq-shadow: 0 8px 22px -8px rgba(0, 0, 0, 0.6);
+  --qvq-cat-1: #6fc2b4;
+  --qvq-cat-2: #e0b071;
+  --qvq-cat-3: #df9aa2;
+  --qvq-cat-4: #93a5e0;
+  --qvq-surface-2: #242a33;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -42,6 +60,11 @@
     --qvq-accent: #4aa3dd;
     --qvq-accent-soft: rgba(74, 163, 221, 0.18);
     --qvq-shadow: 0 8px 22px -8px rgba(0, 0, 0, 0.6);
+    --qvq-cat-1: #6fc2b4;
+    --qvq-cat-2: #e0b071;
+    --qvq-cat-3: #df9aa2;
+    --qvq-cat-4: #93a5e0;
+    --qvq-surface-2: #242a33;
   }
 }
 
@@ -2726,8 +2749,9 @@ body::-webkit-scrollbar,
   .chat-side-head .n-input, .chat-side-head .n-base-selection { min-height: 38px; --n-height: 38px; }
   .chat-composer .n-input .n-input__input-el, .chat-composer textarea { min-height: 24px; font-size: 14px; }
   .chat-send { min-height: 40px; }
+  .chat-mention, .chat-clip { min-width: 44px; min-height: 44px; }
   .msg-acts { opacity: 1; gap: 4px 14px; }
-  .msg-acts button { font-size: 12.5px; padding: 6px 2px; }
+  .msg-acts button { font-size: 12.5px; padding: 10px 4px; min-height: 44px; }
   .msg-acts .msg-model { line-height: 1.2; }
   .chat-sitem { padding: 11px 10px; }
   .chat-group { padding: 9px 10px; }
@@ -2735,7 +2759,7 @@ body::-webkit-scrollbar,
   .n-dropdown-option { min-height: 40px !important; }
   .n-dropdown-option-body { padding: 8px 14px !important; font-size: 13.5px !important; }
   .n-popover .n-button { min-height: 36px; }
-  .doc-save { display: none; }
+  .doc-save { left: 12px; right: 12px; bottom: 12px; justify-content: flex-end; flex-wrap: wrap; }
   .qvq-doc .doc-tools { width: 100%; }
 }
 @media (min-width: 901px) {
@@ -3708,3 +3732,52 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
 }
 .cost-model-row .amt { color: var(--qvq-tx-s); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cost-model-row .amt .pct { font-style: normal; color: var(--qvq-tx-t); margin-left: 4px; }
+
+/* ---- 组件态统一：按下回弹 / 键盘焦点环 / chips 胶囊 / 卡片悬浮 ---- */
+.qvq-shell button:not(:disabled):active { transform: scale(0.98); }
+.qvq-shell :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--qvq-accent);
+  outline-offset: 2px;
+}
+.prov-card { transition: border-color var(--qvq-t) ease, box-shadow var(--qvq-t) ease, transform var(--qvq-t) ease; }
+.prov-card:hover { transform: translateY(-1px); box-shadow: var(--qvq-shadow); }
+.cf-chip, .prov-chip, .ext-chip, .partic-chip, .sess-acct-chip { border-radius: var(--qvq-r-pill); }
+@media (prefers-reduced-motion: reduce) {
+  .qvq-shell *, .qvq-shell *::before, .qvq-shell *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ---- 外观切换按钮：圆形描边钮，桌面导航脚 / 移动顶栏 / 抽屉头三处复用 ---- */
+.qvq-nav-scroll { flex: 1 1 auto; min-height: 0; }
+.qvq-nav-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px 0;
+  margin-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--qvq-bd) 70%, transparent);
+}
+.qvq-theme-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  cursor: pointer;
+}
+.qvq-theme-btn:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
+.qvq-theme-btn svg { width: 16px; height: 16px; }
+.qvq-nav-drawer-head .qvq-theme-btn { width: 30px; height: 30px; }
+.qvq-appbar .qvq-theme-btn { margin-left: auto; }
+
+/* ---- 表格横滚容器：窄屏不再把整页撑宽 ---- */
+.qvq-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.qvq-table-wrap .qvq-table { min-width: 560px; }

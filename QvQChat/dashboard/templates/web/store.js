@@ -11,12 +11,41 @@ QvQ.store = Vue.reactive({
   busy: false,
   status: {},
   toast: "",
+  themeMode: (function () {
+    try { return localStorage.getItem("qvq_theme") || "follow"; } catch (e) { return "follow"; }
+  })(),
 });
 
 QvQ.setLang = function (lang) {
   QvQ.store.lang = lang;
   try { localStorage.setItem("qvq_lang", lang); } catch (e) {}
 };
+
+QvQ.setTheme = function (mode) {
+  QvQ.store.themeMode = mode;
+  try { localStorage.setItem("qvq_theme", mode); } catch (e) {}
+  if (window.QvQ.syncThemeExternal) window.QvQ.syncThemeExternal();
+};
+
+/* hash 路由：#/page 与 store.page 双向同步（刷新保位 / 深链 / 浏览器后退） */
+(function () {
+  var PAGES = ("overview chat providers platforms personas config plugins skills tasks "
+    + "memory knowledge sessions audit storage tools mcp orchestrate inbox usage").split(" ");
+  var fromHash = function () {
+    var h = (location.hash || "").replace(/^#\/?/, "").split(/[/?&]/)[0];
+    return PAGES.indexOf(h) >= 0 ? h : "";
+  };
+  var apply = function () {
+    var p = fromHash();
+    if (p && QvQ.store.page !== p) QvQ.store.page = p;
+  };
+  apply();
+  window.addEventListener("hashchange", apply);
+  Vue.watch(function () { return QvQ.store.page; }, function (val) {
+    if (PAGES.indexOf(val) < 0) return;
+    if (fromHash() !== val) location.hash = "#/" + val;
+  });
+})();
 
 /* 全局轻提示：任意页面 QvQ.toast("...")，4s 自动消失 */
 QvQ.toastTimer = null;

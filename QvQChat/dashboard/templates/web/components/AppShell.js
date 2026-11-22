@@ -121,6 +121,23 @@ window.AppShell = {
       this.drawerOpen = false;
     },
     login() { QvQ.store.loggedIn = true; },
+    cycleTheme() {
+      var order = ["follow", "light", "dark"];
+      var cur = this.st.themeMode || "follow";
+      var next = order[(order.indexOf(cur) + 1) % order.length];
+      QvQ.setTheme(next);
+      QvQ.toast(t("theme_title").replace("{mode}", t("theme_" + next)));
+    },
+    themeIcon() {
+      var m = this.st.themeMode || "follow";
+      if (m === "light") return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+      if (m === "dark") return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>';
+    },
+    themeTitle() {
+      var m = this.st.themeMode || "follow";
+      return t("theme_title").replace("{mode}", t("theme_" + m));
+    },
   },
   template: [
     '<n-config-provider :theme="theme" :theme-overrides="overrides" :locale="locale"',
@@ -131,13 +148,16 @@ window.AppShell = {
     '    </div>',
     '    <div v-else class="qvq-shell">',
     '      <header class="qvq-appbar">',
-    '        <button type="button" class="qvq-appbar-burger" @click="drawerOpen = true">',
+    '        <button type="button" class="qvq-appbar-burger" :aria-label="t(\'aria_menu\')" :title="t(\'aria_menu\')" @click="drawerOpen = true">',
     '          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">',
     '            <path d="M4 7h16M4 12h16M4 17h16"/></svg>',
     '        </button>',
     '        <span class="qvq-appbar-title">{{ pageTitle }}</span>',
+    '        <button type="button" class="qvq-theme-btn" :aria-label="themeTitle()" :title="themeTitle()" @click="cycleTheme">',
+    '          <span v-html="themeIcon()"></span>',
+    '        </button>',
     '      </header>',
-    '      <button type="button" class="qvq-burger" @click="drawerOpen = true">',
+    '      <button type="button" class="qvq-burger" :aria-label="t(\'aria_menu\')" :title="t(\'aria_menu\')" @click="drawerOpen = true">',
     '        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">',
     '          <path d="M4 7h16M4 12h16M4 17h16"/></svg>',
     '      </button>',
@@ -148,7 +168,10 @@ window.AppShell = {
     '        <aside v-if="drawerOpen" class="qvq-nav qvq-nav-drawer">',
     '          <div class="qvq-nav-drawer-head">',
     '            <span class="qvq-logo">QvQ<span>Chat</span></span>',
-    '            <button type="button" class="qvq-drawer-x" @click="drawerOpen = false">×</button>',
+    '            <button type="button" class="qvq-theme-btn" :aria-label="themeTitle()" :title="themeTitle()" @click="cycleTheme">',
+    '              <span v-html="themeIcon()"></span>',
+    '            </button>',
+    '            <button type="button" class="qvq-drawer-x" :aria-label="t(\'aria_close\')" :title="t(\'aria_close\')" @click="drawerOpen = false">×</button>',
     '          </div>',
     '          <div class="qvq-nav-scroll">',
     '            <div v-for="g in navGroups" :key="g.key" class="qvq-nav-group">',
@@ -175,6 +198,11 @@ window.AppShell = {
     '            <span class="qvq-nav-label">{{ t(it.labelKey) }}</span>',
     '          </button>',
     '        </div>',
+    '        </div>',
+    '        <div class="qvq-nav-foot">',
+    '          <button type="button" class="qvq-theme-btn" :aria-label="themeTitle()" :title="themeTitle()" @click="cycleTheme">',
+    '            <span v-html="themeIcon()"></span>',
+    '          </button>',
     '        </div>',
     '      </aside>',
     '      <main class="qvq-main" :class="{ \'chat-mode\': page === \'chat\' }">',

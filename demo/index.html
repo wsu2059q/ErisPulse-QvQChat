@@ -15,6 +15,19 @@
   --qvq-glass: blur(14px) saturate(1.15);
   --qvq-shadow: 0 6px 18px -8px rgba(15, 23, 42, 0.18);
   --qvq-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --qvq-cat-1: #2d7d74;
+  --qvq-cat-2: #a06a22;
+  --qvq-cat-3: #ad5761;
+  --qvq-cat-4: #5a6fb5;
+  --qvq-ok: #178a52;
+  --qvq-warn: #d98a2b;
+  --qvq-er: #d9404e;
+  --qvq-surface-2: #ffffff;
+  --qvq-r-card: 16px;
+  --qvq-r-ctl: 12px;
+  --qvq-r-pill: 999px;
+  --qvq-t: 200ms;
+  --qvq-t-fast: 120ms;
 }
 [data-theme="dark"] {
   --qvq-bg: #0f1115;
@@ -28,6 +41,11 @@
   --qvq-accent: #4aa3dd;
   --qvq-accent-soft: rgba(74, 163, 221, 0.18);
   --qvq-shadow: 0 8px 22px -8px rgba(0, 0, 0, 0.6);
+  --qvq-cat-1: #6fc2b4;
+  --qvq-cat-2: #e0b071;
+  --qvq-cat-3: #df9aa2;
+  --qvq-cat-4: #93a5e0;
+  --qvq-surface-2: #242a33;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -42,6 +60,11 @@
     --qvq-accent: #4aa3dd;
     --qvq-accent-soft: rgba(74, 163, 221, 0.18);
     --qvq-shadow: 0 8px 22px -8px rgba(0, 0, 0, 0.6);
+    --qvq-cat-1: #6fc2b4;
+    --qvq-cat-2: #e0b071;
+    --qvq-cat-3: #df9aa2;
+    --qvq-cat-4: #93a5e0;
+    --qvq-surface-2: #242a33;
   }
 }
 
@@ -2726,8 +2749,9 @@ body::-webkit-scrollbar,
   .chat-side-head .n-input, .chat-side-head .n-base-selection { min-height: 38px; --n-height: 38px; }
   .chat-composer .n-input .n-input__input-el, .chat-composer textarea { min-height: 24px; font-size: 14px; }
   .chat-send { min-height: 40px; }
+  .chat-mention, .chat-clip { min-width: 44px; min-height: 44px; }
   .msg-acts { opacity: 1; gap: 4px 14px; }
-  .msg-acts button { font-size: 12.5px; padding: 6px 2px; }
+  .msg-acts button { font-size: 12.5px; padding: 10px 4px; min-height: 44px; }
   .msg-acts .msg-model { line-height: 1.2; }
   .chat-sitem { padding: 11px 10px; }
   .chat-group { padding: 9px 10px; }
@@ -2735,7 +2759,7 @@ body::-webkit-scrollbar,
   .n-dropdown-option { min-height: 40px !important; }
   .n-dropdown-option-body { padding: 8px 14px !important; font-size: 13.5px !important; }
   .n-popover .n-button { min-height: 36px; }
-  .doc-save { display: none; }
+  .doc-save { left: 12px; right: 12px; bottom: 12px; justify-content: flex-end; flex-wrap: wrap; }
   .qvq-doc .doc-tools { width: 100%; }
 }
 @media (min-width: 901px) {
@@ -3708,6 +3732,55 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
 }
 .cost-model-row .amt { color: var(--qvq-tx-s); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cost-model-row .amt .pct { font-style: normal; color: var(--qvq-tx-t); margin-left: 4px; }
+
+/* ---- 组件态统一：按下回弹 / 键盘焦点环 / chips 胶囊 / 卡片悬浮 ---- */
+.qvq-shell button:not(:disabled):active { transform: scale(0.98); }
+.qvq-shell :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--qvq-accent);
+  outline-offset: 2px;
+}
+.prov-card { transition: border-color var(--qvq-t) ease, box-shadow var(--qvq-t) ease, transform var(--qvq-t) ease; }
+.prov-card:hover { transform: translateY(-1px); box-shadow: var(--qvq-shadow); }
+.cf-chip, .prov-chip, .ext-chip, .partic-chip, .sess-acct-chip { border-radius: var(--qvq-r-pill); }
+@media (prefers-reduced-motion: reduce) {
+  .qvq-shell *, .qvq-shell *::before, .qvq-shell *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ---- 外观切换按钮：圆形描边钮，桌面导航脚 / 移动顶栏 / 抽屉头三处复用 ---- */
+.qvq-nav-scroll { flex: 1 1 auto; min-height: 0; }
+.qvq-nav-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px 0;
+  margin-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--qvq-bd) 70%, transparent);
+}
+.qvq-theme-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  cursor: pointer;
+}
+.qvq-theme-btn:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
+.qvq-theme-btn svg { width: 16px; height: 16px; }
+.qvq-nav-drawer-head .qvq-theme-btn { width: 30px; height: 30px; }
+.qvq-appbar .qvq-theme-btn { margin-left: auto; }
+
+/* ---- 表格横滚容器：窄屏不再把整页撑宽 ---- */
+.qvq-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.qvq-table-wrap .qvq-table { min-width: 560px; }
 </style></head><body><div class="qvq-bg-layer" id="qvq-bg-layer" aria-hidden="true"></div>
 <div id="app"><div class="qvq-splash" aria-hidden="true">
   <svg class="qvq-splash-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -4955,11 +5028,11 @@ function detectLang() {
   return "zh-CN";
 }
 
-I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线" });
-I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線" });
-I18N["en"] = Object.assign(I18N["en"] || {}, { nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone" });
-I18N["ja"] = Object.assign(I18N["ja"] || {}, { nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中" });
-I18N["ru"] = Object.assign(I18N["ru"] || {}, { nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке" });
+I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线", usage_records_title: "最近调用明细", mem_profile_clear: "清空画像", theme_follow: "跟随外壳", theme_light: "亮色", theme_dark: "深色", theme_title: "外观：{mode}（点击切换）", aria_menu: "打开菜单", aria_close: "关闭" });
+I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", prompt_chars: "字元", prompt_preview: "預覽提示詞", prompt_required: "必填", prompt_scene_note: "scene 為運行時部件：實際對話時才注入群名/發言人/@感知/引用等場景註記", prompt_turns: "輪歷史", usage_chart_title: "14 天趨勢", nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線", mem_profile_clear: "清空畫像", theme_follow: "跟隨外殼", theme_light: "亮色", theme_dark: "深色", theme_title: "外觀：{mode}（點擊切換）", aria_menu: "開啟選單", aria_close: "關閉" });
+I18N["en"] = Object.assign(I18N["en"] || {}, { share_chat_tokens: "Max tokens visitor chat may consume", share_rounds: "Rounds a visitor may continue chatting (0 = read-only)", share_rounds_hint: "Visitors continue as plain text without tools; stops when rounds or budget run out", nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone", usage_records_title: "Recent calls", mem_profile_clear: "Clear profile", theme_follow: "Follow shell", theme_light: "Light", theme_dark: "Dark", theme_title: "Appearance: {mode} (click to switch)", aria_menu: "Open menu", aria_close: "Close" });
+I18N["ja"] = Object.assign(I18N["ja"] || {}, { nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中", mem_profile_clear: "プロフィールを消去", theme_follow: "シェルに追随", theme_light: "ライト", theme_dark: "ダーク", theme_title: "外観：{mode}（クリックで切替）", aria_menu: "メニューを開く", aria_close: "閉じる" });
+I18N["ru"] = Object.assign(I18N["ru"] || {}, { inbox_handled: "Обработано", load_older: "Загрузить более старые", nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке", mem_profile_clear: "Очистить профиль", theme_follow: "Как в оболочке", theme_light: "Светлая", theme_dark: "Тёмная", theme_title: "Оформление: {mode} (нажмите для смены)", aria_menu: "Открыть меню", aria_close: "Закрыть" });
 
 function t(k) {
   return (I18N[QvQ.store.lang] && I18N[QvQ.store.lang][k]) || I18N.en[k] || k;
@@ -4976,12 +5049,41 @@ QvQ.store = Vue.reactive({
   busy: false,
   status: {},
   toast: "",
+  themeMode: (function () {
+    try { return localStorage.getItem("qvq_theme") || "follow"; } catch (e) { return "follow"; }
+  })(),
 });
 
 QvQ.setLang = function (lang) {
   QvQ.store.lang = lang;
   try { localStorage.setItem("qvq_lang", lang); } catch (e) {}
 };
+
+QvQ.setTheme = function (mode) {
+  QvQ.store.themeMode = mode;
+  try { localStorage.setItem("qvq_theme", mode); } catch (e) {}
+  if (window.QvQ.syncThemeExternal) window.QvQ.syncThemeExternal();
+};
+
+/* hash 路由：#/page 与 store.page 双向同步（刷新保位 / 深链 / 浏览器后退） */
+(function () {
+  var PAGES = ("overview chat providers platforms personas config plugins skills tasks "
+    + "memory knowledge sessions audit storage tools mcp orchestrate inbox usage").split(" ");
+  var fromHash = function () {
+    var h = (location.hash || "").replace(/^#\/?/, "").split(/[/?&]/)[0];
+    return PAGES.indexOf(h) >= 0 ? h : "";
+  };
+  var apply = function () {
+    var p = fromHash();
+    if (p && QvQ.store.page !== p) QvQ.store.page = p;
+  };
+  apply();
+  window.addEventListener("hashchange", apply);
+  Vue.watch(function () { return QvQ.store.page; }, function (val) {
+    if (PAGES.indexOf(val) < 0) return;
+    if (fromHash() !== val) location.hash = "#/" + val;
+  });
+})();
 
 /* 全局轻提示：任意页面 QvQ.toast("...")，4s 自动消失 */
 QvQ.toastTimer = null;
@@ -5168,6 +5270,13 @@ QvQ.taskLabel = function (tk) {
   } catch (e) { parentDoc = null; }
 
   function syncAttrs() {
+    var mode = "";
+    try { mode = (window.QvQ && QvQ.store && QvQ.store.themeMode) || ""; } catch (e) {}
+    if (mode === "light" || mode === "dark") {
+      document.documentElement.setAttribute("data-theme", mode);
+      document.documentElement.removeAttribute("data-oled");
+      return;
+    }
     if (!parentDoc) return;
     ["data-theme", "data-oled"].forEach(function (name) {
       var value = parentDoc.documentElement.getAttribute(name);
@@ -5214,9 +5323,13 @@ QvQ.taskLabel = function (tk) {
 })();
 
 function naiveTheme() {
+  var mode = "";
+  try { mode = (window.QvQ && QvQ.store && QvQ.store.themeMode) || ""; } catch (e) {}
+  var ui = window.naive || window.NaiveUi;
+  if (mode === "dark") return ui ? ui.darkTheme : null;
+  if (mode === "light") return null;
   var dark = document.documentElement.getAttribute("data-theme") === "dark"
     || (!document.documentElement.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  var ui = window.naive || window.NaiveUi;
   return dark && ui ? ui.darkTheme : null;
 }
 
@@ -5482,6 +5595,23 @@ window.AppShell = {
       this.drawerOpen = false;
     },
     login() { QvQ.store.loggedIn = true; },
+    cycleTheme() {
+      var order = ["follow", "light", "dark"];
+      var cur = this.st.themeMode || "follow";
+      var next = order[(order.indexOf(cur) + 1) % order.length];
+      QvQ.setTheme(next);
+      QvQ.toast(t("theme_title").replace("{mode}", t("theme_" + next)));
+    },
+    themeIcon() {
+      var m = this.st.themeMode || "follow";
+      if (m === "light") return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+      if (m === "dark") return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>';
+    },
+    themeTitle() {
+      var m = this.st.themeMode || "follow";
+      return t("theme_title").replace("{mode}", t("theme_" + m));
+    },
   },
   template: [
     '<n-config-provider :theme="theme" :theme-overrides="overrides" :locale="locale"',
@@ -5492,13 +5622,16 @@ window.AppShell = {
     '    </div>',
     '    <div v-else class="qvq-shell">',
     '      <header class="qvq-appbar">',
-    '        <button type="button" class="qvq-appbar-burger" @click="drawerOpen = true">',
+    '        <button type="button" class="qvq-appbar-burger" :aria-label="t(\'aria_menu\')" :title="t(\'aria_menu\')" @click="drawerOpen = true">',
     '          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">',
     '            <path d="M4 7h16M4 12h16M4 17h16"/></svg>',
     '        </button>',
     '        <span class="qvq-appbar-title">{{ pageTitle }}</span>',
+    '        <button type="button" class="qvq-theme-btn" :aria-label="themeTitle()" :title="themeTitle()" @click="cycleTheme">',
+    '          <span v-html="themeIcon()"></span>',
+    '        </button>',
     '      </header>',
-    '      <button type="button" class="qvq-burger" @click="drawerOpen = true">',
+    '      <button type="button" class="qvq-burger" :aria-label="t(\'aria_menu\')" :title="t(\'aria_menu\')" @click="drawerOpen = true">',
     '        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">',
     '          <path d="M4 7h16M4 12h16M4 17h16"/></svg>',
     '      </button>',
@@ -5509,7 +5642,10 @@ window.AppShell = {
     '        <aside v-if="drawerOpen" class="qvq-nav qvq-nav-drawer">',
     '          <div class="qvq-nav-drawer-head">',
     '            <span class="qvq-logo">QvQ<span>Chat</span></span>',
-    '            <button type="button" class="qvq-drawer-x" @click="drawerOpen = false">×</button>',
+    '            <button type="button" class="qvq-theme-btn" :aria-label="themeTitle()" :title="themeTitle()" @click="cycleTheme">',
+    '              <span v-html="themeIcon()"></span>',
+    '            </button>',
+    '            <button type="button" class="qvq-drawer-x" :aria-label="t(\'aria_close\')" :title="t(\'aria_close\')" @click="drawerOpen = false">×</button>',
     '          </div>',
     '          <div class="qvq-nav-scroll">',
     '            <div v-for="g in navGroups" :key="g.key" class="qvq-nav-group">',
@@ -5536,6 +5672,11 @@ window.AppShell = {
     '            <span class="qvq-nav-label">{{ t(it.labelKey) }}</span>',
     '          </button>',
     '        </div>',
+    '        </div>',
+    '        <div class="qvq-nav-foot">',
+    '          <button type="button" class="qvq-theme-btn" :aria-label="themeTitle()" :title="themeTitle()" @click="cycleTheme">',
+    '            <span v-html="themeIcon()"></span>',
+    '          </button>',
     '        </div>',
     '      </aside>',
     '      <main class="qvq-main" :class="{ \'chat-mode\': page === \'chat\' }">',
@@ -7626,8 +7767,8 @@ window.PageChat = {
     '        <div class="chat-input-foot">',
     '          <div class="chat-input-tools">',
     '            <button type="button" class="chat-mention" :class="{ on: mentionCount }"',
-    '                    :title="t(\'chat_mention\')" @click="mentionOpen = true">@</button>',
-    '            <label class="chat-clip" :title="t(\'chat_pasted\')">',
+    '                    :title="t(\'chat_mention\')" :aria-label="t(\'chat_mention\')" @click="mentionOpen = true">@</button>',
+    '            <label class="chat-clip" :title="t(\'chat_pasted\')" :aria-label="t(\'chat_pasted\')">',
     '              <input type="file" multiple hidden @change="pickFiles"/>',
     '              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"',
     '                   stroke-linecap="round"><path d="M21.4 11.05l-9.19 9.19a5 5 0 01-7.07-7.07l8.49-8.49a3.5 3.5 0 114.95 4.95l-8.49 8.49a2 2 0 01-2.83-2.83l7.78-7.78"/></svg>',
@@ -7636,7 +7777,7 @@ window.PageChat = {
     '          </div>',
     '          <div class="chat-input-side">',
     '            <span class="chat-enter-hint">Enter<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10l-5 5 5 5M4 15h9a4 4 0 004-4V6"/></svg></span>',
-    '            <button type="button" class="chat-send" :disabled="!draft.trim() && !attachments.length" @click="send">',
+    '            <button type="button" class="chat-send" :disabled="!draft.trim() && !attachments.length" :aria-label="t(\'chat_send\')" :title="t(\'chat_send\')" @click="send">',
     '              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"',
     '                   stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
     '            </button>',
@@ -10131,7 +10272,8 @@ window.PageMemory = {
     '    </div>',
     '  </div>',
     '  <div class="qvq-loading" v-if="loadingSess"><i></i>{{ t("loading") }}</div>',
-    '  <table class="qvq-table" v-if="!loadingSess">',
+    '  <div class="qvq-table-wrap" v-if="!loadingSess">',
+    '  <table class="qvq-table">',
     '    <thead><tr>',
     '      <th>{{ t("recent_sessions") }}</th>',
     '      <th style="width:70px">{{ t("col_count") }}</th>',
@@ -10148,6 +10290,7 @@ window.PageMemory = {
     '      </tr>',
     '    </tbody>',
     '  </table>',
+    '  </div>',
     '  <div v-if="!loadingSess && !shownSessions.length" class="qvq-empty">-</div>',
     '  <n-drawer v-model:show="drawer" :width="460" placement="right">',
     '    <n-drawer-content :title="active ? (active.name || active.chat_key) : \'\'" closable>',
@@ -10655,7 +10798,8 @@ window.PageSessions = {
     '      <n-button size="small" quaternary @click="exitPicking">{{ t("batch_exit") }}</n-button>',
     '    </div>',
     '    <div class="qvq-loading" v-if="loading"><i></i>{{ t("loading") }}</div>',
-    '    <table class="qvq-table" v-if="!loading">',
+    '    <div class="qvq-table-wrap" v-if="!loading">',
+    '    <table class="qvq-table">',
     '      <thead><tr>',
     '        <th v-if="picking" style="width:34px"><n-checkbox :checked="allPicked" @update:checked="toggleAll"/></th>',
     '        <th>{{ t("recent_sessions") }}</th>',
@@ -10670,8 +10814,9 @@ window.PageSessions = {
     '          <td>{{ r.turns || 0 }}</td>',
     '          <td v-if="!picking"><button type="button" class="prov-act danger" @click="delOne(r.chat_key)">{{ t("chat_delete") }}</button></td>',
     '        </tr>',
-    '      </tbody>',
+      '      </tbody>',
     '    </table>',
+    '    </div>',
     '    <div v-if="!loading && !rows.length" class="qvq-empty">-</div>',
     '    <div class="scroll-sentinel" v-if="rows.length && rows.length < total"></div>',
     '  </template>',
@@ -10849,7 +10994,8 @@ window.PageAudit = {
     '    </span>',
     '  </div>',
     '  <div class="qvq-loading" v-if="loading"><i></i>{{ t("loading") }}</div>',
-    '  <table class="qvq-table" v-if="!loading">',
+    '  <div class="qvq-table-wrap" v-if="!loading">',
+    '  <table class="qvq-table">',
     '    <thead><tr>',
     '      <th v-if="picking" style="width:34px"></th>',
     '      <th style="width:130px">{{ t("col_time") }}</th>',
@@ -10874,6 +11020,7 @@ window.PageAudit = {
     '      </tr>',
     '    </tbody>',
     '  </table>',
+    '  </div>',
     '  <div v-if="!loading && !shown.length" class="qvq-empty">-</div>',
     '  <div class="scroll-sentinel" ref="sentinel" v-if="hasMore && !picking"></div>',
     '  <n-drawer v-model:show="detailOpen" :width="440" placement="right">',
@@ -11033,7 +11180,8 @@ window.PageStorage = {
     '  </div>',
     '  <div class="qvq-meta-line" v-if="hint" style="margin-bottom:8px">{{ hint }}</div>',
     '  <div class="qvq-loading" v-if="loading"><i></i>{{ t("loading") }}</div>',
-    '  <table class="qvq-table stor-table" v-if="!loading">',
+    '  <div class="qvq-table-wrap" v-if="!loading">',
+    '  <table class="qvq-table stor-table">',
     '    <thead><tr>',
     '      <th>{{ t("storage_domain") }}</th>',
     '      <th style="width:90px">{{ t("storage_count") }}</th>',
@@ -11058,6 +11206,7 @@ window.PageStorage = {
     '      </tr>',
     '    </tbody>',
     '  </table>',
+    '  </div>',
     '  <div v-if="!loading && !domains.length" class="qvq-empty"><Mascot :size="30" mood="idle"/>{{ t("storage_empty") }}</div>',
     '  <section class="stor-browse" v-if="active">',
     '    <div class="stor-browse-head">',

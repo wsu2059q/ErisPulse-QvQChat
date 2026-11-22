@@ -6,6 +6,13 @@
   } catch (e) { parentDoc = null; }
 
   function syncAttrs() {
+    var mode = "";
+    try { mode = (window.QvQ && QvQ.store && QvQ.store.themeMode) || ""; } catch (e) {}
+    if (mode === "light" || mode === "dark") {
+      document.documentElement.setAttribute("data-theme", mode);
+      document.documentElement.removeAttribute("data-oled");
+      return;
+    }
     if (!parentDoc) return;
     ["data-theme", "data-oled"].forEach(function (name) {
       var value = parentDoc.documentElement.getAttribute(name);
@@ -52,9 +59,13 @@
 })();
 
 function naiveTheme() {
+  var mode = "";
+  try { mode = (window.QvQ && QvQ.store && QvQ.store.themeMode) || ""; } catch (e) {}
+  var ui = window.naive || window.NaiveUi;
+  if (mode === "dark") return ui ? ui.darkTheme : null;
+  if (mode === "light") return null;
   var dark = document.documentElement.getAttribute("data-theme") === "dark"
     || (!document.documentElement.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  var ui = window.naive || window.NaiveUi;
   return dark && ui ? ui.darkTheme : null;
 }
 
