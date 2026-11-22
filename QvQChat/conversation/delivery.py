@@ -760,12 +760,27 @@ class Delivery:
             sends = []
         if self.merges(platform) and from_tools:
             try:
+# 转发卡身份：与事件路径 _try_forward 同源——bot uin/nickname + 会话人格 nickname 覆盖。
+# 缺了节点 nickname 为空，QQ 客户端回退显示裸 uin（"643319481的聊天记录"的根源）
+                user_id, bot_nickname = await self.bot_identity(platform)
+                nickname = bot_nickname
+                personas = getattr(self.main, "personas", None)
+                if personas is not None and chat_key:
+                    try:
+                        persona = personas.resolve(chat_key)
+                        persona_nick = str((persona or {}).get("nickname") or "")
+                    except Exception:
+                        persona_nick = ""
+                    if persona_nick:
+                        nickname = persona_nick
                 used = await utils.deliver_forward(
                     adapter,
                     target_type,
                     target_id,
                     [segment for _, segment in segments],
                     sends,
+                    nickname=nickname,
+                    user_id=user_id,
                     account=account,
                 )
                 if used:

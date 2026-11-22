@@ -194,12 +194,30 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
         if sends and "Markdown" not in sends and "Html" not in sends:
             sections = [utils.markdown_to_text(s) for s in sections]
         try:
+# 转发卡身份：bot uin/nickname + 人格 nickname 覆盖（缺了节点空昵称，QQ 显示裸 uin）
+            fwd_user_id, fwd_nickname = "", ""
+            if ctx.main is not None and hasattr(ctx.main.delivery, "bot_identity"):
+                try:
+                    fwd_user_id, fwd_nickname = await ctx.main.delivery.bot_identity(platform)
+                except Exception:
+                    pass
+            personas = getattr(ctx.main, "personas", None) if ctx.main is not None else None
+            if personas is not None:
+                try:
+                    persona = personas.resolve(str(getattr(ctx, "chat_key", "") or ""))
+                    persona_nick = str((persona or {}).get("nickname") or "")
+                except Exception:
+                    persona_nick = ""
+                if persona_nick:
+                    fwd_nickname = persona_nick
             used = await utils.deliver_forward(
                 adapter,
                 target_type,
                 target_id,
                 sections,
                 sends,
+                nickname=fwd_nickname,
+                user_id=fwd_user_id,
                 account=str(getattr(ctx, "self_id", "") or ""),
             )
         except Exception as e:
@@ -273,6 +291,11 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
                            target_id=target_id, error=detail[:200])
         return texts.t("tool_error", name="send_message", error=f"{detail}；已转入待发队列")
 
+# 发送落库：工具直发的消息写进发起会话上下文（AI 下一轮知道自己发过什么，
+# 不再"发完即忘"反复折腾），跨会话发送时目标会话也补一条（bot 真实发言历史）
+    if used and text:
+        _persist_sent(ctx, platform, target_type, target_id, text)
+
     if image_url:
         result = await chain.Image(image_url)
     if resolved_audio:
@@ -320,6 +343,27 @@ async def send_dsl(ctx: ToolContext, platform: str, target_type: str, target_id:
     if not utils._send_failed(result):
         _record_sent(ctx, platform, target_type, target_id)
     return utils.to_text(result)
+
+
+def _persist_sent(ctx, platform: str, target_type: str, target_id: str, text: str) -> None:
+    """工具直发落库：发起会话记 assistant 条目（标注来源）；跨会话目标会话同样补记。
+
+    AI"发完即忘"的根源——发送成功不写上下文，下一轮不知道自己发过图/说过话，
+    用户问"图呢？"就重新折腾一遍。 """
+    main = getattr(ctx, "main", None)
+    sessions = getattr(main, "sessions", None) if main is not None else None
+    if sessions is None:
+        return
+    origin_key = str(getattr(ctx, "chat_key", "") or "")
+    target_key = f"{platform}:{'group' if target_type == 'group' else 'user'}:{target_id}"
+    body = "[通过工具发送] " + str(text or "")
+    try:
+        if origin_key:
+            sessions.append(origin_key, "assistant", body)
+        if target_key != origin_key:
+            sessions.append(target_key, "assistant", str(text or ""))
+    except Exception:
+        pass
 
 
 async def list_services(ctx, module: str = "") -> str:

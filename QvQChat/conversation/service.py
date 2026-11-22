@@ -20,7 +20,7 @@ from .policy import get_policy
 from .repository import (  # noqa: F401 — 键名/key 工具/SEED 常量本体已迁 repository.py，此处 re-export 保兼容
     CONV_PREFIX, ROUTES_KEY, IDENTITY_MAP_KEY, CONV_INDEX_KEY, USER_SEEN_PREFIX, USER_SEEN_MAX,
     DASHBOARD_PLATFORM, make_chat_key, parse_chat_key, strip_isolation, strip_account, account_of,
-    SEED_BOT_PREFIXES, SEED_HEADER_PREFIXES,
+    SEED_BOT_PREFIXES, SEED_HEADER_PREFIXES, LOW_TOKEN_CONTENT_CHARS,
     SessionRepository,
 )
 from .assembler import PromptAssembler
