@@ -213,7 +213,7 @@ def test_delivery_profile_defaults_without_config_keys():
     assert p["min_delay"] == pytest.approx(0.5) and p["max_delay"] == pytest.approx(6.0)
     assert p["min_length"] == 120 and p["max_parts"] == 6
     assert p["reply_split"] == "paragraph"
-    assert p["forward_min_messages"] == 2 and p["forward_threshold"] == 600
+    assert p["forward_min_messages"] == 3 and p["forward_threshold"] == 600
 
 
 def test_delivery_profile_wildcard_overrides():

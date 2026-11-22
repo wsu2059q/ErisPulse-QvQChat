@@ -79,7 +79,7 @@ def delivery_profile(config, platform: str) -> dict:
         # 人化节奏（投递层通用行为）：偶尔停顿在想 / 短句连发 / 轻量回复提速
         "humanize": bool(getattr(config, "rhythm_humanize", True)),
         "reply_split": str(getattr(config, "reply_split", "paragraph")),
-        "forward_min_messages": as_int(getattr(config, "forward_min_messages", 2), 2),
+        "forward_min_messages": as_int(getattr(config, "forward_min_messages", 3), 3),
         "forward_threshold": as_int(getattr(config, "forward_threshold", 600), 600),
         "forward_reply_chars": as_int(getattr(config, "forward_reply_chars", 0), 0),
         "forward_args_chars": as_int(getattr(config, "forward_args_chars", 140), 140) or 140,
@@ -456,7 +456,7 @@ class Delivery:
             output_chars=as_int(profile.get("forward_output_chars"), 180) or None,
         )
         if force is not True:
-            min_messages = as_int(profile.get("forward_min_messages"), 2)
+            min_messages = as_int(profile.get("forward_min_messages"), 3)
             if not keep_conclusion_inside:
                 if structure_aware:
 # D3 结构感知：结构化占比达标、或多段且含代码块/表格才转发；纯寒暄多段直发

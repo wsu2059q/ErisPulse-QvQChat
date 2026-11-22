@@ -308,11 +308,13 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         self.runner = AgentRunner(self.pool, self.registry, self.cfg)
         self.eco = EcosystemBridge(self)
         self.mcp = MCPManager(self)
-# 统一扩展入口：生态模块经 qvq_extensions 贡献的技能/知识只读并入本模块
+# 统一扩展入口：生态模块经 qvq_extensions 贡献的技能/知识/记忆只读并入本模块
         if self.skills is not None:
             self.skills.set_external_provider(self.eco.external_skills)
         if self.knowledge is not None:
             self.knowledge.set_external_provider(self.eco.external_knowledge)
+        if self.memory is not None:
+            self.memory.set_external_provider(self.eco.external_memories)
 # 内置 ErisPulse 文档检索（版本跟随已安装框架，零 MCP 依赖）
         from .bridge.docs import ErisPulseDocs
 
@@ -520,20 +522,26 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         answer = str(data.get("answer") or "")
         sub_key = str(data.get("sub_key") or "")
         status = str(data.get("status") or "done")
-# 失败/取消也插回：发起者应知道任务终止（仅 done 回报会让失败静默）
+# 系统级硬头（不依赖 AI 自觉）：用户一眼看出这是后台任务终态与整体是否结束
+        short_task = utils.truncate(task, 80)
         if status == "cancelled":
+            notice = texts.t("subagent_head_cancelled", task=short_task)
             prompt = texts.t("subagent_cancelled_prompt", task=utils.truncate(task, 200),
                              session=sub_key)
         elif status == "error":
+            err = utils.truncate(str(data.get("error") or ""), 120)
+            notice = texts.t("subagent_head_failed", task=short_task, error=err)
             prompt = texts.t("subagent_failed_prompt", task=utils.truncate(task, 200),
                              error=utils.truncate(str(data.get("error") or ""), 300),
                              session=sub_key)
         else:
+            notice = texts.t("subagent_head_done", task=short_task)
             prompt = texts.t("subagent_report_prompt", task=utils.truncate(task, 200),
                              answer=utils.truncate(answer, 3500), session=sub_key)
         try:
             await self.run_prompt(parent_chat_key, prompt, origin="proactive",
-                                  persist=True, scene=texts.t("scene_subagent_report"))
+                                  persist=True, scene=texts.t("scene_subagent_report"),
+                                  notice=notice)
         except Exception as e:
             self.logger.warning(f"subagent digest failed: {type(e).__name__}: {e}")
 
@@ -688,7 +696,8 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
     async def run_prompt(self, chat_key: str, prompt: str, persona_id: str = "",
                          origin: str = "task", send: bool = True, user_id: str = "",
                          model: str = "", task_kind: str = "chat", scene: str = "",
-                         temperature: float | None = None, persist: bool = False) -> str:
+                         temperature: float | None = None, persist: bool = False,
+                         notice: str = "") -> str:
         from .conversation.service import strip_account as _strip_account
 
 # 超限态下主动来源（speak 主动发言/插件插话）的语义：
@@ -771,6 +780,10 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             reply = utils.strip_output_tag(result.text.strip())[0]
             reply = utils.strip_stray_tags(reply)
             reply = utils.strip_fake_media_prefix(utils.strip_fake_media_claims(reply)) or texts.t("no_reply_content")
+# 系统级硬头（不依赖 AI 自觉）：后台任务终态来源行拼在转告正文最前——
+# 落库与实发同形，AI 下轮与用户看到的结构一致
+            if notice:
+                reply = notice + "\n" + reply
 # persist=True（插回式调用，如后台子智能体汇报消化）：问答双方都落会话，
 # 下轮对话 AI 才记得"汇报过什么、自己怎么消化的"；一次性任务调用保持 False 不留痕
             if persist:
@@ -786,12 +799,20 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                     for sent_platform, sent_type, sent_id in ctx.sent_log
                 )
                 if not delivered:
+# 子智能体回报消化轮（notice 非空）默认强制直发——from_tools=True 会让每张回报
+# 都变转发卡（消化轮的 tool_trace 是读上下文/记忆，不是任务过程）；
+# subagent_report_forward 开启时恢复打卡（卡内首节点含系统硬头，来源仍明确）。
+# 其它 run_prompt 调用（定时任务等无 notice）保持原行为
+                    if notice:
+                        pack_forward = bool(getattr(self.cfg, "subagent_report_forward", False))
+                    else:
+                        pack_forward = bool(result.tool_trace)
                     await self.delivery.send_segments(
                         platform,
                         detail_type,
                         target_id,
                         [(0.0, reply)],
-                        from_tools=bool(result.tool_trace),
+                        from_tools=pack_forward,
 # 带会话键：delivery 层据此还原 @账户 绑定发送账户（缺省静默落默认账户=张冠李戴）
                         chat_key=chat_key,
                     )

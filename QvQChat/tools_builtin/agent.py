@@ -62,6 +62,9 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
         parent_chat_key=str(ctx.chat_key or ""),
         self_id=str(getattr(ctx, "self_id", "") or ""),
     )
+# 直发身份头：子智能体绕过主智能体直接给用户发消息时，send_message 在首行加
+# 「以下为子智能体的进度更新」（subagent_label_on 可关）——来源必须可见
+    sub_ctx.agent_label = texts.t("subagent_send_header")
 # 场景与最近对话注入：让子智能体知道在为谁、在哪个群、最近聊了什么
     context_block = _context_block(main, ctx)
     system = texts.t("subagent_system", task=utils.truncate(task, 500))
@@ -121,6 +124,20 @@ def _launch_background(main, sub_key: str, sub_ctx, system: str, tools: list[str
     })
     spawned = main.spawn(_run_background(main, sub_key, sub_ctx, system, tools, task))
     register_live_subjob(sub_key, spawned)
+# 生命周期事件即 API：生态模块可 sdk.lifecycle.register("qvq.subagent_started", …)
+# 订阅自建任务面板/通知链（与 qvq.subagent_done 同一通道）
+    try:
+        async def _emit_started():
+            await main.sdk.lifecycle.emit("qvq.subagent_started", {
+                "sub_key": sub_key,
+                "parent_chat_key": str(getattr(sub_ctx, "parent_chat_key", "") or ""),
+                "task": utils.truncate(task, 500),
+                "tools": list(tools or []),
+            })
+
+        main.spawn(_emit_started())
+    except Exception:
+        pass
 # 纳入面板实时注册表：编排页/概览页能看到运行中的子智能体（流式回调在 _run_background 绑定）
     live_reg = getattr(main, "live_registry", None)
     if live_reg is not None:
@@ -191,6 +208,30 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
     成败都 emit：失败静默违背"自动汇报"承诺——发起者应知道任务黄了。
     过程回调绑定面板 LiveStream（编排页可围观流式内部过程），终态撤下注册表。
     """
+# 直发身份头（demote 与 spawn 双路径统一在此补）：send_message 首行加来源声明
+    if not str(getattr(sub_ctx, "agent_label", "") or ""):
+        sub_ctx.agent_label = texts.t("subagent_send_header")
+# 里程碑播报（默认关）：subagent_progress_on 开启时每工具轮次 emit，
+# Main 监听侧节流（同任务 5 分钟至多一条）后向父会话轻量直发
+    progress_on = bool(getattr(main.cfg, "subagent_progress_on", False))
+    progress_steps = {"n": 0}
+
+    def _emit_progress() -> None:
+        if not progress_on:
+            return
+        progress_steps["n"] += 1
+        try:
+            async def _emit():
+                await main.sdk.lifecycle.emit("qvq.subagent_progress", {
+                    "sub_key": sub_key,
+                    "parent_chat_key": str(getattr(sub_ctx, "parent_chat_key", "") or ""),
+                    "task": utils.truncate(task, 200),
+                    "steps": progress_steps["n"],
+                })
+
+            main.spawn(_emit())
+        except Exception:
+            pass
     live_reg = getattr(main, "live_registry", None)
     live = live_reg.get(sub_key) if live_reg is not None else None
     if live is None and live_reg is not None:
@@ -203,12 +244,24 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
     if live is not None:
         try:
             on_delta, on_reset, on_tool_event, on_reasoning = live_bind(live)
+
+            def _tool_event_with_progress(evt):
+                _emit_progress()
+                return on_tool_event(evt)
+
             hooks = {
                 "on_delta": on_delta, "on_reset": on_reset,
-                "on_tool_event": on_tool_event, "on_reasoning": on_reasoning,
+                "on_tool_event": _tool_event_with_progress, "on_reasoning": on_reasoning,
             }
         except Exception:
             hooks = {}
+    elif progress_on:
+# 无 live 流也要有进度：单挂 on_tool_event
+        def _progress_only(evt):
+            _emit_progress()
+            return None
+
+        hooks = {"on_tool_event": _progress_only}
 
     def _live_finish() -> None:
         if live is None:

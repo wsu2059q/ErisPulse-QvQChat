@@ -182,7 +182,13 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
 
     from ..conversation.delivery import delivery_profile, dispatch_text
 
-    # D2：转发阈值纳入平台 profile（delivery_profiles 通配命中可覆盖）
+    # 子智能体直发身份头（用户要求的"第一句必须是：以下为智能体…"）：sub_ctx.agent_label
+# 由 spawn/demote 统一注入；发送与落库同形（用户看到的=AI 记得的）
+    if text and getattr(ctx, "agent_label", "") and bool(getattr(ctx.config, "subagent_label_on", True)):
+        label = str(ctx.agent_label)
+        if not text.startswith(label):
+            text = label + "\n" + text
+# D2：转发阈值纳入平台 profile（delivery_profiles 通配命中可覆盖）
     profile = delivery_profile(ctx.config, platform)
     threshold = int(profile.get("forward_threshold", 600) or 0)
     forward_attempted = False

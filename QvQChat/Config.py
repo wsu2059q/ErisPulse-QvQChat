@@ -308,6 +308,9 @@ class QvQConfig(BaseConfig):
     skill_dev: bool = field(default=True, metadata=_desc("skill_dev", "模块开发能力：启用内置 erispulse-dev 技能（开发流程/约定）与 reload_module 热加载工具（仅管理员）", "skills", 3, "switch"))
     multi_agent: bool = field(default=True, metadata=_desc("multi_agent", "多智能体：注册 spawn_agent 工具并在提示词中教模型把耗时的抓取/检索/长内容任务派给子智能体，自己先回复用户进度", "tools", 18, "switch"))
     subjob_timeout: int = field(default=900, metadata=_desc("subjob_timeout", "后台子智能体单任务超时秒数（超时按失败回报发起会话；0 不限时）", "tools", 19, "number"))
+    subagent_report_forward: bool = field(default=False, metadata=_desc("subagent_report_forward", "后台任务回报打包转发卡：关闭时完成/失败通知以普通消息直发（带〔后台任务〕来源行，推荐）；开启时消化轮恢复合并转发卡（卡内首节点含来源行）", "tools", 19, "switch"))
+    subagent_progress_on: bool = field(default=False, metadata=_desc("subagent_progress_on", "后台任务里程碑播报：运行中每个工具轮次向发起会话发一句轻量进度（同任务 5 分钟至多一条，默认关——过程可在编排页/子会话页拉取）", "tools", 19, "switch"))
+    subagent_label_on: bool = field(default=True, metadata=_desc("subagent_label_on", "子智能体直发身份头：子智能体直接向用户发消息时首行加「以下为子智能体的进度更新」，让用户知道来源", "tools", 19, "switch"))
 # 文件工作区沙箱：读/写/列/删/下载/打包对所有人开放但框死在沙箱内；沙箱外一律拒绝
     file_tools_enabled: bool = field(default=True, metadata=_desc("file_tools_enabled", "文件工作区沙箱工具（list/read/write/delete/download/zip + send_message file_path）：所有文件活动框死在本会话工作区内，敏感名（*.env/*.db/config*）拒绝读取，全部走审计", "tools", 19, "switch"))
     file_workdir: str = field(default="data/QvQChat/work", metadata=_desc("file_workdir", "文件工作区根目录（每会话一个子目录）", "tools", 20, "text"))

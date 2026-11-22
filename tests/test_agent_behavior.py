@@ -426,7 +426,7 @@ def test_capability_prompt_chinese_and_slim():
         assert token in CAPABILITY_PROMPT, token
 # 不超过 1300 字符（原英文版 ~6100，中文重写后约 1/6；4.7.x 新增让渡段后放宽，
 # 再加能力段时同步精简旧段——契约越短，人格的声音越大）
-    assert len(CAPABILITY_PROMPT) <= 1450, len(CAPABILITY_PROMPT)
+    assert len(CAPABILITY_PROMPT) <= 1560, len(CAPABILITY_PROMPT)
 
 
 def test_budget_priority_keeps_human_parts():

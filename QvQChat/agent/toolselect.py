@@ -26,6 +26,8 @@ CORE_TOOLS = (
     "search_erispulse_docs", "web_search", "web_fetch",
 # 让渡/派单是能力级入口：被动态注入剪掉的表现就是"模型说找不到这个功能"
     "handover_session", "spawn_agent",
+# 记忆与知识入口：被剪掉的表现是"AI 不用记忆/知识库"——事件性遗忘的另一半根源
+    "recall", "knowledge_search",
 )
 
 PROMPT = (
