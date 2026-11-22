@@ -773,6 +773,21 @@ class InboxMixin(RecoveryMixin):
         claims[key] = now
         return True
 
+    def _record_lurker_message(self, event, chat_key: str, text: str) -> None:
+        """旁听落库：未触发 bot 的群消息记入会话历史（带发言人标注，与触发路径同形）。
+
+        不进 AI 管线、不回应、不问询——只保证"群里聊过的东西都在上下文里"，
+        后续任何触发（@/前缀/子智能体）都能引用最近的群讨论。"""
+        try:
+            labeled = self.sessions.label_incoming(
+                str(text or ""),
+                sender_id=str(event.get_user_id() or ""),
+                sender_name=self._sender_name(event),
+            )
+            self.sessions.append_user(chat_key, labeled, sender_id=str(event.get_user_id() or ""))
+        except Exception as e:
+            self.logger.debug(f"lurker message record failed: {e}")
+
     def _should_trigger(self, event, chat_key: str, text: str, quoted_me: bool = False,
                         at_targets: list | None = None) -> bool:
         if chat_key in self.takeover:
@@ -924,6 +939,10 @@ class InboxMixin(RecoveryMixin):
             # 让渡 listen=all：全场接话，放宽 at_only 与群 @/唤醒门槛；off/lurk 硬闸不因让渡放行
             mode = self._trigger_mode_of(chat_key)
             if mode in ("off", "lurk"):
+# lurk 只旁听：observe 已广播，但消息本身也要进会话历史——否则 lurk 会话
+# 后续被 @/触发时 AI 的上下文里没有刚才群里聊的内容
+                if mode == "lurk":
+                    self._record_lurker_message(event, chat_key, text)
                 return
             ho_all = bool(
                 getattr(self.cfg, "handover_enabled", True)
@@ -932,6 +951,7 @@ class InboxMixin(RecoveryMixin):
             if mode == "at_only" and event.is_group_message() and not (
                 self._is_direct_address(event, text, quoted_me, at_targets) or ho_all
             ):
+                self._record_lurker_message(event, chat_key, text)
                 return
             if not ho_all and not self._should_trigger(event, chat_key, text, quoted_me, at_targets):
 #  扩展点 B：未被 @/前缀命中时问询参与决策提供者（默认关闭），
@@ -955,6 +975,9 @@ class InboxMixin(RecoveryMixin):
                     decision = await manager.decide(chat_key, event, text)
                     if isinstance(decision, dict):
                         await self._interject(manager, event, chat_key, text, decision)
+# 旁听落库：未触发 bot 的群消息也进会话历史——否则 @ 之类后续触发时 AI 的上下文
+# 里没有最近讨论（只能靠旧记忆瞎猜话题），「总结一下」就没对象可总结
+                self._record_lurker_message(event, chat_key, text)
                 return
             if event.is_group_message() and not self.sessions.member_allowed(
                 chat_key, str(event.get_user_id() or ""), event.get_platform() or ""

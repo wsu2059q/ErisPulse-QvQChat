@@ -193,3 +193,29 @@ def test_forward_min_messages_fallback_3():
 
     profile = delivery_profile(make_config(), "onebot11")
     assert profile["forward_min_messages"] == 3
+
+
+@pytest.mark.asyncio
+async def test_lurker_message_recorded():
+    """旁听落库：未触发 bot 的群消息经 _record_lurker_message 进会话历史，
+    并出现在后续 prepare 的上下文里（@ 触发时 AI 能看到群里聊过什么）。"""
+    main = FakeMain()
+    main._sender_name = lambda event: ""
+    ctx, _ = _make_ctx(main)
+    chat_key = "onebot11:group:1"
+    ev1 = FakeChatEvent(text="我们在讨论工作区+命名空间的拆包方案", user_id="u1", at=False)
+    ev2 = FakeChatEvent(text="各个小组件都拆成一个个小包", user_id="u1", at=False)
+    Main._record_lurker_message(main, ev1, chat_key, str(ev1._text or ""))
+    Main._record_lurker_message(main, ev2, chat_key, str(ev2._text or ""))
+
+    hist = main.conversations.get_contexts(chat_key)
+    joined = "\n".join(str(c.get("content") or "") for c in hist)
+    assert "工作区+命名空间" in joined and "拆成一个个小包" in joined
+    assert any(c.get("sender") == "u1" for c in hist if isinstance(c, dict))
+
+    # 后续 @ 触发回合的 prepare 上下文包含旁听消息
+    prepared = await main.conversations.prepare(chat_key, "总结一下", persist=False)
+    seen = "\n".join(
+        str(m.get("content") or "") for m in prepared.get("contexts", []) if isinstance(m, dict)
+    )
+    assert "拆成一个个小包" in seen
