@@ -129,7 +129,7 @@ window.PageMcp = {
     '      </footer>',
     '    </article>',
     '  </div>',
-    '  <div v-if="!servers.length" class="qvq-empty">{{ t("mcp_none") }}</div>',
+    '  <button v-if="!servers.length" type="button" class="qvq-empty mcp-empty-cta" @click="add">{{ t("mcp_none") }}</button>',
     '  <n-drawer v-model:show="drawer" :width="440" placement="right">',
     '    <n-drawer-content :title="isNew ? t(\'add_title\') : t(\'edit\')" closable>',
     '      <div class="prov-form">',

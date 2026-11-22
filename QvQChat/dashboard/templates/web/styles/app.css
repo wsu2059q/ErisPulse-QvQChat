@@ -4002,3 +4002,262 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
   background: color-mix(in srgb, var(--qvq-er) 14%, transparent);
 }
 .chat-sess-budget.over .tx { color: var(--qvq-er); font-weight: 600; }
+
+/* ---- operability: overview hero tokens drill / ops inbox group / turns badge ---- */
+.ov-num-drill {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.ov-num-drill .num { display: block; }
+.ov-num-drill:hover .num {
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+.qvq-op-group { display: inline-flex; align-items: stretch; }
+.qvq-op-group .qvq-op:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.qvq-op-more {
+  padding: 6px 8px;
+  margin-left: -1px;
+  border: 1px solid var(--qvq-bd);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-t);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.qvq-op-more:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+.qvq-op-more.on {
+  border-color: var(--qvq-accent);
+  color: var(--qvq-accent);
+  background: var(--qvq-accent-soft);
+}
+.ov-turns {
+  display: inline-block;
+  min-width: 24px;
+  padding: 1px 7px;
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* ---- operability: orchestrate chain test / cooldown click reset / partic budget chips ---- */
+.orch-test { opacity: 0; transition: opacity 0.12s ease; }
+.orch-item:hover .orch-test,
+.orch-test:focus-visible { opacity: 1; }
+@media (hover: none) { .orch-test { opacity: 1; } }
+.orch-test-res {
+  font-size: 11px;
+  color: var(--qvq-tx-t);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.orch-test-res.ok { color: var(--qvq-ok); }
+.orch-test-res.err { color: var(--qvq-er); }
+button.orch-cool {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+button.orch-cool:hover { text-decoration: underline; text-underline-offset: 3px; }
+button.partic-chip { font-family: inherit; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+button.partic-chip:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+
+/* ---- operability: providers chip set-default / expand params / rank jump ---- */
+.prov-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.prov-chip.on { border-color: var(--qvq-accent); background: var(--qvq-accent-soft); }
+.prov-chip-def {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: var(--qvq-r-pill);
+  background: rgba(217, 138, 43, 0.14);
+  color: var(--qvq-warn);
+  font-size: 10px;
+  line-height: 16px;
+}
+button.prov-chip-rank {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+button.prov-chip-rank:hover { text-decoration: underline; text-underline-offset: 3px; }
+.prov-chip-star {
+  padding: 0 1px;
+  border: 0;
+  background: transparent;
+  color: var(--qvq-tx-t);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+.prov-chip:hover .prov-chip-star,
+.prov-chip-star:focus-visible { opacity: 1; }
+.prov-chip-star:hover { color: var(--qvq-warn); }
+.prov-chip-star:disabled { opacity: 1; color: var(--qvq-warn); cursor: default; }
+@media (hover: none) { .prov-chip-star { opacity: 1; } }
+.prov-chip-params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px dashed var(--qvq-accent);
+  border-radius: 9px;
+  background: var(--qvq-accent-soft);
+  font-size: 11.5px;
+}
+.prov-chip-params .pcp-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--qvq-tx);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.prov-chip-params .pcp-item { display: inline-flex; align-items: baseline; gap: 6px; }
+.prov-chip-params .pcp-item label { color: var(--qvq-tx-t); font-size: 11px; }
+.prov-chip-params .pcp-item b {
+  color: var(--qvq-tx);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.prov-chip-params .pcp-empty { color: var(--qvq-tx-t); font-style: italic; }
+.prov-chip-params .prov-act { margin-left: auto; }
+
+/* ---- operability: platforms account sessions jump / bind-row open chat ---- */
+.plat-meta-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--qvq-tx-s);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.plat-meta-link:hover {
+  color: var(--qvq-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---- 数据页可操作性：会话行点击/策略 chips/列头排序 · 记忆抽屉过滤/复制 · 知识库触发词/作用域下钻 ---- */
+/* 会话表：整行可点 + 悬停反馈 */
+.sess-tr { cursor: pointer; }
+.sess-tr:hover { background: var(--qvq-accent-soft); }
+/* 列头排序：可点 + 当前排序指示 */
+.th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.th-sort:hover { color: var(--qvq-accent); }
+.th-sort i { font-style: normal; font-size: 10px; margin-left: 3px; color: var(--qvq-accent); }
+/* 行内策略 chips：屏蔽 / 优先级 / 限额徽标 */
+.sess-pol { white-space: nowrap; }
+.sess-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-t);
+  font-size: 11px;
+  line-height: 16px;
+  font-family: inherit;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.sess-chip:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+.sess-chip.on { border-color: var(--qvq-accent); color: var(--qvq-accent); background: var(--qvq-accent-soft); }
+.sess-chip.on.er { border-color: var(--qvq-er); color: var(--qvq-er); background: color-mix(in srgb, var(--qvq-er) 10%, transparent); }
+.sess-chip.budget { border-style: dashed; }
+/* 记忆抽屉：分类/重要度过滤 chips */
+.mem-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.mem-chip {
+  display: inline-block;
+  padding: 1px 9px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  font-size: 11px;
+  line-height: 17px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.mem-chip:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+.mem-chip.on { border-color: var(--qvq-accent); color: var(--qvq-accent); background: var(--qvq-accent-soft); }
+/* 记忆条目行操作（复制/删除） */
+.mem-row-acts { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; }
+/* 画像分节条目数徽标 */
+.mem-sec-n {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font-size: 10px;
+  line-height: 15px;
+  letter-spacing: 0;
+}
+/* 知识库条目卡：触发词可点 chips（点击跑检索测试） */
+.kb-trig-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 2px; }
+.kb-trig-lab { font-size: 11px; color: var(--qvq-tx-t); }
+.kb-trig-chip {
+  display: inline-block;
+  padding: 1px 9px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  font-size: 11px;
+  line-height: 17px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.kb-trig-chip:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); background: var(--qvq-accent-soft); }
+/* 作用域徽标可点下钻（余下外观由组件内联 pillStyle 提供） */
+.kb-scope-btn { cursor: pointer; font-family: inherit; }
+.kb-scope-btn:hover { filter: brightness(1.1); border-color: var(--qvq-accent) !important; }
+
+/* ---- MCP 空态 CTA 可点 ---- */
+button.mcp-empty-cta {
+  cursor: pointer;
+  border: 1px dashed var(--qvq-bd-h);
+  border-radius: var(--qvq-r-card);
+  width: 100%;
+  font: inherit;
+  color: var(--qvq-tx-t);
+}
+button.mcp-empty-cta:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }

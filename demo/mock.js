@@ -111,6 +111,9 @@
     { provider: "deepseek", model: { id: "deepseek-reasoner", context_length: 128000, max_output_tokens: 65536 } },
     { provider: "siliconflow", model: { id: "Qwen/Qwen2.5-72B-Instruct", context_length: 32768, max_output_tokens: 16384 } },
   ];
+  /* 可写状态：默认模型（POST /config 持久）与熔断冷却（POST /breakers/reset 移除，演示重置反馈） */
+  var DEFAULT_MODEL = "deepseek:deepseek-chat";
+  var BREAKERS = [{ model: "siliconflow:Qwen/Qwen2.5-72B-Instruct", reason: "timeout", retry_at: NOW + 180 }];
 
   var PERSONAS = [
     { id: "sakura", name: "小樱", style: "元气猫娘" },
@@ -136,13 +139,13 @@
   });
 
   var SESSIONS = [
-    { chat_key: "onebot11:group:1049", name: "ErisPulse 丨 喵之领域已展开", turns: 128, detail_type: "group", pinned: true, archived: false, platform: "onebot11", members: ["*"], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "onebot11:private:643319481", name: "小樱", turns: 76, detail_type: "private", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: true, priority: "high", session_budget: 20000 }, ui: {} },
-    { chat_key: "dashboard:private:web", name: "网页对话", turns: 12, detail_type: "private", pinned: false, archived: false, platform: "dashboard", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "onebot11:group:8871", name: "开发组", turns: 41, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: true, low_token: false, priority: "low", session_budget: 0 }, ui: {} },
-    { chat_key: "onebot11:group:2210", name: "闲聊灌水区", turns: 19, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "onebot11:group:3301@SnowOvO", name: "语音房闲聊", turns: 8, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "yunhu:private:740318@小喵", name: "云湖私聊-陈哥", turns: 5, detail_type: "private", pinned: false, archived: false, platform: "yunhu", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:group:1049", name: "ErisPulse 丨 喵之领域已展开", turns: 128, updated: NOW - 320, detail_type: "group", pinned: true, archived: false, platform: "onebot11", members: ["*"], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:private:643319481", name: "小樱", turns: 76, updated: NOW - 2600, detail_type: "private", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: true, priority: "high", session_budget: 20000 }, ui: {} },
+    { chat_key: "dashboard:private:web", name: "网页对话", turns: 12, updated: NOW - 1800, detail_type: "private", pinned: false, archived: false, platform: "dashboard", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:group:8871", name: "开发组", turns: 41, updated: NOW - 86400, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: true, low_token: false, priority: "low", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:group:2210", name: "闲聊灌水区", turns: 19, updated: NOW - 86400 * 9, detail_type: "group", pinned: false, archived: true, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 5000 }, ui: {} },
+    { chat_key: "onebot11:group:3301@SnowOvO", name: "语音房闲聊", turns: 8, updated: NOW - 7200, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "yunhu:private:740318@小喵", name: "云湖私聊-陈哥", turns: 5, updated: NOW - 5400, detail_type: "private", pinned: false, archived: false, platform: "yunhu", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
   ];
 
   /* 多账户页：适配器（运行中/已停用折叠演示 + 平台级人格绑定）+ 账户（平台/会话数/人格绑定） */
@@ -430,14 +433,17 @@
           by_model: { "custom:glm-5.3-flash": 1.9753, "deepseek:deepseek-chat": 1.2841, "siliconflow:Qwen/Qwen3.5-35B-A3B": 0.6411, "scnet:GLM-5.3-Flash": 0.0756 },
           total: 3.9761,
         });
-        case "/api/qvq/models": return json({ providers: PROVIDERS, chain: CHAIN, models: CHAIN.map(function (c) { return { id: c.provider + ":" + c.model.id, context_length: c.model.context_length, max_output_tokens: c.model.max_output_tokens }; }), default: "deepseek:deepseek-chat", presets: [] });
+        case "/api/qvq/models": return json({ providers: PROVIDERS, chain: CHAIN, models: CHAIN.map(function (c) { return { id: c.provider + ":" + c.model.id, context_length: c.model.context_length, max_output_tokens: c.model.max_output_tokens }; }), default: DEFAULT_MODEL, presets: [] });
         case "/api/qvq/sessions": {
-          /* 与真后端同形：名字/chat_key 不中时扫 MESSAGES 正文（内容级全局搜索），命中行带 snippet */
+          /* 与真后端同形：archived=1 只出已归档，默认只出未归档；名字/chat_key 不中时扫 MESSAGES 正文（内容级全局搜索），命中行带 snippet */
           var q = String(query.q || "").trim().toLowerCase();
-          var rows = SESSIONS;
+          var rows = query.archived === "1"
+            ? SESSIONS.filter(function (s) { return s.archived; })
+            : SESSIONS.filter(function (s) { return !s.archived; });
+          var pool = rows;
           if (q) {
             rows = [];
-            SESSIONS.forEach(function (s) {
+            pool.forEach(function (s) {
               var name = String(s.name || "").toLowerCase();
               var key = String(s.chat_key || "").toLowerCase();
               if (name.indexOf(q) >= 0 || key.indexOf(q) >= 0) { rows.push(s); return; }
@@ -483,7 +489,7 @@
           { session: "dashboard:private:web", status: "done", agent: "" },
         ] });
         case "/api/qvq/subjobs": return json({ jobs: SUBJOBS, total: SUBJOBS.length });
-        case "/api/qvq/breakers": return json({ breakers: [] });
+        case "/api/qvq/breakers": return json({ breakers: BREAKERS });
         case "/api/qvq/audit": return json({ entries: AUDIT.slice(0, 12), total: AUDIT.length + 686 });
         case "/api/qvq/inbox": return json(INBOX);
         case "/api/qvq/handover": return json(HANDOVER ? Object.assign({}, HANDOVER) : { active: false });
@@ -493,8 +499,9 @@
                      last_text: ["喜欢简洁回复", "项目用 uv 管理", "每周五交周报", "猫娘语气但技术准确", "Windows 环境", "群规禁止广告"][i % 6] };
           }),
           entries: [
-            { content: "主人常用 Windows + uv，跑测试用 uv run pytest", ts: NOW - 86400 },
-            { content: "喜欢回复带点猫娘语气，但技术内容要准确", ts: NOW - 172800 },
+            { content: "主人常用 Windows + uv，跑测试用 uv run pytest", ts: NOW - 86400, category: "环境", importance: 4 },
+            { content: "喜欢回复带点猫娘语气，但技术内容要准确", ts: NOW - 172800, category: "偏好", importance: 3 },
+            { content: "每周五下班前要交项目周报", ts: NOW - 259200, category: "工作", importance: 2 },
           ],
           profile: {
             traits: [{ text: "夜猫子，凌晨三点还醒着", ts: NOW - 259200 }],
@@ -541,15 +548,6 @@
             } },
             values: { voice: "xiaoxiao", rate: 1, max_chars: 80 } },
         ] });
-        case "/api/qvq/kb/search": {
-          var _tq = parseBody(opts).query || "";
-          var _hits = KB.filter(function (e) {
-            return (_tq && (e.title + e.content).toLowerCase().indexOf(_tq.toLowerCase().slice(0, 4)) >= 0);
-          }).slice(0, 5).map(function (e, i) {
-            return { id: e.id, title: e.title, source: e.source || "", snippet: String(e.content || "").slice(0, 80), score: 12 - i * 3 };
-          });
-          return json({ hits: _hits });
-        }
         case "/api/qvq/eco_panel": return json({ panels: [
           { module: "QvQMemes", cards: [
             { title: "梗图库", text: "已收录 142 张梗图 · 最近 7 天新增 6 张" },
@@ -637,6 +635,39 @@
         });
       }
       case "/api/qvq/handover/stop": HANDOVER = null; return json({ ok: true });
+      /* 检索测试（POST，与真后端同形）：标题/正文包含命中，带分数与摘要 */
+      case "/api/qvq/kb/search": {
+        var _tq = String(parseBody(opts).query || "");
+        var _hits = KB.filter(function (e) {
+          return (_tq && (e.title + e.content + (e.triggers || []).join("")).toLowerCase().indexOf(_tq.toLowerCase().slice(0, 4)) >= 0);
+        }).slice(0, 5).map(function (e, i) {
+          return { id: e.id, title: e.title, source: e.source || "", snippet: String(e.content || "").slice(0, 80), score: 12 - i * 3 };
+        });
+        return json({ hits: _hits });
+      }
+      /* 会话策略（只传要改的键）：维护 mock 状态并回传合并后的 policy */
+      case "/api/qvq/session/policy": {
+        var pol = parseBody(opts);
+        var pTarget = SESSIONS.find(function (s) { return s.chat_key === pol.chat_key; });
+        if (pTarget) {
+          pTarget.policy = Object.assign({}, pTarget.policy);
+          ["muted", "low_token", "priority", "session_budget"].forEach(function (k) {
+            if (pol[k] !== undefined) pTarget.policy[k] = pol[k];
+          });
+          return json({ ok: true, policy: pTarget.policy });
+        }
+        return json({ ok: true });
+      }
+      /* 会话标记（置顶/归档）：维护 mock 状态，面板行内开关即时反馈 */
+      case "/api/qvq/session/flags": {
+        var fl = parseBody(opts);
+        var fTarget = SESSIONS.find(function (s) { return s.chat_key === fl.chat_key; });
+        if (fTarget) {
+          if (fl.pinned !== undefined) fTarget.pinned = !!fl.pinned;
+          if (fl.archived !== undefined) fTarget.archived = !!fl.archived;
+        }
+        return json({ ok: true });
+      }
       case "/api/qvq/subjobs/cancel": {
         var sk = "";
         try { sk = JSON.parse(opts.body || "{}").sub_key || ""; } catch (e) { /* 忽略 */ }
@@ -657,7 +688,13 @@
       }
       case "/api/qvq/config": {
         var cfg = parseBody(opts);
+        if (cfg.default_model !== undefined) DEFAULT_MODEL = cfg.default_model;
         Object.keys(cfg).forEach(function (k) { CONFIG_DRAFT[k] = cfg[k]; });
+        return json({ ok: true });
+      }
+      case "/api/qvq/breakers/reset": {
+        var rm = parseBody(opts).model || "";
+        BREAKERS = BREAKERS.filter(function (b) { return b.model !== rm && b.id !== rm; });
         return json({ ok: true });
       }
       case "/api/qvq/chain/save": {

@@ -1,4 +1,9 @@
 /* 平台机器人：适配器/机器人概览 + 账户人格绑定 + 身份迁移 */
+/* i18n: 本文件新增文案键（i18n.js 各语言待补，zh-CN 建议值如下）
+ * plat_sessions_tip=点击查看全部会话
+ * bind_open_chat=跳会话
+ * bind_removed=已解绑
+ */
 window.PagePlatforms = {
   name: "PagePlatforms",
   data() {
@@ -156,9 +161,18 @@ window.PagePlatforms = {
       var self = this;
       api("/api/qvq/personas/bind", "POST", { chat_key: key, persona: value || null })
         .then(function (r) {
-          if (r && r.error) { self.toast = r.error; return; }
+          if (r && r.error) { QvQ.toast(r.error); return; }
+          if (!value) QvQ.toast(t("bind_removed"));
           self.load();
         });
+    },
+    goSessions() {
+      // 会话页暂无账户过滤参数：直接跳全量列表
+      QvQ.store.page = "sessions";
+    },
+    openChat(key) {
+      QvQ.store.pendingChat = key;
+      QvQ.store.page = "chat";
     },
     unbindKey(key) {
       this.bindKey(key, null);
@@ -192,7 +206,7 @@ window.PagePlatforms = {
       api("/api/qvq/identity/set", "POST", this.mig).then(function (r) {
         self.migBusy = false;
         if (!r || r.ok === false) {
-          self.toast = (r && r.error) || "failed";
+          QvQ.toast((r && r.error) || "failed");
           return;
         }
         self.migOpen = false;
@@ -254,7 +268,8 @@ window.PagePlatforms = {
     '        </div>',
     '      </header>',
         '      <div class="plat-meta">',
-    '        <span>{{ a.sessions }} {{ t("plat_sessions") }}</span>',
+    '        <button type="button" class="plat-meta-link" :title="t(\'plat_sessions_tip\')" @click="goSessions">',
+    '          {{ a.sessions }} {{ t("plat_sessions") }}</button>',
     '      </div>',
       '      <footer class="prov-foot">',
         '        <n-select size="tiny" :value="a.persona || \'\'" :options="personaOptions"',
@@ -274,9 +289,11 @@ window.PagePlatforms = {
   '      <div class="mention-title">{{ g.label }} <i class="bind-n">{{ g.items.length }}</i></div>',
   '      <div v-for="row in g.items" :key="row.key" class="bind-row">',
   '        <code class="bind-key" :title="row.key">{{ row.key }}</code>',
-  '        <n-select size="tiny" :value="row.persona" :options="personaOptions" style="width:220px"',
-  '                 @update:value="v => bindKey(row.key, v)"/>',
-  '        <button type="button" class="prov-act bind-del" @click="unbindKey(row.key)">{{ t("bind_remove") }}</button>',
+    '        <n-select size="tiny" :value="row.persona" :options="personaOptions" style="width:220px"',
+    '                 @update:value="v => bindKey(row.key, v)"/>',
+    '        <button v-if="g.key === \'session\'" type="button" class="prov-act" :title="row.key"',
+    '                @click="openChat(row.key)">{{ t("bind_open_chat") }}</button>',
+    '        <button type="button" class="prov-act bind-del" @click="unbindKey(row.key)">{{ t("bind_remove") }}</button>',
   '      </div>',
   '    </div>',
   '    <div v-if="!bindingGroups.length" class="qvq-empty">{{ t("bind_empty") }}</div>',

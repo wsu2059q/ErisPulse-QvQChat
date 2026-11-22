@@ -1,10 +1,13 @@
 /* 知识库：搜索 / 作用域视图（全部·全局·平台·会话）/ 条目卡片 / 新建编辑 / AI 整理 / 导入导出 / 批量管理
    作用域判定（对齐后端 knowledge.py owner 语义）：owner 空/"global"=全局；命中已知平台名=平台；其余=chat_key（会话私有）
    平台名来源：条目 owner 收集（无冒号裸值，chat_key 恒含冒号）∪ /api/qvq/sessions 的 accounts.adapters[].platform
+   可操作性：条目卡「复制正文」；触发词显示为可点 chips（点击=用该词跑检索测试）；
+   作用域徽标点击=切到对应作用域 tab 并选中该作用域（全局回「全部」）。
    i18n（新键，待主线补入 i18n.js）: kb_scope_all=全部, kb_scope_global=全局, kb_scope_platform=平台,
      kb_scope_session=会话, kb_scope_group_platforms=平台作用域, kb_scope_group_sessions=会话作用域,
      kb_scope_left_all=全部, kb_scope_platform_ph=选择平台，可输入新平台名, kb_scope_session_ph=选择会话，可输入 chat_key,
-     kb_scope_global_hint=对所有会话可见, kb_scope_empty=该作用域暂无条目
+     kb_scope_global_hint=对所有会话可见, kb_scope_empty=该作用域暂无条目,
+     kb_copy_content=复制正文, kb_trig_short=触发
    样式（待主线补进 app.css）: .kb-scope-pill 条目卡作用域小徽标（现以内联样式兜底）；左列复用 .mem-sess 行样式 */
 window.PageKnowledge = {
   name: "PageKnowledge",
@@ -224,6 +227,29 @@ window.PageKnowledge = {
       var self = this;
       api("/api/qvq/kb/delete", "POST", { id: e.id }).then(function () { self.load(); });
     },
+    /* 复制正文：完整 content 落剪贴板，成功 toast */
+    copyContent(e) {
+      QvQ.copy(String(e.content || ""), function (ok) {
+        if (ok) QvQ.toast(t("copied"));
+      });
+    },
+    /* 触发词 chip 即点即测：打开检索测试弹窗并自动执行 */
+    testTrigger(word) {
+      this.testQuery = String(word || "");
+      this.testHits = [];
+      this.testOpen = true;
+      this.runTest();
+    },
+    /* 作用域徽标下钻：平台/会话 → 切对应 tab 并选中该作用域；全局 → 回「全部」 */
+    drillScope(e) {
+      var kind = this.scopeKindOf(e.owner);
+      if (kind === "global") {
+        this.setScopeTab("all");
+        return;
+      }
+      this.scopeTab = kind;
+      this.scopeSel = String(e.owner || "");
+    },
     runTest() {
       // 检索测试：与对话链路同一打分（knowledge.search），验证条目能否命中
       var self = this;
@@ -366,9 +392,17 @@ window.PageKnowledge = {
     '                        @update:checked="function(){ togglePick(e.id); }"/>',
     '          </header>',
     '          <div class="tool-desc">{{ (e.content || "").slice(0, 140) }}</div>',
+    '          <div class="kb-trig-row" v-if="(e.triggers || []).length">',
+    '            <span class="kb-trig-lab">{{ t("kb_trig_short") }}</span>',
+    '            <button v-for="w in e.triggers" :key="w" type="button" class="kb-trig-chip"',
+    '                    :title="t(\'kb_test_run\')" @click.stop="testTrigger(w)">{{ w }}</button>',
+    '          </div>',
     '          <footer class="prov-foot">',
-    '            <span class="prov-count"><span class="kb-scope-pill" :style="pillStyle(scopeKindOf(e.owner))">{{ scopeLabelOf(e.owner) }}</span></span>',
+    '            <span class="prov-count"><button type="button" class="kb-scope-pill kb-scope-btn"',
+    '                    :style="pillStyle(scopeKindOf(e.owner))" :title="t(\'kb_scope_label\')"',
+    '                    @click.stop="drillScope(e)">{{ scopeLabelOf(e.owner) }}</button></span>',
     '            <span class="prov-acts">',
+    '              <button type="button" class="prov-act" @click.stop="copyContent(e)">{{ t("kb_copy_content") }}</button>',
     '              <button type="button" class="prov-act" @click.stop="openEdit(e)">{{ t("edit") }}</button>',
     '              <button type="button" class="prov-act danger" @click.stop="del(e)">{{ t("chat_delete") }}</button>',
     '            </span>',

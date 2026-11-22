@@ -1,4 +1,7 @@
-/* 记忆：会话列表为主，点击行开侧栏看该会话的记忆条目与用户画像 */
+/* 记忆：会话列表为主，点击行开侧栏看该会话的记忆条目与用户画像
+   可操作性：抽屉内分类 chips + 重要度过滤、条目一键复制、画像分节条目数徽标。
+   i18n（新键，待主线补入 i18n.js）:
+     mem_cat_all=全部, mem_imp_ge3=重要度 ≥3 */
 window.PageMemory = {
   name: "PageMemory",
   data() {
@@ -14,6 +17,8 @@ window.PageMemory = {
       editSec: null,
       editItems: [],
       loading: false,
+      memCat: "",
+      memImp: false,
     };
   },
   computed: {
@@ -23,6 +28,27 @@ window.PageMemory = {
       if (!q) return rows;
       return rows.filter(function (s) {
         return ((s.name || "") + " " + (s.chat_key || "")).toLowerCase().indexOf(q) >= 0;
+      });
+    },
+    /* 抽屉分类 chips：从当前会话条目 category 聚合（带计数，多的在前） */
+    memCats() {
+      var counts = {};
+      this.entries.forEach(function (e) {
+        var c = String((e && e.category) || "").trim();
+        if (c) counts[c] = (counts[c] || 0) + 1;
+      });
+      return Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; }).map(function (c) {
+        return { cat: c, n: counts[c] };
+      });
+    },
+    shownEntries() {
+      var cat = this.memCat;
+      var imp = this.memImp;
+      if (!cat && !imp) return this.entries;
+      return this.entries.filter(function (e) {
+        if (cat && String((e && e.category) || "").trim() !== cat) return false;
+        if (imp && (Number(e && e.importance) || 0) < 3) return false;
+        return true;
       });
     },
   },
@@ -63,6 +89,8 @@ window.PageMemory = {
       this.entries = [];
       this.profile = null;
       this.profileUser = "";
+      this.memCat = "";
+      this.memImp = false;
       this.drawer = true;
       this.loading = true;
       api("/api/qvq/memory?chat_key=" + encodeURIComponent(s.chat_key)).then(function (d) {
@@ -74,6 +102,15 @@ window.PageMemory = {
     },
     reload() {
       if (this.active) this.open(this.active);
+    },
+    /* 分类 chip：再点一次取消该过滤 */
+    setMemCat(c) {
+      this.memCat = this.memCat === c ? "" : c;
+    },
+    copyEntry(e) {
+      QvQ.copy(e.content || e.text || "", function (ok) {
+        if (ok) QvQ.toast(t("copied"));
+      });
     },
     del(e) {
       var self = this;
@@ -165,22 +202,31 @@ window.PageMemory = {
     '      <div class="qvq-loading" v-if="loading"><i></i>{{ t("loading") }}</div>',
     '      <div class="prov-form" v-if="!loading">',
     '        <div class="prov-field">',
-    '          <label>{{ t("nav_memory") }} · {{ entries.length }} {{ t("mem_entries_n") }}</label>',
-    '          <div v-for="(e, i) in entries" :key="i" class="mem-row">',
+    '          <label>{{ t("nav_memory") }} · {{ shownEntries.length === entries.length ? entries.length : shownEntries.length + "/" + entries.length }} {{ t("mem_entries_n") }}</label>',
+    '          <div class="mem-chips" v-if="entries.length">',
+    '            <button type="button" class="mem-chip" :class="{ on: !memCat }" @click="memCat = \'\'">{{ t("mem_cat_all") }}</button>',
+    '            <button v-for="c in memCats" :key="c.cat" type="button" class="mem-chip"',
+    '                    :class="{ on: memCat === c.cat }" @click="setMemCat(c.cat)">{{ c.cat }}·{{ c.n }}</button>',
+    '            <button type="button" class="mem-chip" :class="{ on: memImp }" @click="memImp = !memImp">{{ t("mem_imp_ge3") }}</button>',
+    '          </div>',
+    '          <div v-for="(e, i) in shownEntries" :key="i" class="mem-row">',
     '            <div class="mem-tx">{{ e.content || e.text }}',
     '              <span class="mem-tags">',
     '                <i class="mem-imp" v-for="n in (e.importance || 0)" :key="n"></i>',
     '                <code v-if="e.category">{{ e.category }}</code>',
     '                <span class="qvq-meta-line" v-if="e.ts">{{ relTime(e.ts) }}</span>',
     '              </span></div>',
-    '            <button type="button" class="prov-act danger" @click="del(e)">×</button>',
+    '            <span class="mem-row-acts">',
+    '              <button type="button" class="prov-act" @click="copyEntry(e)">{{ t("copy") }}</button>',
+    '              <button type="button" class="prov-act danger" @click="del(e)">×</button>',
+    '            </span>',
     '          </div>',
-    '          <div v-if="!entries.length" class="qvq-empty">-</div>',
+    '          <div v-if="!shownEntries.length" class="qvq-empty">{{ entries.length ? t("memory_empty") : "-" }}</div>',
     '        </div>',
     '        <div class="prov-field" v-if="profile">',
     '          <label>{{ t("mem_profile") }} <code class="mem-user">{{ profileUser }}</code></label>',
     '          <div class="mem-sec" v-if="profileItems(profile.traits).length || editSec === \'traits\'">',
-    '            <div class="mem-sec-head"><b>{{ t("mem_traits") }}</b>',
+    '            <div class="mem-sec-head"><b>{{ t("mem_traits") }}<span class="mem-sec-n">{{ profileItems(profile.traits).length }}</span></b>',
     '              <button type="button" class="prov-act" v-if="editSec !== \'traits\'" @click="startEdit(\'traits\')">{{ t("edit") }}</button>',
     '            </div>',
     '            <template v-if="editSec !== \'traits\'">',
@@ -202,7 +248,7 @@ window.PageMemory = {
     '            </template>',
     '          </div>',
     '          <div class="mem-sec" v-if="profileItems(profile.preferences).length || editSec === \'preferences\'">',
-    '            <div class="mem-sec-head"><b>{{ t("mem_prefs") }}</b>',
+    '            <div class="mem-sec-head"><b>{{ t("mem_prefs") }}<span class="mem-sec-n">{{ profileItems(profile.preferences).length }}</span></b>',
     '              <button type="button" class="prov-act" v-if="editSec !== \'preferences\'" @click="startEdit(\'preferences\')">{{ t("edit") }}</button>',
     '            </div>',
     '            <template v-if="editSec !== \'preferences\'">',
@@ -224,7 +270,7 @@ window.PageMemory = {
     '            </template>',
     '          </div>',
     '          <div class="mem-sec" v-if="profileItems(profile.facts).length || editSec === \'facts\'">',
-    '            <div class="mem-sec-head"><b>{{ t("mem_facts") }}</b>',
+    '            <div class="mem-sec-head"><b>{{ t("mem_facts") }}<span class="mem-sec-n">{{ profileItems(profile.facts).length }}</span></b>',
     '              <button type="button" class="prov-act" v-if="editSec !== \'facts\'" @click="startEdit(\'facts\')">{{ t("edit") }}</button>',
     '            </div>',
     '            <template v-if="editSec !== \'facts\'">',

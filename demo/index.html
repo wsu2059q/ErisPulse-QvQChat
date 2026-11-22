@@ -4002,6 +4002,265 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
   background: color-mix(in srgb, var(--qvq-er) 14%, transparent);
 }
 .chat-sess-budget.over .tx { color: var(--qvq-er); font-weight: 600; }
+
+/* ---- operability: overview hero tokens drill / ops inbox group / turns badge ---- */
+.ov-num-drill {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.ov-num-drill .num { display: block; }
+.ov-num-drill:hover .num {
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+}
+.qvq-op-group { display: inline-flex; align-items: stretch; }
+.qvq-op-group .qvq-op:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.qvq-op-more {
+  padding: 6px 8px;
+  margin-left: -1px;
+  border: 1px solid var(--qvq-bd);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-t);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.qvq-op-more:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+.qvq-op-more.on {
+  border-color: var(--qvq-accent);
+  color: var(--qvq-accent);
+  background: var(--qvq-accent-soft);
+}
+.ov-turns {
+  display: inline-block;
+  min-width: 24px;
+  padding: 1px 7px;
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* ---- operability: orchestrate chain test / cooldown click reset / partic budget chips ---- */
+.orch-test { opacity: 0; transition: opacity 0.12s ease; }
+.orch-item:hover .orch-test,
+.orch-test:focus-visible { opacity: 1; }
+@media (hover: none) { .orch-test { opacity: 1; } }
+.orch-test-res {
+  font-size: 11px;
+  color: var(--qvq-tx-t);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.orch-test-res.ok { color: var(--qvq-ok); }
+.orch-test-res.err { color: var(--qvq-er); }
+button.orch-cool {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+button.orch-cool:hover { text-decoration: underline; text-underline-offset: 3px; }
+button.partic-chip { font-family: inherit; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+button.partic-chip:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+
+/* ---- operability: providers chip set-default / expand params / rank jump ---- */
+.prov-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.prov-chip.on { border-color: var(--qvq-accent); background: var(--qvq-accent-soft); }
+.prov-chip-def {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: var(--qvq-r-pill);
+  background: rgba(217, 138, 43, 0.14);
+  color: var(--qvq-warn);
+  font-size: 10px;
+  line-height: 16px;
+}
+button.prov-chip-rank {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+button.prov-chip-rank:hover { text-decoration: underline; text-underline-offset: 3px; }
+.prov-chip-star {
+  padding: 0 1px;
+  border: 0;
+  background: transparent;
+  color: var(--qvq-tx-t);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+.prov-chip:hover .prov-chip-star,
+.prov-chip-star:focus-visible { opacity: 1; }
+.prov-chip-star:hover { color: var(--qvq-warn); }
+.prov-chip-star:disabled { opacity: 1; color: var(--qvq-warn); cursor: default; }
+@media (hover: none) { .prov-chip-star { opacity: 1; } }
+.prov-chip-params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px dashed var(--qvq-accent);
+  border-radius: 9px;
+  background: var(--qvq-accent-soft);
+  font-size: 11.5px;
+}
+.prov-chip-params .pcp-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--qvq-tx);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.prov-chip-params .pcp-item { display: inline-flex; align-items: baseline; gap: 6px; }
+.prov-chip-params .pcp-item label { color: var(--qvq-tx-t); font-size: 11px; }
+.prov-chip-params .pcp-item b {
+  color: var(--qvq-tx);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.prov-chip-params .pcp-empty { color: var(--qvq-tx-t); font-style: italic; }
+.prov-chip-params .prov-act { margin-left: auto; }
+
+/* ---- operability: platforms account sessions jump / bind-row open chat ---- */
+.plat-meta-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--qvq-tx-s);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.plat-meta-link:hover {
+  color: var(--qvq-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---- 数据页可操作性：会话行点击/策略 chips/列头排序 · 记忆抽屉过滤/复制 · 知识库触发词/作用域下钻 ---- */
+/* 会话表：整行可点 + 悬停反馈 */
+.sess-tr { cursor: pointer; }
+.sess-tr:hover { background: var(--qvq-accent-soft); }
+/* 列头排序：可点 + 当前排序指示 */
+.th-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+.th-sort:hover { color: var(--qvq-accent); }
+.th-sort i { font-style: normal; font-size: 10px; margin-left: 3px; color: var(--qvq-accent); }
+/* 行内策略 chips：屏蔽 / 优先级 / 限额徽标 */
+.sess-pol { white-space: nowrap; }
+.sess-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-t);
+  font-size: 11px;
+  line-height: 16px;
+  font-family: inherit;
+  vertical-align: middle;
+  cursor: pointer;
+}
+.sess-chip:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+.sess-chip.on { border-color: var(--qvq-accent); color: var(--qvq-accent); background: var(--qvq-accent-soft); }
+.sess-chip.on.er { border-color: var(--qvq-er); color: var(--qvq-er); background: color-mix(in srgb, var(--qvq-er) 10%, transparent); }
+.sess-chip.budget { border-style: dashed; }
+/* 记忆抽屉：分类/重要度过滤 chips */
+.mem-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.mem-chip {
+  display: inline-block;
+  padding: 1px 9px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  font-size: 11px;
+  line-height: 17px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.mem-chip:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); }
+.mem-chip.on { border-color: var(--qvq-accent); color: var(--qvq-accent); background: var(--qvq-accent-soft); }
+/* 记忆条目行操作（复制/删除） */
+.mem-row-acts { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; }
+/* 画像分节条目数徽标 */
+.mem-sec-n {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-bg-s);
+  color: var(--qvq-tx-s);
+  font-size: 10px;
+  line-height: 15px;
+  letter-spacing: 0;
+}
+/* 知识库条目卡：触发词可点 chips（点击跑检索测试） */
+.kb-trig-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 2px; }
+.kb-trig-lab { font-size: 11px; color: var(--qvq-tx-t); }
+.kb-trig-chip {
+  display: inline-block;
+  padding: 1px 9px;
+  border: 1px solid var(--qvq-bd);
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  font-size: 11px;
+  line-height: 17px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.kb-trig-chip:hover { border-color: var(--qvq-accent); color: var(--qvq-accent); background: var(--qvq-accent-soft); }
+/* 作用域徽标可点下钻（余下外观由组件内联 pillStyle 提供） */
+.kb-scope-btn { cursor: pointer; font-family: inherit; }
+.kb-scope-btn:hover { filter: brightness(1.1); border-color: var(--qvq-accent) !important; }
+
+/* ---- MCP 空态 CTA 可点 ---- */
+button.mcp-empty-cta {
+  cursor: pointer;
+  border: 1px dashed var(--qvq-bd-h);
+  border-radius: var(--qvq-r-card);
+  width: 100%;
+  font: inherit;
+  color: var(--qvq-tx-t);
+}
+button.mcp-empty-cta:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
 </style></head><body><div class="qvq-bg-layer" id="qvq-bg-layer" aria-hidden="true"></div>
 <div id="app"><div class="qvq-splash" aria-hidden="true">
   <svg class="qvq-splash-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -4144,6 +4403,9 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
     { provider: "deepseek", model: { id: "deepseek-reasoner", context_length: 128000, max_output_tokens: 65536 } },
     { provider: "siliconflow", model: { id: "Qwen/Qwen2.5-72B-Instruct", context_length: 32768, max_output_tokens: 16384 } },
   ];
+  /* 可写状态：默认模型（POST /config 持久）与熔断冷却（POST /breakers/reset 移除，演示重置反馈） */
+  var DEFAULT_MODEL = "deepseek:deepseek-chat";
+  var BREAKERS = [{ model: "siliconflow:Qwen/Qwen2.5-72B-Instruct", reason: "timeout", retry_at: NOW + 180 }];
 
   var PERSONAS = [
     { id: "sakura", name: "小樱", style: "元气猫娘" },
@@ -4169,13 +4431,13 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
   });
 
   var SESSIONS = [
-    { chat_key: "onebot11:group:1049", name: "ErisPulse 丨 喵之领域已展开", turns: 128, detail_type: "group", pinned: true, archived: false, platform: "onebot11", members: ["*"], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "onebot11:private:643319481", name: "小樱", turns: 76, detail_type: "private", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: true, priority: "high", session_budget: 20000 }, ui: {} },
-    { chat_key: "dashboard:private:web", name: "网页对话", turns: 12, detail_type: "private", pinned: false, archived: false, platform: "dashboard", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "onebot11:group:8871", name: "开发组", turns: 41, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: true, low_token: false, priority: "low", session_budget: 0 }, ui: {} },
-    { chat_key: "onebot11:group:2210", name: "闲聊灌水区", turns: 19, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "onebot11:group:3301@SnowOvO", name: "语音房闲聊", turns: 8, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
-    { chat_key: "yunhu:private:740318@小喵", name: "云湖私聊-陈哥", turns: 5, detail_type: "private", pinned: false, archived: false, platform: "yunhu", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:group:1049", name: "ErisPulse 丨 喵之领域已展开", turns: 128, updated: NOW - 320, detail_type: "group", pinned: true, archived: false, platform: "onebot11", members: ["*"], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:private:643319481", name: "小樱", turns: 76, updated: NOW - 2600, detail_type: "private", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: true, priority: "high", session_budget: 20000 }, ui: {} },
+    { chat_key: "dashboard:private:web", name: "网页对话", turns: 12, updated: NOW - 1800, detail_type: "private", pinned: false, archived: false, platform: "dashboard", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:group:8871", name: "开发组", turns: 41, updated: NOW - 86400, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: true, low_token: false, priority: "low", session_budget: 0 }, ui: {} },
+    { chat_key: "onebot11:group:2210", name: "闲聊灌水区", turns: 19, updated: NOW - 86400 * 9, detail_type: "group", pinned: false, archived: true, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 5000 }, ui: {} },
+    { chat_key: "onebot11:group:3301@SnowOvO", name: "语音房闲聊", turns: 8, updated: NOW - 7200, detail_type: "group", pinned: false, archived: false, platform: "onebot11", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
+    { chat_key: "yunhu:private:740318@小喵", name: "云湖私聊-陈哥", turns: 5, updated: NOW - 5400, detail_type: "private", pinned: false, archived: false, platform: "yunhu", members: [], sources: [], policy: { muted: false, low_token: false, priority: "normal", session_budget: 0 }, ui: {} },
   ];
 
   /* 多账户页：适配器（运行中/已停用折叠演示 + 平台级人格绑定）+ 账户（平台/会话数/人格绑定） */
@@ -4463,14 +4725,17 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
           by_model: { "custom:glm-5.3-flash": 1.9753, "deepseek:deepseek-chat": 1.2841, "siliconflow:Qwen/Qwen3.5-35B-A3B": 0.6411, "scnet:GLM-5.3-Flash": 0.0756 },
           total: 3.9761,
         });
-        case "/api/qvq/models": return json({ providers: PROVIDERS, chain: CHAIN, models: CHAIN.map(function (c) { return { id: c.provider + ":" + c.model.id, context_length: c.model.context_length, max_output_tokens: c.model.max_output_tokens }; }), default: "deepseek:deepseek-chat", presets: [] });
+        case "/api/qvq/models": return json({ providers: PROVIDERS, chain: CHAIN, models: CHAIN.map(function (c) { return { id: c.provider + ":" + c.model.id, context_length: c.model.context_length, max_output_tokens: c.model.max_output_tokens }; }), default: DEFAULT_MODEL, presets: [] });
         case "/api/qvq/sessions": {
-          /* 与真后端同形：名字/chat_key 不中时扫 MESSAGES 正文（内容级全局搜索），命中行带 snippet */
+          /* 与真后端同形：archived=1 只出已归档，默认只出未归档；名字/chat_key 不中时扫 MESSAGES 正文（内容级全局搜索），命中行带 snippet */
           var q = String(query.q || "").trim().toLowerCase();
-          var rows = SESSIONS;
+          var rows = query.archived === "1"
+            ? SESSIONS.filter(function (s) { return s.archived; })
+            : SESSIONS.filter(function (s) { return !s.archived; });
+          var pool = rows;
           if (q) {
             rows = [];
-            SESSIONS.forEach(function (s) {
+            pool.forEach(function (s) {
               var name = String(s.name || "").toLowerCase();
               var key = String(s.chat_key || "").toLowerCase();
               if (name.indexOf(q) >= 0 || key.indexOf(q) >= 0) { rows.push(s); return; }
@@ -4516,7 +4781,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
           { session: "dashboard:private:web", status: "done", agent: "" },
         ] });
         case "/api/qvq/subjobs": return json({ jobs: SUBJOBS, total: SUBJOBS.length });
-        case "/api/qvq/breakers": return json({ breakers: [] });
+        case "/api/qvq/breakers": return json({ breakers: BREAKERS });
         case "/api/qvq/audit": return json({ entries: AUDIT.slice(0, 12), total: AUDIT.length + 686 });
         case "/api/qvq/inbox": return json(INBOX);
         case "/api/qvq/handover": return json(HANDOVER ? Object.assign({}, HANDOVER) : { active: false });
@@ -4526,8 +4791,9 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
                      last_text: ["喜欢简洁回复", "项目用 uv 管理", "每周五交周报", "猫娘语气但技术准确", "Windows 环境", "群规禁止广告"][i % 6] };
           }),
           entries: [
-            { content: "主人常用 Windows + uv，跑测试用 uv run pytest", ts: NOW - 86400 },
-            { content: "喜欢回复带点猫娘语气，但技术内容要准确", ts: NOW - 172800 },
+            { content: "主人常用 Windows + uv，跑测试用 uv run pytest", ts: NOW - 86400, category: "环境", importance: 4 },
+            { content: "喜欢回复带点猫娘语气，但技术内容要准确", ts: NOW - 172800, category: "偏好", importance: 3 },
+            { content: "每周五下班前要交项目周报", ts: NOW - 259200, category: "工作", importance: 2 },
           ],
           profile: {
             traits: [{ text: "夜猫子，凌晨三点还醒着", ts: NOW - 259200 }],
@@ -4574,15 +4840,6 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
             } },
             values: { voice: "xiaoxiao", rate: 1, max_chars: 80 } },
         ] });
-        case "/api/qvq/kb/search": {
-          var _tq = parseBody(opts).query || "";
-          var _hits = KB.filter(function (e) {
-            return (_tq && (e.title + e.content).toLowerCase().indexOf(_tq.toLowerCase().slice(0, 4)) >= 0);
-          }).slice(0, 5).map(function (e, i) {
-            return { id: e.id, title: e.title, source: e.source || "", snippet: String(e.content || "").slice(0, 80), score: 12 - i * 3 };
-          });
-          return json({ hits: _hits });
-        }
         case "/api/qvq/eco_panel": return json({ panels: [
           { module: "QvQMemes", cards: [
             { title: "梗图库", text: "已收录 142 张梗图 · 最近 7 天新增 6 张" },
@@ -4670,6 +4927,39 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
         });
       }
       case "/api/qvq/handover/stop": HANDOVER = null; return json({ ok: true });
+      /* 检索测试（POST，与真后端同形）：标题/正文包含命中，带分数与摘要 */
+      case "/api/qvq/kb/search": {
+        var _tq = String(parseBody(opts).query || "");
+        var _hits = KB.filter(function (e) {
+          return (_tq && (e.title + e.content + (e.triggers || []).join("")).toLowerCase().indexOf(_tq.toLowerCase().slice(0, 4)) >= 0);
+        }).slice(0, 5).map(function (e, i) {
+          return { id: e.id, title: e.title, source: e.source || "", snippet: String(e.content || "").slice(0, 80), score: 12 - i * 3 };
+        });
+        return json({ hits: _hits });
+      }
+      /* 会话策略（只传要改的键）：维护 mock 状态并回传合并后的 policy */
+      case "/api/qvq/session/policy": {
+        var pol = parseBody(opts);
+        var pTarget = SESSIONS.find(function (s) { return s.chat_key === pol.chat_key; });
+        if (pTarget) {
+          pTarget.policy = Object.assign({}, pTarget.policy);
+          ["muted", "low_token", "priority", "session_budget"].forEach(function (k) {
+            if (pol[k] !== undefined) pTarget.policy[k] = pol[k];
+          });
+          return json({ ok: true, policy: pTarget.policy });
+        }
+        return json({ ok: true });
+      }
+      /* 会话标记（置顶/归档）：维护 mock 状态，面板行内开关即时反馈 */
+      case "/api/qvq/session/flags": {
+        var fl = parseBody(opts);
+        var fTarget = SESSIONS.find(function (s) { return s.chat_key === fl.chat_key; });
+        if (fTarget) {
+          if (fl.pinned !== undefined) fTarget.pinned = !!fl.pinned;
+          if (fl.archived !== undefined) fTarget.archived = !!fl.archived;
+        }
+        return json({ ok: true });
+      }
       case "/api/qvq/subjobs/cancel": {
         var sk = "";
         try { sk = JSON.parse(opts.body || "{}").sub_key || ""; } catch (e) { /* 忽略 */ }
@@ -4690,7 +4980,13 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
       }
       case "/api/qvq/config": {
         var cfg = parseBody(opts);
+        if (cfg.default_model !== undefined) DEFAULT_MODEL = cfg.default_model;
         Object.keys(cfg).forEach(function (k) { CONFIG_DRAFT[k] = cfg[k]; });
+        return json({ ok: true });
+      }
+      case "/api/qvq/breakers/reset": {
+        var rm = parseBody(opts).model || "";
+        BREAKERS = BREAKERS.filter(function (b) { return b.model !== rm && b.id !== rm; });
         return json({ ok: true });
       }
       case "/api/qvq/chain/save": {
@@ -5293,11 +5589,11 @@ function detectLang() {
   return "zh-CN";
 }
 
-I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { sess_budget_line: "今日 {used} tok · 限额 {budget}（{pct}%）", sess_budget_none: "未设", sess_budget_tip: "本会话今日消耗与限额，点击打开会话设置调整", sess_budget_used_today: "今日已用 {used}（{pct}%）", usage_updated_at: "更新于 {t}", usage_alert_over: "已用预算 {p}%", usage_alert_act: "调整限额", usage_edit_limit_tip: "点击修改全局日上限", usage_origin_hint: "点来源可筛明细", usage_cost_est: "估算", usage_drill_tip: "点击查看该模型的调用明细", usage_filter_clear: "清除筛选", usage_budget_edit_global: "修改全局日上限", usage_budget_edit_one: "调整 {n} 的限额", usage_budget_edit_hint: "0 = 不限；改的是每日 token 限额，次日生效口径不变（按当日累计）", usage_budget_saved: "预算已更新", openapi_title: "开放 API（OpenAI 兼容）", openapi_auth_hint: "鉴权用 Bearer view_token（本页搜索 view_token 设置）；model 传 auto 走智能体链路", kb_test_btn: "检索测试", kb_test_ph: "输入一句话，看哪些条目会被命中注入", kb_test_run: "测试", kb_test_none: "没有命中：调整条目内容或触发词后再试", eco_cards_title: "生态模块", quick_open: "快速跳转", quick_placeholder: "搜索页面、会话、知识与技能…", quick_group_pages: "页面", quick_group_sessions: "会话", quick_group_knowledge: "知识", quick_group_skills: "技能", quick_group_actions: "动作", quick_act_new_chat: "新建试聊", quick_act_theme: "切换主题", quick_act_lang: "切换语言", quick_hint: "↑↓ 选择 · Enter 打开 · Esc 关闭", quick_no_result: "没有匹配的结果", quick_turns: "{n} 轮", audit_tool_all: "全部工具", audit_since: "开始日期", audit_until: "结束日期", audit_export: "导出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "来源构成", usage_origin_chat: "对话", usage_origin_dashboard: "面板", usage_origin_task: "定时任务", usage_origin_proactive: "主动发言", usage_origin_subagent: "子智能体", usage_origin_handover: "让渡", usage_budget_title: "预算", usage_budget_none: "未设任何预算：在设置 → 用量与会话策略里配置后这里显示进度", usage_budget_global: "全局日上限", usage_budget_user: "用户配额（最高者）", kb_scope_all: "全部", kb_scope_global: "全局", kb_scope_platform: "平台", kb_scope_session: "会话", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "会话作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "选择平台，可输入新平台名", kb_scope_session_ph: "选择会话，可输入 chat_key", kb_scope_global_hint: "对所有会话可见", kb_scope_empty: "该作用域暂无条目", chat_sandbox_group: "试聊", sandbox_badge: "试聊", sandbox_with: "试聊 · {n}", persona_chat: "试聊此人格", persona_unbound: "未绑定会话（全局兜底时不显示在此）", task_overdue: "已过期", ident_empty: "暂无同源建议；也可手动迁移或归并账户", ident_manual: "手动迁移…", bind_inherit_hint: "留空继承上层绑定（平台级 → 全局默认）", plugin_cfg: "配置", plugin_ext_sub: "生态模块向 AI 贡献的工具/技能/知识/人格一览（只读，随模块卸载消失）", prov_rank_tip: "故障转移链序（数字越小优先级越高，可在编排页调整）", orch_idx_tip: "故障转移顺序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "该域现有 {n} 个条目，清空后不可恢复", settings_unsaved_items: "项未保存", settings_reset: "还原", nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线", usage_records_title: "最近调用明细", mem_profile_clear: "清空画像", theme_follow: "跟随外壳", theme_light: "亮色", theme_dark: "深色", theme_title: "外观：{mode}（点击切换）", aria_menu: "打开菜单", aria_close: "关闭" });
-I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { sess_budget_line: "今日 {used} tok · 限額 {budget}（{pct}%）", sess_budget_none: "未設", sess_budget_tip: "本會話今日消耗與限額，點擊打開會話設定調整", sess_budget_used_today: "今日已用 {used}（{pct}%）", usage_updated_at: "更新於 {t}", usage_alert_over: "已用預算 {p}%", usage_alert_act: "調整限額", usage_edit_limit_tip: "點擊修改全域日上限", usage_origin_hint: "點來源可篩明細", usage_cost_est: "估算", usage_drill_tip: "點擊查看該模型的調用明細", usage_filter_clear: "清除篩選", usage_budget_edit_global: "修改全域日上限", usage_budget_edit_one: "調整 {n} 的限額", usage_budget_edit_hint: "0 = 不限；每日 token 限額，即時生效", usage_budget_saved: "預算已更新", openapi_title: "開放 API（OpenAI 相容）", openapi_auth_hint: "鑑權用 Bearer view_token（本頁搜尋 view_token 設定）；model 傳 auto 走智能體鏈路", kb_test_btn: "檢索測試", kb_test_ph: "輸入一句話，看哪些條目會被命中注入", kb_test_run: "測試", kb_test_none: "沒有命中：調整條目內容或觸發詞後再試", eco_cards_title: "生態模組", quick_open: "快速跳轉", quick_placeholder: "搜尋頁面、會話、知識與技能…", quick_group_pages: "頁面", quick_group_sessions: "會話", quick_group_knowledge: "知識", quick_group_skills: "技能", quick_group_actions: "動作", quick_act_new_chat: "新增試聊", quick_act_theme: "切換主題", quick_act_lang: "切換語言", quick_hint: "↑↓ 選擇 · Enter 開啟 · Esc 關閉", quick_no_result: "沒有符合的結果", quick_turns: "{n} 輪", audit_tool_all: "全部工具", audit_since: "開始日期", audit_until: "結束日期", audit_export: "匯出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "來源構成", usage_origin_chat: "對話", usage_origin_dashboard: "面板", usage_origin_task: "定時任務", usage_origin_proactive: "主動發言", usage_origin_subagent: "子智能體", usage_origin_handover: "讓渡", usage_budget_title: "預算", usage_budget_none: "未設任何預算：在設定 → 用量與會話策略裡配置後這裡顯示進度", usage_budget_global: "全域日上限", usage_budget_user: "用戶配額（最高者）", kb_scope_all: "全部", kb_scope_global: "全域", kb_scope_platform: "平台", kb_scope_session: "會話", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "會話作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "選擇平台，可輸入新平台名", kb_scope_session_ph: "選擇會話，可輸入 chat_key", kb_scope_global_hint: "對所有會話可見", kb_scope_empty: "該作用域暫無條目", chat_sandbox_group: "試聊", sandbox_badge: "試聊", sandbox_with: "試聊 · {n}", persona_chat: "試聊此人格", persona_unbound: "未綁定會話", task_overdue: "已過期", ident_empty: "暫無同源建議；也可手動遷移或歸併賬戶", ident_manual: "手動遷移…", bind_inherit_hint: "留空繼承上層綁定（平台級 → 全域預設）", plugin_cfg: "配置", plugin_ext_sub: "生態模組向 AI 貢獻的工具/技能/知識/人格一覽（唯讀，隨模組卸載消失）", prov_rank_tip: "故障轉移鏈序（數字越小優先級越高，可在編排頁調整）", orch_idx_tip: "故障轉移順序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "該域現有 {n} 個條目，清空後無法復原", settings_unsaved_items: "項未保存", settings_reset: "還原", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", prompt_chars: "字元", prompt_preview: "預覽提示詞", prompt_required: "必填", prompt_scene_note: "scene 為運行時部件：實際對話時才注入群名/發言人/@感知/引用等場景註記", prompt_turns: "輪歷史", usage_chart_title: "14 天趨勢", nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線", mem_profile_clear: "清空畫像", theme_follow: "跟隨外殼", theme_light: "亮色", theme_dark: "深色", theme_title: "外觀：{mode}（點擊切換）", aria_menu: "開啟選單", aria_close: "關閉" });
-I18N["en"] = Object.assign(I18N["en"] || {}, { sess_budget_line: "today {used} tok · limit {budget} ({pct}%)", sess_budget_none: "none", sess_budget_tip: "Session usage today vs limit; click to adjust in session settings", sess_budget_used_today: "used today {used} ({pct}%)", usage_updated_at: "updated {t}", usage_alert_over: "budget {p}% used", usage_alert_act: "Adjust limit", usage_edit_limit_tip: "Click to edit the global daily limit", usage_origin_hint: "click an origin to filter the flow", usage_cost_est: "est.", usage_drill_tip: "Click to see calls of this model", usage_filter_clear: "Clear filter", usage_budget_edit_global: "Edit global daily limit", usage_budget_edit_one: "Adjust limit for {n}", usage_budget_edit_hint: "0 = unlimited; daily token quota, applies immediately", usage_budget_saved: "Budget updated", openapi_title: "Open API (OpenAI-compatible)", openapi_auth_hint: "Auth via Bearer view_token (search view_token on this page); model \"auto\" routes through the agent chain", kb_test_btn: "Retrieval test", kb_test_ph: "Type a sentence to see which entries get hit", kb_test_run: "Test", kb_test_none: "No hits: adjust entry content or triggers", eco_cards_title: "Ecosystem modules", quick_open: "Quick jump", quick_placeholder: "Search pages, sessions, knowledge and skills…", quick_group_pages: "Pages", quick_group_sessions: "Sessions", quick_group_knowledge: "Knowledge", quick_group_skills: "Skills", quick_group_actions: "Actions", quick_act_new_chat: "New sandbox chat", quick_act_theme: "Switch theme", quick_act_lang: "Switch language", quick_hint: "↑↓ navigate · Enter open · Esc close", quick_no_result: "No matches", quick_turns: "{n} turns", audit_tool_all: "All tools", audit_since: "From", audit_until: "To", audit_export: "Export CSV", usage_range_7d: "7 days", usage_range_14d: "14 days", usage_range_30d: "30 days", usage_origin_title: "By origin", usage_origin_chat: "Chat", usage_origin_dashboard: "Panel", usage_origin_task: "Scheduled", usage_origin_proactive: "Proactive", usage_origin_subagent: "Sub-agent", usage_origin_handover: "Handover", usage_budget_title: "Budgets", usage_budget_none: "No budgets configured: set them in Settings → Usage and session policy", usage_budget_global: "Global daily limit", usage_budget_user: "User quota (top user)", kb_scope_all: "All", kb_scope_global: "Global", kb_scope_platform: "Platform", kb_scope_session: "Sessions", kb_scope_group_platforms: "Platform scopes", kb_scope_group_sessions: "Session scopes", kb_scope_left_all: "All", kb_scope_platform_ph: "Pick a platform or type a new name", kb_scope_session_ph: "Pick a session or type a chat_key", kb_scope_global_hint: "Visible to all sessions", kb_scope_empty: "No entries in this scope", chat_sandbox_group: "Sandbox", sandbox_badge: "Sandbox", sandbox_with: "Sandbox · {n}", persona_chat: "Chat with this persona", persona_unbound: "No session bound", task_overdue: "Overdue", ident_empty: "No same-origin suggestions; migrate or merge accounts manually", ident_manual: "Migrate manually…", bind_inherit_hint: "Leave empty to inherit upper binding (platform → global default)", plugin_cfg: "Configure", plugin_ext_sub: "Tools/skills/knowledge/personas contributed to the AI by ecosystem modules (read-only, removed with the module)", prov_rank_tip: "Failover chain order (lower number = higher priority, adjustable on Orchestrate)", orch_idx_tip: "Failover order", orch_move_up: "Move up", orch_move_down: "Move down", storage_confirm_count: "{n} entries in this domain; clearing is not reversible", settings_unsaved_items: "unsaved", settings_reset: "Revert", share_chat_tokens: "Max tokens visitor chat may consume", share_rounds: "Rounds a visitor may continue chatting (0 = read-only)", share_rounds_hint: "Visitors continue as plain text without tools; stops when rounds or budget run out", nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone", usage_records_title: "Recent calls", mem_profile_clear: "Clear profile", theme_follow: "Follow shell", theme_light: "Light", theme_dark: "Dark", theme_title: "Appearance: {mode} (click to switch)", aria_menu: "Open menu", aria_close: "Close" });
-I18N["ja"] = Object.assign(I18N["ja"] || {}, { sess_budget_line: "本日 {used} tok · 上限 {budget}（{pct}%）", sess_budget_none: "未設定", sess_budget_tip: "このセッションの本日消費と上限。クリックで設定を開く", sess_budget_used_today: "本日 {used} 消費（{pct}%）", usage_updated_at: "{t} 更新", usage_alert_over: "予算 {p}% 消化", usage_alert_act: "上限を調整", usage_edit_limit_tip: "クリックでグローバル日次上限を変更", usage_origin_hint: "ソースをクリックで明細を絞り込み", usage_cost_est: "推定", usage_drill_tip: "クリックでこのモデルの呼び出し明細を表示", usage_filter_clear: "絞り込み解除", usage_budget_edit_global: "グローバル日次上限を変更", usage_budget_edit_one: "{n} の上限を調整", usage_budget_edit_hint: "0 = 無制限。日次トークン枠、即時反映", usage_budget_saved: "予算を更新しました", openapi_title: "オープン API（OpenAI 互換）", openapi_auth_hint: "認証は Bearer view_token（このページで view_token を検索）。model は auto でエージェント経由", kb_test_btn: "検索テスト", kb_test_ph: "一文を入力してヒットする項目を確認", kb_test_run: "テスト", kb_test_none: "ヒットなし：本文やトリガーを調整してください", eco_cards_title: "エコシステムモジュール", quick_open: "クイックジャンプ", quick_placeholder: "ページ・セッション・知識・スキルを検索…", quick_group_pages: "ページ", quick_group_sessions: "セッション", quick_group_knowledge: "ナレッジ", quick_group_skills: "スキル", quick_group_actions: "アクション", quick_act_new_chat: "新規サンドボックス", quick_act_theme: "テーマ切替", quick_act_lang: "言語切替", quick_hint: "↑↓ 選択 · Enter 開く · Esc 閉じる", quick_no_result: "該当なし", quick_turns: "{n} ターン", audit_tool_all: "すべてのツール", audit_since: "開始日", audit_until: "終了日", audit_export: "CSV 出力", usage_range_7d: "直近7日", usage_range_14d: "直近14日", usage_range_30d: "直近30日", usage_origin_title: "ソース別構成", usage_origin_chat: "会話", usage_origin_dashboard: "パネル", usage_origin_task: "定時タスク", usage_origin_proactive: "プロアクティブ", usage_origin_subagent: "サブエージェント", usage_origin_handover: "ハンドオーバー", usage_budget_title: "予算", usage_budget_none: "予算未設定：設定 → 使用量とセッション方針で構成すると表示されます", usage_budget_global: "グローバル日次上限", usage_budget_user: "ユーザー枠（上位）", kb_scope_all: "すべて", kb_scope_global: "グローバル", kb_scope_platform: "プラットフォーム", kb_scope_session: "セッション", kb_scope_group_platforms: "プラットフォームスコープ", kb_scope_group_sessions: "セッションスコープ", kb_scope_left_all: "すべて", kb_scope_platform_ph: "プラットフォームを選択（新規入力可）", kb_scope_session_ph: "セッションを選択（chat_key 直入力可）", kb_scope_global_hint: "全セッションから参照可", kb_scope_empty: "このスコープには項目がありません", chat_sandbox_group: "サンドボックス", sandbox_badge: " sandbox", sandbox_with: " sandbox · {n}", persona_chat: "この人格で試す", persona_unbound: "未バインド", task_overdue: "期限超過", ident_empty: "同源候補なし。手動移行またはアカウント統合も可能", ident_manual: "手動で移行…", bind_inherit_hint: "空欄で上位バインディングを継承（プラットフォーム → グローバル既定）", plugin_cfg: "設定", plugin_ext_sub: "エコシステムモジュールが AI に提供するツール/スキル/知識/人格の一覧（読み取り専用、アンインストールで消失）", prov_rank_tip: "フェイルオーバー順（数字小＝優先度高、編成ページで変更可）", orch_idx_tip: "フェイルオーバー順", orch_move_up: "上へ", orch_move_down: "下へ", storage_confirm_count: "このドメインには {n} 件あります。消去すると元に戻せません", settings_unsaved_items: "件未保存", settings_reset: "取消", nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中", mem_profile_clear: "プロフィールを消去", theme_follow: "シェルに追随", theme_light: "ライト", theme_dark: "ダーク", theme_title: "外観：{mode}（クリックで切替）", aria_menu: "メニューを開く", aria_close: "閉じる" });
-I18N["ru"] = Object.assign(I18N["ru"] || {}, { sess_budget_line: "сегодня {used} tok · лимит {budget} ({pct}%)", sess_budget_none: "нет", sess_budget_tip: "Расход сессии за день и лимит; нажмите для настройки", sess_budget_used_today: "использовано {used} ({pct}%)", usage_updated_at: "обновлено {t}", usage_alert_over: "бюджет использован на {p}%", usage_alert_act: "Изменить лимит", usage_edit_limit_tip: "Нажмите, чтобы изменить дневной лимит", usage_origin_hint: "клик по источнику фильтрует список", usage_cost_est: "оценка", usage_drill_tip: "Клик — вызовы этой модели", usage_filter_clear: "Сбросить фильтр", usage_budget_edit_global: "Изменить дневной лимит", usage_budget_edit_one: "Лимит для {n}", usage_budget_edit_hint: "0 = без лимита; дневная квота токенов", usage_budget_saved: "Бюджет обновлён", openapi_title: "Открытый API (совместимый с OpenAI)", openapi_auth_hint: "Авторизация: Bearer view_token (найдите view_token на этой странице); model auto — через цепочку агента", kb_test_btn: "Тест поиска", kb_test_ph: "Введите фразу — увидите, какие записи сработают", kb_test_run: "Тест", kb_test_none: "Нет попаданий: поправьте текст или триггеры", eco_cards_title: "Модули экосистемы", quick_open: "Быстрый переход", quick_placeholder: "Поиск: страницы, сессии, знания, навыки…", quick_group_pages: "Страницы", quick_group_sessions: "Сессии", quick_group_knowledge: "Знания", quick_group_skills: "Навыки", quick_group_actions: "Действия", quick_act_new_chat: "Новая песочница", quick_act_theme: "Сменить тему", quick_act_lang: "Сменить язык", quick_hint: "↑↓ выбор · Enter открыть · Esc закрыть", quick_no_result: "Ничего не найдено", quick_turns: "{n} ходов", audit_tool_all: "Все инструменты", audit_since: "С", audit_until: "По", audit_export: "Экспорт CSV", usage_range_7d: "7 дней", usage_range_14d: "14 дней", usage_range_30d: "30 дней", usage_origin_title: "По источникам", usage_origin_chat: "Чат", usage_origin_dashboard: "Панель", usage_origin_task: "По расписанию", usage_origin_proactive: "Проактивные", usage_origin_subagent: "Субагент", usage_origin_handover: "Передача", usage_budget_title: "Бюджеты", usage_budget_none: "Бюджеты не заданы: настройте в Настройках → Расход и политика сессий", usage_budget_global: "Глобальный дневной лимит", usage_budget_user: "Квота пользователя (лидер)", kb_scope_all: "Все", kb_scope_global: "Глобально", kb_scope_platform: "Платформы", kb_scope_session: "Сессии", kb_scope_group_platforms: "Скоупы платформ", kb_scope_group_sessions: "Скоупы сессий", kb_scope_left_all: "Все", kb_scope_platform_ph: "Выберите платформу или введите новую", kb_scope_session_ph: "Выберите сессию или введите chat_key", kb_scope_global_hint: "Видимо всем сессиям", kb_scope_empty: "В этом скоупе нет записей", chat_sandbox_group: "Песочница", sandbox_badge: "Песочница", sandbox_with: "Песочница · {n}", persona_chat: "Чат с этой личностью", persona_unbound: "Нет привязок", task_overdue: "Просрочено", ident_empty: "Нет однородных предложений; переносите или объединяйте вручную", ident_manual: "Перенести вручную…", bind_inherit_hint: "Пусто — наследуется верхняя привязка (платформа → глобальная)", plugin_cfg: "Настроить", plugin_ext_sub: "Инструменты/навыки/знания/личности от модулей экосистемы (только чтение, исчезают с удалением модуля)", prov_rank_tip: "Порядок отказоустойчивости (меньше число = выше приоритет, меняется в Оркестрации)", orch_idx_tip: "Порядок отказоустойчивости", orch_move_up: "Вверх", orch_move_down: "Вниз", storage_confirm_count: "В домене {n} записей; очистка необратима", settings_unsaved_items: "не сохранено", settings_reset: "Отменить", inbox_handled: "Обработано", load_older: "Загрузить более старые", nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке", mem_profile_clear: "Очистить профиль", theme_follow: "Как в оболочке", theme_light: "Светлая", theme_dark: "Тёмная", theme_title: "Оформление: {mode} (нажмите для смены)", aria_menu: "Открыть меню", aria_close: "Закрыть" });
+I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { ov_usage_drill_tip: "查看用量明细与预算", ov_turns_tip: "历史轮数 · 点击进入对话", ov_inbox_expand: "展开收件箱快览", ov_running_drill_tip: "点击进入该会话", orch_test_tip: "测试该模型连通性", orch_cool_reset_tip: "熔断冷却中 · 点击立即重置", breakers_reset_done: "已重置熔断", subjob_open_parent: "父会话", subjob_cancelled: "已取消后台任务", partic_budget_go_tip: "点击前往用量页调整预算", prov_set_default: "设为默认模型", models_default_set: "已设为默认模型", prov_default_badge: "默认", prov_params_empty: "未配置上下文参数，点击编辑补全", prov_chip_expand_tip: "点击展开 / 收起模型参数", plat_sessions_tip: "点击查看全部会话", bind_open_chat: "跳会话", bind_removed: "已解绑", sess_pol_col: "策略", sess_restore_done: "已恢复该会话", sess_budget_title: "会话每日限额", mem_cat_all: "全部", mem_imp_ge3: "重要度 ≥3", kb_copy_content: "复制正文", kb_trig_short: "触发", sess_budget_line: "今日 {used} tok · 限额 {budget}（{pct}%）", sess_budget_none: "未设", sess_budget_tip: "本会话今日消耗与限额，点击打开会话设置调整", sess_budget_used_today: "今日已用 {used}（{pct}%）", usage_updated_at: "更新于 {t}", usage_alert_over: "已用预算 {p}%", usage_alert_act: "调整限额", usage_edit_limit_tip: "点击修改全局日上限", usage_origin_hint: "点来源可筛明细", usage_cost_est: "估算", usage_drill_tip: "点击查看该模型的调用明细", usage_filter_clear: "清除筛选", usage_budget_edit_global: "修改全局日上限", usage_budget_edit_one: "调整 {n} 的限额", usage_budget_edit_hint: "0 = 不限；改的是每日 token 限额，次日生效口径不变（按当日累计）", usage_budget_saved: "预算已更新", openapi_title: "开放 API（OpenAI 兼容）", openapi_auth_hint: "鉴权用 Bearer view_token（本页搜索 view_token 设置）；model 传 auto 走智能体链路", kb_test_btn: "检索测试", kb_test_ph: "输入一句话，看哪些条目会被命中注入", kb_test_run: "测试", kb_test_none: "没有命中：调整条目内容或触发词后再试", eco_cards_title: "生态模块", quick_open: "快速跳转", quick_placeholder: "搜索页面、会话、知识与技能…", quick_group_pages: "页面", quick_group_sessions: "会话", quick_group_knowledge: "知识", quick_group_skills: "技能", quick_group_actions: "动作", quick_act_new_chat: "新建试聊", quick_act_theme: "切换主题", quick_act_lang: "切换语言", quick_hint: "↑↓ 选择 · Enter 打开 · Esc 关闭", quick_no_result: "没有匹配的结果", quick_turns: "{n} 轮", audit_tool_all: "全部工具", audit_since: "开始日期", audit_until: "结束日期", audit_export: "导出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "来源构成", usage_origin_chat: "对话", usage_origin_dashboard: "面板", usage_origin_task: "定时任务", usage_origin_proactive: "主动发言", usage_origin_subagent: "子智能体", usage_origin_handover: "让渡", usage_budget_title: "预算", usage_budget_none: "未设任何预算：在设置 → 用量与会话策略里配置后这里显示进度", usage_budget_global: "全局日上限", usage_budget_user: "用户配额（最高者）", kb_scope_all: "全部", kb_scope_global: "全局", kb_scope_platform: "平台", kb_scope_session: "会话", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "会话作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "选择平台，可输入新平台名", kb_scope_session_ph: "选择会话，可输入 chat_key", kb_scope_global_hint: "对所有会话可见", kb_scope_empty: "该作用域暂无条目", chat_sandbox_group: "试聊", sandbox_badge: "试聊", sandbox_with: "试聊 · {n}", persona_chat: "试聊此人格", persona_unbound: "未绑定会话（全局兜底时不显示在此）", task_overdue: "已过期", ident_empty: "暂无同源建议；也可手动迁移或归并账户", ident_manual: "手动迁移…", bind_inherit_hint: "留空继承上层绑定（平台级 → 全局默认）", plugin_cfg: "配置", plugin_ext_sub: "生态模块向 AI 贡献的工具/技能/知识/人格一览（只读，随模块卸载消失）", prov_rank_tip: "故障转移链序（数字越小优先级越高，可在编排页调整）", orch_idx_tip: "故障转移顺序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "该域现有 {n} 个条目，清空后不可恢复", settings_unsaved_items: "项未保存", settings_reset: "还原", nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线", usage_records_title: "最近调用明细", mem_profile_clear: "清空画像", theme_follow: "跟随外壳", theme_light: "亮色", theme_dark: "深色", theme_title: "外观：{mode}（点击切换）", aria_menu: "打开菜单", aria_close: "关闭" });
+I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { ov_usage_drill_tip: "查看用量明細與預算", ov_turns_tip: "歷史輪數 · 點擊進入對話", ov_inbox_expand: "展開收件箱快覽", ov_running_drill_tip: "點擊進入該會話", orch_test_tip: "測試該模型連通性", orch_cool_reset_tip: "熔斷冷卻中 · 點擊立即重置", breakers_reset_done: "已重置熔斷", subjob_open_parent: "父會話", subjob_cancelled: "已取消後台任務", partic_budget_go_tip: "點擊前往用量頁調整預算", prov_set_default: "設為預設模型", models_default_set: "已設為預設模型", prov_default_badge: "預設", prov_params_empty: "未配置上下文參數，點擊編輯補全", prov_chip_expand_tip: "點擊展開 / 收起模型參數", plat_sessions_tip: "點擊查看全部會話", bind_open_chat: "跳會話", bind_removed: "已解綁", sess_pol_col: "策略", sess_restore_done: "已恢復該會話", sess_budget_title: "會話每日限額", mem_cat_all: "全部", mem_imp_ge3: "重要度 ≥3", kb_copy_content: "複製正文", kb_trig_short: "觸發", sess_budget_line: "今日 {used} tok · 限額 {budget}（{pct}%）", sess_budget_none: "未設", sess_budget_tip: "本會話今日消耗與限額，點擊打開會話設定調整", sess_budget_used_today: "今日已用 {used}（{pct}%）", usage_updated_at: "更新於 {t}", usage_alert_over: "已用預算 {p}%", usage_alert_act: "調整限額", usage_edit_limit_tip: "點擊修改全域日上限", usage_origin_hint: "點來源可篩明細", usage_cost_est: "估算", usage_drill_tip: "點擊查看該模型的調用明細", usage_filter_clear: "清除篩選", usage_budget_edit_global: "修改全域日上限", usage_budget_edit_one: "調整 {n} 的限額", usage_budget_edit_hint: "0 = 不限；每日 token 限額，即時生效", usage_budget_saved: "預算已更新", openapi_title: "開放 API（OpenAI 相容）", openapi_auth_hint: "鑑權用 Bearer view_token（本頁搜尋 view_token 設定）；model 傳 auto 走智能體鏈路", kb_test_btn: "檢索測試", kb_test_ph: "輸入一句話，看哪些條目會被命中注入", kb_test_run: "測試", kb_test_none: "沒有命中：調整條目內容或觸發詞後再試", eco_cards_title: "生態模組", quick_open: "快速跳轉", quick_placeholder: "搜尋頁面、會話、知識與技能…", quick_group_pages: "頁面", quick_group_sessions: "會話", quick_group_knowledge: "知識", quick_group_skills: "技能", quick_group_actions: "動作", quick_act_new_chat: "新增試聊", quick_act_theme: "切換主題", quick_act_lang: "切換語言", quick_hint: "↑↓ 選擇 · Enter 開啟 · Esc 關閉", quick_no_result: "沒有符合的結果", quick_turns: "{n} 輪", audit_tool_all: "全部工具", audit_since: "開始日期", audit_until: "結束日期", audit_export: "匯出 CSV", usage_range_7d: "近 7 天", usage_range_14d: "近 14 天", usage_range_30d: "近 30 天", usage_origin_title: "來源構成", usage_origin_chat: "對話", usage_origin_dashboard: "面板", usage_origin_task: "定時任務", usage_origin_proactive: "主動發言", usage_origin_subagent: "子智能體", usage_origin_handover: "讓渡", usage_budget_title: "預算", usage_budget_none: "未設任何預算：在設定 → 用量與會話策略裡配置後這裡顯示進度", usage_budget_global: "全域日上限", usage_budget_user: "用戶配額（最高者）", kb_scope_all: "全部", kb_scope_global: "全域", kb_scope_platform: "平台", kb_scope_session: "會話", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "會話作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "選擇平台，可輸入新平台名", kb_scope_session_ph: "選擇會話，可輸入 chat_key", kb_scope_global_hint: "對所有會話可見", kb_scope_empty: "該作用域暫無條目", chat_sandbox_group: "試聊", sandbox_badge: "試聊", sandbox_with: "試聊 · {n}", persona_chat: "試聊此人格", persona_unbound: "未綁定會話", task_overdue: "已過期", ident_empty: "暫無同源建議；也可手動遷移或歸併賬戶", ident_manual: "手動遷移…", bind_inherit_hint: "留空繼承上層綁定（平台級 → 全域預設）", plugin_cfg: "配置", plugin_ext_sub: "生態模組向 AI 貢獻的工具/技能/知識/人格一覽（唯讀，隨模組卸載消失）", prov_rank_tip: "故障轉移鏈序（數字越小優先級越高，可在編排頁調整）", orch_idx_tip: "故障轉移順序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "該域現有 {n} 個條目，清空後無法復原", settings_unsaved_items: "項未保存", settings_reset: "還原", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", prompt_chars: "字元", prompt_preview: "預覽提示詞", prompt_required: "必填", prompt_scene_note: "scene 為運行時部件：實際對話時才注入群名/發言人/@感知/引用等場景註記", prompt_turns: "輪歷史", usage_chart_title: "14 天趨勢", nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線", mem_profile_clear: "清空畫像", theme_follow: "跟隨外殼", theme_light: "亮色", theme_dark: "深色", theme_title: "外觀：{mode}（點擊切換）", aria_menu: "開啟選單", aria_close: "關閉" });
+I18N["en"] = Object.assign(I18N["en"] || {}, { ov_usage_drill_tip: "Usage details and budgets", ov_turns_tip: "turns so far · click to open the chat", ov_inbox_expand: "Expand inbox preview", ov_running_drill_tip: "Click to open this session", orch_test_tip: "Test this model", orch_cool_reset_tip: "Breaker cooling · click to reset now", breakers_reset_done: "Breaker reset", subjob_open_parent: "Parent session", subjob_cancelled: "Background task cancelled", partic_budget_go_tip: "Go to Usage to adjust budgets", prov_set_default: "Set as default model", models_default_set: "Set as default model", prov_default_badge: "default", prov_params_empty: "No context params yet — click edit to fill in", prov_chip_expand_tip: "Click to expand / collapse model params", plat_sessions_tip: "Click to view all sessions", bind_open_chat: "Open chat", bind_removed: "Unbound", sess_pol_col: "Policy", sess_restore_done: "Session restored", sess_budget_title: "Daily session limit", mem_cat_all: "All", mem_imp_ge3: "Importance ≥3", kb_copy_content: "Copy content", kb_trig_short: "Triggers", sess_budget_line: "today {used} tok · limit {budget} ({pct}%)", sess_budget_none: "none", sess_budget_tip: "Session usage today vs limit; click to adjust in session settings", sess_budget_used_today: "used today {used} ({pct}%)", usage_updated_at: "updated {t}", usage_alert_over: "budget {p}% used", usage_alert_act: "Adjust limit", usage_edit_limit_tip: "Click to edit the global daily limit", usage_origin_hint: "click an origin to filter the flow", usage_cost_est: "est.", usage_drill_tip: "Click to see calls of this model", usage_filter_clear: "Clear filter", usage_budget_edit_global: "Edit global daily limit", usage_budget_edit_one: "Adjust limit for {n}", usage_budget_edit_hint: "0 = unlimited; daily token quota, applies immediately", usage_budget_saved: "Budget updated", openapi_title: "Open API (OpenAI-compatible)", openapi_auth_hint: "Auth via Bearer view_token (search view_token on this page); model \"auto\" routes through the agent chain", kb_test_btn: "Retrieval test", kb_test_ph: "Type a sentence to see which entries get hit", kb_test_run: "Test", kb_test_none: "No hits: adjust entry content or triggers", eco_cards_title: "Ecosystem modules", quick_open: "Quick jump", quick_placeholder: "Search pages, sessions, knowledge and skills…", quick_group_pages: "Pages", quick_group_sessions: "Sessions", quick_group_knowledge: "Knowledge", quick_group_skills: "Skills", quick_group_actions: "Actions", quick_act_new_chat: "New sandbox chat", quick_act_theme: "Switch theme", quick_act_lang: "Switch language", quick_hint: "↑↓ navigate · Enter open · Esc close", quick_no_result: "No matches", quick_turns: "{n} turns", audit_tool_all: "All tools", audit_since: "From", audit_until: "To", audit_export: "Export CSV", usage_range_7d: "7 days", usage_range_14d: "14 days", usage_range_30d: "30 days", usage_origin_title: "By origin", usage_origin_chat: "Chat", usage_origin_dashboard: "Panel", usage_origin_task: "Scheduled", usage_origin_proactive: "Proactive", usage_origin_subagent: "Sub-agent", usage_origin_handover: "Handover", usage_budget_title: "Budgets", usage_budget_none: "No budgets configured: set them in Settings → Usage and session policy", usage_budget_global: "Global daily limit", usage_budget_user: "User quota (top user)", kb_scope_all: "All", kb_scope_global: "Global", kb_scope_platform: "Platform", kb_scope_session: "Sessions", kb_scope_group_platforms: "Platform scopes", kb_scope_group_sessions: "Session scopes", kb_scope_left_all: "All", kb_scope_platform_ph: "Pick a platform or type a new name", kb_scope_session_ph: "Pick a session or type a chat_key", kb_scope_global_hint: "Visible to all sessions", kb_scope_empty: "No entries in this scope", chat_sandbox_group: "Sandbox", sandbox_badge: "Sandbox", sandbox_with: "Sandbox · {n}", persona_chat: "Chat with this persona", persona_unbound: "No session bound", task_overdue: "Overdue", ident_empty: "No same-origin suggestions; migrate or merge accounts manually", ident_manual: "Migrate manually…", bind_inherit_hint: "Leave empty to inherit upper binding (platform → global default)", plugin_cfg: "Configure", plugin_ext_sub: "Tools/skills/knowledge/personas contributed to the AI by ecosystem modules (read-only, removed with the module)", prov_rank_tip: "Failover chain order (lower number = higher priority, adjustable on Orchestrate)", orch_idx_tip: "Failover order", orch_move_up: "Move up", orch_move_down: "Move down", storage_confirm_count: "{n} entries in this domain; clearing is not reversible", settings_unsaved_items: "unsaved", settings_reset: "Revert", share_chat_tokens: "Max tokens visitor chat may consume", share_rounds: "Rounds a visitor may continue chatting (0 = read-only)", share_rounds_hint: "Visitors continue as plain text without tools; stops when rounds or budget run out", nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone", usage_records_title: "Recent calls", mem_profile_clear: "Clear profile", theme_follow: "Follow shell", theme_light: "Light", theme_dark: "Dark", theme_title: "Appearance: {mode} (click to switch)", aria_menu: "Open menu", aria_close: "Close" });
+I18N["ja"] = Object.assign(I18N["ja"] || {}, { ov_usage_drill_tip: "使用量明細と予算を見る", ov_turns_tip: "これまでのターン数 · クリックで会話へ", ov_inbox_expand: "受信箱プレビューを展開", ov_running_drill_tip: "クリックでこのセッションへ", orch_test_tip: "このモデルをテスト", orch_cool_reset_tip: "熔断冷却中 · クリックで即リセット", breakers_reset_done: "熔断をリセットしました", subjob_open_parent: "親セッション", subjob_cancelled: "バックグラウンドタスクをキャンセル", partic_budget_go_tip: "使用量ページで予算を調整", prov_set_default: "既定モデルに設定", models_default_set: "既定モデルに設定しました", prov_default_badge: "既定", prov_params_empty: "コンテキスト参数未設定 · 編集で補完", prov_chip_expand_tip: "クリックでモデル参数を開閉", plat_sessions_tip: "クリックで全セッション表示", bind_open_chat: "会話へ", bind_removed: "解除しました", sess_pol_col: "方針", sess_restore_done: "セッションを復元しました", sess_budget_title: "セッション日次上限", mem_cat_all: "すべて", mem_imp_ge3: "重要度 ≥3", kb_copy_content: "本文をコピー", kb_trig_short: "トリガー", sess_budget_line: "本日 {used} tok · 上限 {budget}（{pct}%）", sess_budget_none: "未設定", sess_budget_tip: "このセッションの本日消費と上限。クリックで設定を開く", sess_budget_used_today: "本日 {used} 消費（{pct}%）", usage_updated_at: "{t} 更新", usage_alert_over: "予算 {p}% 消化", usage_alert_act: "上限を調整", usage_edit_limit_tip: "クリックでグローバル日次上限を変更", usage_origin_hint: "ソースをクリックで明細を絞り込み", usage_cost_est: "推定", usage_drill_tip: "クリックでこのモデルの呼び出し明細を表示", usage_filter_clear: "絞り込み解除", usage_budget_edit_global: "グローバル日次上限を変更", usage_budget_edit_one: "{n} の上限を調整", usage_budget_edit_hint: "0 = 無制限。日次トークン枠、即時反映", usage_budget_saved: "予算を更新しました", openapi_title: "オープン API（OpenAI 互換）", openapi_auth_hint: "認証は Bearer view_token（このページで view_token を検索）。model は auto でエージェント経由", kb_test_btn: "検索テスト", kb_test_ph: "一文を入力してヒットする項目を確認", kb_test_run: "テスト", kb_test_none: "ヒットなし：本文やトリガーを調整してください", eco_cards_title: "エコシステムモジュール", quick_open: "クイックジャンプ", quick_placeholder: "ページ・セッション・知識・スキルを検索…", quick_group_pages: "ページ", quick_group_sessions: "セッション", quick_group_knowledge: "ナレッジ", quick_group_skills: "スキル", quick_group_actions: "アクション", quick_act_new_chat: "新規サンドボックス", quick_act_theme: "テーマ切替", quick_act_lang: "言語切替", quick_hint: "↑↓ 選択 · Enter 開く · Esc 閉じる", quick_no_result: "該当なし", quick_turns: "{n} ターン", audit_tool_all: "すべてのツール", audit_since: "開始日", audit_until: "終了日", audit_export: "CSV 出力", usage_range_7d: "直近7日", usage_range_14d: "直近14日", usage_range_30d: "直近30日", usage_origin_title: "ソース別構成", usage_origin_chat: "会話", usage_origin_dashboard: "パネル", usage_origin_task: "定時タスク", usage_origin_proactive: "プロアクティブ", usage_origin_subagent: "サブエージェント", usage_origin_handover: "ハンドオーバー", usage_budget_title: "予算", usage_budget_none: "予算未設定：設定 → 使用量とセッション方針で構成すると表示されます", usage_budget_global: "グローバル日次上限", usage_budget_user: "ユーザー枠（上位）", kb_scope_all: "すべて", kb_scope_global: "グローバル", kb_scope_platform: "プラットフォーム", kb_scope_session: "セッション", kb_scope_group_platforms: "プラットフォームスコープ", kb_scope_group_sessions: "セッションスコープ", kb_scope_left_all: "すべて", kb_scope_platform_ph: "プラットフォームを選択（新規入力可）", kb_scope_session_ph: "セッションを選択（chat_key 直入力可）", kb_scope_global_hint: "全セッションから参照可", kb_scope_empty: "このスコープには項目がありません", chat_sandbox_group: "サンドボックス", sandbox_badge: " sandbox", sandbox_with: " sandbox · {n}", persona_chat: "この人格で試す", persona_unbound: "未バインド", task_overdue: "期限超過", ident_empty: "同源候補なし。手動移行またはアカウント統合も可能", ident_manual: "手動で移行…", bind_inherit_hint: "空欄で上位バインディングを継承（プラットフォーム → グローバル既定）", plugin_cfg: "設定", plugin_ext_sub: "エコシステムモジュールが AI に提供するツール/スキル/知識/人格の一覧（読み取り専用、アンインストールで消失）", prov_rank_tip: "フェイルオーバー順（数字小＝優先度高、編成ページで変更可）", orch_idx_tip: "フェイルオーバー順", orch_move_up: "上へ", orch_move_down: "下へ", storage_confirm_count: "このドメインには {n} 件あります。消去すると元に戻せません", settings_unsaved_items: "件未保存", settings_reset: "取消", nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中", mem_profile_clear: "プロフィールを消去", theme_follow: "シェルに追随", theme_light: "ライト", theme_dark: "ダーク", theme_title: "外観：{mode}（クリックで切替）", aria_menu: "メニューを開く", aria_close: "閉じる" });
+I18N["ru"] = Object.assign(I18N["ru"] || {}, { ov_usage_drill_tip: "Расход и бюджеты", ov_turns_tip: "оборотов · нажмите, чтобы открыть чат", ov_inbox_expand: "Развернуть входящие", ov_running_drill_tip: "Нажмите, чтобы открыть сессию", orch_test_tip: "Проверить модель", orch_cool_reset_tip: "Охлаждение · нажмите для сброса", breakers_reset_done: "Предохранитель сброшен", subjob_open_parent: "Родительская сессия", subjob_cancelled: "Фоновая задача отменена", partic_budget_go_tip: "Перейти к расходам для настройки бюджетов", prov_set_default: "Сделать моделью по умолчанию", models_default_set: "Модель по умолчанию обновлена", prov_default_badge: "умолч.", prov_params_empty: "Параметры контекста не заданы — заполните в редакторе", prov_chip_expand_tip: "Развернуть / свернуть параметры модели", plat_sessions_tip: "Нажмите — все сессии", bind_open_chat: "Открыть чат", bind_removed: "Привязка снята", sess_pol_col: "Политика", sess_restore_done: "Сессия восстановлена", sess_budget_title: "Дневной лимит сессии", mem_cat_all: "Все", mem_imp_ge3: "Важность ≥3", kb_copy_content: "Копировать текст", kb_trig_short: "Триггеры", sess_budget_line: "сегодня {used} tok · лимит {budget} ({pct}%)", sess_budget_none: "нет", sess_budget_tip: "Расход сессии за день и лимит; нажмите для настройки", sess_budget_used_today: "использовано {used} ({pct}%)", usage_updated_at: "обновлено {t}", usage_alert_over: "бюджет использован на {p}%", usage_alert_act: "Изменить лимит", usage_edit_limit_tip: "Нажмите, чтобы изменить дневной лимит", usage_origin_hint: "клик по источнику фильтрует список", usage_cost_est: "оценка", usage_drill_tip: "Клик — вызовы этой модели", usage_filter_clear: "Сбросить фильтр", usage_budget_edit_global: "Изменить дневной лимит", usage_budget_edit_one: "Лимит для {n}", usage_budget_edit_hint: "0 = без лимита; дневная квота токенов", usage_budget_saved: "Бюджет обновлён", openapi_title: "Открытый API (совместимый с OpenAI)", openapi_auth_hint: "Авторизация: Bearer view_token (найдите view_token на этой странице); model auto — через цепочку агента", kb_test_btn: "Тест поиска", kb_test_ph: "Введите фразу — увидите, какие записи сработают", kb_test_run: "Тест", kb_test_none: "Нет попаданий: поправьте текст или триггеры", eco_cards_title: "Модули экосистемы", quick_open: "Быстрый переход", quick_placeholder: "Поиск: страницы, сессии, знания, навыки…", quick_group_pages: "Страницы", quick_group_sessions: "Сессии", quick_group_knowledge: "Знания", quick_group_skills: "Навыки", quick_group_actions: "Действия", quick_act_new_chat: "Новая песочница", quick_act_theme: "Сменить тему", quick_act_lang: "Сменить язык", quick_hint: "↑↓ выбор · Enter открыть · Esc закрыть", quick_no_result: "Ничего не найдено", quick_turns: "{n} ходов", audit_tool_all: "Все инструменты", audit_since: "С", audit_until: "По", audit_export: "Экспорт CSV", usage_range_7d: "7 дней", usage_range_14d: "14 дней", usage_range_30d: "30 дней", usage_origin_title: "По источникам", usage_origin_chat: "Чат", usage_origin_dashboard: "Панель", usage_origin_task: "По расписанию", usage_origin_proactive: "Проактивные", usage_origin_subagent: "Субагент", usage_origin_handover: "Передача", usage_budget_title: "Бюджеты", usage_budget_none: "Бюджеты не заданы: настройте в Настройках → Расход и политика сессий", usage_budget_global: "Глобальный дневной лимит", usage_budget_user: "Квота пользователя (лидер)", kb_scope_all: "Все", kb_scope_global: "Глобально", kb_scope_platform: "Платформы", kb_scope_session: "Сессии", kb_scope_group_platforms: "Скоупы платформ", kb_scope_group_sessions: "Скоупы сессий", kb_scope_left_all: "Все", kb_scope_platform_ph: "Выберите платформу или введите новую", kb_scope_session_ph: "Выберите сессию или введите chat_key", kb_scope_global_hint: "Видимо всем сессиям", kb_scope_empty: "В этом скоупе нет записей", chat_sandbox_group: "Песочница", sandbox_badge: "Песочница", sandbox_with: "Песочница · {n}", persona_chat: "Чат с этой личностью", persona_unbound: "Нет привязок", task_overdue: "Просрочено", ident_empty: "Нет однородных предложений; переносите или объединяйте вручную", ident_manual: "Перенести вручную…", bind_inherit_hint: "Пусто — наследуется верхняя привязка (платформа → глобальная)", plugin_cfg: "Настроить", plugin_ext_sub: "Инструменты/навыки/знания/личности от модулей экосистемы (только чтение, исчезают с удалением модуля)", prov_rank_tip: "Порядок отказоустойчивости (меньше число = выше приоритет, меняется в Оркестрации)", orch_idx_tip: "Порядок отказоустойчивости", orch_move_up: "Вверх", orch_move_down: "Вниз", storage_confirm_count: "В домене {n} записей; очистка необратима", settings_unsaved_items: "не сохранено", settings_reset: "Отменить", inbox_handled: "Обработано", load_older: "Загрузить более старые", nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке", mem_profile_clear: "Очистить профиль", theme_follow: "Как в оболочке", theme_light: "Светлая", theme_dark: "Тёмная", theme_title: "Оформление: {mode} (нажмите для смены)", aria_menu: "Открыть меню", aria_close: "Закрыть" });
 
 function t(k) {
   return (I18N[QvQ.store.lang] && I18N[QvQ.store.lang][k]) || I18N.en[k] || k;
@@ -8818,14 +9114,34 @@ window.PageProviders = {
     '      <div class="prov-url" :title="p.base_url">{{ p.base_url }}</div>',
     '      <div class="prov-key">{{ p.api_key_masked || t("prov_key_empty") }}</div>',
     '      <div class="prov-models">',
-    '        <button v-for="m in shownModels(p)" :key="m.id" type="button"',
-    '                class="prov-chip" @click="openModel(p, m)">',
-    '          <span class="prov-chip-id">{{ m.id }}</span>',
-    '          <span class="prov-chip-rank" v-if="rankOf(p.id, m.id)" :title="t(\'prov_rank_tip\')">#{{ rankOf(p.id, m.id) }}</span>',
-    '        </button>',
+    '        <div v-for="m in shownModels(p)" :key="m.id" class="prov-chip"',
+    '             :class="{ on: openChipId === chipKey(p, m) }">',
+    '          <button type="button" class="prov-chip-main" :title="t(\'prov_chip_expand_tip\')"',
+    '                  @click="toggleChip(p, m)">',
+    '            <span class="prov-chip-id">{{ m.id }}</span>',
+    '            <span class="prov-chip-def" v-if="defaultModel === chipKey(p, m)">{{ t("prov_default_badge") }}</span>',
+    '          </button>',
+    '          <button v-if="rankOf(p.id, m.id)" type="button" class="prov-chip-rank"',
+    '                  :title="t(\'prov_rank_tip\')" @click.stop="goOrchestrate">#{{ rankOf(p.id, m.id) }}</button>',
+    '          <button type="button" class="prov-chip-star"',
+    '                  :title="defaultModel === chipKey(p, m) ? t(\'models_default\') : t(\'prov_set_default\') + \': \' + chipKey(p, m)"',
+    '                  :disabled="defaultModel === chipKey(p, m)" @click.stop="setDefault(chipKey(p, m))">★</button>',
+    '        </div>',
     '        <button v-if="hiddenCount(p)" type="button" class="prov-chip more"',
     '                @click="edit(p)">+{{ hiddenCount(p) }}</button>',
     '        <span class="prov-chip empty" v-if="!providerModels(p).length">{{ t("model_none") }}</span>',
+    '      </div>',
+    '      <div v-if="openChipModel(p)" class="prov-chip-params">',
+    '        <span class="pcp-name" :title="openChipModel(p).id">{{ openChipModel(p).id }}</span>',
+    '        <span class="pcp-item"><label>{{ t("model_context") }}</label>',
+    '          <b>{{ openChipModel(p).context_length ? Number(openChipModel(p).context_length).toLocaleString() : "-" }}</b></span>',
+    '        <span class="pcp-item"><label>{{ t("model_max_output") }}</label>',
+    '          <b>{{ openChipModel(p).max_output_tokens ? Number(openChipModel(p).max_output_tokens).toLocaleString() : "-" }}</b></span>',
+    '        <span class="pcp-item" v-if="openChipModel(p).cost && (openChipModel(p).cost.input || openChipModel(p).cost.output)">',
+    '          <label>{{ t("model_price") }}</label>',
+    '          <b>${{ openChipModel(p).cost.input || 0 }} / ${{ openChipModel(p).cost.output || 0 }}</b></span>',
+    '        <span class="pcp-empty" v-if="!openChipModel(p).context_length && !openChipModel(p).max_output_tokens">{{ t("prov_params_empty") }}</span>',
+    '        <button type="button" class="prov-act" @click="openModel(p, openChipModel(p))">{{ t("edit") }}</button>',
     '      </div>',
     '      <footer class="prov-foot">',
     '        <span class="prov-count">{{ providerModels(p).length }} {{ t("prov_models") }}</span>',
@@ -9008,6 +9324,11 @@ window.PageProviders = {
   ].join(""),
 };
 </script><script>/* 平台机器人：适配器/机器人概览 + 账户人格绑定 + 身份迁移 */
+/* i18n: 本文件新增文案键（i18n.js 各语言待补，zh-CN 建议值如下）
+ * plat_sessions_tip=点击查看全部会话
+ * bind_open_chat=跳会话
+ * bind_removed=已解绑
+ */
 window.PagePlatforms = {
   name: "PagePlatforms",
   data() {
@@ -9165,9 +9486,18 @@ window.PagePlatforms = {
       var self = this;
       api("/api/qvq/personas/bind", "POST", { chat_key: key, persona: value || null })
         .then(function (r) {
-          if (r && r.error) { self.toast = r.error; return; }
+          if (r && r.error) { QvQ.toast(r.error); return; }
+          if (!value) QvQ.toast(t("bind_removed"));
           self.load();
         });
+    },
+    goSessions() {
+      // 会话页暂无账户过滤参数：直接跳全量列表
+      QvQ.store.page = "sessions";
+    },
+    openChat(key) {
+      QvQ.store.pendingChat = key;
+      QvQ.store.page = "chat";
     },
     unbindKey(key) {
       this.bindKey(key, null);
@@ -9201,7 +9531,7 @@ window.PagePlatforms = {
       api("/api/qvq/identity/set", "POST", this.mig).then(function (r) {
         self.migBusy = false;
         if (!r || r.ok === false) {
-          self.toast = (r && r.error) || "failed";
+          QvQ.toast((r && r.error) || "failed");
           return;
         }
         self.migOpen = false;
@@ -9263,7 +9593,8 @@ window.PagePlatforms = {
     '        </div>',
     '      </header>',
         '      <div class="plat-meta">',
-    '        <span>{{ a.sessions }} {{ t("plat_sessions") }}</span>',
+    '        <button type="button" class="plat-meta-link" :title="t(\'plat_sessions_tip\')" @click="goSessions">',
+    '          {{ a.sessions }} {{ t("plat_sessions") }}</button>',
     '      </div>',
       '      <footer class="prov-foot">',
         '        <n-select size="tiny" :value="a.persona || \'\'" :options="personaOptions"',
@@ -9283,9 +9614,11 @@ window.PagePlatforms = {
   '      <div class="mention-title">{{ g.label }} <i class="bind-n">{{ g.items.length }}</i></div>',
   '      <div v-for="row in g.items" :key="row.key" class="bind-row">',
   '        <code class="bind-key" :title="row.key">{{ row.key }}</code>',
-  '        <n-select size="tiny" :value="row.persona" :options="personaOptions" style="width:220px"',
-  '                 @update:value="v => bindKey(row.key, v)"/>',
-  '        <button type="button" class="prov-act bind-del" @click="unbindKey(row.key)">{{ t("bind_remove") }}</button>',
+    '        <n-select size="tiny" :value="row.persona" :options="personaOptions" style="width:220px"',
+    '                 @update:value="v => bindKey(row.key, v)"/>',
+    '        <button v-if="g.key === \'session\'" type="button" class="prov-act" :title="row.key"',
+    '                @click="openChat(row.key)">{{ t("bind_open_chat") }}</button>',
+    '        <button type="button" class="prov-act bind-del" @click="unbindKey(row.key)">{{ t("bind_remove") }}</button>',
   '      </div>',
   '    </div>',
   '    <div v-if="!bindingGroups.length" class="qvq-empty">{{ t("bind_empty") }}</div>',
@@ -10682,7 +11015,10 @@ window.PageTasks = {
     '</div>',
   ].join(""),
 };
-</script><script>/* 记忆：会话列表为主，点击行开侧栏看该会话的记忆条目与用户画像 */
+</script><script>/* 记忆：会话列表为主，点击行开侧栏看该会话的记忆条目与用户画像
+   可操作性：抽屉内分类 chips + 重要度过滤、条目一键复制、画像分节条目数徽标。
+   i18n（新键，待主线补入 i18n.js）:
+     mem_cat_all=全部, mem_imp_ge3=重要度 ≥3 */
 window.PageMemory = {
   name: "PageMemory",
   data() {
@@ -10698,6 +11034,8 @@ window.PageMemory = {
       editSec: null,
       editItems: [],
       loading: false,
+      memCat: "",
+      memImp: false,
     };
   },
   computed: {
@@ -10707,6 +11045,27 @@ window.PageMemory = {
       if (!q) return rows;
       return rows.filter(function (s) {
         return ((s.name || "") + " " + (s.chat_key || "")).toLowerCase().indexOf(q) >= 0;
+      });
+    },
+    /* 抽屉分类 chips：从当前会话条目 category 聚合（带计数，多的在前） */
+    memCats() {
+      var counts = {};
+      this.entries.forEach(function (e) {
+        var c = String((e && e.category) || "").trim();
+        if (c) counts[c] = (counts[c] || 0) + 1;
+      });
+      return Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; }).map(function (c) {
+        return { cat: c, n: counts[c] };
+      });
+    },
+    shownEntries() {
+      var cat = this.memCat;
+      var imp = this.memImp;
+      if (!cat && !imp) return this.entries;
+      return this.entries.filter(function (e) {
+        if (cat && String((e && e.category) || "").trim() !== cat) return false;
+        if (imp && (Number(e && e.importance) || 0) < 3) return false;
+        return true;
       });
     },
   },
@@ -10747,6 +11106,8 @@ window.PageMemory = {
       this.entries = [];
       this.profile = null;
       this.profileUser = "";
+      this.memCat = "";
+      this.memImp = false;
       this.drawer = true;
       this.loading = true;
       api("/api/qvq/memory?chat_key=" + encodeURIComponent(s.chat_key)).then(function (d) {
@@ -10758,6 +11119,15 @@ window.PageMemory = {
     },
     reload() {
       if (this.active) this.open(this.active);
+    },
+    /* 分类 chip：再点一次取消该过滤 */
+    setMemCat(c) {
+      this.memCat = this.memCat === c ? "" : c;
+    },
+    copyEntry(e) {
+      QvQ.copy(e.content || e.text || "", function (ok) {
+        if (ok) QvQ.toast(t("copied"));
+      });
     },
     del(e) {
       var self = this;
@@ -10849,22 +11219,31 @@ window.PageMemory = {
     '      <div class="qvq-loading" v-if="loading"><i></i>{{ t("loading") }}</div>',
     '      <div class="prov-form" v-if="!loading">',
     '        <div class="prov-field">',
-    '          <label>{{ t("nav_memory") }} · {{ entries.length }} {{ t("mem_entries_n") }}</label>',
-    '          <div v-for="(e, i) in entries" :key="i" class="mem-row">',
+    '          <label>{{ t("nav_memory") }} · {{ shownEntries.length === entries.length ? entries.length : shownEntries.length + "/" + entries.length }} {{ t("mem_entries_n") }}</label>',
+    '          <div class="mem-chips" v-if="entries.length">',
+    '            <button type="button" class="mem-chip" :class="{ on: !memCat }" @click="memCat = \'\'">{{ t("mem_cat_all") }}</button>',
+    '            <button v-for="c in memCats" :key="c.cat" type="button" class="mem-chip"',
+    '                    :class="{ on: memCat === c.cat }" @click="setMemCat(c.cat)">{{ c.cat }}·{{ c.n }}</button>',
+    '            <button type="button" class="mem-chip" :class="{ on: memImp }" @click="memImp = !memImp">{{ t("mem_imp_ge3") }}</button>',
+    '          </div>',
+    '          <div v-for="(e, i) in shownEntries" :key="i" class="mem-row">',
     '            <div class="mem-tx">{{ e.content || e.text }}',
     '              <span class="mem-tags">',
     '                <i class="mem-imp" v-for="n in (e.importance || 0)" :key="n"></i>',
     '                <code v-if="e.category">{{ e.category }}</code>',
     '                <span class="qvq-meta-line" v-if="e.ts">{{ relTime(e.ts) }}</span>',
     '              </span></div>',
-    '            <button type="button" class="prov-act danger" @click="del(e)">×</button>',
+    '            <span class="mem-row-acts">',
+    '              <button type="button" class="prov-act" @click="copyEntry(e)">{{ t("copy") }}</button>',
+    '              <button type="button" class="prov-act danger" @click="del(e)">×</button>',
+    '            </span>',
     '          </div>',
-    '          <div v-if="!entries.length" class="qvq-empty">-</div>',
+    '          <div v-if="!shownEntries.length" class="qvq-empty">{{ entries.length ? t("memory_empty") : "-" }}</div>',
     '        </div>',
     '        <div class="prov-field" v-if="profile">',
     '          <label>{{ t("mem_profile") }} <code class="mem-user">{{ profileUser }}</code></label>',
     '          <div class="mem-sec" v-if="profileItems(profile.traits).length || editSec === \'traits\'">',
-    '            <div class="mem-sec-head"><b>{{ t("mem_traits") }}</b>',
+    '            <div class="mem-sec-head"><b>{{ t("mem_traits") }}<span class="mem-sec-n">{{ profileItems(profile.traits).length }}</span></b>',
     '              <button type="button" class="prov-act" v-if="editSec !== \'traits\'" @click="startEdit(\'traits\')">{{ t("edit") }}</button>',
     '            </div>',
     '            <template v-if="editSec !== \'traits\'">',
@@ -10886,7 +11265,7 @@ window.PageMemory = {
     '            </template>',
     '          </div>',
     '          <div class="mem-sec" v-if="profileItems(profile.preferences).length || editSec === \'preferences\'">',
-    '            <div class="mem-sec-head"><b>{{ t("mem_prefs") }}</b>',
+    '            <div class="mem-sec-head"><b>{{ t("mem_prefs") }}<span class="mem-sec-n">{{ profileItems(profile.preferences).length }}</span></b>',
     '              <button type="button" class="prov-act" v-if="editSec !== \'preferences\'" @click="startEdit(\'preferences\')">{{ t("edit") }}</button>',
     '            </div>',
     '            <template v-if="editSec !== \'preferences\'">',
@@ -10908,7 +11287,7 @@ window.PageMemory = {
     '            </template>',
     '          </div>',
     '          <div class="mem-sec" v-if="profileItems(profile.facts).length || editSec === \'facts\'">',
-    '            <div class="mem-sec-head"><b>{{ t("mem_facts") }}</b>',
+    '            <div class="mem-sec-head"><b>{{ t("mem_facts") }}<span class="mem-sec-n">{{ profileItems(profile.facts).length }}</span></b>',
     '              <button type="button" class="prov-act" v-if="editSec !== \'facts\'" @click="startEdit(\'facts\')">{{ t("edit") }}</button>',
     '            </div>',
     '            <template v-if="editSec !== \'facts\'">',
@@ -10945,10 +11324,13 @@ window.PageMemory = {
 </script><script>/* 知识库：搜索 / 作用域视图（全部·全局·平台·会话）/ 条目卡片 / 新建编辑 / AI 整理 / 导入导出 / 批量管理
    作用域判定（对齐后端 knowledge.py owner 语义）：owner 空/"global"=全局；命中已知平台名=平台；其余=chat_key（会话私有）
    平台名来源：条目 owner 收集（无冒号裸值，chat_key 恒含冒号）∪ /api/qvq/sessions 的 accounts.adapters[].platform
+   可操作性：条目卡「复制正文」；触发词显示为可点 chips（点击=用该词跑检索测试）；
+   作用域徽标点击=切到对应作用域 tab 并选中该作用域（全局回「全部」）。
    i18n（新键，待主线补入 i18n.js）: kb_scope_all=全部, kb_scope_global=全局, kb_scope_platform=平台,
      kb_scope_session=会话, kb_scope_group_platforms=平台作用域, kb_scope_group_sessions=会话作用域,
      kb_scope_left_all=全部, kb_scope_platform_ph=选择平台，可输入新平台名, kb_scope_session_ph=选择会话，可输入 chat_key,
-     kb_scope_global_hint=对所有会话可见, kb_scope_empty=该作用域暂无条目
+     kb_scope_global_hint=对所有会话可见, kb_scope_empty=该作用域暂无条目,
+     kb_copy_content=复制正文, kb_trig_short=触发
    样式（待主线补进 app.css）: .kb-scope-pill 条目卡作用域小徽标（现以内联样式兜底）；左列复用 .mem-sess 行样式 */
 window.PageKnowledge = {
   name: "PageKnowledge",
@@ -11168,6 +11550,29 @@ window.PageKnowledge = {
       var self = this;
       api("/api/qvq/kb/delete", "POST", { id: e.id }).then(function () { self.load(); });
     },
+    /* 复制正文：完整 content 落剪贴板，成功 toast */
+    copyContent(e) {
+      QvQ.copy(String(e.content || ""), function (ok) {
+        if (ok) QvQ.toast(t("copied"));
+      });
+    },
+    /* 触发词 chip 即点即测：打开检索测试弹窗并自动执行 */
+    testTrigger(word) {
+      this.testQuery = String(word || "");
+      this.testHits = [];
+      this.testOpen = true;
+      this.runTest();
+    },
+    /* 作用域徽标下钻：平台/会话 → 切对应 tab 并选中该作用域；全局 → 回「全部」 */
+    drillScope(e) {
+      var kind = this.scopeKindOf(e.owner);
+      if (kind === "global") {
+        this.setScopeTab("all");
+        return;
+      }
+      this.scopeTab = kind;
+      this.scopeSel = String(e.owner || "");
+    },
     runTest() {
       // 检索测试：与对话链路同一打分（knowledge.search），验证条目能否命中
       var self = this;
@@ -11310,9 +11715,17 @@ window.PageKnowledge = {
     '                        @update:checked="function(){ togglePick(e.id); }"/>',
     '          </header>',
     '          <div class="tool-desc">{{ (e.content || "").slice(0, 140) }}</div>',
+    '          <div class="kb-trig-row" v-if="(e.triggers || []).length">',
+    '            <span class="kb-trig-lab">{{ t("kb_trig_short") }}</span>',
+    '            <button v-for="w in e.triggers" :key="w" type="button" class="kb-trig-chip"',
+    '                    :title="t(\'kb_test_run\')" @click.stop="testTrigger(w)">{{ w }}</button>',
+    '          </div>',
     '          <footer class="prov-foot">',
-    '            <span class="prov-count"><span class="kb-scope-pill" :style="pillStyle(scopeKindOf(e.owner))">{{ scopeLabelOf(e.owner) }}</span></span>',
+    '            <span class="prov-count"><button type="button" class="kb-scope-pill kb-scope-btn"',
+    '                    :style="pillStyle(scopeKindOf(e.owner))" :title="t(\'kb_scope_label\')"',
+    '                    @click.stop="drillScope(e)">{{ scopeLabelOf(e.owner) }}</button></span>',
     '            <span class="prov-acts">',
+    '              <button type="button" class="prov-act" @click.stop="copyContent(e)">{{ t("kb_copy_content") }}</button>',
     '              <button type="button" class="prov-act" @click.stop="openEdit(e)">{{ t("edit") }}</button>',
     '              <button type="button" class="prov-act danger" @click.stop="del(e)">{{ t("chat_delete") }}</button>',
     '            </span>',
@@ -11391,7 +11804,11 @@ window.PageKnowledge = {
     '    </n-modal>',
   ].join(""),
 };
-</script><script>/* 会话管理：列表 / 搜索 / 归档 / 回收站 / 批量删除（会话级配置在对话页侧栏） */
+</script><script>/* 会话管理：列表 / 搜索 / 归档 / 回收站 / 批量删除（会话级配置在对话页侧栏）
+   可操作性：整行点击进对话；行内策略 chips（屏蔽开关 / 优先级三态 / 限额徽标改额）；
+   归档视图行内「恢复」；列头点击按轮次 / 更新时间排序（再点切换方向，三次取消）。
+   i18n（新键，待主线补入 i18n.js）:
+     sess_pol_col=策略, sess_restore_done=已恢复该会话, sess_budget_title=会话每日限额 */
 window.PageSessions = {
   name: "PageSessions",
   data() {
@@ -11409,11 +11826,25 @@ window.PageSessions = {
       loading: false,
       start: 0,
       observer: null,
+      sortBy: "",
+      sortDir: -1,
+      budgetOpen: false,
+      budgetKey: "",
+      budgetVal: 0,
+      budgetBusy: false,
     };
   },
   computed: {
     allPicked() {
       return this.rows.length > 0 && this.picked.length === this.rows.length;
+    },
+    sortedRows() {
+      if (!this.sortBy) return this.rows;
+      var key = this.sortBy;
+      var dir = this.sortDir;
+      return this.rows.slice().sort(function (a, b) {
+        return ((Number(a[key]) || 0) - (Number(b[key]) || 0)) * dir;
+      });
     },
   },
   mounted() {
@@ -11528,6 +11959,99 @@ window.PageSessions = {
       QvQ.store.pendingChat = key;
       QvQ.store.page = "chat";
     },
+    /* 整行可点：批量模式点行=勾选，平时点行=进对话 */
+    rowClick(r) {
+      if (this.picking) this.togglePick(r.chat_key);
+      else this.open(r.chat_key);
+    },
+    /* ---- 列头排序：降序 → 升序 → 取消 ---- */
+    setSort(col) {
+      if (this.sortBy !== col) {
+        this.sortBy = col;
+        this.sortDir = -1;
+      } else if (this.sortDir < 0) {
+        this.sortDir = 1;
+      } else {
+        this.sortBy = "";
+        this.sortDir = -1;
+      }
+    },
+    sortMark(col) {
+      return this.sortBy === col ? (this.sortDir > 0 ? "▲" : "▼") : "";
+    },
+    /* ---- 行内策略 chips ---- */
+    polOf(r) {
+      return (r && r.policy) || {};
+    },
+    prioLabel(v) {
+      return t(v === "high" ? "sess_policy_high" : v === "low" ? "sess_policy_low" : "sess_policy_normal");
+    },
+    prioOpts() {
+      var self = this;
+      return ["high", "normal", "low"].map(function (v) {
+        return { key: v, label: self.prioLabel(v) };
+      });
+    },
+    setPolicy(r, patch) {
+      api("/api/qvq/session/policy", "POST", Object.assign({ chat_key: r.chat_key }, patch)).then(function (res) {
+        r.policy = (res && res.policy) || Object.assign({}, r.policy || {}, patch);
+        QvQ.toast(t("sess_policy_saved"));
+      });
+    },
+    toggleMuted(r) {
+      this.setPolicy(r, { muted: !this.polOf(r).muted });
+    },
+    setPrio(r, key) {
+      if (!key || this.polOf(r).priority === key) return;
+      this.setPolicy(r, { priority: key });
+    },
+    fmtBudget(n) {
+      n = Number(n) || 0;
+      if (n <= 0) return "";
+      if (n >= 10000) {
+        var w = Math.round((n / 10000) * 10) / 10;
+        return (w % 1 ? w : Math.round(w)) + "万";
+      }
+      return String(n);
+    },
+    openBudget(r) {
+      this.budgetKey = r.chat_key;
+      this.budgetVal = Number(this.polOf(r).session_budget) || 0;
+      this.budgetOpen = true;
+    },
+    saveBudget() {
+      var self = this;
+      var val = Number(this.budgetVal) || 0;
+      var row = null;
+      this.rows.forEach(function (r) { if (r.chat_key === self.budgetKey) row = r; });
+      this.budgetBusy = true;
+      api("/api/qvq/session/policy", "POST", { chat_key: this.budgetKey, session_budget: val }).then(function (res) {
+        self.budgetBusy = false;
+        self.budgetOpen = false;
+        if (row) row.policy = (res && res.policy) || Object.assign({}, row.policy || {}, { session_budget: val });
+        QvQ.toast(t("sess_policy_saved"));
+      });
+    },
+    /* 归档视图：行内恢复（回活跃列表） */
+    unarchive(r) {
+      var self = this;
+      api("/api/qvq/session/flags", "POST", { chat_key: r.chat_key, archived: false }).then(function () {
+        QvQ.toast(t("sess_restore_done"));
+        self.load();
+      });
+    },
+    fmtUpdated(ts) {
+      ts = Number(ts) || 0;
+      if (!ts) return "-";
+      var diff = Date.now() / 1000 - ts;
+      if (diff < 90) return t("ts_just_now");
+      if (diff < 3600) return t("ts_min_ago").replace("{n}", String(Math.floor(diff / 60)));
+      if (diff < 86400) return Math.floor(diff / 3600) + "h";
+      if (diff < 86400 * 30) return Math.floor(diff / 86400) + "d";
+      var d = new Date(ts * 1000);
+      var p = function (n) { return (n < 10 ? "0" : "") + n; };
+      return (d.getMonth() + 1) + "-" + p(d.getDate());
+    },
   },
   template: [
     '<div class="qvq-page-body">',
@@ -11558,18 +12082,35 @@ window.PageSessions = {
     '      <thead><tr>',
     '        <th v-if="picking" style="width:34px"><n-checkbox :checked="allPicked" @update:checked="toggleAll"/></th>',
     '        <th>{{ t("recent_sessions") }}</th>',
-    '        <th style="width:90px">{{ t("col_count") }}</th>',
-    '        <th style="width:120px"></th>',
+    '        <th style="width:150px">{{ t("sess_pol_col") }}</th>',
+    '        <th style="width:80px" class="th-sort" @click="setSort(\'turns\')">{{ t("col_turns") }}<i v-if="sortMark(\'turns\')">{{ sortMark("turns") }}</i></th>',
+    '        <th style="width:90px" class="th-sort" @click="setSort(\'updated\')">{{ t("col_updated") }}<i v-if="sortMark(\'updated\')">{{ sortMark("updated") }}</i></th>',
+    '        <th style="width:130px"></th>',
     '      </tr></thead>',
     '      <tbody>',
-    '        <tr v-for="r in rows" :key="r.chat_key">',
-    '          <td v-if="picking"><n-checkbox :checked="picked.indexOf(r.chat_key) >= 0" @update:checked="togglePick(r.chat_key)"/></td>',
-    '          <td><button type="button" class="sess-name" @click="open(r.chat_key)">',
+    '        <tr v-for="r in sortedRows" :key="r.chat_key" class="sess-tr" @click="rowClick(r)">',
+    '          <td v-if="picking" @click.stop><n-checkbox :checked="picked.indexOf(r.chat_key) >= 0" @update:checked="togglePick(r.chat_key)"/></td>',
+    '          <td><button type="button" class="sess-name" @click.stop="open(r.chat_key)">',
     '            {{ r.name || r.chat_key }}<i>{{ r.chat_key }}</i></button></td>',
+    '          <td class="sess-pol" @click.stop>',
+    '            <button type="button" class="sess-chip" :class="{ \'on er\': polOf(r).muted }"',
+    '                    :title="t(\'sess_policy_muted\')" @click="toggleMuted(r)">{{ t("sess_policy_muted") }}</button>',
+    '            <n-dropdown trigger="click" placement="bottom-start" size="small"',
+    '                        :options="prioOpts()" @select="setPrio(r, $event)">',
+    '              <button type="button" class="sess-chip" :class="{ on: polOf(r).priority === \'high\' || polOf(r).priority === \'low\' }"',
+    '                      :title="t(\'sess_policy_priority\')">{{ prioLabel(polOf(r).priority) }}</button>',
+    '            </n-dropdown>',
+    '            <button v-if="fmtBudget(polOf(r).session_budget)" type="button" class="sess-chip budget"',
+    '                    :title="t(\'sess_budget_title\')" @click="openBudget(r)">{{ fmtBudget(polOf(r).session_budget) }}/日</button>',
+    '          </td>',
     '          <td>{{ r.turns || 0 }}</td>',
-    '          <td v-if="!picking"><button type="button" class="prov-act danger" @click="delOne(r.chat_key)">{{ t("chat_delete") }}</button></td>',
+    '          <td class="qvq-meta-line">{{ fmtUpdated(r.updated) }}</td>',
+    '          <td v-if="!picking" class="sess-acts" @click.stop>',
+    '            <button v-if="view === \'archived\'" type="button" class="prov-act" @click="unarchive(r)">{{ t("trash_restore") }}</button>',
+    '            <button type="button" class="prov-act danger" @click="delOne(r.chat_key)">{{ t("chat_delete") }}</button>',
+    '          </td>',
     '        </tr>',
-      '      </tbody>',
+    '      </tbody>',
     '    </table>',
     '    </div>',
     '    <div v-if="!loading && !rows.length" class="qvq-empty">{{ t("sessions_empty") }}</div>',
@@ -11591,6 +12132,17 @@ window.PageSessions = {
     '        <n-button size="small" @click="confirmOpen = false">{{ t("cancel") }}</n-button>',
     '        <n-button size="small" type="error" @click="confirmOpen = false; confirmAction && confirmAction()">',
     '          {{ t("confirm_yes") }}</n-button>',
+    '      </div>',
+    '    </template>',
+    '  </n-modal>',
+    '  <n-modal v-model:show="budgetOpen" preset="card" class="qvq-modal-card" style="max-width:360px"',
+    '           :title="t(\'sess_budget_title\')" :bordered="false">',
+    '    <div class="qvq-modal-hint">{{ t("sess_policy_budget_prompt") }}</div>',
+    '    <n-input-number v-model:value="budgetVal" :min="0" :step="1000" size="small" style="width:100%;margin-top:8px"/>',
+    '    <template #footer>',
+    '      <div class="qvq-modal-foot">',
+    '        <n-button size="small" @click="budgetOpen = false">{{ t("cancel") }}</n-button>',
+    '        <n-button size="small" type="primary" :loading="budgetBusy" @click="saveBudget">{{ t("save") }}</n-button>',
     '      </div>',
     '    </template>',
     '  </n-modal>',
@@ -12271,7 +12823,7 @@ window.PageMcp = {
     '      </footer>',
     '    </article>',
     '  </div>',
-    '  <div v-if="!servers.length" class="qvq-empty">{{ t("mcp_none") }}</div>',
+    '  <button v-if="!servers.length" type="button" class="qvq-empty mcp-empty-cta" @click="add">{{ t("mcp_none") }}</button>',
     '  <n-drawer v-model:show="drawer" :width="440" placement="right">',
     '    <n-drawer-content :title="isNew ? t(\'add_title\') : t(\'edit\')" closable>',
     '      <div class="prov-form">',
