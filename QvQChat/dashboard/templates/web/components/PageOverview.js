@@ -508,7 +508,7 @@ window.PageOverview = {
     '              :title="t(\'ov_inbox_expand\')" @click="toggleInbox">▾</button>',
     '    </div>',
     '  </div>',
-    '  <n-card size="small" class="qvq-glass-card" style="margin-top:14px" v-if="inboxOpen">',
+    '  <n-card size="small" class="qvq-glass-card" style="margin:14px 0" v-if="inboxOpen">',
     '    <div class="qvq-card-head">',
     '      <span class="qvq-card-title">{{ t("inbox_title") }}',
     '        <span class="qvq-meta-line" style="margin-left:8px">{{ t("inbox_count").replace("{n}", String((inbox && inbox.total) || 0)).replace("{u}", String(inboxUnread)) }}</span>',

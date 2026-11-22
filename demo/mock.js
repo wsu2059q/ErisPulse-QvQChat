@@ -25,6 +25,7 @@
     return d.toISOString().slice(0, 10);
   }
   var usageDays = [];
+  var SANDBOX_N = 0;
   [4.1, 12.7, 18.5, 0.3, 0.2, 0.1, 0.26, 0, 0, 0, 0, 0, 0.4, 1.1].forEach(function (m, i) {
     var toks = Math.round(m * 1e6);
     var entry = { date: dayKey(13 - i), tokens: toks, calls: Math.round(m * 47) };
@@ -630,6 +631,10 @@
 
     // POST/DELETE：写操作统一 ok；特殊端点维护 mock 状态
     switch (path) {
+      case "/api/qvq/sessions/create": {
+        SANDBOX_N = (SANDBOX_N || 0) + 1;
+        return json({ ok: true, chat_key: "dashboard:private:sb" + SANDBOX_N });
+      }
       case "/api/qvq/models/test": {
         var _tb = parseBody(opts);
         return new Promise(function (res) {

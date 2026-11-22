@@ -3884,7 +3884,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
 }
 
 /* ---- 概览生态卡区（qvq_panel cards）---- */
-.eco-card-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.eco-card-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .eco-card {
   padding: 10px 12px;
   border: 1px solid var(--qvq-bd);
@@ -4254,6 +4254,7 @@ button.prov-chip-rank:hover { text-decoration: underline; text-underline-offset:
 /* ---- MCP 空态 CTA 可点 ---- */
 button.mcp-empty-cta {
   cursor: pointer;
+  background: transparent;
   border: 1px dashed var(--qvq-bd-h);
   border-radius: var(--qvq-r-card);
   width: 100%;
@@ -4361,6 +4362,7 @@ button.mcp-empty-cta:hover { color: var(--qvq-accent); border-color: var(--qvq-a
     return d.toISOString().slice(0, 10);
   }
   var usageDays = [];
+  var SANDBOX_N = 0;
   [4.1, 12.7, 18.5, 0.3, 0.2, 0.1, 0.26, 0, 0, 0, 0, 0, 0.4, 1.1].forEach(function (m, i) {
     var toks = Math.round(m * 1e6);
     var entry = { date: dayKey(13 - i), tokens: toks, calls: Math.round(m * 47) };
@@ -4966,6 +4968,10 @@ button.mcp-empty-cta:hover { color: var(--qvq-accent); border-color: var(--qvq-a
 
     // POST/DELETE：写操作统一 ok；特殊端点维护 mock 状态
     switch (path) {
+      case "/api/qvq/sessions/create": {
+        SANDBOX_N = (SANDBOX_N || 0) + 1;
+        return json({ ok: true, chat_key: "dashboard:private:sb" + SANDBOX_N });
+      }
       case "/api/qvq/models/test": {
         var _tb = parseBody(opts);
         return new Promise(function (res) {
@@ -6863,7 +6869,7 @@ window.PageOverview = {
     '              :title="t(\'ov_inbox_expand\')" @click="toggleInbox">▾</button>',
     '    </div>',
     '  </div>',
-    '  <n-card size="small" class="qvq-glass-card" style="margin-top:14px" v-if="inboxOpen">',
+    '  <n-card size="small" class="qvq-glass-card" style="margin:14px 0" v-if="inboxOpen">',
     '    <div class="qvq-card-head">',
     '      <span class="qvq-card-title">{{ t("inbox_title") }}',
     '        <span class="qvq-meta-line" style="margin-left:8px">{{ t("inbox_count").replace("{n}", String((inbox && inbox.total) || 0)).replace("{u}", String(inboxUnread)) }}</span>',
@@ -10347,11 +10353,11 @@ window.PageConfig = {
     '          </div>',
     '        </div>',
     '      </section>',
-    '      <section id="doc-backup" class="doc-sec cfg-backup">',
+    '      <section id="doc-backup" class="doc-sec cfg-backup" v-show="!q.trim()">',
     '        <h2 class="doc-sec-title"><span>{{ t("nav_backup") }}</span></h2>',
     '        <backup-panel/>',
     '      </section>',
-    '      <section id="doc-openapi" class="doc-sec cfg-backup">',
+    '      <section id="doc-openapi" class="doc-sec cfg-backup" v-show="!q.trim()">',
     '        <h2 class="doc-sec-title"><span>{{ t("openapi_title") }}</span></h2>',
     '        <div class="openapi-card">',
     '          <div class="openapi-row">',
@@ -12424,7 +12430,7 @@ window.PageAudit = {
     '      <th>{{ t("col_detail") }}</th>',
     '    </tr></thead>',
     '    <tbody>',
-    '      <tr v-for="r in shown" :key="r._n" class="audit-row"',
+    '      <tr v-for="r in rows" :key="r._n" class="audit-row"',
     '          :class="{ dim: picking && picked.indexOf(r._n) < 0 }" @click="openDetail(r)">',
     '        <td v-if="picking" @click.stop><n-checkbox :checked="picked.indexOf(r._n) >= 0" @update:checked="togglePick(r)"/></td>',
     '        <td>{{ fmt(r.ts) }}</td>',
@@ -12441,7 +12447,7 @@ window.PageAudit = {
     '    </tbody>',
     '  </table>',
     '  </div>',
-    '  <div v-if="!loading && !shown.length" class="qvq-empty">-</div>',
+    '  <div v-if="!loading && !rows.length" class="qvq-empty">-</div>',
     '  <div class="scroll-sentinel" ref="sentinel" v-if="hasMore && !picking"></div>',
     '  <n-drawer v-model:show="detailOpen" :width="440" placement="right">',
     '    <n-drawer-content :title="detailRow ? detailRow.tool : \'\'" closable>',

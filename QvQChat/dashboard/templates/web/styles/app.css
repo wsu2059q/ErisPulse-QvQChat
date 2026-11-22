@@ -3884,7 +3884,7 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
 }
 
 /* ---- 概览生态卡区（qvq_panel cards）---- */
-.eco-card-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.eco-card-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .eco-card {
   padding: 10px 12px;
   border: 1px solid var(--qvq-bd);
@@ -4254,6 +4254,7 @@ button.prov-chip-rank:hover { text-decoration: underline; text-underline-offset:
 /* ---- MCP 空态 CTA 可点 ---- */
 button.mcp-empty-cta {
   cursor: pointer;
+  background: transparent;
   border: 1px dashed var(--qvq-bd-h);
   border-radius: var(--qvq-r-card);
   width: 100%;
