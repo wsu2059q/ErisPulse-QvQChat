@@ -86,6 +86,13 @@ window.PageOrchestrate = {
       this.dragIndex = -1;
       this.saveChain();
     },
+    moveItem(i, delta) {
+      var j = i + delta;
+      if (j < 0 || j >= this.chain.length) return;
+      var item = this.chain.splice(i, 1)[0];
+      this.chain.splice(j, 0, item);
+      this.saveChain();
+    },
     saveChain() {
       var self = this;
       var chain = this.chain.map(function (id) {
@@ -124,8 +131,12 @@ window.PageOrchestrate = {
     '             :class="{ dragging: dragIndex === i }"',
     '             draggable="true" @dragstart="dragStart(i)" @dragend="dragIndex = -1"',
     '             @dragover.prevent @drop="drop(i)">',
-    '          <span class="orch-idx" :class="{ first: i === 0 }">{{ i + 1 }}</span>',
+    '          <span class="orch-idx" :class="{ first: i === 0 }" :title="t(\'orch_idx_tip\')">{{ i + 1 }}</span>',
     '          <span class="orch-id" :class="{ cooldown: !!breakerOf(id) }">{{ nameOf(id) }}</span>',
+    '          <span class="orch-move">',
+    '            <button type="button" class="prov-act" :disabled="i === 0" :aria-label="t(\'orch_move_up\')" @click.stop="moveItem(i, -1)">↑</button>',
+    '            <button type="button" class="prov-act" :disabled="i === chain.length - 1" :aria-label="t(\'orch_move_down\')" @click.stop="moveItem(i, 1)">↓</button>',
+    '          </span>',
     '          <span v-if="breakerOf(id)" class="orch-cool"><i></i>{{ t("health_cooldown") }}</span>',
     '          <button v-if="breakerOf(id)" type="button" class="qvq-link"',
     '                  @click="resetBreaker(id)">{{ t("breakers_reset") }}</button>',
@@ -134,7 +145,8 @@ window.PageOrchestrate = {
     '      </div>',
     '    </n-card>',
     '    <n-card size="small" class="qvq-glass-card">',
-    '      <div class="qvq-card-head"><span class="qvq-card-title">{{ t("orch_running") }}</span></div>',
+    '      <div class="qvq-card-head"><span class="qvq-card-title">{{ t("orch_running") }}</span>',
+    '        <button type="button" class="qvq-link" @click="QvQ.store.page = \'overview\'">{{ t("nav_overview") }}</button></div>',
     '      <div v-if="!running.length" class="qvq-empty"><Mascot :size="30" mood="sleep"/>{{ t("running_none") }}</div>',
     '      <div v-for="(r, i) in running" :key="i" class="trash-row">',
     '        <span class="nm">{{ r.session }}<i v-if="r.agent === \'sub\'" class="chat-subtag hv">{{ t("sub_badge") }}</i></span>',

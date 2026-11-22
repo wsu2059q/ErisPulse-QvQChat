@@ -57,6 +57,7 @@ class OpsApiMixin:
         tasks = []
         for task in self.main.scheduler.list():
             item = dict(task)
+            item["next_run"] = float(task.get("next_run", 0) or 0)
             item["next_formatted"] = utils.format_ts(float(task.get("next_run", 0)))
             if task.get("last_run"):
                 item["last_formatted"] = utils.format_ts(float(task.get("last_run") or 0))

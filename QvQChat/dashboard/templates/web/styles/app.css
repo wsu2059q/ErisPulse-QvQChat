@@ -3781,3 +3781,14 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
 /* ---- 表格横滚容器：窄屏不再把整页撑宽 ---- */
 .qvq-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .qvq-table-wrap .qvq-table { min-width: 560px; }
+
+/* ---- 批次 1 微调：人格卡可点态 / 任务过期警示 / 编排链移动钮 / 存储高危计数 ---- */
+.persona-card { cursor: pointer; }
+.persona-open { color: var(--qvq-tx-t); font-size: 18px; line-height: 1; }
+.persona-card:hover .persona-open { color: var(--qvq-accent); }
+.task-next.overdue { color: var(--qvq-warn); }
+.orch-move { display: inline-flex; gap: 2px; margin-left: auto; }
+.orch-item { display: flex; align-items: center; gap: 8px; }
+.orch-move .prov-act:disabled { opacity: 0.3; cursor: default; }
+.stor-clear-danger { color: var(--qvq-er); }
+.plat-ident-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; }

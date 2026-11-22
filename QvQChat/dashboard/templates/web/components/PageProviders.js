@@ -444,7 +444,7 @@ window.PageProviders = {
     '        <button v-for="m in shownModels(p)" :key="m.id" type="button"',
     '                class="prov-chip" @click="openModel(p, m)">',
     '          <span class="prov-chip-id">{{ m.id }}</span>',
-    '          <span class="prov-chip-rank" v-if="rankOf(p.id, m.id)">#{{ rankOf(p.id, m.id) }}</span>',
+    '          <span class="prov-chip-rank" v-if="rankOf(p.id, m.id)" :title="t(\'prov_rank_tip\')">#{{ rankOf(p.id, m.id) }}</span>',
     '        </button>',
     '        <button v-if="hiddenCount(p)" type="button" class="prov-chip more"',
     '                @click="edit(p)">+{{ hiddenCount(p) }}</button>',

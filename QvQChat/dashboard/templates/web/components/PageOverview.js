@@ -263,6 +263,10 @@ window.PageOverview = {
     taskLabel(tk) {
       return QvQ.taskLabel(tk);
     },
+    isOverdue(tk) {
+      var ts = Number(tk && tk.next_run || 0);
+      return ts > 0 && ts * 1000 < Date.now();
+    },
     openLimit() {
       this.limitDraft = Number(this.usageToday.limit || 0);
       this.limitOpen = true;
@@ -494,7 +498,7 @@ window.PageOverview = {
     '  <div class="qvq-home-grid">',
     '    <n-card size="small" class="qvq-glass-card qvq-chart-card">',
     '      <div class="qvq-card-head">',
-    '        <span class="qvq-card-title">{{ chartMode === \'cost\' ? t("cost_title") : t("usage_title") }}</span>',
+    '        <span class="qvq-card-title"><button type="button" class="qvq-link" @click="go({ go: \'usage\' })">{{ chartMode === \'cost\' ? t("cost_title") : t("usage_title") }} →</button></span>',
     '        <div class="qvq-seg">',
     '          <button type="button" :class="{ on: chartMode === \'usage\' }" @click="chartMode = \'usage\'">{{ t("chart_usage") }}</button>',
     '          <button type="button" :class="{ on: chartMode === \'cost\' }" @click="chartMode = \'cost\'">{{ t("chart_cost") }}</button>',
@@ -539,7 +543,8 @@ window.PageOverview = {
     '      <button v-for="task in upcoming" :key="task.id" type="button" class="qvq-row"',
     '              @click="go({ go: \'tasks\' })">',
     '        <span class="qvq-row-name">{{ taskLabel(task) }}</span>',
-    '        <span class="qvq-row-meta">{{ t("task_next") }} {{ task.next_formatted || task.schedule_raw || "-" }}</span>',
+    '        <span class="qvq-row-meta task-next" :class="{ overdue: isOverdue(task) }">',
+    '          {{ isOverdue(task) ? t("task_overdue") + " " : t("task_next") + " " }}{{ task.next_formatted || task.schedule_raw || "-" }}</span>',
     '      </button>',
     '    </n-card>',
     '    <n-card size="small" class="qvq-glass-card">',

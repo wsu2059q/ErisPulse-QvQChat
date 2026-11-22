@@ -98,14 +98,14 @@ window.PageSessions = {
     },
     delOne(key) {
       var self = this;
-      this.ask(t("session_delete_confirm"), function () {
+      this.ask(t("session_delete_trash"), function () {
         api("/api/qvq/sessions/delete", "POST", { chat_key: key }).then(function () { self.load(); });
       });
     },
     delPicked() {
       var self = this;
       if (!this.picked.length) return;
-      this.ask(t("session_delete_confirm") + " (" + this.picked.length + ")", function () {
+      this.ask(t("session_delete_trash") + " (" + this.picked.length + ")", function () {
         api("/api/qvq/sessions/batch-delete", "POST", { chat_keys: self.picked }).then(function () {
           self.load();
         });
@@ -179,7 +179,7 @@ window.PageSessions = {
       '      </tbody>',
     '    </table>',
     '    </div>',
-    '    <div v-if="!loading && !rows.length" class="qvq-empty">-</div>',
+    '    <div v-if="!loading && !rows.length" class="qvq-empty">{{ t("sessions_empty") }}</div>',
     '    <div class="scroll-sentinel" v-if="rows.length && rows.length < total"></div>',
     '  </template>',
     '  <template v-else>',

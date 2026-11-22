@@ -592,6 +592,12 @@
 
     // POST/DELETE：写操作统一 ok；特殊端点维护 mock 状态
     switch (path) {
+      case "/api/qvq/models/test": {
+        var _tb = parseBody(opts);
+        return new Promise(function (res) {
+          setTimeout(function () { res(json({ ok: true, ms: 420 + Math.floor(Math.random() * 300) })); }, 700);
+        });
+      }
       case "/api/qvq/handover/stop": HANDOVER = null; return json({ ok: true });
       case "/api/qvq/subjobs/cancel": {
         var sk = "";

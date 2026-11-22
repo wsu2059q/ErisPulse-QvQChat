@@ -8,18 +8,16 @@ window.PageInbox = {
       unread: 0,
       offset: 0,
       kind: "",
+      onlyUnread: false,
       busy: false,
       loading: false,
       observer: null,
     };
   },
   computed: {
-    kindOptions() {
-      return [
-        { label: t("inbox_filter_all"), value: "" },
-        { label: t("inbox_kind_notice"), value: "notice" },
-        { label: t("inbox_kind_request"), value: "request" },
-      ];
+    shownEvents() {
+      if (!this.onlyUnread) return this.events;
+      return this.events.filter(function (e) { return !e.read; });
     },
     countText() {
       return t("inbox_count")
@@ -132,15 +130,20 @@ window.PageInbox = {
     '      <div class="qvq-page-sub">{{ countText }}</div>',
     '    </div>',
     '    <div class="qvq-cfg-tools">',
-    '      <n-select :value="kind" :options="kindOptions" size="small" style="width:120px"',
-    '                @update:value="setKind"/>',
+    '      <div class="qvq-seg">',
+    '        <button type="button" :class="{ on: kind === \'\' }" @click="setKind(\'\')">{{ t("inbox_filter_all") }}</button>',
+    '        <button type="button" :class="{ on: kind === \'request\' }" @click="setKind(\'request\')">{{ t("inbox_kind_request") }}</button>',
+    '        <button type="button" :class="{ on: kind === \'notice\' }" @click="setKind(\'notice\')">{{ t("inbox_kind_notice") }}</button>',
+    '        <button type="button" :class="{ on: onlyUnread }" @click="onlyUnread = !onlyUnread; offset = 0; load()">',
+    '          {{ t("inbox_unread") }}{{ onlyUnread ? " ·" : "" }}</button>',
+    '      </div>',
     '      <n-button size="small" :loading="busy" @click="load">{{ t("refresh") }}</n-button>',
     '      <n-button size="small" type="error" ghost :loading="busy" @click="clearAll">',
     '        {{ t("inbox_clear") }}</n-button>',
     '    </div>',
     '  </div>',
     '  <div class="qvq-loading" v-if="loading"><i></i>{{ t("loading") }}</div>',
-    '  <div v-for="e in events" :key="e.id" class="inbox-row" :class="{ unread: !e.read }" v-if="!loading">',
+    '  <div v-for="e in shownEvents" :key="e.id" class="inbox-row" :class="{ unread: !e.read }" v-if="!loading">',
     '    <div class="inbox-main">',
     '      <div class="inbox-summary">{{ e.summary || e.id }}</div>',
     '      <div class="inbox-meta">{{ kindOf(e) }} · {{ e.account || "-" }} · {{ fmtTime(e.ts) }}</div>',
@@ -154,7 +157,7 @@ window.PageInbox = {
     '      <button type="button" class="prov-act danger" @click="del(e)">{{ t("del") }}</button>',
     '    </div>',
     '  </div>',
-    '  <div v-if="!loading && !events.length" class="qvq-empty">{{ t("inbox_empty") }}</div>',
+    '  <div v-if="!loading && !shownEvents.length" class="qvq-empty">{{ t("inbox_empty") }}</div>',
     '  <div class="scroll-sentinel" v-if="events.length && hasNext"></div>',
     '</div>',
   ].join(""),

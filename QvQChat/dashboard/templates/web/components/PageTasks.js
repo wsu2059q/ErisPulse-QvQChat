@@ -44,6 +44,10 @@ window.PageTasks = {
     this.load();
   },
   methods: {
+    isOverdue(tk) {
+      var ts = Number(tk && tk.next_run || 0);
+      return ts > 0 && ts * 1000 < Date.now();
+    },
     taskLabel(tk) {
       return QvQ.taskLabel(tk);
     },
@@ -169,7 +173,8 @@ window.PageTasks = {
     '      <div class="tool-desc">{{ tk.prompt }}</div>',
     '      <div class="plat-meta">',
     '        <span><code>{{ tk.schedule_raw }}</code></span>',
-    '        <span>{{ tk.next_formatted }}</span>',
+    '        <span class="task-next" :class="{ overdue: isOverdue(tk) }">',
+    '          {{ isOverdue(tk) ? t("task_overdue") + " " : "" }}{{ tk.next_formatted }}</span>',
     '      </div>',
     '      <footer class="prov-foot">',
     '        <span class="prov-count">{{ tk.platform || "-" }}</span>',

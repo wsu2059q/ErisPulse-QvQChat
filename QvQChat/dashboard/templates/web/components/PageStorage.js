@@ -18,6 +18,7 @@ window.PageStorage = {
       hint: "",
       clearOpen: false,
       pendingClear: "",
+      clearDomainN: 0,
       loading: false,
     };
   },
@@ -99,6 +100,8 @@ window.PageStorage = {
     askClear(id) {
       this.pendingClear = id;
       this.activeLabel = this.domainLabel(id);
+      var dm = this.domains.find(function (d) { return d.id === id; });
+      this.clearDomainN = dm ? Number(dm.keys || 0) : 0;
       this.clearOpen = true;
     },
     doClear() {
@@ -191,7 +194,9 @@ window.PageStorage = {
     '  </section>',
     '  <n-modal v-model:show="clearOpen" preset="card" class="qvq-modal-card"',
     '           style="max-width:400px" :title="t(\'confirm_title\')" :bordered="false">',
-    '    <div>{{ t("storage_confirm_clear").replace("{d}", activeLabel) }}</div>',
+    '    <div class="qvq-modal-hint">{{ t("storage_confirm_clear").replace("{d}", activeLabel) }}</div>',
+    '    <div class="qvq-modal-hint stor-clear-danger" v-if="clearDomainN > 0">',
+    '      {{ t("storage_confirm_count").replace("{n}", String(clearDomainN)) }}</div>',
     '    <template #footer>',
     '      <div class="qvq-modal-foot">',
     '        <n-button size="small" @click="clearOpen = false">{{ t("cancel") }}</n-button>',
