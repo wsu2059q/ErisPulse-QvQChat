@@ -8928,7 +8928,7 @@ window.PagePersonas = {
     '    </div>',
     '    <n-button size="small" type="primary" @click="openNew">{{ t("add_title") }}</n-button>',
     '  </div>',
-    '<settings-section group="persona" :title="t(&quot;ss_persona&quot;)"/>',
+    '<settings-section group="humanize,trigger,participation" :title="t(&quot;ss_persona&quot;)"/>',
     '  <div class="prov-grid">',
     '    <article v-for="p in personas" :key="p.id" class="prov-card">',
     '      <header class="prov-head">',
@@ -12218,8 +12218,12 @@ window.SettingsSection = {
     };
   },
   computed: {
+    groups() {
+      return String(this.group || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    },
     shown() {
-      return this.fields.filter(function (f) { return f.group === this.group; }.bind(this));
+      var groups = this.groups;
+      return this.fields.filter(function (f) { return groups.indexOf(f.group) >= 0; });
     },
   },
   mounted() {
@@ -12229,7 +12233,8 @@ window.SettingsSection = {
     load() {
       var self = this;
       return QvQ.swr(this, "cfg_group_" + this.group, "/api/qvq/config", function (data) {
-        var fields = ((data && data.fields) || []).filter(function (f) { return f.group === self.group; });
+        var groups = self.groups;
+        var fields = ((data && data.fields) || []).filter(function (f) { return groups.indexOf(f.group) >= 0; });
         self.fields = fields;
         var draft = {};
         fields.forEach(function (f) { draft[f.key] = f.value; });

@@ -18,8 +18,12 @@ window.SettingsSection = {
     };
   },
   computed: {
+    groups() {
+      return String(this.group || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    },
     shown() {
-      return this.fields.filter(function (f) { return f.group === this.group; }.bind(this));
+      var groups = this.groups;
+      return this.fields.filter(function (f) { return groups.indexOf(f.group) >= 0; });
     },
   },
   mounted() {
@@ -29,7 +33,8 @@ window.SettingsSection = {
     load() {
       var self = this;
       return QvQ.swr(this, "cfg_group_" + this.group, "/api/qvq/config", function (data) {
-        var fields = ((data && data.fields) || []).filter(function (f) { return f.group === self.group; });
+        var groups = self.groups;
+        var fields = ((data && data.fields) || []).filter(function (f) { return groups.indexOf(f.group) >= 0; });
         self.fields = fields;
         var draft = {};
         fields.forEach(function (f) { draft[f.key] = f.value; });

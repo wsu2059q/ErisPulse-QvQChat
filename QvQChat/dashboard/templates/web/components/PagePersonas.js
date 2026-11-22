@@ -92,7 +92,7 @@ window.PagePersonas = {
     '    </div>',
     '    <n-button size="small" type="primary" @click="openNew">{{ t("add_title") }}</n-button>',
     '  </div>',
-    '<settings-section group="persona" :title="t(&quot;ss_persona&quot;)"/>',
+    '<settings-section group="humanize,trigger,participation" :title="t(&quot;ss_persona&quot;)"/>',
     '  <div class="prov-grid">',
     '    <article v-for="p in personas" :key="p.id" class="prov-card">',
     '      <header class="prov-head">',
