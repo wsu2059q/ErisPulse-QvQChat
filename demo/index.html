@@ -10737,7 +10737,6 @@ window.PageKnowledge = {
       if (tab === "all") return this.entries;
       return this.entries.filter(function (e) {
         var k = self.scopeKindOf(e.owner);
-        if (tab === "global") return k === "global";
         if (tab === "platform") return k === "platform" && (!sel || e.owner === sel);
         if (tab === "session") return k === "session" && (!sel || e.owner === sel);
         return true;
@@ -10996,7 +10995,6 @@ window.PageKnowledge = {
     '  <div class="kb-scope-bar" style="display:flex;align-items:center;gap:10px;margin:0 0 14px">',
     '    <div class="qvq-seg">',
     '      <button type="button" :class="{ on: scopeTab === \'all\' }" @click="setScopeTab(\'all\')">{{ t("kb_scope_all") }}</button>',
-    '      <button type="button" :class="{ on: scopeTab === \'global\' }" @click="setScopeTab(\'global\')">{{ t("kb_scope_global") }}</button>',
     '      <button type="button" :class="{ on: scopeTab === \'platform\' }" @click="setScopeTab(\'platform\')">{{ t("kb_scope_platform") }}</button>',
     '      <button type="button" :class="{ on: scopeTab === \'session\' }" @click="setScopeTab(\'session\')">{{ t("kb_scope_session") }}</button>',
     '    </div>',

@@ -255,6 +255,27 @@ class OpsApiMixin:
             offset = max(0, int(self._query(request, "offset") or 0))
         except Exception:
             offset = 0
+        tool = str(self._query(request, "tool") or "").strip()
+        keyword = str(self._query(request, "keyword") or "").strip().lower()
+        since = self._query(request, "since") or ""
+        until = self._query(request, "until") or ""
+
+        def _hit(e) -> bool:
+            if tool and str(e.get("tool") or "") != tool:
+                return False
+            if keyword:
+                blob = " ".join(str(e.get(k) or "") for k in ("tool", "detail", "user_id", "chat_key")).lower()
+                if keyword not in blob:
+                    return False
+            ts = float(e.get("ts") or 0)
+            if since and ts < float(since):
+                return False
+            if until and ts > float(until):
+                return False
+            return True
+
+        if tool or keyword or since or until:
+            entries = [e for e in entries if isinstance(e, dict) and _hit(e)]
         newest_first = list(reversed(entries))
         total = len(newest_first)
         page = newest_first[offset : offset + limit]
