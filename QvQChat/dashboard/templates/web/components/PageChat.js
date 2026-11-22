@@ -52,6 +52,7 @@ window.PageChat = {
       effort: "",
       personas: [],
       persona: "",
+      bindings: {},
       toast: "",
       newOpen: false,
       newName: "",
@@ -121,6 +122,13 @@ window.PageChat = {
       return [{ label: t("model_s_auto"), value: "" }].concat(this.personas.map(function (p) {
         return { label: p.name || p.id, value: p.id };
       }));
+    },
+    activePersonaName() {
+      // 当前会话的绑定人格（点 chip 跳人格页）；无绑定为空不显示
+      var pid = this.bindings[this.activeKey] || "";
+      if (!pid) return "";
+      var hit = this.personas.filter(function (p) { return p.id === pid; })[0];
+      return hit ? (hit.name || hit.id) : pid;
     },
     hasMore() {
       return this.messages.length < this.total;
@@ -226,7 +234,7 @@ window.PageChat = {
       return list.map(function (a) { return String(a.account || ""); }).filter(Boolean);
     },
     sessGroups() {
-      // 侧栏分组（扁平化）：置顶 / 最近（群聊+私聊合并，谁先说话谁在顶部）/ 已归档
+      // 侧栏分组（扁平化）：置顶 / 最近（群聊+私聊合并，谁先说话谁在顶部）/ 试聊（dashboard 沙箱）/ 已归档
       // 最近组排序：正在对话的（live 流式中）最前；其余按筛选排序
       // （updated=谁先说话谁在顶部 / turns=最多轮次 / name=会话名）
       var acct = this.acctFilter;
@@ -243,12 +251,15 @@ window.PageChat = {
         if (sortBy === "name") return String(a.name || a.chat_key).localeCompare(String(b.name || b.chat_key));
         return (b.updated || 0) - (a.updated || 0);
       };
-      var pinned = pool.filter(function (s) { return s.pinned && !s.archived; });
-      var recent = pool.filter(function (s) { return !s.pinned && !s.archived; }).sort(byFresh);
+      var isSandbox = function (s) { return String(s.platform || s.chat_key || "").indexOf("dashboard") === 0; };
+      var pinned = pool.filter(function (s) { return s.pinned && !s.archived && !isSandbox(s); });
+      var recent = pool.filter(function (s) { return !s.pinned && !s.archived && !isSandbox(s); }).sort(byFresh);
+      var sandbox = pool.filter(function (s) { return !s.archived && isSandbox(s); }).sort(byFresh);
       var archived = pool.filter(function (s) { return !!s.archived; });
       var groups = [
         { key: "pinned", label: t("sess_group_pinned"), items: pinned },
         { key: "recent", label: t("sess_recent"), items: recent },
+        { key: "sandbox", label: t("chat_sandbox_group"), items: sandbox },
         { key: "archived", label: t("chat_archived"), items: archived },
       ];
       return groups.filter(function (g) { return g.items.length; });
@@ -316,6 +327,7 @@ window.PageChat = {
     });
     api("/api/qvq/personas").then(function (d) {
       self.personas = (d && d.personas) || [];
+      self.bindings = (d && d.bindings) || {};
     });
     api("/api/qvq/skills").then(function (d) {
       self.skills = (d && d.skills) || [];
@@ -341,6 +353,9 @@ window.PageChat = {
     this.stopTodoPoll();
   },
   methods: {
+    isSandbox(s) {
+      return String(s.platform || s.chat_key || "").indexOf("dashboard") === 0;
+    },
     loadSessions() {
       var self = this;
       this.loadingSessions = true;
@@ -1264,7 +1279,7 @@ window.PageChat = {
     '          <div v-for="s in g.items" :key="s.chat_key" class="chat-sitem-wrap">',
     '            <button type="button" class="chat-sitem" :class="{ on: s.chat_key === activeKey }"',
     '                    @click="open(s.chat_key)">',
-    '              <span class="nm">{{ s.name || s.chat_key }}<i v-if="s.kind === \'handover\'" class="chat-subtag hv">{{ t("hv_badge") }}</i><i v-else-if="s.kind === \'sub\'" class="chat-subtag">{{ t("sub_badge") }}</i></span>',
+    '              <span class="nm">{{ s.name || s.chat_key }}<i v-if="s.kind === \'handover\'" class="chat-subtag hv">{{ t("hv_badge") }}</i><i v-else-if="s.kind === \'sub\'" class="chat-subtag">{{ t("sub_badge") }}</i><i v-else-if="isSandbox(s)" class="chat-subtag sb">{{ t("sandbox_badge") }}</i></span>',
     '              <span class="mt"><span class="live-dot" v-if="s.live"></span><i v-else-if="isUnread(s)" class="unread-dot" :title="t(\'unread_tip\')"></i>{{ s.turns || 0 }}</span>',
     '              <span v-if="s.snippet" class="chat-sitem-snippet">{{ s.snippet }}</span>',
     '            </button>',
@@ -1290,7 +1305,9 @@ window.PageChat = {
     '      <n-select class="chat-sess-pick" :value="activeKey" :options="sessionOptions"',
     '                size="small" filterable @update:value="open"/>',
     '      <div class="chat-head-tx">',
-    '        <div class="chat-title">{{ activeName || t("nav_chat") }}</div>',
+    '        <div class="chat-title">{{ activeName || t("nav_chat") }}',
+    '          <button v-if="activePersonaName" type="button" class="chat-persona-chip"',
+    '                  :title="t(\'chat_persona_binding\')" @click="QvQ.store.page = \'personas\'">🎭 {{ activePersonaName }}</button></div>',
     '        <div class="chat-sub">{{ activeKey }}</div>',
     '      </div>',
     '      <div class="chat-head-ctl">',

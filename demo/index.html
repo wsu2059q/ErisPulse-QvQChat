@@ -3792,6 +3792,62 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
 .orch-move .prov-act:disabled { opacity: 0.3; cursor: default; }
 .stor-clear-danger { color: var(--qvq-er); }
 .plat-ident-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+
+/* ---- 记忆列表概要与条目元信息 ---- */
+.mem-last {
+  display: block;
+  color: var(--qvq-tx-t);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 340px;
+}
+.mem-tags { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; vertical-align: middle; }
+.mem-imp {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--qvq-accent);
+  display: inline-block;
+}
+.mem-tags code { font-size: 11px; color: var(--qvq-tx-s); }
+
+/* ---- 试聊会话（dashboard 沙箱）标识与人格 chip ---- */
+.chat-subtag.sb { background: var(--qvq-accent-soft); color: var(--qvq-accent); }
+.chat-persona-chip {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font-size: 12px;
+  border-radius: var(--qvq-r-pill);
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  cursor: pointer;
+}
+.chat-persona-chip:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
+.persona-binds { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.persona-bind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 4px;
+  font-size: 12px;
+  border-radius: var(--qvq-r-pill);
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+}
+.persona-bind:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
+.persona-bind-lv {
+  font-style: normal;
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-accent-soft);
+  color: var(--qvq-accent);
+}
 </style></head><body><div class="qvq-bg-layer" id="qvq-bg-layer" aria-hidden="true"></div>
 <div id="app"><div class="qvq-splash" aria-hidden="true">
   <svg class="qvq-splash-bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
@@ -4294,6 +4350,10 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
         case "/api/qvq/inbox": return json(INBOX);
         case "/api/qvq/handover": return json(HANDOVER ? Object.assign({}, HANDOVER) : { active: false });
         case "/api/qvq/memory": return json({
+          scopes: SESSIONS.slice(0, 6).map(function (s, i) {
+            return { chat_key: s.chat_key, count: 2 + (i % 4), last_ts: NOW - (i + 1) * 3600,
+                     last_text: ["喜欢简洁回复", "项目用 uv 管理", "每周五交周报", "猫娘语气但技术准确", "Windows 环境", "群规禁止广告"][i % 6] };
+          }),
           entries: [
             { content: "主人常用 Windows + uv，跑测试用 uv run pytest", ts: NOW - 86400 },
             { content: "喜欢回复带点猫娘语气，但技术内容要准确", ts: NOW - 172800 },
@@ -5045,11 +5105,11 @@ function detectLang() {
   return "zh-CN";
 }
 
-I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { task_overdue: "已过期", ident_empty: "暂无同源建议；也可手动迁移或归并账户", ident_manual: "手动迁移…", bind_inherit_hint: "留空继承上层绑定（平台级 → 全局默认）", plugin_cfg: "配置", plugin_ext_sub: "生态模块向 AI 贡献的工具/技能/知识/人格一览（只读，随模块卸载消失）", prov_rank_tip: "故障转移链序（数字越小优先级越高，可在编排页调整）", orch_idx_tip: "故障转移顺序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "该域现有 {n} 个条目，清空后不可恢复", settings_unsaved_items: "项未保存", settings_reset: "还原", nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线", usage_records_title: "最近调用明细", mem_profile_clear: "清空画像", theme_follow: "跟随外壳", theme_light: "亮色", theme_dark: "深色", theme_title: "外观：{mode}（点击切换）", aria_menu: "打开菜单", aria_close: "关闭" });
-I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { task_overdue: "已過期", ident_empty: "暫無同源建議；也可手動遷移或歸併賬戶", ident_manual: "手動遷移…", bind_inherit_hint: "留空繼承上層綁定（平台級 → 全域預設）", plugin_cfg: "配置", plugin_ext_sub: "生態模組向 AI 貢獻的工具/技能/知識/人格一覽（唯讀，隨模組卸載消失）", prov_rank_tip: "故障轉移鏈序（數字越小優先級越高，可在編排頁調整）", orch_idx_tip: "故障轉移順序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "該域現有 {n} 個條目，清空後無法復原", settings_unsaved_items: "項未保存", settings_reset: "還原", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", prompt_chars: "字元", prompt_preview: "預覽提示詞", prompt_required: "必填", prompt_scene_note: "scene 為運行時部件：實際對話時才注入群名/發言人/@感知/引用等場景註記", prompt_turns: "輪歷史", usage_chart_title: "14 天趨勢", nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線", mem_profile_clear: "清空畫像", theme_follow: "跟隨外殼", theme_light: "亮色", theme_dark: "深色", theme_title: "外觀：{mode}（點擊切換）", aria_menu: "開啟選單", aria_close: "關閉" });
-I18N["en"] = Object.assign(I18N["en"] || {}, { task_overdue: "Overdue", ident_empty: "No same-origin suggestions; migrate or merge accounts manually", ident_manual: "Migrate manually…", bind_inherit_hint: "Leave empty to inherit upper binding (platform → global default)", plugin_cfg: "Configure", plugin_ext_sub: "Tools/skills/knowledge/personas contributed to the AI by ecosystem modules (read-only, removed with the module)", prov_rank_tip: "Failover chain order (lower number = higher priority, adjustable on Orchestrate)", orch_idx_tip: "Failover order", orch_move_up: "Move up", orch_move_down: "Move down", storage_confirm_count: "{n} entries in this domain; clearing is not reversible", settings_unsaved_items: "unsaved", settings_reset: "Revert", share_chat_tokens: "Max tokens visitor chat may consume", share_rounds: "Rounds a visitor may continue chatting (0 = read-only)", share_rounds_hint: "Visitors continue as plain text without tools; stops when rounds or budget run out", nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone", usage_records_title: "Recent calls", mem_profile_clear: "Clear profile", theme_follow: "Follow shell", theme_light: "Light", theme_dark: "Dark", theme_title: "Appearance: {mode} (click to switch)", aria_menu: "Open menu", aria_close: "Close" });
-I18N["ja"] = Object.assign(I18N["ja"] || {}, { task_overdue: "期限超過", ident_empty: "同源候補なし。手動移行またはアカウント統合も可能", ident_manual: "手動で移行…", bind_inherit_hint: "空欄で上位バインディングを継承（プラットフォーム → グローバル既定）", plugin_cfg: "設定", plugin_ext_sub: "エコシステムモジュールが AI に提供するツール/スキル/知識/人格の一覧（読み取り専用、アンインストールで消失）", prov_rank_tip: "フェイルオーバー順（数字小＝優先度高、編成ページで変更可）", orch_idx_tip: "フェイルオーバー順", orch_move_up: "上へ", orch_move_down: "下へ", storage_confirm_count: "このドメインには {n} 件あります。消去すると元に戻せません", settings_unsaved_items: "件未保存", settings_reset: "取消", nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中", mem_profile_clear: "プロフィールを消去", theme_follow: "シェルに追随", theme_light: "ライト", theme_dark: "ダーク", theme_title: "外観：{mode}（クリックで切替）", aria_menu: "メニューを開く", aria_close: "閉じる" });
-I18N["ru"] = Object.assign(I18N["ru"] || {}, { task_overdue: "Просрочено", ident_empty: "Нет однородных предложений; переносите или объединяйте вручную", ident_manual: "Перенести вручную…", bind_inherit_hint: "Пусто — наследуется верхняя привязка (платформа → глобальная)", plugin_cfg: "Настроить", plugin_ext_sub: "Инструменты/навыки/знания/личности от модулей экосистемы (только чтение, исчезают с удалением модуля)", prov_rank_tip: "Порядок отказоустойчивости (меньше число = выше приоритет, меняется в Оркестрации)", orch_idx_tip: "Порядок отказоустойчивости", orch_move_up: "Вверх", orch_move_down: "Вниз", storage_confirm_count: "В домене {n} записей; очистка необратима", settings_unsaved_items: "не сохранено", settings_reset: "Отменить", inbox_handled: "Обработано", load_older: "Загрузить более старые", nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке", mem_profile_clear: "Очистить профиль", theme_follow: "Как в оболочке", theme_light: "Светлая", theme_dark: "Тёмная", theme_title: "Оформление: {mode} (нажмите для смены)", aria_menu: "Открыть меню", aria_close: "Закрыть" });
+I18N["zh-CN"] = Object.assign(I18N["zh-CN"] || {}, { kb_scope_all: "全部", kb_scope_global: "全局", kb_scope_platform: "平台", kb_scope_session: "会话", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "会话作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "选择平台，可输入新平台名", kb_scope_session_ph: "选择会话，可输入 chat_key", kb_scope_global_hint: "对所有会话可见", kb_scope_empty: "该作用域暂无条目", chat_sandbox_group: "试聊", sandbox_badge: "试聊", sandbox_with: "试聊 · {n}", persona_chat: "试聊此人格", persona_unbound: "未绑定会话（全局兜底时不显示在此）", task_overdue: "已过期", ident_empty: "暂无同源建议；也可手动迁移或归并账户", ident_manual: "手动迁移…", bind_inherit_hint: "留空继承上层绑定（平台级 → 全局默认）", plugin_cfg: "配置", plugin_ext_sub: "生态模块向 AI 贡献的工具/技能/知识/人格一览（只读，随模块卸载消失）", prov_rank_tip: "故障转移链序（数字越小优先级越高，可在编排页调整）", orch_idx_tip: "故障转移顺序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "该域现有 {n} 个条目，清空后不可恢复", settings_unsaved_items: "项未保存", settings_reset: "还原", nav_platforms: "多账户", home_models: "模型", home_tools: "工具", home_sessions: "会话", home_tasks: "任务", home_usage_today: "今日用量", home_recent: "最近会话", home_recent_empty: "暂无会话", home_upcoming: "即将执行", home_upcoming_empty: "暂无任务", home_sub: "智能体运行一览", login_ph: "access token", login_enter: "进入", page_under_construction: "页面重构中，本期即将上线", usage_records_title: "最近调用明细", mem_profile_clear: "清空画像", theme_follow: "跟随外壳", theme_light: "亮色", theme_dark: "深色", theme_title: "外观：{mode}（点击切换）", aria_menu: "打开菜单", aria_close: "关闭" });
+I18N["zh-TW"] = Object.assign(I18N["zh-TW"] || {}, { kb_scope_all: "全部", kb_scope_global: "全域", kb_scope_platform: "平台", kb_scope_session: "會話", kb_scope_group_platforms: "平台作用域", kb_scope_group_sessions: "會話作用域", kb_scope_left_all: "全部", kb_scope_platform_ph: "選擇平台，可輸入新平台名", kb_scope_session_ph: "選擇會話，可輸入 chat_key", kb_scope_global_hint: "對所有會話可見", kb_scope_empty: "該作用域暫無條目", chat_sandbox_group: "試聊", sandbox_badge: "試聊", sandbox_with: "試聊 · {n}", persona_chat: "試聊此人格", persona_unbound: "未綁定會話", task_overdue: "已過期", ident_empty: "暫無同源建議；也可手動遷移或歸併賬戶", ident_manual: "手動遷移…", bind_inherit_hint: "留空繼承上層綁定（平台級 → 全域預設）", plugin_cfg: "配置", plugin_ext_sub: "生態模組向 AI 貢獻的工具/技能/知識/人格一覽（唯讀，隨模組卸載消失）", prov_rank_tip: "故障轉移鏈序（數字越小優先級越高，可在編排頁調整）", orch_idx_tip: "故障轉移順序", orch_move_up: "上移", orch_move_down: "下移", storage_confirm_count: "該域現有 {n} 個條目，清空後無法復原", settings_unsaved_items: "項未保存", settings_reset: "還原", chart_limit_legend: "日上限 {n} · 超限 {d} 天", chart_tip_calls: "調用", chart_tip_pct: "佔上限", prompt_chars: "字元", prompt_preview: "預覽提示詞", prompt_required: "必填", prompt_scene_note: "scene 為運行時部件：實際對話時才注入群名/發言人/@感知/引用等場景註記", prompt_turns: "輪歷史", usage_chart_title: "14 天趨勢", nav_platforms: "多賬戶", home_models: "模型", home_tools: "工具", home_sessions: "會話", home_tasks: "任務", home_usage_today: "今日用量", home_recent: "最近會話", home_recent_empty: "暫無會話", home_upcoming: "即將執行", home_upcoming_empty: "暫無任務", home_sub: "智能體運行一覽", login_ph: "access token", login_enter: "進入", page_under_construction: "頁面重構中，本期即將上線", mem_profile_clear: "清空畫像", theme_follow: "跟隨外殼", theme_light: "亮色", theme_dark: "深色", theme_title: "外觀：{mode}（點擊切換）", aria_menu: "開啟選單", aria_close: "關閉" });
+I18N["en"] = Object.assign(I18N["en"] || {}, { kb_scope_all: "All", kb_scope_global: "Global", kb_scope_platform: "Platform", kb_scope_session: "Sessions", kb_scope_group_platforms: "Platform scopes", kb_scope_group_sessions: "Session scopes", kb_scope_left_all: "All", kb_scope_platform_ph: "Pick a platform or type a new name", kb_scope_session_ph: "Pick a session or type a chat_key", kb_scope_global_hint: "Visible to all sessions", kb_scope_empty: "No entries in this scope", chat_sandbox_group: "Sandbox", sandbox_badge: "Sandbox", sandbox_with: "Sandbox · {n}", persona_chat: "Chat with this persona", persona_unbound: "No session bound", task_overdue: "Overdue", ident_empty: "No same-origin suggestions; migrate or merge accounts manually", ident_manual: "Migrate manually…", bind_inherit_hint: "Leave empty to inherit upper binding (platform → global default)", plugin_cfg: "Configure", plugin_ext_sub: "Tools/skills/knowledge/personas contributed to the AI by ecosystem modules (read-only, removed with the module)", prov_rank_tip: "Failover chain order (lower number = higher priority, adjustable on Orchestrate)", orch_idx_tip: "Failover order", orch_move_up: "Move up", orch_move_down: "Move down", storage_confirm_count: "{n} entries in this domain; clearing is not reversible", settings_unsaved_items: "unsaved", settings_reset: "Revert", share_chat_tokens: "Max tokens visitor chat may consume", share_rounds: "Rounds a visitor may continue chatting (0 = read-only)", share_rounds_hint: "Visitors continue as plain text without tools; stops when rounds or budget run out", nav_platforms: "Accounts", home_models: "Models", home_tools: "Tools", home_sessions: "Sessions", home_tasks: "Tasks", home_usage_today: "Usage today", home_recent: "Recent sessions", home_recent_empty: "No sessions", home_upcoming: "Upcoming", home_upcoming_empty: "Nothing scheduled", home_sub: "Agent run overview", login_ph: "access token", login_enter: "Enter", page_under_construction: "Under reconstruction, shipping in this milestone", usage_records_title: "Recent calls", mem_profile_clear: "Clear profile", theme_follow: "Follow shell", theme_light: "Light", theme_dark: "Dark", theme_title: "Appearance: {mode} (click to switch)", aria_menu: "Open menu", aria_close: "Close" });
+I18N["ja"] = Object.assign(I18N["ja"] || {}, { kb_scope_all: "すべて", kb_scope_global: "グローバル", kb_scope_platform: "プラットフォーム", kb_scope_session: "セッション", kb_scope_group_platforms: "プラットフォームスコープ", kb_scope_group_sessions: "セッションスコープ", kb_scope_left_all: "すべて", kb_scope_platform_ph: "プラットフォームを選択（新規入力可）", kb_scope_session_ph: "セッションを選択（chat_key 直入力可）", kb_scope_global_hint: "全セッションから参照可", kb_scope_empty: "このスコープには項目がありません", chat_sandbox_group: "サンドボックス", sandbox_badge: " sandbox", sandbox_with: " sandbox · {n}", persona_chat: "この人格で試す", persona_unbound: "未バインド", task_overdue: "期限超過", ident_empty: "同源候補なし。手動移行またはアカウント統合も可能", ident_manual: "手動で移行…", bind_inherit_hint: "空欄で上位バインディングを継承（プラットフォーム → グローバル既定）", plugin_cfg: "設定", plugin_ext_sub: "エコシステムモジュールが AI に提供するツール/スキル/知識/人格の一覧（読み取り専用、アンインストールで消失）", prov_rank_tip: "フェイルオーバー順（数字小＝優先度高、編成ページで変更可）", orch_idx_tip: "フェイルオーバー順", orch_move_up: "上へ", orch_move_down: "下へ", storage_confirm_count: "このドメインには {n} 件あります。消去すると元に戻せません", settings_unsaved_items: "件未保存", settings_reset: "取消", nav_platforms: "マルチアカウント", home_models: "モデル", home_tools: "ツール", home_sessions: "セッション", home_tasks: "タスク", home_usage_today: "今日の使用量", home_recent: "最近のセッション", home_recent_empty: "セッションなし", home_upcoming: "次回実行", home_upcoming_empty: "予定なし", home_sub: "エージェント実行一覧", login_ph: "access token", login_enter: "入る", page_under_construction: "ページ再構築中", mem_profile_clear: "プロフィールを消去", theme_follow: "シェルに追随", theme_light: "ライト", theme_dark: "ダーク", theme_title: "外観：{mode}（クリックで切替）", aria_menu: "メニューを開く", aria_close: "閉じる" });
+I18N["ru"] = Object.assign(I18N["ru"] || {}, { kb_scope_all: "Все", kb_scope_global: "Глобально", kb_scope_platform: "Платформы", kb_scope_session: "Сессии", kb_scope_group_platforms: "Скоупы платформ", kb_scope_group_sessions: "Скоупы сессий", kb_scope_left_all: "Все", kb_scope_platform_ph: "Выберите платформу или введите новую", kb_scope_session_ph: "Выберите сессию или введите chat_key", kb_scope_global_hint: "Видимо всем сессиям", kb_scope_empty: "В этом скоупе нет записей", chat_sandbox_group: "Песочница", sandbox_badge: "Песочница", sandbox_with: "Песочница · {n}", persona_chat: "Чат с этой личностью", persona_unbound: "Нет привязок", task_overdue: "Просрочено", ident_empty: "Нет однородных предложений; переносите или объединяйте вручную", ident_manual: "Перенести вручную…", bind_inherit_hint: "Пусто — наследуется верхняя привязка (платформа → глобальная)", plugin_cfg: "Настроить", plugin_ext_sub: "Инструменты/навыки/знания/личности от модулей экосистемы (только чтение, исчезают с удалением модуля)", prov_rank_tip: "Порядок отказоустойчивости (меньше число = выше приоритет, меняется в Оркестрации)", orch_idx_tip: "Порядок отказоустойчивости", orch_move_up: "Вверх", orch_move_down: "Вниз", storage_confirm_count: "В домене {n} записей; очистка необратима", settings_unsaved_items: "не сохранено", settings_reset: "Отменить", inbox_handled: "Обработано", load_older: "Загрузить более старые", nav_platforms: "Аккаунты", home_models: "Модели", home_tools: "Инструменты", home_sessions: "Сессии", home_tasks: "Задачи", home_usage_today: "Использование сегодня", home_recent: "Недавние сессии", home_recent_empty: "Нет сессий", home_upcoming: "Предстоящие", home_upcoming_empty: "Ничего не запланировано", home_sub: "Обзор работы агента", login_ph: "access token", login_enter: "Войти", page_under_construction: "Страница в переработке", mem_profile_clear: "Очистить профиль", theme_follow: "Как в оболочке", theme_light: "Светлая", theme_dark: "Тёмная", theme_title: "Оформление: {mode} (нажмите для смены)", aria_menu: "Открыть меню", aria_close: "Закрыть" });
 
 function t(k) {
   return (I18N[QvQ.store.lang] && I18N[QvQ.store.lang][k]) || I18N.en[k] || k;
@@ -6382,6 +6442,7 @@ window.PageChat = {
       effort: "",
       personas: [],
       persona: "",
+      bindings: {},
       toast: "",
       newOpen: false,
       newName: "",
@@ -6451,6 +6512,13 @@ window.PageChat = {
       return [{ label: t("model_s_auto"), value: "" }].concat(this.personas.map(function (p) {
         return { label: p.name || p.id, value: p.id };
       }));
+    },
+    activePersonaName() {
+      // 当前会话的绑定人格（点 chip 跳人格页）；无绑定为空不显示
+      var pid = this.bindings[this.activeKey] || "";
+      if (!pid) return "";
+      var hit = this.personas.filter(function (p) { return p.id === pid; })[0];
+      return hit ? (hit.name || hit.id) : pid;
     },
     hasMore() {
       return this.messages.length < this.total;
@@ -6556,7 +6624,7 @@ window.PageChat = {
       return list.map(function (a) { return String(a.account || ""); }).filter(Boolean);
     },
     sessGroups() {
-      // 侧栏分组（扁平化）：置顶 / 最近（群聊+私聊合并，谁先说话谁在顶部）/ 已归档
+      // 侧栏分组（扁平化）：置顶 / 最近（群聊+私聊合并，谁先说话谁在顶部）/ 试聊（dashboard 沙箱）/ 已归档
       // 最近组排序：正在对话的（live 流式中）最前；其余按筛选排序
       // （updated=谁先说话谁在顶部 / turns=最多轮次 / name=会话名）
       var acct = this.acctFilter;
@@ -6573,12 +6641,15 @@ window.PageChat = {
         if (sortBy === "name") return String(a.name || a.chat_key).localeCompare(String(b.name || b.chat_key));
         return (b.updated || 0) - (a.updated || 0);
       };
-      var pinned = pool.filter(function (s) { return s.pinned && !s.archived; });
-      var recent = pool.filter(function (s) { return !s.pinned && !s.archived; }).sort(byFresh);
+      var isSandbox = function (s) { return String(s.platform || s.chat_key || "").indexOf("dashboard") === 0; };
+      var pinned = pool.filter(function (s) { return s.pinned && !s.archived && !isSandbox(s); });
+      var recent = pool.filter(function (s) { return !s.pinned && !s.archived && !isSandbox(s); }).sort(byFresh);
+      var sandbox = pool.filter(function (s) { return !s.archived && isSandbox(s); }).sort(byFresh);
       var archived = pool.filter(function (s) { return !!s.archived; });
       var groups = [
         { key: "pinned", label: t("sess_group_pinned"), items: pinned },
         { key: "recent", label: t("sess_recent"), items: recent },
+        { key: "sandbox", label: t("chat_sandbox_group"), items: sandbox },
         { key: "archived", label: t("chat_archived"), items: archived },
       ];
       return groups.filter(function (g) { return g.items.length; });
@@ -6646,6 +6717,7 @@ window.PageChat = {
     });
     api("/api/qvq/personas").then(function (d) {
       self.personas = (d && d.personas) || [];
+      self.bindings = (d && d.bindings) || {};
     });
     api("/api/qvq/skills").then(function (d) {
       self.skills = (d && d.skills) || [];
@@ -6671,6 +6743,9 @@ window.PageChat = {
     this.stopTodoPoll();
   },
   methods: {
+    isSandbox(s) {
+      return String(s.platform || s.chat_key || "").indexOf("dashboard") === 0;
+    },
     loadSessions() {
       var self = this;
       this.loadingSessions = true;
@@ -7594,7 +7669,7 @@ window.PageChat = {
     '          <div v-for="s in g.items" :key="s.chat_key" class="chat-sitem-wrap">',
     '            <button type="button" class="chat-sitem" :class="{ on: s.chat_key === activeKey }"',
     '                    @click="open(s.chat_key)">',
-    '              <span class="nm">{{ s.name || s.chat_key }}<i v-if="s.kind === \'handover\'" class="chat-subtag hv">{{ t("hv_badge") }}</i><i v-else-if="s.kind === \'sub\'" class="chat-subtag">{{ t("sub_badge") }}</i></span>',
+    '              <span class="nm">{{ s.name || s.chat_key }}<i v-if="s.kind === \'handover\'" class="chat-subtag hv">{{ t("hv_badge") }}</i><i v-else-if="s.kind === \'sub\'" class="chat-subtag">{{ t("sub_badge") }}</i><i v-else-if="isSandbox(s)" class="chat-subtag sb">{{ t("sandbox_badge") }}</i></span>',
     '              <span class="mt"><span class="live-dot" v-if="s.live"></span><i v-else-if="isUnread(s)" class="unread-dot" :title="t(\'unread_tip\')"></i>{{ s.turns || 0 }}</span>',
     '              <span v-if="s.snippet" class="chat-sitem-snippet">{{ s.snippet }}</span>',
     '            </button>',
@@ -7620,7 +7695,9 @@ window.PageChat = {
     '      <n-select class="chat-sess-pick" :value="activeKey" :options="sessionOptions"',
     '                size="small" filterable @update:value="open"/>',
     '      <div class="chat-head-tx">',
-    '        <div class="chat-title">{{ activeName || t("nav_chat") }}</div>',
+    '        <div class="chat-title">{{ activeName || t("nav_chat") }}',
+    '          <button v-if="activePersonaName" type="button" class="chat-persona-chip"',
+    '                  :title="t(\'chat_persona_binding\')" @click="QvQ.store.page = \'personas\'">🎭 {{ activePersonaName }}</button></div>',
     '        <div class="chat-sub">{{ activeKey }}</div>',
     '      </div>',
     '      <div class="chat-head-ctl">',
@@ -9019,17 +9096,74 @@ window.PagePersonas = {
       busy: false,
       pvOpen: false,
       pv: null,
+      bindings: {},
+      sessionNames: {},
     };
   },
   mounted() {
     this.load();
+    this.loadNames();
+  },
+  computed: {
+    bindGroups() {
+      // 反查表：persona_id → [{key, level, label}]；level 由绑定键形态判定
+      var names = this.sessionNames;
+      var out = {};
+      Object.keys(this.bindings).forEach(function (key) {
+        var pid = this.bindings[key];
+        var level = "chat";
+        if (key.indexOf("@") === 0) level = "account";
+        else if (/:\*$/.test(key)) level = "platform";
+        var label = key;
+        if (level === "platform") label = key.replace(/:\*$/, "");
+        else if (names[key]) label = names[key];
+        (out[pid] = out[pid] || []).push({ key: key, level: level, label: label });
+      }, this);
+      return out;
+    },
   },
   methods: {
     load() {
       var self = this;
       return api("/api/qvq/personas").then(function (d) {
         self.personas = (d && d.personas) || [];
+        self.bindings = (d && d.bindings) || {};
       });
+    },
+    loadNames() {
+      var self = this;
+      return api("/api/qvq/sessions?limit=200").then(function (d) {
+        var map = {};
+        ((d && d.sessions) || []).forEach(function (s) {
+          map[s.chat_key] = s.name || s.chat_key;
+        });
+        self.sessionNames = map;
+      });
+    },
+    bindLevelLabel(level) {
+      return t(level === "platform" ? "bind_level_platform"
+        : level === "account" ? "bind_level_account" : "bind_level_session");
+    },
+    openSession(key) {
+      QvQ.store.pendingChat = key;
+      QvQ.store.page = "chat";
+    },
+    chatWith(p) {
+      // 试聊该人格：新建 dashboard 沙箱会话、命名并绑定，跳对话页
+      var self = this;
+      api("/api/qvq/sessions/create", "POST", {})
+        .then(function (d) {
+          var key = (d && d.chat_key) || "";
+          if (!key) return;
+          return api("/api/qvq/session/rename", "POST", {
+            chat_key: key, name: t("sandbox_with").replace("{n}", p.name || p.id),
+          }).then(function () {
+            return api("/api/qvq/personas/bind", "POST", { chat_key: key, persona: p.id });
+          }).then(function () {
+            QvQ.store.pendingChat = key;
+            QvQ.store.page = "chat";
+          });
+        });
     },
     openPreview(p) {
       this.pv = p;
@@ -9113,9 +9247,15 @@ window.PagePersonas = {
     '        <span class="persona-open" :title="t(&quot;col_preview&quot;)">›</span>',
     '      </header>',
     '      <div class="tool-desc">{{ (p.system || "").slice(0, 120) }}</div>',
+    '      <div class="persona-binds" v-if="(bindGroups[p.id] || []).length">',
+    '        <button v-for="b in bindGroups[p.id]" :key="b.key" type="button" class="persona-bind"',
+    '                :title="b.key" @click.stop="openSession(b.key)">',
+    '          <i class="persona-bind-lv">{{ bindLevelLabel(b.level) }}</i>{{ b.label }}</button>',
+    '      </div>',
+    '      <div class="qvq-meta-line" v-else style="margin:0 0 8px">{{ t("persona_unbound") }}</div>',
     '      <footer class="prov-foot">',
-    '        <span class="prov-count">{{ (p.opening || []).length ? "opening ✓" : "" }}</span>',
     '        <span class="prov-acts">',
+    '          <button type="button" class="prov-act" @click.stop="chatWith(p)">{{ t("persona_chat") }}</button>',
     '          <button type="button" class="prov-act" @click.stop="openEdit(p)">{{ t("edit") }}</button>',
     '          <button type="button" class="prov-act danger" @click.stop="del(p)">{{ t("chat_delete") }}</button>',
     '        </span>',
@@ -10255,10 +10395,32 @@ window.PageMemory = {
     this.loadingSess = true;
     api("/api/qvq/sessions?limit=200").then(function (d) {
       self.loadingSess = false;
-      self.sessions = (d && d.sessions) || [];
+      var rows = (d && d.sessions) || [];
+      // 概要注入：条数 / 最近一条 / 最后写入（GET /api/qvq/memory 无 chat_key 返回 scopes）
+      api("/api/qvq/memory").then(function (m) {
+        var byKey = {};
+        ((m && m.scopes) || []).forEach(function (s) { byKey[s.chat_key] = s; });
+        rows.forEach(function (s) {
+          var sc = byKey[s.chat_key] || {};
+          s.count = sc.count || 0;
+          s.last_text = sc.last_text || "";
+          s.last_ts = sc.last_ts || 0;
+        });
+        rows.sort(function (a, b) { return (b.last_ts || 0) - (a.last_ts || 0); });
+        self.sessions = rows;
+      });
     });
   },
   methods: {
+    relTime(ts) {
+      if (!ts) return "";
+      var diff = Date.now() / 1000 - Number(ts);
+      if (diff < 90) return t("ts_just_now");
+      if (diff < 3600) return t("ts_min_ago").replace("{n}", String(Math.floor(diff / 60)));
+      var d = new Date(Number(ts) * 1000);
+      var p = function (n) { return (n < 10 ? "0" : "") + n; };
+      return (d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    },
     open(s) {
       var self = this;
       this.active = s;
@@ -10344,14 +10506,16 @@ window.PageMemory = {
     '  <table class="qvq-table">',
     '    <thead><tr>',
     '      <th>{{ t("recent_sessions") }}</th>',
-    '      <th style="width:70px">{{ t("col_count") }}</th>',
+    '      <th style="width:70px">{{ t("mem_entries_n") }}</th>',
     '      <th style="width:110px"></th>',
     '    </tr></thead>',
     '    <tbody>',
     '      <tr v-for="s in shownSessions" :key="s.chat_key">',
     '        <td><button type="button" class="sess-name" @click="open(s)">',
-    '          {{ s.name || s.chat_key }}<i>{{ s.chat_key }}</i></button></td>',
-    '        <td>{{ s.turns || 0 }}</td>',
+    '          {{ s.name || s.chat_key }}<i>{{ s.chat_key }}</i>',
+    '          <span class="mem-last" v-if="s.last_text">{{ s.last_text }}</span>',
+    '          <span class="qvq-meta-line" v-if="s.last_ts">{{ relTime(s.last_ts) }}</span></button></td>',
+    '        <td>{{ s.count || 0 }}</td>',
     '        <td class="sess-acts">',
     '          <button type="button" class="prov-act" @click="open(s)">{{ t("col_detail") }}</button>',
     '        </td>',
@@ -10367,7 +10531,12 @@ window.PageMemory = {
     '        <div class="prov-field">',
     '          <label>{{ t("nav_memory") }} · {{ entries.length }} {{ t("mem_entries_n") }}</label>',
     '          <div v-for="(e, i) in entries" :key="i" class="mem-row">',
-    '            <div class="mem-tx">{{ e.content || e.text }}</div>',
+    '            <div class="mem-tx">{{ e.content || e.text }}',
+    '              <span class="mem-tags">',
+    '                <i class="mem-imp" v-for="n in (e.importance || 0)" :key="n"></i>',
+    '                <code v-if="e.category">{{ e.category }}</code>',
+    '                <span class="qvq-meta-line" v-if="e.ts">{{ relTime(e.ts) }}</span>',
+    '              </span></div>',
     '            <button type="button" class="prov-act danger" @click="del(e)">×</button>',
     '          </div>',
     '          <div v-if="!entries.length" class="qvq-empty">-</div>',
@@ -10453,7 +10622,14 @@ window.PageMemory = {
     '</div>',
   ].join(""),
 };
-</script><script>/* 知识库：搜索 / 条目卡片 / 新建编辑 / AI 整理 / 导入导出 / 批量管理 */
+</script><script>/* 知识库：搜索 / 作用域视图（全部·全局·平台·会话）/ 条目卡片 / 新建编辑 / AI 整理 / 导入导出 / 批量管理
+   作用域判定（对齐后端 knowledge.py owner 语义）：owner 空/"global"=全局；命中已知平台名=平台；其余=chat_key（会话私有）
+   平台名来源：条目 owner 收集（无冒号裸值，chat_key 恒含冒号）∪ /api/qvq/sessions 的 accounts.adapters[].platform
+   i18n（新键，待主线补入 i18n.js）: kb_scope_all=全部, kb_scope_global=全局, kb_scope_platform=平台,
+     kb_scope_session=会话, kb_scope_group_platforms=平台作用域, kb_scope_group_sessions=会话作用域,
+     kb_scope_left_all=全部, kb_scope_platform_ph=选择平台，可输入新平台名, kb_scope_session_ph=选择会话，可输入 chat_key,
+     kb_scope_global_hint=对所有会话可见, kb_scope_empty=该作用域暂无条目
+   样式（待主线补进 app.css）: .kb-scope-pill 条目卡作用域小徽标（现以内联样式兜底）；左列复用 .mem-sess 行样式 */
 window.PageKnowledge = {
   name: "PageKnowledge",
   data() {
@@ -10461,8 +10637,12 @@ window.PageKnowledge = {
       q: "",
       entries: [],
       stats: {},
+      scopeTab: "all",
+      scopeSel: "",
+      sessions: [],
+      adapters: [],
       drawer: false,
-      form: { id: "", title: "", content: "", source: "", triggers: "", scope: "", priority: 0, isNew: true },
+      form: { id: "", title: "", content: "", source: "", triggers: "", scopeKind: "global", scopePlatform: "", scopeSession: "", priority: 0, isNew: true },
       formErr: "",
       busy: false,
       loading: false,
@@ -10474,11 +10654,87 @@ window.PageKnowledge = {
   },
   computed: {
     allPicked() {
-      return this.entries.length > 0 && this.picked.length === this.entries.length;
+      return this.shownEntries.length > 0 && this.picked.length === this.shownEntries.length;
+    },
+    /* 已知平台名集合：条目 owner 无冒号裸值 ∪ adapters 的 platform（chat_key 恒含冒号，不会误收） */
+    platforms() {
+      var set = {};
+      this.adapters.forEach(function (a) {
+        var p = String((a && a.platform) || "").trim();
+        if (p) set[p] = 1;
+      });
+      this.entries.forEach(function (e) {
+        var o = String(e.owner || "");
+        if (!o || o === "global") return;
+        if (o.indexOf(":") < 0) set[o] = 1;
+      });
+      return Object.keys(set).sort();
+    },
+    sessMap() {
+      var m = {};
+      this.sessions.forEach(function (s) {
+        if (s && s.chat_key) m[s.chat_key] = s.name || "";
+      });
+      return m;
+    },
+    shownEntries() {
+      var self = this;
+      var tab = this.scopeTab;
+      var sel = this.scopeSel;
+      if (tab === "all") return this.entries;
+      return this.entries.filter(function (e) {
+        var k = self.scopeKindOf(e.owner);
+        if (tab === "global") return k === "global";
+        if (tab === "platform") return k === "platform" && (!sel || e.owner === sel);
+        if (tab === "session") return k === "session" && (!sel || e.owner === sel);
+        return true;
+      });
+    },
+    /* 左列分组行：仅当前 tab 有条目的作用域，头部一行"全部"清子过滤 */
+    scopeGroups() {
+      var self = this;
+      var tab = this.scopeTab;
+      if (tab !== "platform" && tab !== "session") return [];
+      var counts = {};
+      var total = 0;
+      this.entries.forEach(function (e) {
+        if (self.scopeKindOf(e.owner) !== tab) return;
+        total += 1;
+        counts[e.owner] = (counts[e.owner] || 0) + 1;
+      });
+      var rows = [{ key: "", n: total, label: t("kb_scope_left_all") }];
+      Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; }).forEach(function (key) {
+        rows.push({ key: key, n: counts[key], label: self.scopeLabelOf(key) });
+      });
+      return rows;
+    },
+    colsStyle() {
+      if (this.scopeTab === "platform" || this.scopeTab === "session")
+        return "display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px;align-items:start";
+      return "";
+    },
+    sideTitle() {
+      return t(this.scopeTab === "platform" ? "kb_scope_group_platforms" : "kb_scope_group_sessions");
+    },
+    scopeKindOpts() {
+      return [
+        { v: "global", k: "kb_scope_global" },
+        { v: "platform", k: "kb_scope_platform" },
+        { v: "session", k: "kb_scope_session" },
+      ];
+    },
+    platformOptions() {
+      return this.platforms.map(function (p) { return { label: p, value: p }; });
+    },
+    sessionOptions() {
+      return this.sessions.filter(function (s) { return s && s.chat_key; }).map(function (s) {
+        return { label: s.name || s.chat_key, value: s.chat_key };
+      });
     },
   },
   mounted() {
     this.load();
+    this.loadScopes();
   },
   methods: {
     load() {
@@ -10493,8 +10749,46 @@ window.PageKnowledge = {
         });
       });
     },
+    /* 一次请求拿会话名映射与平台名集合（同 PagePlatforms 的 accounts.adapters 通道） */
+    loadScopes() {
+      var self = this;
+      api("/api/qvq/sessions?limit=200").then(function (d) {
+        self.sessions = (d && d.sessions) || [];
+        var accs = d && d.accounts && d.accounts.adapters;
+        self.adapters = Array.isArray(accs) ? accs : [];
+      });
+    },
+    scopeKindOf(owner) {
+      var o = String(owner == null ? "" : owner);
+      if (!o || o === "global") return "global";
+      if (this.platforms.indexOf(o) >= 0) return "platform";
+      return "session";
+    },
+    scopeLabelOf(owner) {
+      var o = String(owner == null ? "" : owner);
+      var kind = this.scopeKindOf(o);
+      if (kind === "global") return t("kb_scope_global");
+      if (kind === "platform") return o;
+      return this.sessMap[o] || o;
+    },
+    pillStyle(kind) {
+      var base = "display:inline-block;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 8px;border:1px solid var(--qvq-bd);border-radius:999px;font-size:11px;line-height:16px;vertical-align:middle;";
+      var tone = kind === "platform"
+        ? "background:var(--qvq-accent-soft);color:var(--qvq-accent);"
+        : kind === "session"
+          ? "background:var(--qvq-bg-s);color:var(--qvq-tx-s);"
+          : "background:transparent;color:var(--qvq-tx-t);";
+      return base + tone;
+    },
+    setScopeTab(v) {
+      this.scopeTab = v;
+      this.scopeSel = "";
+    },
+    pickScope(key) {
+      this.scopeSel = this.scopeSel === key ? "" : key;
+    },
     blank() {
-      return { id: "", title: "", content: "", source: "", triggers: "", scope: "", priority: 0, isNew: true };
+      return { id: "", title: "", content: "", source: "", triggers: "", scopeKind: "global", scopePlatform: "", scopeSession: "", priority: 0, isNew: true };
     },
     openNew() {
       this.form = this.blank();
@@ -10502,13 +10796,17 @@ window.PageKnowledge = {
       this.drawer = true;
     },
     openEdit(e) {
+      var owner = String(e.owner != null ? e.owner : (e.scope || ""));
+      var kind = this.scopeKindOf(owner);
       this.form = {
         id: e.id,
         title: e.title || "",
         content: e.content || "",
         source: e.source || "",
         triggers: (e.triggers || []).join(", "),
-        scope: e.scope || e.owner || "",
+        scopeKind: kind,
+        scopePlatform: kind === "platform" ? owner : "",
+        scopeSession: kind === "session" ? owner : "",
         priority: Number(e.priority) || 0,
         isNew: false,
       };
@@ -10518,11 +10816,15 @@ window.PageKnowledge = {
     save() {
       var self = this;
       this.busy = true;
+      /* 提交映射：全局→""；平台→平台名；会话→chat_key（后端 scope 直通 owner） */
+      var scope = "";
+      if (this.form.scopeKind === "platform") scope = String(this.form.scopePlatform || "").trim();
+      else if (this.form.scopeKind === "session") scope = String(this.form.scopeSession || "").trim();
       var payload = {
         title: this.form.title,
         content: this.form.content,
         source: this.form.source,
-        scope: this.form.scope,
+        scope: scope,
         triggers: this.form.triggers,
         priority: Number(this.form.priority) || 0,
       };
@@ -10604,7 +10906,7 @@ window.PageKnowledge = {
       else this.picked.push(id);
     },
     toggleAll(v) {
-      this.picked = v ? this.entries.map(function (e) { return e.id; }) : [];
+      this.picked = v ? this.shownEntries.map(function (e) { return e.id; }) : [];
     },
     batchDel() {
       var self = this;
@@ -10623,7 +10925,7 @@ window.PageKnowledge = {
     '  <div class="qvq-page-head">',
     '    <div>',
     '      <div class="qvq-page-title">{{ t("nav_knowledge") }}</div>',
-    '      <div class="qvq-page-sub">{{ entries.length }} {{ t("kb_entries") }}</div>',
+    '      <div class="qvq-page-sub">{{ scopeTab === "all" ? entries.length : shownEntries.length + " / " + entries.length }} {{ t("kb_entries") }}</div>',
     '    </div>',
     '    <div class="qvq-cfg-tools">',
     '      <n-input v-model:value="q" size="small" clearable :placeholder="t(\'search_ph\')"',
@@ -10638,34 +10940,55 @@ window.PageKnowledge = {
     '    </div>',
     '  </div>',
     '<settings-section group="kb" :title="t(&quot;ss_kb&quot;)"/>',
+    '  <div class="kb-scope-bar" style="display:flex;align-items:center;gap:10px;margin:0 0 14px">',
+    '    <div class="qvq-seg">',
+    '      <button type="button" :class="{ on: scopeTab === \'all\' }" @click="setScopeTab(\'all\')">{{ t("kb_scope_all") }}</button>',
+    '      <button type="button" :class="{ on: scopeTab === \'global\' }" @click="setScopeTab(\'global\')">{{ t("kb_scope_global") }}</button>',
+    '      <button type="button" :class="{ on: scopeTab === \'platform\' }" @click="setScopeTab(\'platform\')">{{ t("kb_scope_platform") }}</button>',
+    '      <button type="button" :class="{ on: scopeTab === \'session\' }" @click="setScopeTab(\'session\')">{{ t("kb_scope_session") }}</button>',
+    '    </div>',
+    '    <span class="qvq-meta-line" v-if="scopeSel">{{ scopeLabelOf(scopeSel) }}</span>',
+    '  </div>',
     '  <div class="kb-batch-bar" v-if="batchMode">',
     '    <n-checkbox :checked="allPicked" @update:checked="toggleAll">{{ t("batch_select_all") }}</n-checkbox>',
-    '    <span class="qvq-meta-line">{{ picked.length }} / {{ entries.length }}</span>',
+    '    <span class="qvq-meta-line">{{ picked.length }} / {{ shownEntries.length }}</span>',
     '    <n-button size="tiny" type="error" :disabled="!picked.length" :loading="batchBusy" @click="batchDel">',
     '      {{ t("batch_delete") }}</n-button>',
     '    <span class="qvq-meta-line" v-if="!picked.length">{{ t("batch_none_selected") }}</span>',
     '  </div>',
     '  <div class="qvq-loading" v-if="loading"><i></i>{{ t("loading") }}</div>',
-    '  <div class="prov-grid" v-if="!loading">',
-    '    <article v-for="e in entries" :key="e.id" class="prov-card"',
-    '             :class="{ \'is-picked\': batchMode && picked.indexOf(e.id) >= 0 }"',
-    '             @click="batchMode && togglePick(e.id)">',
-    '      <header class="prov-head">',
-    '        <div class="prov-title"><span class="prov-name">{{ e.title }}</span></div>',
-    '        <n-checkbox v-if="batchMode" :checked="picked.indexOf(e.id) >= 0" @click.stop',
-    '                    @update:checked="function(){ togglePick(e.id); }"/>',
-    '      </header>',
-    '      <div class="tool-desc">{{ (e.content || "").slice(0, 140) }}</div>',
-    '      <footer class="prov-foot">',
-    '        <span class="prov-count">{{ e.scope || "global" }}</span>',
-    '        <span class="prov-acts">',
-    '          <button type="button" class="prov-act" @click.stop="openEdit(e)">{{ t("edit") }}</button>',
-    '          <button type="button" class="prov-act danger" @click.stop="del(e)">{{ t("chat_delete") }}</button>',
-    '        </span>',
-    '      </footer>',
-    '    </article>',
+    '  <div v-if="!loading" :style="colsStyle">',
+    '    <aside class="prov-card" v-if="scopeTab === \'platform\' || scopeTab === \'session\'" style="padding:10px 8px">',
+    '      <div style="padding:2px 9px 6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.9px;color:var(--qvq-tx-t)">{{ sideTitle }}</div>',
+    '      <button v-for="g in scopeGroups" :key="g.key" type="button" class="mem-sess"',
+    '              :class="{ on: scopeSel === g.key }" @click="pickScope(g.key)">',
+    '        <span class="nm">{{ g.label }}</span>',
+    '        <span class="mt">{{ g.n }}</span>',
+    '      </button>',
+    '    </aside>',
+    '    <div>',
+    '      <div class="prov-grid">',
+    '        <article v-for="e in shownEntries" :key="e.id" class="prov-card"',
+    '                 :class="{ \'is-picked\': batchMode && picked.indexOf(e.id) >= 0 }"',
+    '                 @click="batchMode && togglePick(e.id)">',
+    '          <header class="prov-head">',
+    '            <div class="prov-title"><span class="prov-name">{{ e.title }}</span></div>',
+    '            <n-checkbox v-if="batchMode" :checked="picked.indexOf(e.id) >= 0" @click.stop',
+    '                        @update:checked="function(){ togglePick(e.id); }"/>',
+    '          </header>',
+    '          <div class="tool-desc">{{ (e.content || "").slice(0, 140) }}</div>',
+    '          <footer class="prov-foot">',
+    '            <span class="prov-count"><span class="kb-scope-pill" :style="pillStyle(scopeKindOf(e.owner))">{{ scopeLabelOf(e.owner) }}</span></span>',
+    '            <span class="prov-acts">',
+    '              <button type="button" class="prov-act" @click.stop="openEdit(e)">{{ t("edit") }}</button>',
+    '              <button type="button" class="prov-act danger" @click.stop="del(e)">{{ t("chat_delete") }}</button>',
+    '            </span>',
+    '          </footer>',
+    '        </article>',
+    '      </div>',
+    '      <div v-if="!shownEntries.length" class="qvq-empty">{{ scopeTab === "all" ? "-" : t("kb_scope_empty") }}</div>',
+    '    </div>',
     '  </div>',
-    '  <div v-if="!entries.length" class="qvq-empty">-</div>',
     '  <n-drawer v-model:show="drawer" :width="480" placement="right">',
     '    <n-drawer-content :title="form.isNew ? t(\'kb_add\') : t(\'kb_edit\')" closable>',
     '      <div class="prov-form">',
@@ -10684,7 +11007,15 @@ window.PageKnowledge = {
     '        <div class="prov-grid2">',
     '          <div class="prov-field">',
     '            <label>{{ t("kb_scope_label") }}</label>',
-    '            <n-input v-model:value="form.scope" :placeholder="t(\'kb_scope_ph\')"/>',
+    '            <div class="qvq-seg" style="margin:2px 0 8px">',
+    '              <button type="button" v-for="k in scopeKindOpts" :key="k.v"',
+    '                      :class="{ on: form.scopeKind === k.v }" @click="form.scopeKind = k.v">{{ t(k.k) }}</button>',
+    '            </div>',
+    '            <n-select v-if="form.scopeKind === \'platform\'" v-model:value="form.scopePlatform" size="small"',
+    '                      tag filterable clearable :options="platformOptions" :placeholder="t(\'kb_scope_platform_ph\')"/>',
+    '            <n-select v-else-if="form.scopeKind === \'session\'" v-model:value="form.scopeSession" size="small"',
+    '                      tag filterable :options="sessionOptions" :placeholder="t(\'kb_scope_session_ph\')"/>',
+    '            <div class="qvq-meta-line" v-else>{{ t("kb_scope_global_hint") }}</div>',
     '          </div>',
     '          <div class="prov-field">',
     '            <label>{{ t("kb_priority_label") }}</label>',

@@ -471,6 +471,10 @@
         case "/api/qvq/inbox": return json(INBOX);
         case "/api/qvq/handover": return json(HANDOVER ? Object.assign({}, HANDOVER) : { active: false });
         case "/api/qvq/memory": return json({
+          scopes: SESSIONS.slice(0, 6).map(function (s, i) {
+            return { chat_key: s.chat_key, count: 2 + (i % 4), last_ts: NOW - (i + 1) * 3600,
+                     last_text: ["喜欢简洁回复", "项目用 uv 管理", "每周五交周报", "猫娘语气但技术准确", "Windows 环境", "群规禁止广告"][i % 6] };
+          }),
           entries: [
             { content: "主人常用 Windows + uv，跑测试用 uv run pytest", ts: NOW - 86400 },
             { content: "喜欢回复带点猫娘语气，但技术内容要准确", ts: NOW - 172800 },

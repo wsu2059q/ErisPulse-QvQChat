@@ -15,17 +15,74 @@ window.PagePersonas = {
       busy: false,
       pvOpen: false,
       pv: null,
+      bindings: {},
+      sessionNames: {},
     };
   },
   mounted() {
     this.load();
+    this.loadNames();
+  },
+  computed: {
+    bindGroups() {
+      // 反查表：persona_id → [{key, level, label}]；level 由绑定键形态判定
+      var names = this.sessionNames;
+      var out = {};
+      Object.keys(this.bindings).forEach(function (key) {
+        var pid = this.bindings[key];
+        var level = "chat";
+        if (key.indexOf("@") === 0) level = "account";
+        else if (/:\*$/.test(key)) level = "platform";
+        var label = key;
+        if (level === "platform") label = key.replace(/:\*$/, "");
+        else if (names[key]) label = names[key];
+        (out[pid] = out[pid] || []).push({ key: key, level: level, label: label });
+      }, this);
+      return out;
+    },
   },
   methods: {
     load() {
       var self = this;
       return api("/api/qvq/personas").then(function (d) {
         self.personas = (d && d.personas) || [];
+        self.bindings = (d && d.bindings) || {};
       });
+    },
+    loadNames() {
+      var self = this;
+      return api("/api/qvq/sessions?limit=200").then(function (d) {
+        var map = {};
+        ((d && d.sessions) || []).forEach(function (s) {
+          map[s.chat_key] = s.name || s.chat_key;
+        });
+        self.sessionNames = map;
+      });
+    },
+    bindLevelLabel(level) {
+      return t(level === "platform" ? "bind_level_platform"
+        : level === "account" ? "bind_level_account" : "bind_level_session");
+    },
+    openSession(key) {
+      QvQ.store.pendingChat = key;
+      QvQ.store.page = "chat";
+    },
+    chatWith(p) {
+      // 试聊该人格：新建 dashboard 沙箱会话、命名并绑定，跳对话页
+      var self = this;
+      api("/api/qvq/sessions/create", "POST", {})
+        .then(function (d) {
+          var key = (d && d.chat_key) || "";
+          if (!key) return;
+          return api("/api/qvq/session/rename", "POST", {
+            chat_key: key, name: t("sandbox_with").replace("{n}", p.name || p.id),
+          }).then(function () {
+            return api("/api/qvq/personas/bind", "POST", { chat_key: key, persona: p.id });
+          }).then(function () {
+            QvQ.store.pendingChat = key;
+            QvQ.store.page = "chat";
+          });
+        });
     },
     openPreview(p) {
       this.pv = p;
@@ -109,9 +166,15 @@ window.PagePersonas = {
     '        <span class="persona-open" :title="t(&quot;col_preview&quot;)">›</span>',
     '      </header>',
     '      <div class="tool-desc">{{ (p.system || "").slice(0, 120) }}</div>',
+    '      <div class="persona-binds" v-if="(bindGroups[p.id] || []).length">',
+    '        <button v-for="b in bindGroups[p.id]" :key="b.key" type="button" class="persona-bind"',
+    '                :title="b.key" @click.stop="openSession(b.key)">',
+    '          <i class="persona-bind-lv">{{ bindLevelLabel(b.level) }}</i>{{ b.label }}</button>',
+    '      </div>',
+    '      <div class="qvq-meta-line" v-else style="margin:0 0 8px">{{ t("persona_unbound") }}</div>',
     '      <footer class="prov-foot">',
-    '        <span class="prov-count">{{ (p.opening || []).length ? "opening ✓" : "" }}</span>',
     '        <span class="prov-acts">',
+    '          <button type="button" class="prov-act" @click.stop="chatWith(p)">{{ t("persona_chat") }}</button>',
     '          <button type="button" class="prov-act" @click.stop="openEdit(p)">{{ t("edit") }}</button>',
     '          <button type="button" class="prov-act danger" @click.stop="del(p)">{{ t("chat_delete") }}</button>',
     '        </span>',

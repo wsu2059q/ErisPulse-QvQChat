@@ -232,10 +232,15 @@ class MemoryStore:
         scopes: list[dict] = []
         for key in self.sdk.storage.keys():
             if isinstance(key, str) and key.startswith(MEM_PREFIX):
+                chat_key = key[len(MEM_PREFIX):]
+                entries = self.entries(chat_key)
+                last = entries[-1] if entries else {}
                 scopes.append(
                     {
-                        "chat_key": key[len(MEM_PREFIX):],
-                        "count": len(self.entries(key[len(MEM_PREFIX):])),
+                        "chat_key": chat_key,
+                        "count": len(entries),
+                        "last_ts": float(last.get("ts") or 0),
+                        "last_text": str(last.get("content") or "")[:80],
                     }
                 )
         scopes.sort(key=lambda s: s["chat_key"])

@@ -31,10 +31,32 @@ window.PageMemory = {
     this.loadingSess = true;
     api("/api/qvq/sessions?limit=200").then(function (d) {
       self.loadingSess = false;
-      self.sessions = (d && d.sessions) || [];
+      var rows = (d && d.sessions) || [];
+      // 概要注入：条数 / 最近一条 / 最后写入（GET /api/qvq/memory 无 chat_key 返回 scopes）
+      api("/api/qvq/memory").then(function (m) {
+        var byKey = {};
+        ((m && m.scopes) || []).forEach(function (s) { byKey[s.chat_key] = s; });
+        rows.forEach(function (s) {
+          var sc = byKey[s.chat_key] || {};
+          s.count = sc.count || 0;
+          s.last_text = sc.last_text || "";
+          s.last_ts = sc.last_ts || 0;
+        });
+        rows.sort(function (a, b) { return (b.last_ts || 0) - (a.last_ts || 0); });
+        self.sessions = rows;
+      });
     });
   },
   methods: {
+    relTime(ts) {
+      if (!ts) return "";
+      var diff = Date.now() / 1000 - Number(ts);
+      if (diff < 90) return t("ts_just_now");
+      if (diff < 3600) return t("ts_min_ago").replace("{n}", String(Math.floor(diff / 60)));
+      var d = new Date(Number(ts) * 1000);
+      var p = function (n) { return (n < 10 ? "0" : "") + n; };
+      return (d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    },
     open(s) {
       var self = this;
       this.active = s;
@@ -120,14 +142,16 @@ window.PageMemory = {
     '  <table class="qvq-table">',
     '    <thead><tr>',
     '      <th>{{ t("recent_sessions") }}</th>',
-    '      <th style="width:70px">{{ t("col_count") }}</th>',
+    '      <th style="width:70px">{{ t("mem_entries_n") }}</th>',
     '      <th style="width:110px"></th>',
     '    </tr></thead>',
     '    <tbody>',
     '      <tr v-for="s in shownSessions" :key="s.chat_key">',
     '        <td><button type="button" class="sess-name" @click="open(s)">',
-    '          {{ s.name || s.chat_key }}<i>{{ s.chat_key }}</i></button></td>',
-    '        <td>{{ s.turns || 0 }}</td>',
+    '          {{ s.name || s.chat_key }}<i>{{ s.chat_key }}</i>',
+    '          <span class="mem-last" v-if="s.last_text">{{ s.last_text }}</span>',
+    '          <span class="qvq-meta-line" v-if="s.last_ts">{{ relTime(s.last_ts) }}</span></button></td>',
+    '        <td>{{ s.count || 0 }}</td>',
     '        <td class="sess-acts">',
     '          <button type="button" class="prov-act" @click="open(s)">{{ t("col_detail") }}</button>',
     '        </td>',
@@ -143,7 +167,12 @@ window.PageMemory = {
     '        <div class="prov-field">',
     '          <label>{{ t("nav_memory") }} · {{ entries.length }} {{ t("mem_entries_n") }}</label>',
     '          <div v-for="(e, i) in entries" :key="i" class="mem-row">',
-    '            <div class="mem-tx">{{ e.content || e.text }}</div>',
+    '            <div class="mem-tx">{{ e.content || e.text }}',
+    '              <span class="mem-tags">',
+    '                <i class="mem-imp" v-for="n in (e.importance || 0)" :key="n"></i>',
+    '                <code v-if="e.category">{{ e.category }}</code>',
+    '                <span class="qvq-meta-line" v-if="e.ts">{{ relTime(e.ts) }}</span>',
+    '              </span></div>',
     '            <button type="button" class="prov-act danger" @click="del(e)">×</button>',
     '          </div>',
     '          <div v-if="!entries.length" class="qvq-empty">-</div>',

@@ -3792,3 +3792,59 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
 .orch-move .prov-act:disabled { opacity: 0.3; cursor: default; }
 .stor-clear-danger { color: var(--qvq-er); }
 .plat-ident-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+
+/* ---- 记忆列表概要与条目元信息 ---- */
+.mem-last {
+  display: block;
+  color: var(--qvq-tx-t);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 340px;
+}
+.mem-tags { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; vertical-align: middle; }
+.mem-imp {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--qvq-accent);
+  display: inline-block;
+}
+.mem-tags code { font-size: 11px; color: var(--qvq-tx-s); }
+
+/* ---- 试聊会话（dashboard 沙箱）标识与人格 chip ---- */
+.chat-subtag.sb { background: var(--qvq-accent-soft); color: var(--qvq-accent); }
+.chat-persona-chip {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font-size: 12px;
+  border-radius: var(--qvq-r-pill);
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  cursor: pointer;
+}
+.chat-persona-chip:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
+.persona-binds { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.persona-bind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 4px;
+  font-size: 12px;
+  border-radius: var(--qvq-r-pill);
+  border: 1px solid var(--qvq-bd);
+  background: var(--qvq-surface);
+  color: var(--qvq-tx-s);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+}
+.persona-bind:hover { color: var(--qvq-accent); border-color: var(--qvq-accent); }
+.persona-bind-lv {
+  font-style: normal;
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-accent-soft);
+  color: var(--qvq-accent);
+}
