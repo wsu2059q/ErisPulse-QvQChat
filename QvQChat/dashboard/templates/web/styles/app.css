@@ -50,6 +50,18 @@ html.qvq-bg-image {
   --qvq-bg-s: color-mix(in srgb, #eef0f3 62%, transparent);
   --qvq-surface: color-mix(in srgb, #ffffff 82%, transparent);
 }
+/* 亮色 + 壁纸：深色壁纸会从半透明卡片里渗出来把浅卡染成脏灰——
+   背景层加白罩整体提亮，卡片近实色只留轻微透感（暗色模式透感不变） */
+html.qvq-bg-image[data-theme="light"] .qvq-bg-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(246, 247, 249, 0.62);
+}
+html.qvq-bg-image[data-theme="light"] {
+  --qvq-bg-s: color-mix(in srgb, #eef0f3 86%, transparent);
+  --qvq-surface: color-mix(in srgb, #ffffff 93%, transparent);
+}
 html.qvq-bg-image[data-theme="dark"] {
   --qvq-bg: color-mix(in srgb, #0f1115 28%, transparent);
   --qvq-bg-s: color-mix(in srgb, #161a20 62%, transparent);
@@ -70,6 +82,12 @@ html.qvq-bg-image[data-theme="dark"] {
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
+}
+html[data-theme="light"] .qvq-bg-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(246, 247, 249, 0.62);
 }
 .qvq-bg-layer.qvq-bg-fallback {
   background: #0f1115;
