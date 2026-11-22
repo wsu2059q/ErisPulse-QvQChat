@@ -27,6 +27,7 @@ window.PageOverview = {
       inboxOpen: false,
       busyOps: false,
       tip: null,
+      ecoPanels: [],
     };
   },
   computed: {
@@ -38,6 +39,16 @@ window.PageOverview = {
       return n;
     },
     takeovers() { return (this.status && this.status.takeovers) || 0; },
+    ecoCards() {
+      // 生态卡区：模块 panel.cards 平铺（只读展示）
+      var out = [];
+      (this.ecoPanels || []).forEach(function (m) {
+        (m.cards || []).forEach(function (c) {
+          out.push({ module: m.module, title: c.title, text: c.text, icon: c.icon || "" });
+        });
+      });
+      return out;
+    },
     slot() {
       var h = new Date().getHours();
       if (h < 6) return "late";
@@ -163,6 +174,9 @@ window.PageOverview = {
       try {
         if (localStorage.getItem("qvq_onboard_done")) { this.onboardOpen = false; }
       } catch (e) {}
+      api("/api/qvq/eco_panel").then(function (d) {
+        self.ecoPanels = (d && d.panels) || [];
+      });
       api("/api/qvq/onboarding").then(function (d) {
         var mods = (d && d.modules) || [];
         if (!mods.length) { self.onboard = null; return; }
@@ -495,6 +509,15 @@ window.PageOverview = {
     '      <span class="qvq-row-meta">{{ inboxKind(e) }} · {{ fmtDate(e.ts) }}</span>',
     '    </div>',
     '  </n-card>',
+    '    <n-card size="small" class="qvq-glass-card" v-if="ecoCards.length">',
+    '      <div class="qvq-card-head"><span class="qvq-card-title">{{ t("eco_cards_title") }}</span></div>',
+    '      <div class="eco-card-row">',
+    '        <div v-for="(c, i) in ecoCards" :key="i" class="eco-card">',
+    '          <div class="eco-card-title"><code>{{ c.module }}</code><b>{{ c.title }}</b></div>',
+    '          <div class="eco-card-text" v-if="c.text">{{ c.text }}</div>',
+    '        </div>',
+    '      </div>',
+    '    </n-card>',
     '  <div class="qvq-home-grid">',
     '    <n-card size="small" class="qvq-glass-card qvq-chart-card">',
     '      <div class="qvq-card-head">',

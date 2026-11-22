@@ -15,6 +15,10 @@ window.PageKnowledge = {
       stats: {},
       scopeTab: "all",
       scopeSel: "",
+      testOpen: false,
+      testQuery: "",
+      testBusy: false,
+      testHits: [],
       sessions: [],
       adapters: [],
       drawer: false,
@@ -220,6 +224,16 @@ window.PageKnowledge = {
       var self = this;
       api("/api/qvq/kb/delete", "POST", { id: e.id }).then(function () { self.load(); });
     },
+    runTest() {
+      // 检索测试：与对话链路同一打分（knowledge.search），验证条目能否命中
+      var self = this;
+      if (!this.testQuery.trim()) return;
+      this.testBusy = true;
+      api("/api/qvq/kb/search", "POST", { query: this.testQuery.trim() }).then(function (r) {
+        self.testBusy = false;
+        self.testHits = (r && r.hits) || [];
+      });
+    },
     /* AI 整理：cheap 模型分析条目 → 合并/补触发词/删冗余，后端直接应用并出报告 */
     organizeRun() {
       var self = this;
@@ -306,6 +320,7 @@ window.PageKnowledge = {
     '      <n-input v-model:value="q" size="small" clearable :placeholder="t(\'search_ph\')"',
     '               style="width:200px" @update:value="load"/>',
     '      <n-button size="small" :loading="organizing" @click="organizeRun">{{ t("organize_run") }}</n-button>',
+    '      <n-button size="small" @click="testOpen = true">{{ t("kb_test_btn") }}</n-button>',
     '      <n-button size="small" @click="exportKb">{{ t("kb_export") }}</n-button>',
     '      <n-button size="small" @click="pickImport">{{ t("kb_import") }}</n-button>',
     '      <n-button size="small" :type="batchMode ? \'warning\' : \'default\'" @click="batchMode = !batchMode; picked = []">',
@@ -407,5 +422,28 @@ window.PageKnowledge = {
     '    </n-drawer-content>',
     '  </n-drawer>',
     '</div>',
+    '<n-modal v-model:show="testOpen" preset="card" class="qvq-modal-card" style="max-width:520px"',
+    '           :title="t(&quot;kb_test_btn&quot;)" :bordered="false">',
+    '      <div class="prov-form">',
+    '        <div class="prov-field">',
+    '          <label>{{ t("kb_test_ph") }}</label>',
+    '          <n-input v-model:value="testQuery" :placeholder="t(&quot;kb_test_ph&quot;)"',
+    '                   @keyup.enter="runTest"/>',
+    '        </div>',
+    '        <n-button size="small" type="primary" :loading="testBusy" @click="runTest">{{ t("kb_test_run") }}</n-button>',
+    '        <div class="kb-test-hits" v-if="testHits.length">',
+    '          <div v-for="h in testHits" :key="h.id" class="kb-test-hit">',
+    '            <b>{{ h.title }}</b><span class="kb-test-score">{{ h.score }}</span>',
+    '            <div class="qvq-meta-line">{{ h.snippet }}</div>',
+    '          </div>',
+    '        </div>',
+    '        <div class="qvq-empty" v-if="!testBusy && testQuery && !testHits.length">{{ t("kb_test_none") }}</div>',
+    '      </div>',
+    '      <template #footer>',
+    '        <div class="qvq-modal-foot">',
+    '          <n-button size="small" @click="testOpen = false">{{ t("cancel") }}</n-button>',
+    '        </div>',
+    '      </template>',
+    '    </n-modal>',
   ].join(""),
 };

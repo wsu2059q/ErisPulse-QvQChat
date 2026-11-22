@@ -541,6 +541,23 @@
             } },
             values: { voice: "xiaoxiao", rate: 1, max_chars: 80 } },
         ] });
+        case "/api/qvq/kb/search": {
+          var _tq = parseBody(opts).query || "";
+          var _hits = KB.filter(function (e) {
+            return (_tq && (e.title + e.content).toLowerCase().indexOf(_tq.toLowerCase().slice(0, 4)) >= 0);
+          }).slice(0, 5).map(function (e, i) {
+            return { id: e.id, title: e.title, source: e.source || "", snippet: String(e.content || "").slice(0, 80), score: 12 - i * 3 };
+          });
+          return json({ hits: _hits });
+        }
+        case "/api/qvq/eco_panel": return json({ panels: [
+          { module: "QvQMemes", cards: [
+            { title: "梗图库", text: "已收录 142 张梗图 · 最近 7 天新增 6 张" },
+            { title: "热梗指数", text: "「贴贴」本周热度 +18%" },
+          ], actions: [
+            { label: "打开梗图库", kind: "url", target: "https://example.com/memes" },
+          ] },
+        ] });
         case "/api/qvq/extensions": return json({ extensions: [
           { module: "QvQMemes", personas: 0, schemas: 3, skills: 0, knowledge: 0, prompts: 1,
             details: { schemas: ["qvq_media", "meme_recall", "sticker_pack"], skills: [], knowledge: [], prompts: [{ text: "用户发图时自动收录新梗图", priority: 2 }], personas: [] } },

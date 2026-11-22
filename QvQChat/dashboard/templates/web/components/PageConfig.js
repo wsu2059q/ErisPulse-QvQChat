@@ -43,6 +43,17 @@ window.PageConfig = {
     }
   },
   computed: {
+    openapiUrl() {
+      return (location.origin || "http://localhost:8080") + "/v1/chat/completions";
+    },
+    openapiCurl() {
+      return [
+        "curl " + this.openapiUrl + " \\",
+        '  -H "Content-Type: application/json" \\',
+        '  -H "Authorization: Bearer <view_token>" \\',
+        "  -d '{\"model\": \"auto\", \"messages\": [{\"role\": \"user\", \"content\": \"你好\"}]}'",
+      ].join("\n");
+    },
     same() {
       return function (a, b) {
         if (a === b) return true;
@@ -92,6 +103,13 @@ window.PageConfig = {
     },
   },
   methods: {
+    copyOpenapi() {
+      var self = this;
+      navigator.clipboard.writeText(this.openapiUrl).then(function () {
+        self.savedHint = t("copied");
+        setTimeout(function () { self.savedHint = ""; }, 1600);
+      });
+    },
     toDraft(field, value) {
       var w = field.widget || "text";
       if (w === "model_map") {
@@ -312,6 +330,18 @@ window.PageConfig = {
     '      <section id="doc-backup" class="doc-sec cfg-backup">',
     '        <h2 class="doc-sec-title"><span>{{ t("nav_backup") }}</span></h2>',
     '        <backup-panel/>',
+    '      </section>',
+    '      <section id="doc-openapi" class="doc-sec cfg-backup">',
+    '        <h2 class="doc-sec-title"><span>{{ t("openapi_title") }}</span></h2>',
+    '        <div class="openapi-card">',
+    '          <div class="openapi-row">',
+    '            <span class="nm">POST</span>',
+    '            <code class="openapi-url">{{ openapiUrl }}</code>',
+    '            <button type="button" class="prov-act" @click="copyOpenapi">{{ t("copy") }}</button>',
+    '          </div>',
+    '          <div class="qvq-meta-line" style="margin:8px 0">{{ t("openapi_auth_hint") }}</div>',
+    '          <pre class="stor-pre">{{ openapiCurl }}</pre>',
+    '        </div>',
     '      </section>',
     '      <div v-if="!groups.length" class="qvq-empty">{{ t("settings_no_result") }}</div>',
     '    </div>',

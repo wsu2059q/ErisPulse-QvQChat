@@ -293,6 +293,12 @@ class ConfigApiMixin:
             "extensions": self.main.eco.extensions_status(),
         }
 
+    async def eco_panel_get(self, request):
+        """生态模块贡献的面板卡与快捷动作（概览卡区 + 快速跳转动作组）。"""
+        eco = getattr(self.main, "eco", None)
+        items = eco.external_panel() if eco is not None and hasattr(eco, "external_panel") else []
+        return {"panels": items}
+
     async def onboarding_get(self, request):
         """初始化引导数据：哪些生态模块贡献了「使用建议」+ 当前注入开关状态。"""
         eco = getattr(self.main, "eco", None)

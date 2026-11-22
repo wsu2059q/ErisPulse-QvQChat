@@ -12,6 +12,7 @@ QvQChat 的扩展哲学：**生态模块实现"简单几个约定服务"，就�
 | `qvq_extensions.skills` | `[{name, description, body}]` | 技能清单出现，AI 按 `load_skill` 加载 | 人格页/技能页出现条目 |
 | `qvq_extensions.knowledge` | `[{title, content, triggers?}]` | 知识检索与 Lorebook 触发 | 知识页出现（只读） |
 | `qvq_extensions.memory` | `[{content, importance?, category?, ts?}]` | 记忆召回合并外部条目 | 记忆页可见（只读，不落库） |
+| `qvq_extensions.panel` | `{cards: [{title, text?, icon?}], actions: [{label, kind: "url"/"page", target}]}` | — | 概览页生态卡区 + Ctrl+K 快捷动作（只读，卸载即消失） |
 | `qvq_personas` | 人格字段全量 | 人格可被绑定/切换 | 人格页出现（卸载即删） |
 | `qvq_settings` | `{title}` | — | 设置页插件分区归属标记 |
 | lifecycle 事件 | `sdk.lifecycle.register` | — | 消息/回复/任务事件流可订阅 |
@@ -59,6 +60,8 @@ async def qvq_extensions(self, **_) -> dict:
         "knowledge": [{"title": "我们的服务器", "content": "主服务器 ip 1.2.3.4 ...",
                        "triggers": ["服务器", "宕机"]}],
         "memory": [{"content": "主人偏好用 Markdown 收报告", "importance": 4}],
+        "panel": {"cards": [{"title": "服务器状态", "text": "3 台在线 · 最近巡检通过"}],
+                  "actions": [{"label": "打开监控面板", "kind": "url", "target": "https://..."}]},
     }
 ```
 
@@ -68,6 +71,7 @@ async def qvq_extensions(self, **_) -> dict:
 - **skills**：进入技能清单（`<skills>` 块），AI 命中任务时 `load_skill` 加载正文。同名内置技能优先。
 - **knowledge**：参与被动检索（`kb_auto_inject`）与 Lorebook 触发（`triggers` 命中最近 5 条消息时自动注入）。只读：不落库、冷却不回写。
 - **memory**：**每回合召回时与内置记忆合并打分**（同 `-天数*0.05` 时间惩罚）。只读：不落库、不衰减、用户 forget 不可删外部条目。
+- **panel**：面板展示层——`cards` 渲染在概览页「生态模块」卡区，`actions` 进入 Ctrl+K 快速跳转的动作组（`kind: "url"` 外开链接 / `kind: "page"` 跳面板页面，target 为页面 id）。只读展示，不改变 AI 行为。
 
 ## 三、qvq_personas：贡献人格
 

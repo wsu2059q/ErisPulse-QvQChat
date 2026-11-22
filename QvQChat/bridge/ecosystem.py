@@ -86,6 +86,7 @@ class EcosystemBridge:
         self._ext_memories = []
         self._ext_knowledge = []
         self._ext_prompts = []
+        self._ext_panel = []
         self.main.plugin_settings_catalog = {}
         self._prev_ext_personas = self._ext_personas
         self._ext_personas = {}
@@ -225,6 +226,12 @@ class EcosystemBridge:
                     "module": module,
                     "index": index,
                 })
+        panel = data.get("panel")
+        if isinstance(panel, dict):
+            cards = [c for c in (panel.get("cards") or []) if isinstance(c, dict) and str(c.get("title") or "").strip()]
+            actions = [a for a in (panel.get("actions") or []) if isinstance(a, dict) and str(a.get("label") or "").strip()]
+            if cards or actions:
+                self._ext_panel.append({"module": module, "cards": cards, "actions": actions})
         memory = data.get("memory")
         if isinstance(memory, list):
             for item in memory:
@@ -279,6 +286,10 @@ class EcosystemBridge:
     def external_skills(self) -> list[dict]:
         """模块贡献的技能（只读，source=module:<模块名>）。"""
         return [dict(item, source=f"module:{item['module']}") for item in self._ext_skills]
+
+    def external_panel(self) -> list[dict]:
+        """模块贡献的面板卡与快捷动作（只读；概览页生态卡区 + 快捷面板动作组）。"""
+        return [dict(item) for item in self._ext_panel]
 
     def external_memories(self) -> list[dict]:
         """模块贡献的记忆条目（只读，source=ext:<模块>；不落库不衰减）。"""

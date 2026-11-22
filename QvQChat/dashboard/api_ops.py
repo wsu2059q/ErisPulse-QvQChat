@@ -237,6 +237,15 @@ class OpsApiMixin:
             self.main.audit("kb_delete", {"id": kid, "title": str(entry.get("title") or "")})
         return {"ok": ok, "undo": undo if ok else ""}
 
+    async def kb_search(self, request):
+        """检索测试：复用对话链路同一套打分（kb_auto_inject 同源），面板验证命中。"""
+        body = await request.json()
+        query = str((body or {}).get("query") or "").strip()
+        if not query:
+            return ({"error": "query required"}, 400)
+        hits = self.main.knowledge.search(query, top_k=5)
+        return {"hits": hits}
+
     async def kb_export(self, request):
         return {"entries": self.main.knowledge.export()}
 

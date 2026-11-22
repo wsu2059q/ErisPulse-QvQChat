@@ -65,7 +65,14 @@ window.QuickPanel = {
       seq: 0,
       timer: null,
       docKey: null,
+      ecoPanels: [],
     };
+  },
+  mounted() {
+    var self = this;
+    api("/api/qvq/eco_panel").then(function (d) {
+      self.ecoPanels = (d && d.panels) || [];
+    });
   },
   computed: {
     st() { return QvQ.store; },
@@ -124,7 +131,30 @@ window.QuickPanel = {
           label: t("quick_act_lang"), sub: langNames[nextLang] || nextLang,
           run() { QvQ.setLang(nextLang); },
         },
-      ];
+      ].concat(this.ecoActions);
+    },
+    /* 生态动作：模块 panel.actions（kind=url 外开 / kind=page 跳页） */
+    ecoActions() {
+      var ICONS = this.icons;
+      var out = [];
+      (this.ecoPanels || []).forEach(function (m) {
+        (m.actions || []).forEach(function (a, i) {
+          var label = String(a.label || "").trim();
+          if (!label) return;
+          var kind = String(a.kind || "url");
+          out.push({
+            key: "eco:" + m.module + ":" + i,
+            ico: kind === "page" ? (ICONS.overview || "") : "",
+            label: label,
+            sub: m.module,
+            run() {
+              if (kind === "page") QvQ.store.page = String(a.target || "overview");
+              else window.open(String(a.target || ""), "_blank", "noopener");
+            },
+          });
+        });
+      });
+      return out;
     },
     /* 扁平化结果：↑↓ 跨组连续移动 / Enter 执行都基于它 */
     flat() {
