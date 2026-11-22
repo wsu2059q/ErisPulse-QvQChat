@@ -20,6 +20,36 @@ class MemoryStore:
         self.sdk = sdk
         self.config = config
         self._vectors = None  # 懒构造（engine.vectors），embedding_enabled 时 recall 走语义分支
+        self._external_provider = None  # 生态模块记忆提供者（set_external_provider 注册）
+
+    def set_external_provider(self, fn) -> None:
+        """注册外部记忆提供者（fn() -> list[dict]，形状同内置条目）。
+
+        生态模块经 qvq_extensions 约定的 memory 字段贡献（ecosystem.external_memories）。
+        外部条目只读：不落库、不衰减、不可 forget；recall 时与内置条目合并打分。"""
+        self._external_provider = fn
+
+    def _external_entries(self) -> list[dict]:
+        fn = self._external_provider
+        if fn is None:
+            return []
+        try:
+            raw = fn() or []
+        except Exception:
+            return []
+        out = []
+        for item in raw:
+            if not isinstance(item, dict) or not str(item.get("content") or "").strip():
+                continue
+            out.append({
+                "content": str(item.get("content") or ""),
+                "category": str(item.get("category") or "general"),
+                "importance": max(1, min(5, int(item.get("importance") or 3))),
+                "ts": float(item.get("ts") or 0) or utils.now_ts(),
+                "source": str(item.get("source") or "ext"),
+                "external": True,
+            })
+        return out
 
     def _vectors_if_enabled(self):
         if self._vectors is not None:
@@ -122,7 +152,7 @@ class MemoryStore:
         return removed_total
 
     def recall(self, chat_key: str, query: str = "", limit: int = 0) -> list[dict]:
-        entries = self.entries(chat_key)
+        entries = self.entries(chat_key) + self._external_entries()
         if not entries:
             return []
         now = utils.now_ts()

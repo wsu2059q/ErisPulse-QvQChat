@@ -83,6 +83,7 @@ class EcosystemBridge:
         self._schemas = {}
         self._access = {}
         self._ext_skills = []
+        self._ext_memories = []
         self._ext_knowledge = []
         self._ext_prompts = []
         self.main.plugin_settings_catalog = {}
@@ -224,6 +225,21 @@ class EcosystemBridge:
                     "module": module,
                     "index": index,
                 })
+        memory = data.get("memory")
+        if isinstance(memory, list):
+            for item in memory:
+                if not isinstance(item, dict):
+                    continue
+                content = str(item.get("content") or "").strip()
+                if not content:
+                    continue
+                self._ext_memories.append({
+                    "content": content,
+                    "category": str(item.get("category") or "general"),
+                    "importance": max(1, min(5, int(item.get("importance") or 3))),
+                    "ts": float(item.get("ts") or 0),
+                    "module": module,
+                })
 
     def external_prompts(self) -> list[str]:
         """模块贡献的使用建议（按 priority 降序；注入系统提示，由 AI 自行判断）。
@@ -263,6 +279,10 @@ class EcosystemBridge:
     def external_skills(self) -> list[dict]:
         """模块贡献的技能（只读，source=module:<模块名>）。"""
         return [dict(item, source=f"module:{item['module']}") for item in self._ext_skills]
+
+    def external_memories(self) -> list[dict]:
+        """模块贡献的记忆条目（只读，source=ext:<模块>；不落库不衰减）。"""
+        return [dict(item, source=f"ext:{item['module']}") for item in self._ext_memories]
 
     def external_knowledge(self) -> list[dict]:
         """模块贡献的知识库条目（只读，owner=全局；id 形如 ext:<模块>:<序号>）。"""
