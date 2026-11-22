@@ -103,6 +103,8 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
         return texts.t("tool_error", name="spawn_agent", error=f"{type(e).__name__}: {e}")
     answer = (result.text or "").strip() or "-"
     main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
+    if isinstance(getattr(result, "usage", None), dict) and result.usage:
+        main.record_usage(sub_key, result.usage, getattr(result, "model", ""), origin="subagent")
     ms = int((time.monotonic() - started) * 1000)
     meta = texts.t("subagent_meta", session=sub_key, tools=len(result.tool_trace), ms=ms)
     return answer + "\n\n" + meta
@@ -295,6 +297,8 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
             result = await _job()
         answer = (result.text or "").strip() or "-"
         main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
+        if isinstance(getattr(result, "usage", None), dict) and result.usage:
+            main.record_usage(sub_key, result.usage, getattr(result, "model", ""), origin="subagent")
         status = "done"
         error = ""
     except asyncio.CancelledError:

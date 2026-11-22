@@ -48,9 +48,21 @@ class OpsApiMixin:
         return {"items": items[:limit]}
 
     async def usage_get(self, request):
+        retention = int(getattr(self.main.cfg, "usage_retention_days", 14) or 14)
+        try:
+            days = int(self._query(request, "days") or 14)
+        except ValueError:
+            days = 14
+        days = max(1, min(days, retention or 14))
+        try:
+            flow_days = int(self._query(request, "flow") or 2)
+        except ValueError:
+            flow_days = 2
         return {
-            "days": self.main._usage_history(14),
+            "days": self.main._usage_history(days),
             "limit": int(getattr(self.main.cfg, "daily_token_limit", 0) or 0),
+            "user_limit": int(getattr(self.main.cfg, "user_daily_budget", 0) or 0),
+            "flow": self.main._usage_flow(flow_days) if flow_days > 0 else [],
         }
 
     async def tasks_get(self, request):

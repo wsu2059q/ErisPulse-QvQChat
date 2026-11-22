@@ -291,6 +291,7 @@ class QvQConfig(BaseConfig):
     daily_token_limit: int = field(default=0, metadata=_desc("daily_token_limit", "单日模型 token 总量限额（0 不限），超出后非管理员对话被暂停，次日重置", "usage", 1, "number"))
     usage_retention_days: int = field(default=14, metadata=_desc("usage_retention_days", "用量统计数据保留天数", "usage", 2, "number"))
     audit_limit: int = field(default=5000, metadata=_desc("audit_limit", "工具审计记录保留条数（面板按需分页加载，0 不限制）", "usage", 3, "number"))
+    usage_flow_limit: int = field(default=500, metadata=_desc("usage_flow_limit", "单日逐条调用流水保留条数（超出丢最早；0 关闭流水），用量页明细数据源", "usage", 4, "number"))
 
     kb_auto_inject: bool = field(default=True, metadata=_desc("kb_auto_inject", "对话时自动检索知识库相关片段注入系统提示", "kb", 1, "switch"))
     kb_top_k: int = field(default=2, metadata=_desc("kb_top_k", "自动注入的知识库片段数上限", "kb", 2, "number"))

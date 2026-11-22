@@ -40,9 +40,26 @@
         "onebot11:group:8871": Math.round(toks * 0.16),
         "dashboard:private:web": Math.round(toks * 0.13),
       };
+      entry.by_origin = {
+        chat: { tokens: Math.round(toks * 0.68), calls: Math.round(m * 33) },
+        dashboard: { tokens: Math.round(toks * 0.14), calls: Math.round(m * 7) },
+        task: { tokens: Math.round(toks * 0.09), calls: Math.round(m * 4) },
+        proactive: { tokens: Math.round(toks * 0.06), calls: Math.round(m * 2) },
+        subagent: { tokens: Math.round(toks * 0.03), calls: Math.round(m * 1) },
+      };
+      entry.by_user = { "643319481": Math.round(toks * 0.3), "1049 群": Math.round(toks * 0.45) };
     }
     usageDays.push(entry);
   });
+  var usageFlow = [
+    { ts: NOW - 300, chat_key: "onebot11:group:1049", origin: "chat", model: "deepseek:deepseek-chat", in: 8210, out: 1282 },
+    { ts: NOW - 900, chat_key: "dashboard:private:web", origin: "dashboard", model: "deepseek:deepseek-chat", in: 6900, out: 1617 },
+    { ts: NOW - 2600, chat_key: "onebot11:private:643319481", origin: "chat", model: "deepseek:deepseek-reasoner", in: 12010, out: 3220 },
+    { ts: NOW - 4200, chat_key: "onebot11:group:8871", origin: "chat", model: "siliconflow:Qwen/Qwen2.5-72B-Instruct", in: 5210, out: 1100 },
+    { ts: NOW - 5400, chat_key: "onebot11:group:1049", origin: "task", model: "deepseek:deepseek-chat", in: 1500, out: 620 },
+    { ts: NOW - 6600, chat_key: "onebot11:group:1049", origin: "subagent", model: "deepseek:deepseek-chat", in: 4300, out: 810 },
+    { ts: NOW - 8000, chat_key: "onebot11:group:2210", origin: "proactive", model: "deepseek:deepseek-chat", in: 2600, out: 390 },
+  ];
 
   var CONFIG_DRAFT = {
     bot_name: "小喵", language: "zh-CN", daily_token_limit: 10000000,
@@ -401,7 +418,7 @@
           security_level: "standard", trust_agent: false, takeovers: 0,
           usage_today: { tokens: 1106792, limit: 10000000, calls: 52 },
         });
-        case "/api/qvq/usage": return json({ days: usageDays, limit: 10000000 });
+        case "/api/qvq/usage": return json({ days: usageDays, limit: 10000000, user_limit: 0, flow: usageFlow });
         case "/api/qvq/usage/records": return json({ items: [
           { chat_key: "onebot11:group:1049", name: "ErisPulse 丨 喵之领域已展开", ts: NOW - 600, model: "deepseek:deepseek-chat", tokens: 9492, preview: "收到，这就去测喵。容器里没 ping 命令，换个方式测连通性。B 站通的，状态很健康喵。" },
           { chat_key: "dashboard:private:web", name: "网页对话", ts: NOW - 1800, model: "deepseek:deepseek-chat", tokens: 8517, preview: "好喵，给你个常用的：批量重命名文件小脚本。改下文件夹路径就能跑。" },

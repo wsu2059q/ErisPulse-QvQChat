@@ -3848,3 +3848,39 @@ tr.audit-row:hover td { background: var(--qvq-accent-soft); }
   background: var(--qvq-accent-soft);
   color: var(--qvq-accent);
 }
+
+/* ---- 用量页：来源构成条 / 时间范围 / 流水来源徽标 / 预算进度 ---- */
+.us-origin-bar {
+  height: 10px;
+  border-radius: var(--qvq-r-pill);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.us-origin-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.us-origin-legend .lg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--qvq-tx-s); }
+.us-origin-legend .lg i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.us-origin-pill {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: var(--qvq-r-pill);
+  background: var(--qvq-accent-soft);
+  color: var(--qvq-accent);
+  flex: 0 0 auto;
+}
+.us-origin-pill[data-o="task"] { background: color-mix(in srgb, var(--qvq-cat-1) 16%, transparent); color: var(--qvq-cat-1); }
+.us-origin-pill[data-o="proactive"] { background: color-mix(in srgb, var(--qvq-cat-3) 16%, transparent); color: var(--qvq-cat-3); }
+.us-origin-pill[data-o="subagent"] { background: color-mix(in srgb, var(--qvq-cat-4) 16%, transparent); color: var(--qvq-cat-4); }
+.us-origin-pill[data-o="dashboard"] { background: color-mix(in srgb, var(--qvq-cat-2) 16%, transparent); color: var(--qvq-cat-2); }
+.us-rec .r1 .meta { margin-left: auto; text-align: right; }
+.us-row .us-bar i.warn { background: var(--qvq-warn); }
+.us-io-user {
+  font-size: 10.5px;
+  color: var(--qvq-tx-t);
+  margin-left: 5px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: middle;
+}

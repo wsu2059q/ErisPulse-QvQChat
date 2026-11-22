@@ -792,7 +792,11 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                     trace=result.tool_trace, rounds=getattr(result, "rounds", None),
                     usage=getattr(result, "usage", None),
                     model=(resolved_model or prepared.get("model") or ""),
+                    origin=origin,
                 )
+            elif isinstance(getattr(result, "usage", None), dict) and result.usage:
+# 不落库的一次性调用（定时任务/主动发言/RPC）也要进用量：origin 保留调用语义
+                self.record_usage(chat_key, result.usage, (resolved_model or prepared.get("model") or ""), origin=origin)
             if send and platform:
                 delivered = any(
                     sent_platform == platform and sent_type == detail_type and sent_id == target_id
@@ -879,7 +883,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 prefill=str(prepared["persona"].get("prefill") or ""),
             )
             reply = utils.strip_stray_tags(result.text.strip()) or texts.t("no_reply_content")
-            self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), title_from=text)
+            self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), title_from=text, origin="dashboard")
         return reply
 
     async def run_task(self, task: dict) -> None:

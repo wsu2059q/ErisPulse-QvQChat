@@ -736,6 +736,7 @@ class ConversationService:
         title_from: str = "",
         user_id: str = "",
         skip_append: bool = False,
+        origin: str = "chat",
     ) -> str:
 
         if not skip_append:
@@ -755,7 +756,7 @@ class ConversationService:
             if user_id:
                 usage = dict(usage)
                 usage["user_id"] = user_id
-            self.main.record_usage(chat_key, usage, model)
+            self.main.record_usage(chat_key, usage, model, origin=origin)
         overflow = self.trim_overflow(chat_key, keep=max(2, int(getattr(self.config, "context_limit", 30))))
         if overflow:
             self.main.spawn(self._summarize_overflow(chat_key, overflow))

@@ -584,10 +584,10 @@ class FakeMain:
     def audit(self, tool, detail, ctx=None):
         self.audits.append({"tool": tool, "detail": detail})
 
-    def record_usage(self, chat_key, usage, model=""):
+    def record_usage(self, chat_key, usage, model="", origin=""):
         from QvQChat.Main import Main
 
-        Main.record_usage(self, chat_key, usage, model)
+        Main.record_usage(self, chat_key, usage, model, origin=origin)
 
     def _usage_today(self):
         from QvQChat.Main import Main
@@ -598,6 +598,16 @@ class FakeMain:
         from QvQChat.Main import Main
 
         Main._prune_usage(self, today)
+
+    def _append_flow(self, today: str, chat_key: str, origin: str, model: str, usage: dict) -> None:
+        from QvQChat.Main import Main
+
+        Main._append_flow(self, today, chat_key, origin, model, usage)
+
+    def _usage_flow(self, days: int = 7):
+        from QvQChat.Main import Main
+
+        return Main._usage_flow(self, days)
 
     def _usage_history(self, days=14):
         from QvQChat.Main import Main
