@@ -1,0 +1,32 @@
+name: 部署演示站
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "demo/**"
+      - "QvQChat/dashboard/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: 安装框架依赖
+        run: pip install ErisPulse
+
+      - name: 构建演示页
+        run: python demo/build.py
+
+      - name: 部署到 Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: demo
