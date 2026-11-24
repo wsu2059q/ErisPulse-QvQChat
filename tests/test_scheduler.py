@@ -13,9 +13,9 @@ def make_scheduler(catalog=None):
     return main, Scheduler(main)
 
 
-def test_add_task_computes_next_run():
+async def test_add_task_computes_next_run():
     main, scheduler = make_scheduler()
-    task = scheduler.add(
+    task = await scheduler.add(
         {
             "name": "demo",
             "schedule": parse_schedule("in:30m"),
@@ -27,20 +27,20 @@ def test_add_task_computes_next_run():
         }
     )
     assert task["next_run"] > time.time() + 29 * 60
-    assert len(scheduler.list()) == 1
+    assert len(await scheduler.list()) == 1
 
 
-def test_cancel_task():
+async def test_cancel_task():
     main, scheduler = make_scheduler()
-    task = scheduler.add({"name": "x", "schedule": parse_schedule("every:1h"), "schedule_raw": "every:1h"})
-    assert scheduler.cancel(task["id"]) is True
-    assert scheduler.list() == []
-    assert scheduler.cancel("missing") is False
+    task = await scheduler.add({"name": "x", "schedule": parse_schedule("every:1h"), "schedule_raw": "every:1h"})
+    assert await scheduler.cancel(task["id"]) is True
+    assert await scheduler.list() == []
+    assert await scheduler.cancel("missing") is False
 
 
 async def test_tick_fires_due_once_task():
     main, scheduler = make_scheduler()
-    task = scheduler.add(
+    task = await scheduler.add(
         {
             "name": "once",
             "schedule": {"type": "once", "delay": -10},
@@ -53,26 +53,26 @@ async def test_tick_fires_due_once_task():
     )
     await scheduler._tick()
     assert len(main.tasks_fired) == 1
-    assert scheduler.list() == []
+    assert await scheduler.list() == []
 
 
 async def test_tick_reschedules_interval_task():
     main, scheduler = make_scheduler()
-    scheduler.add(
+    await scheduler.add(
         {
             "name": "loop",
             "schedule": {"type": "interval", "seconds": 600},
             "schedule_raw": "every:10m",
         }
     )
-    before = scheduler.list()[0]["next_run"]
+    before = (await scheduler.list())[0]["next_run"]
     await scheduler._tick()
-    after = scheduler.list()[0]["next_run"]
+    after = (await scheduler.list())[0]["next_run"]
     assert after > before - 1
     assert after > time.time()
 
 
-def test_delegation_to_cron_module():
+async def test_delegation_to_cron_module():
     registered = {}
 
     class FakeCron:
@@ -90,7 +90,7 @@ def test_delegation_to_cron_module():
     main, scheduler = make_scheduler(catalog={"Cron": []})
     main.sdk.Cron = FakeCron()
 
-    task = scheduler.add(
+    task = await scheduler.add(
         {
             "name": "cronned",
             "schedule": parse_schedule("cron:0 9 * * 1-5"),
@@ -103,18 +103,18 @@ def test_delegation_to_cron_module():
     assert registered["callback_data"] == {"qvq_task_id": task["id"]}
 
 
-def test_no_delegation_when_module_missing():
+async def test_no_delegation_when_module_missing():
     main, scheduler = make_scheduler(catalog={})
-    task = scheduler.add(
+    task = await scheduler.add(
         {"name": "x", "schedule": parse_schedule("cron:0 9 * * *"), "schedule_raw": "cron:0 9 * * *"}
     )
     assert task["managed_by"] == ""
 
 
-def test_no_delegation_when_disabled():
+async def test_no_delegation_when_disabled():
     main, scheduler = make_scheduler(catalog={"Cron": []})
     main.cfg.task_use_cron_module = False
-    task = scheduler.add(
+    task = await scheduler.add(
         {"name": "x", "schedule": parse_schedule("cron:0 9 * * *"), "schedule_raw": "cron:0 9 * * *"}
     )
     assert task["managed_by"] == ""
@@ -122,7 +122,7 @@ def test_no_delegation_when_disabled():
 
 async def test_cron_trigger_dispatches_fire():
     main, scheduler = make_scheduler(catalog={})
-    task = scheduler.add(
+    task = await scheduler.add(
         {
             "name": "t",
             "schedule": parse_schedule("in:1h"),
@@ -142,13 +142,13 @@ async def test_cron_trigger_dispatches_fire():
     main.spawn = spawn
     await scheduler._on_cron_trigger({"callback_data": {"qvq_task_id": task["id"]}})
     assert len(main.spawned) == 1
-    assert scheduler.list() == []
+    assert await scheduler.list() == []
 
 
-def test_jitter_randomizes_next_run_within_window():
+async def test_jitter_randomizes_next_run_within_window():
     """jitter_minutes>0：下次触发落在 [计划, 计划+N 分钟) 内且每次重算重新掷点。"""
     main, scheduler = make_scheduler()
-    task = scheduler.add(
+    task = await scheduler.add(
         {
             "name": "jittered",
             "schedule": parse_schedule("every:1h"),
@@ -165,16 +165,16 @@ def test_jitter_randomizes_next_run_within_window():
     assert len(set(seen)) > 1
 
 
-def test_no_jitter_is_exact():
+async def test_no_jitter_is_exact():
     main, scheduler = make_scheduler()
-    task = scheduler.add({"name": "x", "schedule": parse_schedule("every:1h"), "schedule_raw": "every:1h"})
+    task = await scheduler.add({"name": "x", "schedule": parse_schedule("every:1h"), "schedule_raw": "every:1h"})
     assert scheduler._next_with_jitter(task, 1000.0) == 1000.0 + 3600.0
 
 
 async def test_run_now_fires_without_reschedule():
     """手动触发：立即执行一次，不改 next_run 计划。"""
     main, scheduler = make_scheduler()
-    task = scheduler.add(
+    task = await scheduler.add(
         {
             "name": "manual",
             "schedule": parse_schedule("every:1h"),
@@ -186,12 +186,12 @@ async def test_run_now_fires_without_reschedule():
         }
     )
     planned = task["next_run"]
-    name = scheduler.run_now(task["id"])
+    name = await scheduler.run_now(task["id"])
     assert name == "manual"
     await asyncio.sleep(0.05)
     assert len(main.tasks_fired) == 1
     assert main.tasks_fired[0]["prompt"] == "run me now"
 # 计划不变
-    after = [t for t in scheduler.list() if t["id"] == task["id"]]
+    after = [t for t in await scheduler.list() if t["id"] == task["id"]]
     assert after and after[0]["next_run"] == planned
-    assert scheduler.run_now("missing") == ""
+    assert await scheduler.run_now("missing") == ""

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import secrets
 from pathlib import Path
 from urllib.parse import quote
@@ -46,26 +47,26 @@ TOKEN_KEY = "QvQChat:auth_token"
 class TrashMixin:
     """回收站路由（暂存在 self._trash / 还原表在 self._restore_fns，DashboardManager 构造）。依赖宿主提供 self.main / self.sdk。"""
 
-    def _trash_put(self, kind: str, payload) -> str:
-        return self._trash.put(kind, payload)
+    async def _trash_put(self, kind: str, payload) -> str:
+        return await self._trash.put(kind, payload)
 
-    def _trash_pop(self, token: str):
-        return self._trash.pop(token)
+    async def _trash_pop(self, token: str):
+        return await self._trash.pop(token)
 
     async def trash_delete(self, request):
         body = await request.json()
         token = str((body or {}).get("token") or "")
-        entry = self._trash_pop(token)
+        entry = await self._trash_pop(token)
         return {"ok": entry is not None}
 
     async def trash_list(self, request):
         """R9D 回收站浏览：kind/摘要/剩余秒（按 trash_retention_days 计）。"""
         days = int(getattr(self.main.cfg, "trash_retention_days", 14) or 0)
-        return {"items": self._trash.list(days), "retention_days": days}
+        return {"items": await self._trash.list(days), "retention_days": days}
 
     async def trash_restore(self, request):
         body = await request.json()
-        entry = self._trash_pop(str((body or {}).get("token") or ""))
+        entry = await self._trash_pop(str((body or {}).get("token") or ""))
         if entry is None:
             return ({"error": "undo expired or invalid"}, 410)
         kind = str(entry.get("kind") or "")
@@ -73,7 +74,9 @@ class TrashMixin:
         if restore is None:
             return ({"error": f"unknown kind: {kind}"}, 400)
         try:
-            restore(entry.get("payload"))
+            result = restore(entry.get("payload"))
+            if inspect.isawaitable(result):
+                await result
         except Exception as e:
             return ({"error": str(e)}, 500)
         return {"ok": True, "kind": kind}
@@ -268,25 +271,25 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         )
 
 
-    def _own_token(self) -> str:
+    async def _own_token(self) -> str:
         configured = str(getattr(self.main.cfg, "view_token", "") or "")
         if configured:
             return configured
-        stored = self.sdk.storage.get(TOKEN_KEY, "")
+        stored = await self.sdk.storage.aget(TOKEN_KEY, "")
         if stored:
             return str(stored)
         token = secrets.token_urlsafe(24)
-        self.sdk.storage.set(TOKEN_KEY, token)
+        await self.sdk.storage.aset(TOKEN_KEY, token)
         return token
 
-    def _announce_token(self) -> None:
+    async def _announce_token(self) -> None:
         if self._token_announced:
             return
         self._token_announced = True
         if getattr(self.main.cfg, "view_token", ""):
             return
         self.main.logger.warning(
-            f"QvQChat standalone access token: {self._own_token()}  (view at /QvQChat/view)"
+            f"QvQChat standalone access token: {await self._own_token()}  (view at /QvQChat/view)"
         )
 
     @staticmethod
@@ -330,7 +333,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             return None
         return None
 
-    def _authorized(self, request) -> bool:
+    async def _authorized(self, request) -> bool:
         provided = self._extract_token(request)
         if not provided:
             return False
@@ -345,12 +348,12 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
                     return True
             except Exception:
                 pass
-        return secrets.compare_digest(provided, self._own_token())
+        return secrets.compare_digest(provided, await self._own_token())
 
     def _guard(self, handler):
         async def wrapped(request):
-            self._announce_token()
-            if not self._authorized(request):
+            await self._announce_token()
+            if not await self._authorized(request):
                 return ({"error": "Unauthorized"}, 401)
             try:
                 return await handler(request)
@@ -451,7 +454,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         data = await self.main.get_status()
         data["takeovers"] = len(self.main.takeover)
         data["dashboard_auth"] = self._dashboard_module() is not None
-        today = self.main._usage_today()
+        today = await self.main._usage_today()
         data["usage_today"] = {
             "tokens": int(today.get("tokens", 0) or 0),
             "calls": int(today.get("calls", 0) or 0),
@@ -565,13 +568,13 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
 
 # ===== OpenAI 兼容端点：Bearer=view_token，映射 run_dashboard_chat =====
 
-    def _v1_authorized(self, request) -> bool:
+    async def _v1_authorized(self, request) -> bool:
         raw = getattr(request, "raw", request)
         try:
             auth = raw.headers.get("Authorization", "")
         except Exception:
             auth = ""
-        token = self._own_token()
+        token = await self._own_token()
         return bool(token) and auth == f"Bearer {token}"
 
     @staticmethod
@@ -579,7 +582,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         return utils.content_text(content, sep="\n")
 
     async def v1_models(self, request):
-        if not self._v1_authorized(request):
+        if not await self._v1_authorized(request):
             return ({"error": {"message": "Invalid API key", "type": "auth_error"}}, 401)
         data = [
             {"id": m["id"], "object": "model", "owned_by": "QvQChat"}
@@ -591,7 +594,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         import asyncio as _asyncio
         import json as _json
 
-        if not self._v1_authorized(request):
+        if not await self._v1_authorized(request):
             return ({"error": {"message": "Invalid API key", "type": "auth_error"}}, 401)
         body = await request.json()
         messages = (body or {}).get("messages") or []

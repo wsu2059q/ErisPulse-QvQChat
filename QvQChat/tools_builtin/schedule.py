@@ -30,7 +30,7 @@ async def create_scheduled_task(ctx: ToolContext, name: str, schedule: str, plat
     except ValueError as e:
         return f"{texts.t('schedule_invalid', error=str(e))} | {SCHEDULE_HELP}"
     scheduler = ctx.main.scheduler
-    task = scheduler.add(
+    task = await scheduler.add(
         {
             "name": name,
             "schedule": parsed,
@@ -55,7 +55,7 @@ async def create_scheduled_task(ctx: ToolContext, name: str, schedule: str, plat
 
 async def list_scheduled_tasks(ctx: ToolContext) -> str:
     scheduler = ctx.main.scheduler
-    tasks = scheduler.list()
+    tasks = await scheduler.list()
     return utils.to_text(
         [
             {
@@ -74,7 +74,7 @@ async def list_scheduled_tasks(ctx: ToolContext) -> str:
 
 async def run_scheduled_task(ctx: ToolContext, task_id: str) -> str:
     """手动触发一次：立即执行任务（不影响后续计划时间）。"""
-    name = ctx.main.scheduler.run_now(str(task_id))
+    name = await ctx.main.scheduler.run_now(str(task_id))
     if not name:
         return texts.t("task_not_found", id=task_id)
     return texts.t("task_triggered", name=name, id=task_id)
@@ -82,7 +82,7 @@ async def run_scheduled_task(ctx: ToolContext, task_id: str) -> str:
 
 async def cancel_scheduled_task(ctx: ToolContext, task_id: str) -> str:
     scheduler = ctx.main.scheduler
-    if scheduler.cancel(task_id):
+    if await scheduler.cancel(task_id):
         return texts.t("task_cancelled", id=task_id)
     return texts.t("task_not_found", id=task_id)
 
@@ -108,7 +108,7 @@ async def update_scheduled_task(ctx: ToolContext, task_id: str, name: str = "", 
     :return: [str] 更新结果 JSON；系统内置任务返回对应配置键指引
     """
     scheduler = ctx.main.scheduler
-    old = next((t for t in scheduler.list() if t.get("id") == str(task_id)), None)
+    old = next((t for t in await scheduler.list() if t.get("id") == str(task_id)), None)
     if old is None:
         return texts.t("task_not_found", id=task_id)
     if str(old.get("name") or "").startswith("qvq:"):
@@ -118,7 +118,7 @@ async def update_scheduled_task(ctx: ToolContext, task_id: str, name: str = "", 
         parsed = parse_schedule(schedule) if schedule else old["schedule"]
     except ValueError as e:
         return f"{texts.t('schedule_invalid', error=str(e))} | {SCHEDULE_HELP}"
-    task = scheduler.add({
+    task = await scheduler.add({
         "id": old["id"],
         "name": name or old.get("name", ""),
         "schedule": parsed,

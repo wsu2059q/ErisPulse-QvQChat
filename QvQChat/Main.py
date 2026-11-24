@@ -371,9 +371,9 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 if getattr(new, key, None) == getattr(self.cfg, key, None):
                     continue
                 if key in ("profile_enabled", "profile_consolidate_hours"):
-                    scheduler.ensure_profile_task()
+                    await scheduler.ensure_profile_task()
                 else:
-                    scheduler.ensure_storage_maintain_task()
+                    await scheduler.ensure_storage_maintain_task()
         except Exception as e:
             self.logger.debug(f"builtin task reschedule failed: {e}")
 
@@ -475,7 +475,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 # 通知管理员（每平台首个管理员；一次探针最多通知 3 个平台避免风暴）
         notified = 0
         for platform in list(dict.fromkeys(
-            str(p.get("platform") or "") for p in self.scheduler.list()
+            str(p.get("platform") or "") for p in await self.scheduler.list()
         ))[:3] or [""]:
             try:
                 admin_ids = self.sessions._admin_ids_for(platform)
@@ -643,7 +643,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 
         return checker
 
-    def audit(self, tool: str, detail: dict, ctx=None) -> None:
+    async def audit(self, tool: str, detail: dict, ctx=None) -> None:
         try:
             limit = int(getattr(self.cfg, "audit_limit", 5000) or 0)
             entry = {
@@ -663,8 +663,9 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                     entries = entries[-limit:]
                 return entries
 
-# 键级 RMW（并发任务同时记账不再互相覆盖）；未落库则审计页无数据可查
-            utils.storage_update(self.sdk, AUDIT_KEY, _append, [])
+# 键级 RMW（并发任务同时记账不再互相覆盖）；未落库则审计页无数据可查。
+# 异步版：同步 storage_update 在事件循环内经框架桥接会阻塞且超时丢数据
+            await utils.storage_aupdate(self.sdk, AUDIT_KEY, _append, [])
         except Exception as e:
 # 审计落盘失败不能完全静默
             self.logger.debug(f"audit persist failed: {e}")
@@ -787,7 +788,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
 # persist=True（插回式调用，如后台子智能体汇报消化）：问答双方都落会话，
 # 下轮对话 AI 才记得"汇报过什么、自己怎么消化的"；一次性任务调用保持 False 不留痕
             if persist:
-                self.sessions.finalize(
+                await self.sessions.finalize(
                     chat_key, reply,
                     trace=result.tool_trace, rounds=getattr(result, "rounds", None),
                     usage=getattr(result, "usage", None),
@@ -796,7 +797,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 )
             elif isinstance(getattr(result, "usage", None), dict) and result.usage:
 # 不落库的一次性调用（定时任务/主动发言/RPC）也要进用量：origin 保留调用语义
-                self.record_usage(chat_key, result.usage, (resolved_model or prepared.get("model") or ""), origin=origin)
+                await self.record_usage(chat_key, result.usage, (resolved_model or prepared.get("model") or ""), origin=origin)
             if send and platform:
                 delivered = any(
                     sent_platform == platform and sent_type == detail_type and sent_id == target_id
@@ -883,7 +884,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 prefill=str(prepared["persona"].get("prefill") or ""),
             )
             reply = utils.strip_stray_tags(result.text.strip()) or texts.t("no_reply_content")
-            self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), title_from=text, origin="dashboard")
+            await self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), title_from=text, origin="dashboard")
         return reply
 
     async def run_task(self, task: dict) -> None:
@@ -927,7 +928,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         :param scene: [str] 场景定向文本，注入角色 system (默认: "")
         :return: dict 让渡状态
         """
-        state = handover.start(
+        state = await handover.start(
             self.sdk, self.cfg, str(chat_key or ""),
             setup=str(setup or ""), model=str(model or ""),
             listen=str(listen or "inherit"), max_turns=int(max_turns or 0),
@@ -944,10 +945,10 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         :return: bool 是否存在被结束的让渡
         """
         chat_key = str(chat_key or "")
-        state = handover.get_state(self.sdk, chat_key)
+        state = await handover.get_state(self.sdk, chat_key)
         if state is None:
             return False
-        self._end_handover(chat_key, state)
+        await self._end_handover(chat_key, state)
         return True
 
     async def handover_status(self, chat_key: str, **_) -> dict:
@@ -957,7 +958,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         :param chat_key: [str] 会话键
         :return: dict 让渡状态；无让渡返回 {"active": False}
         """
-        state = handover.get_state(self.sdk, str(chat_key or ""))
+        state = await handover.get_state(self.sdk, str(chat_key or ""))
         if state is None:
             return {"active": False}
         return dict(state)
@@ -1071,8 +1072,8 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             "version": __version__,
             "models": len(self.pool.list_models()),
             "tools": counts,
-            "sessions": len(self.sessions.list_sessions()),
-            "tasks": len(self.scheduler.list()),
+            "sessions": len(await self.sessions.list_sessions()),
+            "tasks": len(await self.scheduler.list()),
             "eco": dict(self.eco.info),
             "extensions": self.eco.extensions_status(),
             "mcp": self.mcp.status(),

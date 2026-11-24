@@ -1,4 +1,6 @@
 import asyncio
+
+import pytest
 from types import SimpleNamespace
 
 from QvQChat.Main import Main
@@ -18,11 +20,11 @@ def _bind_inbox(main):
 
 async def test_audit_persists_to_storage():
     main = FakeMain()
-    Main.audit(main, "run_python_sdk", {"bytes": 12})
+    await Main.audit(main, "run_python_sdk", {"bytes": 12})
     entries = main.sdk.storage.get("QvQChat:audit", [])
     assert len(entries) == 1
     assert entries[0]["tool"] == "run_python_sdk"
-    Main.audit(main, "run_python", {"bytes": 3})
+    await Main.audit(main, "run_python", {"bytes": 3})
     assert len(main.sdk.storage.get("QvQChat:audit", [])) == 2
 
 
@@ -274,7 +276,8 @@ def _events_main_with_alias():
     return main
 
 
-def test_inbox_alias_resolves_config_name_to_user_id():
+@pytest.mark.asyncio
+async def test_inbox_alias_resolves_config_name_to_user_id():
     main = _events_main_with_alias()
 # 历史包袱：账户 Iris 的事件曾以配置名 "Iris" 为键存储
     main.sdk.storage.set("QvQChat:event_inbox:Iris", [
@@ -282,9 +285,9 @@ def test_inbox_alias_resolves_config_name_to_user_id():
          "sub_type": "invite", "group_id": "235228131"},
     ])
 # 查询方按稳定 user_id（会话键后缀口径）来查——别名机制必须命中
-    entries = main._inbox_load("1325859446")
+    entries = await main._inbox_load("1325859446")
     assert any(e.get("id") == "req-1" for e in entries)
-    entries2 = main._inbox_load("Iris")
+    entries2 = await main._inbox_load("Iris")
     assert any(e.get("id") == "req-1" for e in entries2)
 
 
@@ -297,8 +300,9 @@ def test_route_kwargs_finds_request_via_alias():
     ctx = make_ctx(main=main, chat_key="snowluma:private:10001@1325859446")
     ctx.self_id = "1325859446"
     from QvQChat.tools_builtin.erispulse import _request_route_kwargs
+    import asyncio
 
-    extra = _request_route_kwargs(ctx, "1325859446", "flag-x")
+    extra = asyncio.run(_request_route_kwargs(ctx, "1325859446", "flag-x"))
     assert extra == {"_request_type": "group", "sub_type": "invite", "group_id": "235228131"}
 
 

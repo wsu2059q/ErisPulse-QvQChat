@@ -116,39 +116,43 @@ def _ctx_with_inbox(entry_account="643319481", entry=None):
     from fakes import FakeMain
 
     main = FakeMain()
+
+    async def _load(acct):
+        return [entry] if acct == entry_account else []
+
+    main._inbox_load = _load
     ctx = make_ctx(main=main, chat_key="snowluma:group:1@643319481")
     ctx.self_id = "643319481"
-    main._inbox_load = lambda acct: ([entry] if acct == entry_account else [])
     return ctx, main
 
 
-def test_route_kwargs_group_invite_from_inbox():
+async def test_route_kwargs_group_invite_from_inbox():
     """群邀请：从收件箱还原 sub_type/group_id，路由到 set_group_add_request。"""
     ctx, _ = _ctx_with_inbox(entry={
         "kind": "request", "request_id": "flag-888", "detail_type": "group",
         "sub_type": "invite", "group_id": "235228131",
     })
-    extra = _request_route_kwargs(ctx, "643319481", "flag-888")
+    extra = await _request_route_kwargs(ctx, "643319481", "flag-888")
     assert extra == {"_request_type": "group", "sub_type": "invite", "group_id": "235228131"}
 
 
-def test_route_kwargs_friend_request_empty():
+async def test_route_kwargs_friend_request_empty():
     """好友请求：无需类型参数。"""
     ctx, _ = _ctx_with_inbox(entry={
         "kind": "request", "request_id": "flag-1", "detail_type": "private",
         "sub_type": "", "group_id": "",
     })
-    extra = _request_route_kwargs(ctx, "643319481", "flag-1")
+    extra = await _request_route_kwargs(ctx, "643319481", "flag-1")
     assert extra == {}
 
 
-def test_route_kwargs_explicit_override_and_unknown():
+async def test_route_kwargs_explicit_override_and_unknown():
     """AI 显式传参覆盖收件箱；查不到条目但声明了 sub_type 时仍按群路由。"""
     ctx, _ = _ctx_with_inbox(entry_account="643319481", entry={
         "kind": "request", "request_id": "flag-2", "detail_type": "group",
         "sub_type": "add", "group_id": "100",
     })
-    extra = _request_route_kwargs(ctx, "643319481", "flag-2", sub_type="invite", group_id="200")
+    extra = await _request_route_kwargs(ctx, "643319481", "flag-2", sub_type="invite", group_id="200")
     assert extra == {"_request_type": "group", "sub_type": "invite", "group_id": "200"}
-    extra = _request_route_kwargs(ctx, "nobody", "flag-x", sub_type="add")
+    extra = await _request_route_kwargs(ctx, "nobody", "flag-x", sub_type="add")
     assert extra == {"_request_type": "group", "sub_type": "add"}

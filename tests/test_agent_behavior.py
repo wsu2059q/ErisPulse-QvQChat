@@ -511,7 +511,7 @@ async def test_group_roster_injects_recent_speakers():
     assert roster in scene and ("[Group members" in scene or "〔本群成员" in scene)
 
 
-def test_reunion_note_fires_after_gap():
+async def test_reunion_note_fires_after_gap():
     """重逢感知：updated 距今超阈值注入时长文案；窗口内/无历史不注入。"""
     main = make_main()
     from QvQChat.chat.inbox import InboxMixin
@@ -519,28 +519,28 @@ def test_reunion_note_fires_after_gap():
     from QvQChat import utils
     key = "snowluma:private:10001"
     main.sdk.storage.set("QvQChat:conv:" + key, {"updated": utils.now_ts() - 86400 * 3})
-    note = main._reunion_note(key)
+    note = await main._reunion_note(key)
     assert "3 天" in note or "days" in note or "дн" in note
     # 窗口内（1 小时前 < 默认 12h 阈值）不注入
     main.sdk.storage.set("QvQChat:conv:" + key, {"updated": utils.now_ts() - 3600})
-    assert main._reunion_note(key) == ""
+    assert await main._reunion_note(key) == ""
     # 阈值 0 关闭
     main.cfg.scene_reunion_hours = 0
     main.sdk.storage.set("QvQChat:conv:" + key, {"updated": utils.now_ts() - 86400 * 3})
-    assert main._reunion_note(key) == ""
+    assert await main._reunion_note(key) == ""
 
 
-def test_scene_memo_recall_roundtrip():
+async def test_scene_memo_recall_roundtrip():
     """撤回感知：notice 侧 push → scene 侧 pop 消费即清，过期条目丢弃。"""
     main = make_main()
     from QvQChat.chat.inbox import InboxMixin
     main._scene_memo_push = InboxMixin._scene_memo_push.__get__(main)
     main._scene_memo_pop = InboxMixin._scene_memo_pop.__get__(main)
     key = "snowluma:group:871"
-    main._scene_memo_push(key, "〔刚刚〕(2001)撤回了一条消息")
-    note = main._scene_memo_pop(key)
+    await main._scene_memo_push(key, "〔刚刚〕(2001)撤回了一条消息")
+    note = await main._scene_memo_pop(key)
     assert "撤回" in note or "recalled" in note
-    assert main._scene_memo_pop(key) == "", "消费即清"
+    assert await main._scene_memo_pop(key) == "", "消费即清"
 
 
 def test_multi_speaker_scene_hint():

@@ -27,7 +27,7 @@ async def handover_session(ctx: ToolContext, setup: str, model: str = "",
     setup = str(setup or "").strip()
     if not setup:
         return texts.t("tool_param_error", name="handover_session", error="setup is empty")
-    existing = handover.get_state(ctx.sdk, ctx.chat_key)
+    existing = await handover.get_state(ctx.sdk, ctx.chat_key)
     if existing:
         return texts.t("handover_already_active", setup=str(existing.get("setup") or "-"))
     # 接手定向：场景注记（群名/当前说话人）+ 让渡前主会话最近几条对话
@@ -35,7 +35,7 @@ async def handover_session(ctx: ToolContext, setup: str, model: str = "",
         recent = list(main.sessions.get_contexts(str(ctx.chat_key)) or [])[-6:]
     except Exception:
         recent = []
-    state = handover.start(
+    state = await handover.start(
         ctx.sdk, main.cfg, ctx.chat_key,
         setup=setup, model=str(model or ""), listen=str(listen or "inherit"),
         max_turns=int(max_turns or 0),

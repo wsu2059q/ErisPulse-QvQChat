@@ -49,7 +49,7 @@ class SessionsApiMixin:
     """依赖宿主提供 self.main / self.sdk / self._query / self._live。"""
 
     async def sessions_get(self, request):
-        sessions = self.main.sessions.list_sessions()
+        sessions = await self.main.sessions.list_sessions()
         total = len(sessions)
 # 窗口参数：大会话量（几百群）时全量展开每会话的成员/路由/策略解析是面板卡顿
 # 的主因——列表行按页展开，账户聚合/身份建议仍用全量计算（纯内存，便宜）
@@ -140,17 +140,17 @@ class SessionsApiMixin:
             "start": start_i,
             "limit": limit_n,
             "live_sessions": sorted(live_keys),
-            "ui_defaults": self._ui_defaults(),
-            "accounts": self._accounts_overview(sessions),
+            "ui_defaults": await self._ui_defaults(),
             "identity_map": self.main.sessions.identity_map(),
             "identity_suggestions": self._identity_suggestions(sessions),
+            "accounts": await self._accounts_overview(sessions),
         }
 
     @api_handler
     async def handover_get(self, request):
         """让渡状态（面板横幅）：active/setup/turns/max_turns/model/listen/started。"""
         chat_key = str(self._query(request, "chat_key") or "")
-        state = handover.get_state(self.sdk, chat_key)
+        state = await handover.get_state(self.sdk, chat_key)
         if not isinstance(state, dict):
             return {"active": False}
         out = dict(state)
@@ -165,18 +165,18 @@ class SessionsApiMixin:
         if not chat_key:
             raise ApiError("chat_key required")
 # 先查状态再调服务：无让渡不触发收场管线（注记/摘要）
-        if handover.get_state(self.sdk, chat_key) is None:
+        if await handover.get_state(self.sdk, chat_key) is None:
             raise ApiError("no active handover for this session", 404)
         ok = await self.main.handover_stop(chat_key=chat_key)
         if not ok:
             raise ApiError("no active handover for this session", 404)
-        self.main.audit("handover_stop", {"chat_key": utils.truncate(chat_key, 120)})
+        await self.main.audit("handover_stop", {"chat_key": utils.truncate(chat_key, 120)})
         return {"ok": True}
 
     @api_handler
     async def subjobs_get(self, request):
         """后台子智能体任务列表：运行中（进程内）+ 终态（探针，新在前）。"""
-        rows = agent_tools.list_subjobs(self.main, limit=100)
+        rows = await agent_tools.list_subjobs(self.main, limit=100)
         return {"jobs": rows, "total": len(rows)}
 
     @api_handler
@@ -189,7 +189,7 @@ class SessionsApiMixin:
         ok = agent_tools.cancel_subjob(self.main, sub_key)
         if not ok:
             raise ApiError("subjob not running (finished or process restarted)", 404)
-        self.main.audit("subjob_cancel", {"sub_key": utils.truncate(sub_key, 120)})
+        await self.main.audit("subjob_cancel", {"sub_key": utils.truncate(sub_key, 120)})
         return {"ok": True}
 
     async def identity_set(self, request):
@@ -213,15 +213,15 @@ class SessionsApiMixin:
         source = str((body or {}).get("source") or "")
         return {"ok": self.main.sessions.remove_identity(source)}
 
-    def _inbox_entries(self, kind: str = "", account: str = "") -> list:
+    async def _inbox_entries(self, kind: str = "", account: str = "") -> list:
         """聚合全部账户的事件收件箱（storage 为准），新的在前。"""
         entries: list = []
         try:
-            keys = [str(k) for k in (self.sdk.storage.keys() or []) if str(k).startswith(EVENT_INBOX_KEY)]
+            keys = [str(k) for k in (await self.sdk.storage.aget_all_keys() or []) if str(k).startswith(EVENT_INBOX_KEY)]
         except Exception:
             keys = [EVENT_INBOX_KEY + account] if account else []
         for key in keys:
-            stored = self.sdk.storage.get(key)
+            stored = await self.sdk.storage.aget(key)
             if not isinstance(stored, list):
                 continue
             owner = key[len(EVENT_INBOX_KEY):]
@@ -250,7 +250,7 @@ class SessionsApiMixin:
             offset = max(0, int(self._query(request, "offset") or 0))
         except ValueError:
             offset = 0
-        entries = self._inbox_entries(kind, account)
+        entries = await self._inbox_entries(kind, account)
         unread = sum(1 for e in entries if not e.get("read"))
 # 读取即标已读（单源：与 AI list_events 同一 read 字段；仅标记本次返回的页）
         for entry in entries[offset : offset + limit]:
@@ -259,10 +259,10 @@ class SessionsApiMixin:
             entry["read"] = True
             try:
                 inbox_account = str(entry.get("account") or "default")
-                for item in self.main._inbox_load(inbox_account):
+                for item in await self.main._inbox_load(inbox_account):
                     if str(item.get("id") or "") == str(entry.get("id") or ""):
                         item["read"] = True
-                self.main._inbox_save(inbox_account)
+                await self.main._inbox_save(inbox_account)
                 self._inbox_cache_drop(inbox_account)
             except Exception:
                 pass
@@ -278,7 +278,7 @@ class SessionsApiMixin:
         if action not in ("accept", "reject"):
             return ({"error": "action must be accept/reject"}, 400)
         entry = None
-        for candidate in self._inbox_entries("request", ""):
+        for candidate in await self._inbox_entries("request", ""):
             if str(candidate.get("id") or "") == entry_id:
                 entry = candidate
                 break
@@ -319,15 +319,15 @@ class SessionsApiMixin:
 # 已读标记：面板与 AI 视角一致
         try:
             inbox_account = str(entry.get("account") or "default")
-            for item in self.main._inbox_load(inbox_account):
+            for item in await self.main._inbox_load(inbox_account):
                 if str(item.get("id") or "") == entry_id:
                     item["read"] = True
-            self.main._inbox_save(inbox_account)
+            await self.main._inbox_save(inbox_account)
             self._inbox_cache_drop(inbox_account)
         except Exception:
             pass
-        self.main.audit("inbox_handle", {"id": entry_id, "action": action,
-                                         "platform": platform, "request_id": request_id})
+        await self.main.audit("inbox_handle", {"id": entry_id, "action": action,
+                                               "platform": platform, "request_id": request_id})
         return {"ok": True, "result": result}
 
     def _inbox_cache_drop(self, account: str) -> None:
@@ -342,13 +342,13 @@ class SessionsApiMixin:
         if not account or not entry_id:
             return ({"error": "account/id required"}, 400)
         key = EVENT_INBOX_KEY + account
-        stored = self.sdk.storage.get(key)
+        stored = await self.sdk.storage.aget(key)
         if not isinstance(stored, list):
             return {"ok": False}
         kept = [e for e in stored if not (isinstance(e, dict) and str(e.get("id") or "") == entry_id)]
         if len(kept) == len(stored):
             return {"ok": False}
-        self.sdk.storage.set(key, kept)
+        await self.sdk.storage.aset(key, kept)
         self._inbox_cache_drop(account)
         return {"ok": True}
 
@@ -356,19 +356,19 @@ class SessionsApiMixin:
         body = await request.json()
         account = str((body or {}).get("account") or "")
         if account:
-            self.sdk.storage.set(EVENT_INBOX_KEY + account, [])
+            await self.sdk.storage.aset(EVENT_INBOX_KEY + account, [])
             self._inbox_cache_drop(account)
             return {"ok": True}
         try:
-            keys = [str(k) for k in (self.sdk.storage.keys() or []) if str(k).startswith(EVENT_INBOX_KEY)]
+            keys = [str(k) for k in (await self.sdk.storage.aget_all_keys() or []) if str(k).startswith(EVENT_INBOX_KEY)]
         except Exception:
             keys = []
         for key in keys:
-            self.sdk.storage.set(key, [])
+            await self.sdk.storage.aset(key, [])
             self._inbox_cache_drop(key[len(EVENT_INBOX_KEY):])
         return {"ok": True, "cleared": len(keys)}
 
-    def _accounts_overview(self, sessions: list) -> dict:
+    async def _accounts_overview(self, sessions: list) -> dict:
         """多账户概览：各平台在线 bot + 每个已隔离账户（chat_key 的 @account 后缀）的会话数。
 
         单账户平台不产生后缀，不进 accounts；sub: 前缀的子会话键跳过。
@@ -444,7 +444,7 @@ class SessionsApiMixin:
 # 每账户当前人格：绑定表的 @account / 平台:* 层级键（编排页账户卡显示+快捷绑定用）
         persona_by_key: dict[str, str] = {}
         try:
-            for bind_key, persona_id in (self.main.personas.bindings() or {}).items():
+            for bind_key, persona_id in (await self.main.personas.abindings() or {}).items():
                 persona_by_key[str(bind_key)] = str(persona_id)
         except Exception:
             persona_by_key = {}
@@ -551,7 +551,7 @@ class SessionsApiMixin:
         if mode not in ("merge", "overwrite"):
             return ({"error": "mode must be merge or overwrite"}, 400)
         migrated, failed = 0, []
-        for session in self.main.sessions.list_sessions():
+        for session in await self.main.sessions.list_sessions():
             key = str(session.get("chat_key") or "")
             if not key.startswith(f"{platform}:") or not key.endswith(f"@{from_acct}"):
                 continue
@@ -668,11 +668,11 @@ class SessionsApiMixin:
         # 撤销删除：删除前把完整会话状态放进回收站
         from ..conversation.service import CONV_PREFIX
 
-        state = self.sdk.storage.get(CONV_PREFIX + chat_key, None)
+        state = await self.sdk.storage.aget(CONV_PREFIX + chat_key, None)
         undo = ""
         if isinstance(state, dict):
-            undo = self._trash_put("session", {"chat_key": chat_key, "state": state})
-        ok = self.main.conversations.delete(chat_key)
+            undo = await self._trash_put("session", {"chat_key": chat_key, "state": state})
+        ok = await self.main.conversations.delete(chat_key)
         return {"ok": ok, "undo": undo if ok else ""}
 
     async def sessions_create(self, request):
@@ -685,7 +685,7 @@ class SessionsApiMixin:
         return {"ok": True, "chat_key": chat_key}
 
     async def sessions_delete_archived(self, request):
-        return {"ok": True, "removed": self.main.conversations.delete_archived()}
+        return {"ok": True, "removed": await self.main.conversations.delete_archived()}
 
     async def session_compact(self, request):
         body = await request.json()
@@ -793,7 +793,7 @@ class SessionsApiMixin:
         except Exception as e:
             return ({"error": f"{type(e).__name__}: {e}"}, 502)
         self.main.sessions.append(chat_key, "assistant", text)
-        self.main.audit("takeover_say", {"chat_key": chat_key, "chars": len(text)})
+        await self.main.audit("takeover_say", {"chat_key": chat_key, "chars": len(text)})
         return {"ok": True}
 
     async def session_settings(self, request):
@@ -816,7 +816,7 @@ class SessionsApiMixin:
         if "manual" in ui:
             self.main.sessions.set_flags(chat_key, {"manual": bool(ui["manual"])})
             saved["manual"] = bool(ui["manual"])
-        self.main.audit("session_settings", {"chat_key": chat_key, "keys": sorted(ui.keys())})
+        await self.main.audit("session_settings", {"chat_key": chat_key, "keys": sorted(ui.keys())})
         return {"ok": True, "ui": saved}
 
     async def session_policy(self, request):
@@ -831,9 +831,9 @@ class SessionsApiMixin:
         updates = {k: body[k] for k in ("muted", "low_token", "priority", "session_budget", "full_access") if k in body}
         policy = set_policy(self.sdk, chat_key, **updates)
         if "full_access" in updates:
-            self.main.audit("session_full_access", {"chat_key": chat_key, "value": bool(policy.get("full_access"))})
+            await self.main.audit("session_full_access", {"chat_key": chat_key, "value": bool(policy.get("full_access"))})
 # 面板改策略与聊天命令同源，审计留痕（detail 记录本次变更的键值）
-        self.main.audit("session_policy", {"chat_key": chat_key, **updates})
+        await self.main.audit("session_policy", {"chat_key": chat_key, **updates})
         return {"ok": True, "policy": policy}
 
     async def session_rename(self, request):
@@ -874,8 +874,8 @@ class SessionsApiMixin:
             return {"ok": True, "sources": sorted(k for k, v in routes.items() if v == target)}
         return {"sources": self.main.sessions.routes_into(target)}
 
-    def _ui_defaults(self) -> dict:
-        d = self.sdk.storage.get(UI_DEFAULTS_KEY, {})
+    async def _ui_defaults(self) -> dict:
+        d = await self.sdk.storage.aget(UI_DEFAULTS_KEY, {})
         if not isinstance(d, dict):
             d = {}
 # 全局触发规则随 defaults 下发：会话设置弹窗据此隐藏"更松"的档位（会话只能收紧）
@@ -884,17 +884,17 @@ class SessionsApiMixin:
         return d
 
     async def settings_defaults_get(self, request):
-        return {"ui_defaults": self._ui_defaults()}
+        return {"ui_defaults": await self._ui_defaults()}
 
     async def settings_defaults_set(self, request):
         body = await request.json()
         ui = (body or {}).get("settings")
         if not isinstance(ui, dict):
             return ({"error": "settings object required"}, 400)
-        cur = self._ui_defaults()
+        cur = await self._ui_defaults()
         allowed = ("density", "model", "effort")
         cur.update({k: str(ui[k]) for k in allowed if ui.get(k) is not None})
-        self.sdk.storage.set(UI_DEFAULTS_KEY, cur)
+        await self.sdk.storage.aset(UI_DEFAULTS_KEY, cur)
         return {"ok": True, "ui_defaults": cur}
 
     def _session_profile(self, chat_key: str) -> tuple[str, dict]:
@@ -933,7 +933,7 @@ class SessionsApiMixin:
         texts = [x for x in texts if x]
         data[section] = [{"text": x, "ts": utils.now_ts()} for x in texts]
         profile._save(user_key, data)
-        self.main.audit("profile_edit", {"user_key": user_key, "section": section, "count": len(texts)})
+        await self.main.audit("profile_edit", {"user_key": user_key, "section": section, "count": len(texts)})
         return {"ok": True, "profile": data}
 
     async def memory_get(self, request):
@@ -941,7 +941,7 @@ class SessionsApiMixin:
         if not chat_key:
 # 无会话上下文：附最近活跃会话的画像（记忆页"用户画像"卡数据源）
             profile_user, profile = "", {"traits": [], "preferences": [], "facts": [], "updated": 0.0}
-            sessions = self.main.sessions.list_sessions()
+            sessions = await self.main.sessions.list_sessions()
             if sessions:
                 profile_user, profile = self._session_profile(str(sessions[0].get("chat_key") or ""))
             return {"scopes": self.main.memory.list_scopes(), "entries": [], "profile_user": profile_user, "profile": profile}
@@ -969,17 +969,17 @@ class SessionsApiMixin:
             removed = self.main.memory.forget(chat_key, query)
         else:
             removed = self.main.memory.clear(chat_key)
-        self.main.audit("memory_delete", {"chat_key": chat_key})
+        await self.main.audit("memory_delete", {"chat_key": chat_key})
         return {"ok": True, "removed": removed}
 
 # ===== 会话分享 =====
 
-    def _shares(self) -> dict:
-        shares = self.sdk.storage.get(SHARES_KEY, {})
+    async def _shares(self) -> dict:
+        shares = await self.sdk.storage.aget(SHARES_KEY, {})
         return shares if isinstance(shares, dict) else {}
 
-    def _share_token(self, token: str) -> dict | None:
-        share = self._shares().get(token)
+    async def _share_token(self, token: str) -> dict | None:
+        share = (await self._shares()).get(token)
         if not isinstance(share, dict) or not share.get("enabled", True):
             return None
         expires = float(share.get("expires", 0) or 0)
@@ -1048,8 +1048,8 @@ class SessionsApiMixin:
             created["rec"] = shares[token]
             return shares
 
-# 键级 RMW（并发创建/撤销分享不再互相覆盖）
-        utils.storage_update(self.sdk, SHARES_KEY, _add, {})
+# 键级 RMW（并发创建/撤销分享不再互相覆盖）；异步上下文用 aupdate（同步版经桥接会阻塞丢数据）
+        await utils.storage_aupdate(self.sdk, SHARES_KEY, _add, {})
         rec = created["rec"]
         return {"ok": True, "token": token, "url": f"/QvQChat/share?token={token}", "expires": rec["expires"], "max_tokens": max_tokens}
 
@@ -1066,24 +1066,24 @@ class SessionsApiMixin:
                 found.append(True)
             return shares
 
-        utils.storage_update(self.sdk, SHARES_KEY, _drop, {})
+        await utils.storage_aupdate(self.sdk, SHARES_KEY, _drop, {})
         if found:
             return {"ok": True}
         return ({"error": "not found"}, 404)
 
     async def share_messages(self, request):
         token = self._query(request, "token")
-        share = self._share_token(token) if token else None
+        share = await self._share_token(token) if token else None
         if share is None:
             return ({"error": "invalid or expired share"}, 403)
         try:
-            return self._share_payload(share)
+            return await self._share_payload(share)
         except Exception as e:
             # 返回 JSON 而非框架的 HTML 500：分享页才能显示具体原因，不至于只剩"加载失败"
             self.main.logger.warning(f"share_messages failed: {e}")
             return ({"error": f"{type(e).__name__}: {e}"}, 500)
 
-    def _share_payload(self, share: dict) -> dict:
+    async def _share_payload(self, share: dict) -> dict:
         contexts = self._share_contexts(share)
         chat_key = str(share.get("chat_key") or "")
         summary = self.main.sessions.summary_of(chat_key)
@@ -1091,7 +1091,7 @@ class SessionsApiMixin:
         return {
             "chat_key": share.get("chat_key"),
             "summary": summary,
-            "bot_name": self._share_bot_name(chat_key),
+            "bot_name": await self._share_bot_name(chat_key),
             "messages": contexts,
             "expires": share.get("expires"),
             "rounds": rounds,
@@ -1100,13 +1100,13 @@ class SessionsApiMixin:
             "continuation": share.get("cont") if isinstance(share.get("cont"), list) else [],
         }
 
-    def _share_bot_name(self, chat_key: str) -> str:
+    async def _share_bot_name(self, chat_key: str) -> str:
         """分享页 AI 侧显示名：分享时会话绑定的人格名；未绑定回退 "AI"。"""
         try:
-            state = self.sdk.storage.get("QvQChat:conv:" + chat_key, None)
+            state = await self.sdk.storage.aget("QvQChat:conv:" + chat_key, None)
             persona_id = str(state.get("persona") or "") if isinstance(state, dict) else ""
             if persona_id:
-                personas = self.sdk.storage.get("QvQChat:personas", {}) or {}
+                personas = await self.sdk.storage.aget("QvQChat:personas", {}) or {}
                 persona = personas.get(persona_id)
                 if isinstance(persona, dict):
                     return str(persona.get("name") or persona_id)
@@ -1120,7 +1120,7 @@ class SessionsApiMixin:
         body = await request.json()
         token = str((body or {}).get("token") or "")
         text = str((body or {}).get("text") or "").strip()
-        share = self._share_token(token) if token else None
+        share = await self._share_token(token) if token else None
         if share is None:
             return ({"error": "invalid or expired share"}, 403)
         if not text:
@@ -1167,7 +1167,7 @@ class SessionsApiMixin:
             return shares
 
 # 键级 RMW：多个访问者同时续聊，配额计数与续聊记录不再互相覆盖
-        utils.storage_update(self.sdk, SHARES_KEY, _apply, {})
+        await utils.storage_aupdate(self.sdk, SHARES_KEY, _apply, {})
         return {
             "ok": True,
             "reply": reply,

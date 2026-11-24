@@ -8,12 +8,12 @@ from fakes import FakeMain
 from QvQChat.conversation.service import ConversationService
 
 
-def test_finalize_stores_model_meta():
+async def test_finalize_stores_model_meta():
     main = FakeMain()
     manager = ConversationService(main)
     key = "s-meta"
     manager.append_user(key, "你好")
-    manager.finalize(
+    await manager.finalize(
         key, "喵～",
         usage={"prompt_tokens": 120, "completion_tokens": 34, "total_tokens": 154, "cost": 0.001},
         model="deepseek-chat",
@@ -27,11 +27,11 @@ def test_finalize_stores_model_meta():
     assert today.get("by_model", {}).get("deepseek-chat") == {"tokens": 154, "in": 120, "out": 34}
 
 
-def test_finalize_without_model_has_no_meta():
+async def test_finalize_without_model_has_no_meta():
     main = FakeMain()
     manager = ConversationService(main)
     key = "s-meta0"
-    manager.finalize(key, "嗯")
+    await manager.finalize(key, "嗯")
     entry = manager.get_contexts(key)[-1]
     assert "meta" not in entry
 

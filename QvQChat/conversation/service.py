@@ -184,7 +184,7 @@ class ConversationService:
         state["group_name"] = name
         self._save(chat_key, state)
 
-    def _recall_hint_allowed(self, chat_key: str, text: str, user_id: str) -> bool:
+    async def _recall_hint_allowed(self, chat_key: str, text: str, user_id: str) -> bool:
         """H6：回捞提示准入——仅对方先开口的回合 + 每用户冷却。"""
         hours = float(getattr(self.config, "humanize_recall_interval_hours", 72) or 0)
         if hours <= 0:
@@ -194,7 +194,7 @@ class ConversationService:
         if not user_id:
             return False
         try:
-            last = float(self.sdk.storage.get(RECALL_LAST_PREFIX + str(user_id), 0) or 0)
+            last = float(await self.sdk.storage.aget(RECALL_LAST_PREFIX + str(user_id), 0) or 0)
         except (TypeError, ValueError):
             last = 0.0
         return (utils.now_ts() - last) >= hours * 3600
@@ -379,42 +379,41 @@ class ConversationService:
         self._save(chat_key, state)
         return chat_key
 
-    def delete(self, chat_key: str) -> bool:
+    async def delete(self, chat_key: str) -> bool:
 
-        existed = self.sdk.storage.get(CONV_PREFIX + chat_key, None) is not None
+        existed = await self.sdk.storage.aget(CONV_PREFIX + chat_key, None) is not None
         registry = getattr(self.main, "live_registry", None)
         if registry is not None:
             live = registry.get(chat_key)
             if live is not None and live.status == "running":
                 live.cancel()
             registry.drop(chat_key)
-        self.sdk.storage.delete(CONV_PREFIX + chat_key)
-        self._index_remove(chat_key)
+        await self.sdk.storage.adelete(CONV_PREFIX + chat_key)
+        await self.repository.a_index_remove(chat_key)
         self.main.memory.clear(chat_key)
         self.todos.clear(chat_key)
         self.user_mutes.clear(chat_key)
         personas = getattr(self.main, "personas", None)
         if personas is not None:
-            personas.bind(chat_key, None)
+            await personas.bind(chat_key, None)
         return existed
 
-    def delete_archived(self) -> int:
+    async def delete_archived(self) -> int:
         removed = 0
-        for session in self.list_sessions():
+        for session in await self.list_sessions():
             if session.get("archived"):
-                if self.delete(session["chat_key"]):
+                if await self.delete(session["chat_key"]):
                     removed += 1
         return removed
 
-    def list_sessions(self) -> list[dict]:
+    async def list_sessions(self) -> list[dict]:
         sessions: list[dict] = []
-# 读会话索引遍历（每键仍整读 state 元数据，但省掉全库 keys() 枚举+过滤）
-        for chat_key in dict.fromkeys(self._session_keys()):
-            raw = self.sdk.storage.get(CONV_PREFIX + chat_key, None)
-            if not isinstance(raw, dict):
+# 读会话索引遍历（每键整读 state 元数据，走异步 aget 不经同步桥）
+        for chat_key in dict.fromkeys(await self.repository.a_session_keys()):
+            state = await self.repository.a_state(chat_key)
+            if state is None:
 # 索引陈旧条目（存储键被外部删除）：跳过，下次对账清出
                 continue
-            state = self._normalize_state(raw)
             preview = ""
             for entry in reversed(state["contexts"]):
                 content = entry.get("content") if isinstance(entry, dict) else None
@@ -444,16 +443,16 @@ class ConversationService:
         sessions.sort(key=lambda s: (not s["pinned"], -s["updated"]))
         return sessions
 
-    def recent_user_messages(self, user_id: str, exclude_chat_key: str = "", limit: int = 6) -> list[dict]:
+    async def recent_user_messages(self, user_id: str, exclude_chat_key: str = "", limit: int = 6) -> list[dict]:
         needle = f"({user_id}):"
-# 倒排优先取候选 chat_key（新在前）；缺失/损坏回退旧 keys() 全扫（旧数据兼容）
-        seen = self._user_seen(user_id)
+# 倒排优先取候选 chat_key（新在前）；缺失/损坏回退全表键扫描（异步）
+        seen = await self.repository.a_user_seen(user_id)
         if seen is not None:
             candidates = [item["chat_key"] for item in seen]
         else:
             candidates = [
                 key[len(CONV_PREFIX):]
-                for key in self.sdk.storage.keys()
+                for key in await self.sdk.storage.aget_all_keys()
                 if isinstance(key, str) and key.startswith(CONV_PREFIX)
             ]
         found: list[dict] = []
@@ -534,7 +533,7 @@ class ConversationService:
                 seeded = await seeded
             seeded = list(seeded) if seeded else []
             if not seeded and cross_user_id:
-                cross = self.recent_user_messages(cross_user_id, exclude_chat_key=chat_key)
+                cross = await self.recent_user_messages(cross_user_id, exclude_chat_key=chat_key)
                 if cross:
                     lines: list[str] = []
                     for item in cross:
@@ -575,7 +574,7 @@ class ConversationService:
                 tightened.append(entry)
             contexts = tightened
         personas = getattr(self.main, "personas", None)
-        persona = personas.get(persona_id) if (persona_id and personas) else personas.resolve(chat_key)
+        persona = personas.get(persona_id) if (persona_id and personas) else await personas.aresolve(chat_key)
         memory = getattr(self.main, "memory", None)
         recalled: list = []
         if memory is not None:
@@ -613,10 +612,10 @@ class ConversationService:
                 parts.append(SystemPart("user_memory", texts.t("user_memory_header") + "\n" + ulines))
 # H6 记忆回捞钩子：相关记忆命中且距上次提及超过冷却时，允许自然带一句「记得你」；
 # 冷却内/非对方先开口的回合不提旧事（禁止沉默期主动翻旧账）
-        if recalled and self._recall_hint_allowed(chat_key, text, sender_id or cross_user_id):
+        if recalled and await self._recall_hint_allowed(chat_key, text, sender_id or cross_user_id):
             parts.append(SystemPart("recall_hint", texts.t("recall_hint_note")))
             try:
-                self.sdk.storage.set(RECALL_LAST_PREFIX + str(sender_id or cross_user_id), utils.now_ts())
+                await self.sdk.storage.aset(RECALL_LAST_PREFIX + str(sender_id or cross_user_id), utils.now_ts())
             except Exception:
                 pass
         user_msg: dict = {"role": "user", "content": text}
@@ -724,7 +723,7 @@ class ConversationService:
 # 群聊也持久化发言者 uid（缺失会导致历史消息无法归因）
         return sender_id or (cross_user_id if detail_type != "group" else "")
 
-    def finalize(
+    async def finalize(
         self,
         chat_key: str,
         reply: str,
@@ -756,7 +755,7 @@ class ConversationService:
             if user_id:
                 usage = dict(usage)
                 usage["user_id"] = user_id
-            self.main.record_usage(chat_key, usage, model, origin=origin)
+            await self.main.record_usage(chat_key, usage, model, origin=origin)
         overflow = self.trim_overflow(chat_key, keep=max(2, int(getattr(self.config, "context_limit", 30))))
         if overflow:
             self.main.spawn(self._summarize_overflow(chat_key, overflow))

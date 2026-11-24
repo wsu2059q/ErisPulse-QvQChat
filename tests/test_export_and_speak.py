@@ -122,15 +122,15 @@ async def test_import_personas_append_keeps_existing():
 async def test_import_tasks_overwrite_replaces():
 
     main, manager = _import_manager()
-    main.scheduler.add({"id": "old-task", "name": "旧", "schedule": {"type": "interval", "seconds": 60},
-                        "prompt": "x", "platform": "p", "target_type": "group", "target_id": "1"})
+    await main.scheduler.add({"id": "old-task", "name": "旧", "schedule": {"type": "interval", "seconds": 60},
+                              "prompt": "x", "platform": "p", "target_type": "group", "target_id": "1"})
     res = await manager.import_data(FakeJsonRequest({
         "data": {"tasks": [{"id": "new-task", "name": "新", "schedule": {"type": "interval", "seconds": 60},
                             "prompt": "y", "platform": "p", "target_type": "group", "target_id": "1"}]},
         "strategies": {"tasks": "overwrite"},
     }))
     assert res["ok"] and "tasks" in res["applied"]
-    ids = {t["id"] for t in main.scheduler.list()}
+    ids = {t["id"] for t in await main.scheduler.list()}
     assert ids == {"new-task"}
 
 

@@ -49,7 +49,7 @@ async def test_session_rename_and_regenerate():
 
     resp = await manager.session_rename(_ChatRequest({"chat_key": key, "name": "新名字"}))
     assert resp["ok"] is True
-    assert main.sessions.list_sessions()[0]["name"] == "新名字"
+    assert (await main.sessions.list_sessions())[0]["name"] == "新名字"
 
     resp = await manager.session_regenerate(_ChatRequest({"chat_key": key}))
     assert resp["ok"] is True

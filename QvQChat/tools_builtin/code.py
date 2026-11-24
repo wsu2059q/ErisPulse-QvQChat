@@ -34,14 +34,14 @@ async def run_python(ctx: ToolContext, code: str, timeout: int = 30) -> str:
         )
         if not granted:
             if ctx.main is not None:
-                ctx.main.audit("run_python_denied", {"preview": utils.truncate(code, 120)}, ctx)
+                await ctx.main.audit("run_python_denied", {"preview": utils.truncate(code, 120)}, ctx)
             return texts.t("confirm_declined")
     workdir = Path(tempfile.mkdtemp(prefix="qvq_run_"))
     try:
         script = workdir / "main.py"
         script.write_text(code, encoding="utf-8")
         if ctx.main is not None:
-            ctx.main.audit("run_python", {"bytes": len(code.encode("utf-8"))}, ctx)
+            await ctx.main.audit("run_python", {"bytes": len(code.encode("utf-8"))}, ctx)
         outcome = await utils.run_process(
             [sys.executable, "-X", "utf8", str(script)],
             cwd=str(workdir),
@@ -66,10 +66,10 @@ async def run_python_sdk(ctx: ToolContext, code: str, timeout: int = 30) -> str:
         )
         if not granted:
             if ctx.main is not None:
-                ctx.main.audit("run_python_sdk_denied", {"preview": utils.truncate(code, 120)}, ctx)
+                await ctx.main.audit("run_python_sdk_denied", {"preview": utils.truncate(code, 120)}, ctx)
             return texts.t("confirm_declined")
     if ctx.main is not None:
-        ctx.main.audit("run_python_sdk", {"bytes": len(code.encode("utf-8"))}, ctx)
+        await ctx.main.audit("run_python_sdk", {"bytes": len(code.encode("utf-8"))}, ctx)
     limit = float(timeout if timeout and timeout > 0 else 30)
     buf = io.StringIO()
     globs: dict = {

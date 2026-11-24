@@ -49,9 +49,9 @@ def test_breaker_success_clears():
     assert pool._is_open("m") is True
 
 
-def test_record_usage_by_model_structured():
+async def test_record_usage_by_model_structured():
     main = FakeMain()
-    main.record_usage("c:private:1", {"total_tokens": 100, "prompt_tokens": 70, "completion_tokens": 30}, model="p:m")
+    await main.record_usage("c:private:1", {"total_tokens": 100, "prompt_tokens": 70, "completion_tokens": 30}, model="p:m")
     data = main.sdk.storage.get("QvQChat:usage:" + time.strftime("%Y-%m-%d"), {})
     assert data["by_model"]["p:m"] == {"tokens": 100, "in": 70, "out": 30}
 

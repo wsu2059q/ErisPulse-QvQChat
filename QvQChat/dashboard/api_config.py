@@ -94,7 +94,7 @@ class ConfigApiMixin:
 
     async def providers_save(self, request):
         body = dict(await request.json() or {})
-        self.main.audit("providers_save", {"id": str(body.get("id") or ""), "models": len(body.get("models") or [])})
+        await self.main.audit("providers_save", {"id": str(body.get("id") or ""), "models": len(body.get("models") or [])})
         enriched = 0
         models = body.get("models")
         if isinstance(models, list):
@@ -119,7 +119,7 @@ class ConfigApiMixin:
             return ({"error": "provider not found"}, 404)
         enabled = bool((body or {}).get("enabled", True))
         self.main.pool.save_provider({**provider, "enabled": enabled})
-        self.main.audit("provider_toggle", {"id": provider_id, "enabled": enabled})
+        await self.main.audit("provider_toggle", {"id": provider_id, "enabled": enabled})
         return {"ok": True, "id": provider_id, "enabled": enabled}
 
     async def models_detect(self, request):
@@ -148,7 +148,7 @@ class ConfigApiMixin:
         provider_id = str((body or {}).get("id") or "")
         snapshot = self.main.pool.get_provider(provider_id) or {}
         ok = self.main.pool.delete_provider(provider_id)
-        undo = self._trash_put("provider", snapshot) if ok and snapshot else ""
+        undo = await self._trash_put("provider", snapshot) if ok and snapshot else ""
         return {"ok": ok, "undo": undo}
 
     async def providers_remote_models(self, request):
@@ -178,7 +178,7 @@ class ConfigApiMixin:
 
     async def personas_get(self, request):
 # KV 绑定为权威源（会话 state.persona 镜像已废弃）
-        return {"personas": self.main.personas.list(), "bindings": self.main.personas.bindings()}
+        return {"personas": self.main.personas.list(), "bindings": await self.main.personas.abindings()}
 
     async def personas_save(self, request):
         body = await request.json()
@@ -194,7 +194,7 @@ class ConfigApiMixin:
         snapshot = self.main.personas.get(persona_id) or {}
         try:
             ok = self.main.personas.delete(persona_id)
-            undo = self._trash_put("persona", snapshot) if ok and snapshot else ""
+            undo = await self._trash_put("persona", snapshot) if ok and snapshot else ""
             return {"ok": ok, "undo": undo}
         except ValueError as e:
             return ({"error": str(e)}, 400)
@@ -206,12 +206,12 @@ class ConfigApiMixin:
 # 覆盖/解绑前把既有绑定入回收站（撤销按钮恢复）
         undo = ""
         if chat_key:
-            previous = str(self.sdk.storage.get(f"QvQChat:binding:{chat_key}", "") or "")
+            previous = str(await self.sdk.storage.aget(f"QvQChat:binding:{chat_key}", "") or "")
             if previous and (not persona or str(persona) != previous):
-                undo = self._trash_put("binding", {"chat_key": chat_key, "persona": previous})
+                undo = await self._trash_put("binding", {"chat_key": chat_key, "persona": previous})
 # 仅写 KV 权威绑定；state.persona 镜像已废弃
-        self.main.personas.bind(chat_key, persona)
-        self.main.audit("persona_bind", {"chat_key": chat_key, "persona": str(persona or "")})
+        await self.main.personas.bind(chat_key, persona)
+        await self.main.audit("persona_bind", {"chat_key": chat_key, "persona": str(persona or "")})
         return {"ok": True, "undo": undo}
 
     async def tools_get(self, request):
@@ -245,7 +245,7 @@ class ConfigApiMixin:
 
     async def mcp_save(self, request):
         body = await request.json()
-        self.main.audit("mcp_save", {"name": str((body or {}).get("name") or "")})
+        await self.main.audit("mcp_save", {"name": str((body or {}).get("name") or "")})
         try:
             saved = self.main.mcp.save_server(body or {})
         except ValueError as e:
@@ -353,7 +353,7 @@ class ConfigApiMixin:
         name = str((body or {}).get("name") or "")
         snapshot = self.main.skills.get_skill(name) or {}
         ok = self.main.skills.delete_skill(name)
-        undo = self._trash_put("skill", snapshot) if ok and snapshot else ""
+        undo = await self._trash_put("skill", snapshot) if ok and snapshot else ""
         return {"ok": ok, "undo": undo}
 
     async def skills_enabled(self, request):
@@ -394,20 +394,26 @@ class ConfigApiMixin:
 
         memory = {}
         storage_dump: dict = {}
-        for key in self.sdk.storage.keys():
+        dump_keys = []
+        for key in await self.sdk.storage.aget_all_keys():
             if not isinstance(key, str) or key in PROTECTED_KEYS:
                 continue
             bucket = _storage_domain_of(key)
             if not want(bucket):
                 continue
+            if key.startswith(MEM_PREFIX) or key.startswith("QvQChat:"):
+                dump_keys.append(key)
+# 逐键循环换批量读（aget_multi）：一次往返取回全部键值
+        values = await self.sdk.storage.aget_multi(dump_keys) if dump_keys else {}
+        for key in dump_keys:
+            value = values.get(key)
             if key.startswith(MEM_PREFIX):
-                entries = self.sdk.storage.get(key, [])
-                if entries:
-                    memory[key[len(MEM_PREFIX):]] = entries
+                if value:
+                    memory[key[len(MEM_PREFIX):]] = value
 # 全量 KV 落盘（会话/事实/画像/知识库/identity/routes/todo… 一个不漏）
             if key.startswith("QvQChat:"):
                 try:
-                    storage_dump[key] = self.sdk.storage.get(key, None)
+                    storage_dump[key] = value
                 except Exception:
                     continue
         payload = {
@@ -418,9 +424,9 @@ class ConfigApiMixin:
             "chain": self.main.pool.model_chain() if want("models") else [],
             "personas": {
                 pid: data
-                for pid, data in (self.sdk.storage.get("QvQChat:personas", {}) or {}).items()
+                for pid, data in ((await self.sdk.storage.aget("QvQChat:personas", {})) or {}).items()
             } if want("personas") else {},
-            "tasks": self.main.scheduler.list() if want("tasks") else [],
+            "tasks": await self.main.scheduler.list() if want("tasks") else [],
             "memory": memory if want("memory") else {},
             "mcp": self.main.mcp.list_servers() if want("mcp") else [],
             "skills": self.main.skills.list_skills() if want("skills") else [],
@@ -485,9 +491,9 @@ class ConfigApiMixin:
             return ({"error": "data object required"}, 400)
         sections = (body or {}).get("sections")
         strategies = (body or {}).get("strategies") or {}
-        applied, errors = self._apply_import(data, sections, strategies)
+        applied, errors = await self._apply_import(data, sections, strategies)
         if applied:
-            self.main.audit("import_data", {"sections": applied})
+            await self.main.audit("import_data", {"sections": applied})
         result = {"ok": True, "applied": applied}
         if errors:
             result["errors"] = errors
@@ -500,7 +506,7 @@ class ConfigApiMixin:
             mode = str(strategies.get(section) or "").strip().lower()
         return mode if mode in ("overwrite", "append", "skip") else "overwrite"
 
-    def _apply_import(self, data: dict, sections, strategies) -> tuple[list, dict]:
+    async def _apply_import(self, data: dict, sections, strategies) -> tuple[list, dict]:
         """按 sections 选择 + per-section 策略回导；返回 (applied, errors)。sections 空 = 全部。"""
         applied = []
         errors: dict = {}
@@ -545,21 +551,21 @@ class ConfigApiMixin:
         if want("personas") and isinstance(data.get("personas"), dict):
             mode = self._mode_of(strategies, "personas")
             if mode != "skip":
-                stored = self.sdk.storage.get("QvQChat:personas", {})
+                stored = await self.sdk.storage.aget("QvQChat:personas", {})
                 if not isinstance(stored, dict):
                     stored = {}
                 for pid, persona in data["personas"].items():
                     if mode == "append" and pid in stored:
                         continue  # 追加：已有人格不动
                     stored[pid] = persona
-                self.sdk.storage.set("QvQChat:personas", stored)
+                await self.sdk.storage.aset("QvQChat:personas", stored)
                 applied.append("personas")
 
 # ---- tasks ----
         if want("tasks") and isinstance(data.get("tasks"), list):
             mode = self._mode_of(strategies, "tasks")
             if mode != "skip":
-                existing = self.main.scheduler.list()
+                existing = await self.main.scheduler.list()
                 if mode == "overwrite":
                     replaced = []
                     for task in data["tasks"]:
@@ -576,7 +582,7 @@ class ConfigApiMixin:
                             task.setdefault("cron_ref", "")
                             existing.append(task)
                 if data["tasks"]:
-                    self.main.scheduler._save(existing)
+                    await self.main.scheduler._save(existing)
                 applied.append("tasks")
 
 # ---- memory ----
@@ -585,11 +591,17 @@ class ConfigApiMixin:
             if mode != "skip":
                 from ..conversation.memory import MEM_PREFIX
 
+# 逐键循环换批量读写（aget_multi/aset_multi）：一次往返完成旧值读取与新值写入
+                mem_keys = [MEM_PREFIX + str(chat_key) for chat_key in data["memory"]
+                            if isinstance(data["memory"].get(chat_key), list)]
+                olds = await self.sdk.storage.aget_multi(mem_keys) if mem_keys else {}
+                merged: dict = {}
                 for chat_key, entries in data["memory"].items():
                     if not isinstance(entries, list):
                         continue
+                    key = MEM_PREFIX + str(chat_key)
                     if mode == "append":
-                        old = self.sdk.storage.get(MEM_PREFIX + str(chat_key), [])
+                        old = olds.get(key, [])
                         old = old if isinstance(old, list) else []
                         seen = {json.dumps(e, sort_keys=True, default=str) for e in old}
                         for entry in entries:
@@ -597,9 +609,11 @@ class ConfigApiMixin:
                             if mark not in seen:
                                 old.append(entry)
                                 seen.add(mark)
-                        self.sdk.storage.set(MEM_PREFIX + str(chat_key), old)
+                        merged[key] = old
                     else:
-                        self.sdk.storage.set(MEM_PREFIX + str(chat_key), entries)
+                        merged[key] = entries
+                if merged:
+                    await self.sdk.storage.aset_multi(merged)
                 applied.append("memory")
 
 # ---- mcp ----
@@ -661,15 +675,17 @@ class ConfigApiMixin:
             if mode != "skip":
                 from .api_ops import PROTECTED_KEYS
 
-                written = 0
-                for key, value in data["storage"].items():
-                    if not isinstance(key, str) or not key.startswith("QvQChat:") or key in PROTECTED_KEYS:
-                        continue
-                    if mode == "append" and self.sdk.storage.get(key, None) is not None:
-                        continue  # 追加：已有键不动
-                    self.sdk.storage.set(key, value)
-                    written += 1
-                if written:
+                candidates = {
+                    key: value
+                    for key, value in data["storage"].items()
+                    if isinstance(key, str) and key.startswith("QvQChat:") and key not in PROTECTED_KEYS
+                }
+# 追加模式先批量探测存量键（aget_multi），再一次性写入（aset_multi）
+                if mode == "append" and candidates:
+                    existing = await self.sdk.storage.aget_multi(list(candidates))
+                    candidates = {k: v for k, v in candidates.items() if existing.get(k, None) is None}
+                if candidates:
+                    await self.sdk.storage.aset_multi(candidates)
                     applied.append("storage")
         return applied, errors
 
@@ -702,7 +718,7 @@ class ConfigApiMixin:
                 "version": payload.get("version"),
                 "sanitize": bool(payload.get("sanitize")),
             }
-        applied, errors = self._apply_import(payload, sections, strategies)
+        applied, errors = await self._apply_import(payload, sections, strategies)
 # 文件还原：files 域的合并策略（overwrite 覆盖 / append 只补缺失 / skip）
         file_mode = self._mode_of(strategies, "files")
         files_restored = 0
@@ -743,7 +759,7 @@ class ConfigApiMixin:
         }
 # 值域已知的列表字段：直接给候选，前端渲染为多选
         tool_names = [t.name for t in self.main.registry.list()]
-        sessions = self.main.sessions.list_sessions()
+        sessions = await self.main.sessions.list_sessions()
         chat_keys = [str(item.get("chat_key") or "") for item in sessions][:200]
         chat_keys = [k for k in chat_keys if k]
         platforms = sorted({k.split(":", 1)[0] for k in chat_keys if ":" in k})
@@ -839,7 +855,7 @@ class ConfigApiMixin:
         if errors:
             return ({"ok": False, "applied": applied, "errors": errors}, 400)
         if applied:
-            self.main.audit("config_set", {"keys": applied})
+            await self.main.audit("config_set", {"keys": applied})
         return {"ok": True, "applied": applied}
 
     # ===== 插件设置（框架声明式配置流：qvq_settings 仅作归属标记） =====

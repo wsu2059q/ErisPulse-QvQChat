@@ -100,9 +100,9 @@ def _is_sensitive(ctx: ToolContext, resolved: str) -> bool:
     return False
 
 
-def _audit(ctx: ToolContext, tool: str, detail: dict) -> None:
+async def _audit(ctx: ToolContext, tool: str, detail: dict) -> None:
     if ctx.main is not None:
-        ctx.main.audit(tool, detail, ctx)
+        await ctx.main.audit(tool, detail, ctx)
 
 
 async def read_file(ctx: ToolContext, path: str, max_bytes: int = 65536) -> str:
@@ -117,7 +117,7 @@ async def read_file(ctx: ToolContext, path: str, max_bytes: int = 65536) -> str:
         return texts.t("file_not_found", path=path)
     size = target.stat().st_size
     data = target.read_bytes()[: max_bytes if max_bytes > 0 else 65536]
-    _audit(ctx, "read_file", {"path": resolved, "size": size})
+    await _audit(ctx, "read_file", {"path": resolved, "size": size})
     body = utils.decode_bytes(data)
     notice = "\n" + texts.t("file_too_large", limit=max_bytes) if size > len(data) else ""
     return body + notice
@@ -131,7 +131,7 @@ async def list_dir(ctx: ToolContext, path: str = ".") -> str:
     target = Path(resolved)
     if not target.exists():
         return texts.t("file_not_found", path=path)
-    _audit(ctx, "list_dir", {"path": resolved})
+    await _audit(ctx, "list_dir", {"path": resolved})
     items = []
     for entry in sorted(target.iterdir())[:200]:
         kind = "dir" if entry.is_dir() else "file"
@@ -164,7 +164,7 @@ async def view_image(ctx: ToolContext, path: str) -> str:
         return texts.t("image_type_unsupported", path=path)
     if target.stat().st_size > 8 * 1024 * 1024:
         return texts.t("image_too_large", path=path)
-    _audit(ctx, "view_image", {"path": resolved})
+    await _audit(ctx, "view_image", {"path": resolved})
     return utils.to_text({"image_path": resolved})
 
 
@@ -177,7 +177,7 @@ async def write_file(ctx: ToolContext, path: str, content: str, append: bool = F
             timeout=int(getattr(ctx.config, "confirm_timeout", 60)),
         )
         if not granted:
-            _audit(ctx, "write_file_denied", {"path": path})
+            await _audit(ctx, "write_file_denied", {"path": path})
             return texts.t("confirm_declined")
     try:
         resolved = _resolve_allowed(ctx, path)
@@ -188,7 +188,7 @@ async def write_file(ctx: ToolContext, path: str, content: str, append: bool = F
     mode = "a" if append else "w"
     with open(target, mode, encoding="utf-8", newline="") as f:
         f.write(content)
-    _audit(ctx, "write_file", {"path": resolved, "bytes": len(content.encode("utf-8"))})
+    await _audit(ctx, "write_file", {"path": resolved, "bytes": len(content.encode("utf-8"))})
     return texts.t("write_done", path=resolved, bytes=len(content.encode("utf-8")))
 
 
@@ -196,7 +196,7 @@ async def run_command(ctx: ToolContext, command: str, cwd: str = "", timeout: in
     if _level(ctx) == "strict":
         return texts.t("computer_denied")
     if _is_blocked(ctx, command):
-        _audit(ctx, "run_command_blocked", {"command": command})
+        await _audit(ctx, "run_command_blocked", {"command": command})
         return texts.t("command_blocked", command=command)
     safe = _is_safe_command(ctx, command)
     if not safe and not ctx.main.is_admin(ctx.user_id, ctx.origin, ctx.platform):
@@ -204,7 +204,7 @@ async def run_command(ctx: ToolContext, command: str, cwd: str = "", timeout: in
     if _level(ctx) == "standard" and _is_dangerous(ctx, command) and not safe and _needs_confirm(ctx):
         granted = await ctx.confirm(texts.t("confirm_prompt", content=command), timeout=int(getattr(ctx.config, "confirm_timeout", 60)))
         if not granted:
-            _audit(ctx, "run_command_denied", {"command": command})
+            await _audit(ctx, "run_command_denied", {"command": command})
             return texts.t("confirm_declined")
     workdir: str | None = None
     if cwd:
@@ -213,7 +213,7 @@ async def run_command(ctx: ToolContext, command: str, cwd: str = "", timeout: in
         except PermissionError as e:
             return str(e)
     effective_timeout = float(timeout if timeout and timeout > 0 else getattr(ctx.config, "command_timeout", 60))
-    _audit(ctx, "run_command", {"command": command, "cwd": workdir or "", "timeout": effective_timeout})
+    await _audit(ctx, "run_command", {"command": command, "cwd": workdir or "", "timeout": effective_timeout})
     outcome = await utils.run_process(command, cwd=workdir, timeout=effective_timeout, shell=True)
     header = texts.t("command_finished", code=outcome["code"])
     return f"{header}\n{outcome['output']}"

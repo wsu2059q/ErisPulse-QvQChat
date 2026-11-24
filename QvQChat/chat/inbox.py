@@ -591,14 +591,14 @@ class InboxMixin(RecoveryMixin):
         if wants_recall and bool(getattr(self.cfg, "humanize_recall_message", True)):
             await delivery.recall_last(chat_key)
 
-    def _over_token_limit(self, chat_key: str) -> bool:
+    async def _over_token_limit(self, chat_key: str) -> bool:
         """会话是否处于超限态（全局日上限或会话级日限额，任一命中即超）。
 
         供插话问询、主动发言等可选模型调用的前置闸：超限态下这些"可省调用"
         一律跳过。管理员豁免只作用于用户触发回合的拦截与提示，这里不做身份判断。
         """
         today = time.strftime("%Y-%m-%d")
-        data = self.sdk.storage.get(f"QvQChat:usage:{today}", {})
+        data = await self.sdk.storage.aget(f"QvQChat:usage:{today}", {})
         if not isinstance(data, dict):
             data = {}
         global_limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
@@ -612,7 +612,7 @@ class InboxMixin(RecoveryMixin):
                 return True
         return False
 
-    def _user_quota_allow(self, chat_key: str, sender_id: str, event) -> bool:
+    async def _user_quota_allow(self, chat_key: str, sender_id: str, event) -> bool:
         """用户级每日 token 配额：超限拒绝并至多提示一次（管理员豁免）。
 
         计数在 record_usage 侧（by_user 累加），这里只做门槛判断。
@@ -623,14 +623,14 @@ class InboxMixin(RecoveryMixin):
         if self.is_admin(sender_id, "chat", event.get_platform() or ""):
             return True
         today = time.strftime("%Y-%m-%d")
-        data = self.sdk.storage.get(f"QvQChat:usage:{today}", {})
+        data = await self.sdk.storage.aget(f"QvQChat:usage:{today}", {})
         by_user = data.get("by_user") if isinstance(data, dict) else None
         used = int((by_user or {}).get(sender_id, 0) or 0) if isinstance(by_user, dict) else 0
         if used < limit:
             return True
         notice_key = f"QvQChat:usage:user_quota_noticed:{today}:{sender_id}"
-        if not self.sdk.storage.get(notice_key, False):
-            self.sdk.storage.set(notice_key, True)
+        if not await self.sdk.storage.aget(notice_key, False):
+            await self.sdk.storage.aset(notice_key, True)
             try:
                 self.spawn(self._quota_notice(event, limit, used))
             except Exception:
@@ -946,7 +946,7 @@ class InboxMixin(RecoveryMixin):
                 return
             ho_all = bool(
                 getattr(self.cfg, "handover_enabled", True)
-                and (self._handover_state(chat_key) or {}).get("listen") == "all"
+                and (await self._handover_state(chat_key) or {}).get("listen") == "all"
             )
             if mode == "at_only" and event.is_group_message() and not (
                 self._is_direct_address(event, text, quoted_me, at_targets) or ho_all
@@ -968,7 +968,7 @@ class InboxMixin(RecoveryMixin):
 # 超限且未开自动低token时跳过问询：decide 本身是一次模型调用，
 # 插话回合反正会被限额拦截，问询就白花了（开了超限自动进低token则照常问询、插话走便宜链路）
                     and not (
-                        self._over_token_limit(chat_key)
+                        await self._over_token_limit(chat_key)
                         and not bool(getattr(self.cfg, "budget_auto_on_limit", False))
                     )
                 ):
@@ -985,7 +985,7 @@ class InboxMixin(RecoveryMixin):
                 return
             event.done()
             sender_for_quota = str(event.get_user_id() or "")
-            if not self._user_quota_allow(chat_key, sender_for_quota, event):
+            if not await self._user_quota_allow(chat_key, sender_for_quota, event):
                 return
             if not self._rate_allow(chat_key, sender_for_quota, event):
                 return
@@ -1542,15 +1542,15 @@ class InboxMixin(RecoveryMixin):
             live, (on_delta, on_reset, on_tool_event, on_reasoning), interrupted_note = settled
             # 会话让渡路由：让渡进行中本轮改走 _process_handover（上下文/人格/记忆
             # 全部绕开，让渡内容不进主会话）；到期（轮数尽/空闲超时）先收场再落回主链路
-            ho_state = self._handover_state(chat_key)
+            ho_state = await self._handover_state(chat_key)
             if ho_state is not None:
                 if _HANDOVER_EXIT_PHRASE_RE.match(labeled):
-                    self._end_handover(chat_key, ho_state)
+                    await self._end_handover(chat_key, ho_state)
                     self.logger.info(f"handover ended by exit phrase ({chat_key})")
                 else:
                     reason = handover.expired_reason(ho_state)
                     if reason:
-                        self._end_handover(chat_key, ho_state)
+                        await self._end_handover(chat_key, ho_state)
                         self.logger.info(f"handover auto-ended ({reason}) ({chat_key})")
                     else:
                         await self._process_handover(
@@ -1591,7 +1591,7 @@ class InboxMixin(RecoveryMixin):
 
 # 悬空回复标记：生成开始落盘（记录将送入模型的 labeled 文本），实例崩溃重启后
 # 据此重跑该轮；完成/异常/取消均在 finally 清除，保证正常路径无残留
-            self.sdk.storage.set(
+            await self.sdk.storage.aset(
                 INFLIGHT_KEY_PREFIX + chat_key,
                 {"text": labeled, "origin": origin, "ts": time.time()},
             )
@@ -1605,7 +1605,7 @@ class InboxMixin(RecoveryMixin):
 # runner 内只认全局 budget_mode，会话级与自动态在此传入（显式档位不被自动档覆盖）
                     budget_pref = "cheap" if (
                         policy.get("low_token")
-                        or (bool(getattr(self.cfg, "budget_auto_on_limit", False)) and self._over_token_limit(chat_key))
+                        or (bool(getattr(self.cfg, "budget_auto_on_limit", False)) and await self._over_token_limit(chat_key))
                     ) else ""
                     run_coro = self.runner.run(
                         system=system,
@@ -1724,11 +1724,11 @@ class InboxMixin(RecoveryMixin):
                         self.logger.warning(
                             f"empty reply after cleanup (model={getattr(result, 'model', '')}, tools={len(result.tool_trace)}), skipped sending ({chat_key})"
                         )
-                    self.sessions.finalize(chat_key, "", trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), user_id=sender_id, skip_append=True)
+                    await self.sessions.finalize(chat_key, "", trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), user_id=sender_id, skip_append=True)
                     self._drain_waiting(chat_key)
                     return
                 reply = reply or texts.t("no_reply_content")
-                self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), user_id=sender_id)
+                await self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), user_id=sender_id)
                 try:
 # 隐私开关：listen_off 时回执事件也不出群
                     if not self.sessions.get_flag(chat_key, "listen_off"):
@@ -1749,11 +1749,11 @@ class InboxMixin(RecoveryMixin):
             finally:
 # 删除失败必须当场暴露并重试：残留标记会在下次重启被恢复例程重放成"自动重发"
                 try:
-                    self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+                    await self.sdk.storage.adelete(INFLIGHT_KEY_PREFIX + chat_key)
                 except Exception as e:
                     self.logger.warning(f"inflight marker delete failed ({chat_key}): {e}")
                     try:
-                        self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+                        await self.sdk.storage.adelete(INFLIGHT_KEY_PREFIX + chat_key)
                     except Exception as e2:
                         self.logger.error(f"inflight marker delete retry failed ({chat_key}): {e2}")
         except Exception as e:
@@ -1853,11 +1853,11 @@ class InboxMixin(RecoveryMixin):
         if mutes_note:
             scene += mutes_note
 # 重逢感知：距上次对话超过阈值时告知模型——隔三天回来接得像隔三秒一样是拟人化穿帮点
-        reunion = self._reunion_note(chat_key)
+        reunion = await self._reunion_note(chat_key)
         if reunion:
             scene += reunion
 # 短时效场景注记消费（撤回等认知事件，事件侧写入、本轮消费即清）
-        memo = self._scene_memo_pop(chat_key)
+        memo = await self._scene_memo_pop(chat_key)
         if memo:
             scene += memo
 # 非消息事件来源注记（通知/请求唤醒的回合）：让模型知道这不是用户发言
@@ -1936,8 +1936,9 @@ class InboxMixin(RecoveryMixin):
         limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
         session_budget = int(get_policy(self.sdk, chat_key).get("session_budget") or 0)
         if limit or session_budget:
-            used_today = int(self._usage_today().get("tokens", 0) or 0)
-            by_chat_today = (self._usage_today().get("by_chat") or {})
+            usage_today = await self._usage_today()
+            used_today = int(usage_today.get("tokens", 0) or 0)
+            by_chat_today = (usage_today.get("by_chat") or {})
             used_session = int(by_chat_today.get(chat_key, 0) or 0)
             admin = self.is_admin(sender_id, "chat", event.get_platform() or "")
             global_over = limit > 0 and used_today >= limit and not admin
@@ -1951,8 +1952,8 @@ class InboxMixin(RecoveryMixin):
                     self.logger.info(f"over token limit, plugin turn skipped ({chat_key})")
                     return
                 notice_key = f"QvQChat:usage:limit_noticed:{time.strftime('%Y-%m-%d')}:{chat_key}"
-                if not self.sdk.storage.get(notice_key, False):
-                    self.sdk.storage.set(notice_key, True)
+                if not await self.sdk.storage.aget(notice_key, False):
+                    await self.sdk.storage.aset(notice_key, True)
                     if session_over and not global_over:
                         await event.reply(texts.t("session_limit_reached", used=used_session, limit=session_budget))
                     else:
@@ -2060,7 +2061,7 @@ class InboxMixin(RecoveryMixin):
 
 # ===== 会话让渡（handover）：触发放行 / 路由 / 收场，状态见 conversation/handover.py =====
 
-    def _handover_state(self, chat_key: str) -> dict | None:
+    async def _handover_state(self, chat_key: str) -> dict | None:
         """
         {!--< internal-use >!--}
         读取让渡状态（带 5s 进程内缓存）；start/stop/touch 后由调用方失效/回填缓存。
@@ -2070,19 +2071,19 @@ class InboxMixin(RecoveryMixin):
         hit = cache.get(chat_key)
         if hit and now - hit[0] < 5.0:
             return hit[1]
-        state = handover.get_state(self.sdk, chat_key)
+        state = await handover.get_state(self.sdk, chat_key)
         cache[chat_key] = (now, state)
         return state
 
     def _handover_state_invalidate(self, chat_key: str) -> None:
         self.rt.handover_cache.pop(chat_key, None)
 
-    def _end_handover(self, chat_key: str, state: dict) -> None:
+    async def _end_handover(self, chat_key: str, state: dict) -> None:
         """
         {!--< internal-use >!--}
         收场：清让渡状态 + 主会话注记，随后异步补剧情摘要（aux 模型把 sub: 会话压成 ≤3 句）。
         """
-        handover.stop(self.sdk, chat_key)
+        await handover.stop(self.sdk, chat_key)
         self._handover_state_invalidate(chat_key)
         note = texts.t(
             "handover_note",
@@ -2188,9 +2189,9 @@ class InboxMixin(RecoveryMixin):
         """
         sub_key = str(state.get("sub_key") or "")
         if not sub_key:
-            self._end_handover(chat_key, state)
+            await self._end_handover(chat_key, state)
             return
-        self.sdk.storage.set(
+        await self.sdk.storage.aset(
             INFLIGHT_KEY_PREFIX + chat_key,
             {"text": labeled, "origin": origin, "ts": time.time()},
         )
@@ -2236,9 +2237,9 @@ class InboxMixin(RecoveryMixin):
                     self.logger.warning(
                         f"handover turn aborted: reasoning exceeded {think_cap} chars ({chat_key}), ending handover"
                     )
-                    cur = handover.get_state(self.sdk, chat_key)
+                    cur = await handover.get_state(self.sdk, chat_key)
                     if cur is not None:
-                        self._end_handover(chat_key, cur)
+                        await self._end_handover(chat_key, cur)
                     try:
                         await event.reply(texts.t("handover_drool_stopped", cap=think_cap))
                     except Exception as inner:
@@ -2287,27 +2288,27 @@ class InboxMixin(RecoveryMixin):
             usage = getattr(result, "usage", None)
             if usage:
                 try:
-                    self.record_usage(chat_key, usage, getattr(result, "model", ""))
+                    await self.record_usage(chat_key, usage, getattr(result, "model", ""))
                 except Exception as e:
                     self.logger.debug(f"handover usage record failed: {e}")
-            handover.touch(self.sdk, state, chat_key)
+            await handover.touch(self.sdk, state, chat_key)
             self._handover_state_invalidate(chat_key)
             if live is not None:
                 live.reply = reply
                 live.status = "done"
                 live.publish("done", {"reply": reply, "session": chat_key})
                 live.publish("end", {"status": live.status})
-            new_state = handover.get_state(self.sdk, chat_key)
+            new_state = await handover.get_state(self.sdk, chat_key)
             if new_state is not None and (ended or handover.expired_reason(new_state)):
-                self._end_handover(chat_key, new_state)
+                await self._end_handover(chat_key, new_state)
         finally:
             # 删除失败当场重试：残留标记会被恢复例程重放成重跑该轮
             try:
-                self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+                await self.sdk.storage.adelete(INFLIGHT_KEY_PREFIX + chat_key)
             except Exception as e:
                 self.logger.warning(f"inflight marker delete failed ({chat_key}): {e}")
                 try:
-                    self.sdk.storage.delete(INFLIGHT_KEY_PREFIX + chat_key)
+                    await self.sdk.storage.adelete(INFLIGHT_KEY_PREFIX + chat_key)
                 except Exception as e2:
                     self.logger.error(f"inflight marker delete retry failed ({chat_key}): {e2}")
 
@@ -2472,23 +2473,23 @@ class InboxMixin(RecoveryMixin):
                 seeded.append({"role": "assistant", "content": text})
         return seeded
 
-    def _scene_memo_push(self, chat_key: str, text: str) -> None:
+    async def _scene_memo_push(self, chat_key: str, text: str) -> None:
         """短时效场景注记（10 分钟过期）：撤回等认知事件，下一轮对话消费。"""
         if not chat_key or not text:
             return
         key = "QvQChat:scene_memo:" + chat_key
-        items = self.sdk.storage.get(key, [])
+        items = await self.sdk.storage.aget(key, [])
         items = [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
         now = time.time()
         items = [x for x in items if now - float(x.get("ts") or 0) < 600]
         items.append({"text": text, "ts": now})
-        self.sdk.storage.set(key, items)
+        await self.sdk.storage.aset(key, items)
 
-    def _scene_memo_pop(self, chat_key: str) -> str:
+    async def _scene_memo_pop(self, chat_key: str) -> str:
         """取出并清空未过期注记（消费即清，只影响下一轮）。"""
         key = "QvQChat:scene_memo:" + chat_key
-        items = self.sdk.storage.get(key, [])
-        self.sdk.storage.delete(key)
+        items = await self.sdk.storage.aget(key, [])
+        await self.sdk.storage.adelete(key)
         now = time.time()
         fresh = [x for x in items if isinstance(x, dict) and now - float(x.get("ts") or 0) < 600] if isinstance(items, list) else []
         return "".join(str(x.get("text") or "") for x in fresh)
@@ -2529,7 +2530,7 @@ class InboxMixin(RecoveryMixin):
             return "", []
         return chr(10).join(texts), list(dict.fromkeys(targets))
 
-    def _reunion_note(self, chat_key: str) -> str:
+    async def _reunion_note(self, chat_key: str) -> str:
         """重逢注记：state.updated 距今超过 scene_reunion_hours 时生成时长文案。"""
         try:
             hours = float(getattr(self.cfg, "scene_reunion_hours", 12.0) or 0)
@@ -2537,7 +2538,7 @@ class InboxMixin(RecoveryMixin):
             hours = 0.0
         if hours <= 0:
             return ""
-        state = self.sdk.storage.get("QvQChat:conv:" + chat_key, None)
+        state = await self.sdk.storage.aget("QvQChat:conv:" + chat_key, None)
         last = float(state.get("updated") or 0) if isinstance(state, dict) else 0.0
         if not last:
             return ""
@@ -2614,7 +2615,7 @@ class InboxMixin(RecoveryMixin):
         if not platform or not group_id or not uids:
             return {}
         cache_key = f"QvQChat:nick:{platform}:{group_id}"
-        cache = self.sdk.storage.get(cache_key, {})
+        cache = await self.sdk.storage.aget(cache_key, {})
         cache = cache if isinstance(cache, dict) else {}
         now = time.time()
         names: dict[str, str] = {}
@@ -2644,7 +2645,7 @@ class InboxMixin(RecoveryMixin):
                 if name:
                     names[uid] = name
                     cache[uid] = {"name": name, "ts": now}
-            self.sdk.storage.set(cache_key, cache)
+            await self.sdk.storage.aset(cache_key, cache)
         return names
 
     async def _chat_confirmer(self, ctx: ToolContext, text: str, timeout: int) -> bool:

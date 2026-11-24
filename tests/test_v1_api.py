@@ -33,7 +33,7 @@ def make_manager(monkey_reply=None):
 
 async def test_v1_models_auth():
     manager, main = make_manager()
-    ok = FakeV1Request(auth="Bearer " + manager._own_token())
+    ok = FakeV1Request(auth="Bearer " + await manager._own_token())
     bad = FakeV1Request(auth="Bearer wrong")
     r_ok = await manager.v1_models(ok)
     r_bad = await manager.v1_models(bad)
@@ -45,7 +45,7 @@ async def test_v1_completion_non_stream():
     manager, main = make_manager()
     req = FakeV1Request(
         body={"model": "p:m", "messages": [{"role": "user", "content": "你好"}], "user": "alice"},
-        auth="Bearer " + manager._own_token(),
+        auth="Bearer " + await manager._own_token(),
     )
     resp = await manager.v1_chat_completions(req)
     assert resp["object"] == "chat.completion"
@@ -59,7 +59,7 @@ async def test_v1_completion_stream():
     manager, main = make_manager()
     req = FakeV1Request(
         body={"messages": [{"role": "user", "content": "画个圈"}], "stream": True},
-        auth="Bearer " + manager._own_token(),
+        auth="Bearer " + await manager._own_token(),
     )
     resp = await manager.v1_chat_completions(req)
     chunks = []
@@ -74,6 +74,6 @@ async def test_v1_completion_stream():
 
 async def test_v1_rejects_empty_messages():
     manager, main = make_manager()
-    req = FakeV1Request(body={"messages": []}, auth="Bearer " + manager._own_token())
+    req = FakeV1Request(body={"messages": []}, auth="Bearer " + await manager._own_token())
     resp = await manager.v1_chat_completions(req)
     assert resp[1] == 400

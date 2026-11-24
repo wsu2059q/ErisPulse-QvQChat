@@ -98,18 +98,18 @@ async def test_recall_hint_gated_by_cooldown_and_initiation():
     main.sdk.storage._data["QvQChat:mem:onebot11:group:1"] = [
         {"content": "上次一起去吃了火锅", "ts": 1.0, "importance": 5}
     ] if hasattr(main.sdk.storage, "_data") else None
-    allowed = svc._recall_hint_allowed("onebot11:group:1", "吃什么", "u1")
+    allowed = await svc._recall_hint_allowed("onebot11:group:1", "吃什么", "u1")
     assert allowed is True
 # 记录时间戳后冷却内不再允许
     main.sdk.storage.set("QvQChat:recall_last:u1", __import__("time").time())
-    assert svc._recall_hint_allowed("onebot11:group:1", "吃什么", "u1") is False
+    assert await svc._recall_hint_allowed("onebot11:group:1", "吃什么", "u1") is False
 # 冷却为 0 → 功能关闭
     main2 = FakeMain(humanize_recall_interval_hours=0)
-    assert main2.conversations._recall_hint_allowed("k", "吃什么", "u1") is False
+    assert await main2.conversations._recall_hint_allowed("k", "吃什么", "u1") is False
 # 对方未开口（任务触发空文本）→ 不允许
     main3 = FakeMain(humanize_recall_on_cold_only=True)
     main3.sdk.storage.set("QvQChat:recall_last:u1", 0)
-    assert main3.conversations._recall_hint_allowed("k", "", "u1") is False
+    assert await main3.conversations._recall_hint_allowed("k", "", "u1") is False
 
 
 # ===== H3 硬打断信号 =====
@@ -276,7 +276,7 @@ async def test_undo_expired_token_rejected():
         def __init__(self, body): self._b = body
         async def json(self): return self._b
 
-    token = manager._trash_put("skill", {"name": "x", "body": "y"})
+    token = await manager._trash_put("skill", {"name": "x", "body": "y"})
     import time as _time
     main.sdk.storage.set("QvQChat:trash:" + token, {"kind": "skill", "payload": {"name": "x"}, "ts": _time.time() - 9999})
     resp = await manager.trash_restore(R({"token": token}))

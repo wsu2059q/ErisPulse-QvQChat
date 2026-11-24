@@ -8,11 +8,11 @@ from QvQChat.tools_builtin import schedule
 from fakes import FakeChatEvent, FakeMain
 
 
-def make_main_with_task(**overrides):
+async def make_main_with_task(**overrides):
     main = FakeMain(**overrides)
     main._chat_key_of = Main._chat_key_of.__get__(main)
     ev = FakeChatEvent(text="", group=False)
-    task = main.scheduler.add({
+    task = await main.scheduler.add({
         "name": "每日问候",
         "schedule": {"type": "interval", "seconds": 3600},
         "schedule_raw": "every:1h",
@@ -32,33 +32,33 @@ def make_main_with_task(**overrides):
 
 
 async def test_update_edits_only_given_fields():
-    main, ctx, task = make_main_with_task()
+    main, ctx, task = await make_main_with_task()
     out = await schedule.update_scheduled_task(ctx, task["id"], schedule="every:2h", prompt="改成道晚安")
     assert '"ok": true' in out.lower()
-    updated = next(t for t in main.scheduler.list() if t["id"] == task["id"])
+    updated = next(t for t in await main.scheduler.list() if t["id"] == task["id"])
     assert updated["schedule_raw"] == "every:2h"
     assert "道晚安" in updated["prompt"]
     assert updated["name"] == "每日问候"          # 未提供字段保留
     assert updated["platform"] == "onebot11"
-    assert len(main.scheduler.list()) == 1        # upsert 不追加
+    assert len(await main.scheduler.list()) == 1        # upsert 不追加
 
 
 async def test_update_missing_task():
-    main, ctx, _task = make_main_with_task()
+    main, ctx, _task = await make_main_with_task()
     out = await schedule.update_scheduled_task(ctx, "nope", name="x")
     assert "nope" in out
 
 
 async def test_update_invalid_schedule():
-    main, ctx, task = make_main_with_task()
+    main, ctx, task = await make_main_with_task()
     out = await schedule.update_scheduled_task(ctx, task["id"], schedule="nonsense")
     assert "unrecognized" in out.lower() or "格式无法识别" in out
 
 
 async def test_update_builtin_points_to_config():
-    main, ctx, _task = make_main_with_task()
-    main.scheduler.ensure_storage_maintain_task()
-    sys_task = next(t for t in main.scheduler.list() if str(t.get("name")).startswith("qvq:"))
+    main, ctx, _task = await make_main_with_task()
+    await main.scheduler.ensure_storage_maintain_task()
+    sys_task = next(t for t in await main.scheduler.list() if str(t.get("name")).startswith("qvq:"))
     out = await schedule.update_scheduled_task(ctx, sys_task["id"], schedule="every:2h")
     assert "storage_maintain_hours" in out
 

@@ -63,7 +63,7 @@ async def test_share_expired_token_rejected():
     token = resp["token"]
     from QvQChat import utils
 
-    shares = mgr._shares()
+    shares = await mgr._shares()
     shares[token]["expires"] = utils.now_ts() - 100# 已过期
     mgr.sdk.storage.set("QvQChat:shares", shares)
     denied = await mgr.share_messages(_Req(query={"token": token}))

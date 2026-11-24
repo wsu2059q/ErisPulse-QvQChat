@@ -23,10 +23,10 @@ def state_key(chat_key: str) -> str:
     return HANDOVER_PREFIX + str(chat_key or "")
 
 
-def get_state(sdk, chat_key: str) -> dict | None:
+async def get_state(sdk, chat_key: str) -> dict | None:
     """读取让渡状态；无 / 已失效 / 存储异常一律返回 None。"""
     try:
-        raw = sdk.storage.get(state_key(chat_key), None)
+        raw = await sdk.storage.aget(state_key(chat_key), None)
     except Exception:
         return None
     if isinstance(raw, dict) and raw.get("active"):
@@ -115,7 +115,7 @@ def transcript_of(contexts: list) -> str:
     return "\n".join(lines)
 
 
-def start(sdk, cfg, chat_key: str, *, setup: str, model: str = "",
+async def start(sdk, cfg, chat_key: str, *, setup: str, model: str = "",
           listen: str = "inherit", max_turns: int = 0,
           scene_note: str = "", recent: list | None = None) -> dict:
     """
@@ -146,11 +146,11 @@ def start(sdk, cfg, chat_key: str, *, setup: str, model: str = "",
         "max_turns": int(max_turns) if max_turns else int(getattr(cfg, "handover_max_turns", 30) or 30),
         "idle_minutes": float(getattr(cfg, "handover_idle_minutes", 15.0) or 0),
     }
-    sdk.storage.set(state_key(chat_key), state)
+    await sdk.storage.aset(state_key(chat_key), state)
     return state
 
 
-def stop(sdk, chat_key: str) -> dict | None:
+async def stop(sdk, chat_key: str) -> dict | None:
     """
     结束让渡并删除 KV 状态。
 
@@ -158,11 +158,11 @@ def stop(sdk, chat_key: str) -> dict | None:
     :param chat_key: [str] 主会话键
     :return: [dict | None] 被结束的状态；无让渡返回 None
     """
-    state = get_state(sdk, chat_key)
+    state = await get_state(sdk, chat_key)
     if state is None:
         return None
     try:
-        sdk.storage.delete(state_key(chat_key))
+        await sdk.storage.adelete(state_key(chat_key))
     except Exception:
         pass
     return state
@@ -184,7 +184,7 @@ def expired_reason(state: dict) -> str:
     return ""
 
 
-def touch(sdk, state: dict, chat_key: str) -> dict:
+async def touch(sdk, state: dict, chat_key: str) -> dict:
     """
     回合完成后推进计数：turns +1、刷新 last_ts 并回写 KV。
 
@@ -195,5 +195,5 @@ def touch(sdk, state: dict, chat_key: str) -> dict:
     """
     state["turns"] = int(state.get("turns") or 0) + 1
     state["last_ts"] = time.time()
-    sdk.storage.set(state_key(chat_key), state)
+    await sdk.storage.aset(state_key(chat_key), state)
     return state

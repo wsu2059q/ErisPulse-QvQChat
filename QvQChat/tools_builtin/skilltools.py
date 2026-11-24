@@ -51,7 +51,7 @@ async def save_skill(ctx, name: str, description: str, content: str) -> str:
         return texts.t("tool_error", name="save_skill", error=f"{type(e).__name__}: {e}")
     if getattr(main, "audit", None) is not None:
         try:
-            main.audit("save_skill", {"name": name, "chars": len(content)}, ctx)
+            await main.audit("save_skill", {"name": name, "chars": len(content)}, ctx)
         except Exception:
             pass
     return texts.t("skill_saved", name=name)

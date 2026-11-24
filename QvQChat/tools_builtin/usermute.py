@@ -50,7 +50,7 @@ async def user_mute(ctx: ToolContext, action: str = "list", user_id: str = "",
     if action == "remove":
         removed = store.remove(ctx.chat_key, uid)
         if removed:
-            ctx.main.audit("user_mute_remove", {"user_id": uid}, ctx)
+            await ctx.main.audit("user_mute_remove", {"user_id": uid}, ctx)
         return utils.to_text({"ok": removed, "user_id": uid})
 
     if action == "add":
@@ -58,7 +58,7 @@ async def user_mute(ctx: ToolContext, action: str = "list", user_id: str = "",
             return utils.to_text({"ok": False, "error": "cannot mute an admin"})
         if _is_admin(ctx, ctx.user_id):
             item = store.add(ctx.chat_key, uid, reason, hours=hours, by="admin")
-            ctx.main.audit("user_mute_add", {"user_id": uid, "hours": hours,
+            await ctx.main.audit("user_mute_add", {"user_id": uid, "hours": hours,
                                              "reason": utils.truncate(reason, 80)}, ctx)
             return utils.to_text({"ok": True, "muted": _entry_view(item)})
         # 非管理员触发的回合：受 user_mute_ai 开关与时长上限约束
@@ -78,7 +78,7 @@ async def user_mute(ctx: ToolContext, action: str = "list", user_id: str = "",
         if hours_f <= 0 or hours_f > max_hours:
             hours_f = float(max_hours)
         item = store.add(ctx.chat_key, uid, reason, hours=hours_f, by="ai")
-        ctx.main.audit("user_mute_add", {"user_id": uid, "hours": hours_f, "by": "ai",
+        await ctx.main.audit("user_mute_add", {"user_id": uid, "hours": hours_f, "by": "ai",
                                          "reason": utils.truncate(reason, 80)}, ctx)
         return utils.to_text({"ok": True, "muted": _entry_view(item),
                               "note": f"auto-unmute after {int(hours_f)}h"})

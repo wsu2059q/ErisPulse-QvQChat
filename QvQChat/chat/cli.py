@@ -266,13 +266,13 @@ class CliMixin:
                     if not self.is_admin(user_id, platform=event.get_platform() or ""):
                         await event.reply(texts.t("needs_admin"))
                         return
-                    name = self.scheduler.run_now(str(tokens[2]))
+                    name = await self.scheduler.run_now(str(tokens[2]))
                     if not name:
                         await event.reply(texts.t("task_not_found", id=str(tokens[2])))
                     else:
                         await event.reply(texts.t("task_triggered", name=name, id=str(tokens[2])))
                     return
-                tasks = self.scheduler.list()
+                tasks = await self.scheduler.list()
 # 默认只显示本会话的任务（chat_key 匹配；all 参数看全部）
                 show_all = len(tokens) >= 2 and tokens[1].lower() in ("all", "全部")
                 if not show_all:
@@ -390,7 +390,7 @@ class CliMixin:
                 info = self.diagnose_admin(user_id, "chat", event.get_platform() or "")
                 uptime = max(1, int(time.time() - float(getattr(self, "started_at", time.time()))))
                 uptime_text = (f"{uptime // 3600}h{(uptime % 3600) // 60:02d}m" if uptime >= 3600 else f"{uptime // 60}m{uptime % 60:02d}s")
-                usage = self._usage_today()
+                usage = await self._usage_today()
                 identity = texts.t("status_admin") if info["is_admin"] else texts.t("status_member")
                 await event.reply(texts.t(
                     "status_card",
@@ -403,8 +403,8 @@ class CliMixin:
                     models=len(self.pool.list_models()),
                     tools=sum(counts.values()),
                     eco=counts.get("eco", 0),
-                    sessions=len(self.sessions.list_sessions()),
-                    tasks=len(self.scheduler.list()),
+                    sessions=len(await self.sessions.list_sessions()),
+                    tasks=len(await self.scheduler.list()),
                     identity=identity,
                 ))
             elif sub in ("takeover", "接管"):
@@ -451,15 +451,15 @@ class CliMixin:
         （谁都能开的游戏谁都能收场）。"""
         action = tokens[1].strip().lower() if len(tokens) >= 2 else ""
         if action in ("off", "结束", "結束", "stop"):
-            state = self._handover_state(chat_key)
+            state = await self._handover_state(chat_key)
             if state is None:
                 await event.reply(texts.t("handover_not_active"))
                 return
-            self._end_handover(chat_key, state)
+            await self._end_handover(chat_key, state)
             await event.reply(texts.t("handover_off_done"))
             return
         if not action or action in ("status", "状态", "狀態"):
-            state = self._handover_state(chat_key)
+            state = await self._handover_state(chat_key)
             if state is None:
                 await event.reply(texts.t("handover_usage_hint"))
                 return
@@ -480,11 +480,11 @@ class CliMixin:
         if not setup_text:
             await event.reply(texts.t("handover_usage_hint"))
             return
-        existing = self._handover_state(chat_key)
+        existing = await self._handover_state(chat_key)
         if existing is not None:
             await event.reply(texts.t("handover_already_active", setup=str(existing.get("setup") or "-")))
             return
-        state = handover.start(self.sdk, self.cfg, chat_key, setup=setup_text)
+        state = await handover.start(self.sdk, self.cfg, chat_key, setup=setup_text)
         self._handover_state_invalidate(chat_key)
         await event.reply(texts.t(
             "handover_started_user",
@@ -498,7 +498,7 @@ class CliMixin:
             persona = self.personas.get(pid)
             if persona.get("id") == pid:
 # KV 绑定为唯一事实源；会话 state.persona 镜像已废弃
-                self.personas.bind(chat_key, pid)
+                await self.personas.bind(chat_key, pid)
                 await event.reply(texts.t("persona_set", id=pid))
             else:
                 await event.reply(texts.t("persona_unknown", id=pid))
@@ -598,11 +598,11 @@ class CliMixin:
             html = self._persona_card_html(persona)
             text = self._persona_card_text(persona)
         elif which in ("tasks", "任务", "任務"):
-            tasks = [t for t in self.scheduler.list() if str(t.get("chat_key") or "") == chat_key]
+            tasks = [t for t in await self.scheduler.list() if str(t.get("chat_key") or "") == chat_key]
             html = self._tasks_card_html(tasks)
             text = self._tasks_card_text(tasks)
         elif which in ("usage", "用量", "用量"):
-            usage = self._usage_today()
+            usage = await self._usage_today()
             counts = self.registry.count_by_origin()
             info = self.diagnose_admin(user_id, "chat", event.get_platform() or "")
             uptime = max(1, int(time.time() - float(getattr(self, "started_at", time.time()))))
@@ -809,7 +809,7 @@ class CliMixin:
             platform = chat_key.split(":", 1)[0]
             count = 0
             todos = []
-            for session in self.sessions.list_sessions():
+            for session in await self.sessions.list_sessions():
                 if count >= 20:
                     break
                 k = str(session.get("chat_key") or "")
@@ -887,7 +887,7 @@ class CliMixin:
         by_user = data.get("by_user") if isinstance(data, dict) else {}
         used = int((by_user or {}).get(user_id, 0) or 0)
         personal = int(getattr(self.cfg, "user_daily_budget", 0) or 0)
-        global_usage = self._usage_today()
+        global_usage = await self._usage_today()
         lines = [
             texts.t("quota_self_line", used=used,
                     limit=(f"{personal:,}" if personal else texts.t("quota_no_limit"))),

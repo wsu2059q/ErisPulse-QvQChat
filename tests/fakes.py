@@ -23,6 +23,33 @@ class FakeStorage:
     def keys(self):
         return list(self._data)
 
+    # ===== 异步接口（与框架 storage 一致；直连本 dict，不经桥接） =====
+
+    async def aget(self, key, default=None):
+        return self.get(key, default)
+
+    async def aset(self, key, value):
+        return self.set(key, value)
+
+    async def adelete(self, key):
+        return self.delete(key)
+
+    async def aget_all_keys(self):
+        return self.keys()
+
+    async def aget_multi(self, keys):
+        return {k: self.get(k, None) for k in keys}
+
+    async def aset_multi(self, mapping):
+        for k, v in mapping.items():
+            self.set(k, v)
+        return True
+
+    async def adelete_multi(self, keys):
+        for k in keys:
+            self.delete(k)
+        return True
+
 
 class FakeLogger:
     def __init__(self):
@@ -582,37 +609,41 @@ class FakeMain:
         return is_admin_user(self.cfg, user_id, origin, platform)
 
     def audit(self, tool, detail, ctx=None):
+        # 双模兼容：Main.audit 已 async，面板 handler 会 await；而尚未迁移的
+        # tools_builtin 仍同步直调。同步立即记账 + 返回可 await 的 _Pending，
+        # 两种调用形态都生效（真实现统一 async 后此桩可整体改 async）。
         self.audits.append({"tool": tool, "detail": detail})
+        return _Pending(None)
 
-    def record_usage(self, chat_key, usage, model="", origin=""):
+    async def record_usage(self, chat_key, usage, model="", origin=""):
         from QvQChat.Main import Main
 
-        Main.record_usage(self, chat_key, usage, model, origin=origin)
+        await Main.record_usage(self, chat_key, usage, model, origin=origin)
 
-    def _usage_today(self):
+    async def _usage_today(self):
         from QvQChat.Main import Main
 
-        return Main._usage_today(self)
+        return await Main._usage_today(self)
 
-    def _prune_usage(self, today: str) -> None:
+    async def _prune_usage(self, today: str) -> None:
         from QvQChat.Main import Main
 
-        Main._prune_usage(self, today)
+        await Main._prune_usage(self, today)
 
-    def _append_flow(self, today: str, chat_key: str, origin: str, model: str, usage: dict) -> None:
+    async def _append_flow(self, today: str, chat_key: str, origin: str, model: str, usage: dict) -> None:
         from QvQChat.Main import Main
 
-        Main._append_flow(self, today, chat_key, origin, model, usage)
+        await Main._append_flow(self, today, chat_key, origin, model, usage)
 
-    def _usage_flow(self, days: int = 7):
+    async def _usage_flow(self, days: int = 7):
         from QvQChat.Main import Main
 
-        return Main._usage_flow(self, days)
+        return await Main._usage_flow(self, days)
 
-    def _usage_history(self, days=14):
+    async def _usage_history(self, days=14):
         from QvQChat.Main import Main
 
-        return Main._usage_history(self, days)
+        return await Main._usage_history(self, days)
 
     async def run_task(self, task):
         self.tasks_fired.append(task)

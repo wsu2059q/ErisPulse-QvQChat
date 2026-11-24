@@ -61,7 +61,7 @@ async def test_todo_clear_on_session_delete():
     main, store = make_store()
     store.replace("chat:del", ["事情"])
     assert store.items("chat:del")
-    main.sessions.delete("chat:del")
+    await main.sessions.delete("chat:del")
     assert store.items("chat:del") == []
 
 

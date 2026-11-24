@@ -21,7 +21,7 @@ class OpsApiMixin:
         except ValueError:
             limit = 60
         items = []
-        for session in self.main.sessions.list_sessions()[:50]:
+        for session in (await self.main.sessions.list_sessions())[:50]:
             key = str(session.get("chat_key") or "")
             if key.startswith("sub:"):
                 continue
@@ -59,15 +59,15 @@ class OpsApiMixin:
         except ValueError:
             flow_days = 2
         return {
-            "days": self.main._usage_history(days),
+            "days": await self.main._usage_history(days),
             "limit": int(getattr(self.main.cfg, "daily_token_limit", 0) or 0),
             "user_limit": int(getattr(self.main.cfg, "user_daily_budget", 0) or 0),
-            "flow": self.main._usage_flow(flow_days) if flow_days > 0 else [],
+            "flow": await self.main._usage_flow(flow_days) if flow_days > 0 else [],
         }
 
     async def tasks_get(self, request):
         tasks = []
-        for task in self.main.scheduler.list():
+        for task in await self.main.scheduler.list():
             item = dict(task)
             item["next_run"] = float(task.get("next_run", 0) or 0)
             item["next_formatted"] = utils.format_ts(float(task.get("next_run", 0)))
@@ -76,7 +76,7 @@ class OpsApiMixin:
             tasks.append(item)
         runs = [
             {**run, "at_formatted": utils.format_ts(float(run.get("at") or 0))}
-            for run in reversed(self.main.scheduler.runs())
+            for run in reversed(await self.main.scheduler.runs())
         ]
         return {"tasks": tasks, "runs": runs}
 
@@ -92,7 +92,7 @@ class OpsApiMixin:
             parsed = parse_schedule(str(body.get("schedule") or ""))
         except ValueError as e:
             return ({"error": f"schedule invalid: {e}"}, 400)
-        existing = self.main.scheduler.list()
+        existing = await self.main.scheduler.list()
         if task_id:
             known = {t.get("id") for t in existing}
             if task_id not in known:
@@ -113,23 +113,23 @@ class OpsApiMixin:
         }
         if task_id:
             spec["id"] = task_id
-        task = self.main.scheduler.add(spec)
-        self.main.audit("tasks_save", {"id": task["id"], "name": task.get("name", "")})
+        task = await self.main.scheduler.add(spec)
+        await self.main.audit("tasks_save", {"id": task["id"], "name": task.get("name", "")})
         return {"ok": True, "task": task}
 
     async def tasks_run(self, request):
         """手动触发一次任务（不改下次计划时间）。"""
         body = await request.json()
         task_id = str((body or {}).get("id") or "")
-        name = self.scheduler.run_now(task_id)
+        name = await self.scheduler.run_now(task_id)
         if not name:
             return ({"error": "task not found"}, 404)
-        self.main.audit("tasks_run", {"id": task_id, "name": name})
+        await self.main.audit("tasks_run", {"id": task_id, "name": name})
         return {"ok": True, "name": name}
 
     async def tasks_delete(self, request):
         body = await request.json()
-        ok = self.main.scheduler.cancel(str((body or {}).get("id") or ""))
+        ok = await self.main.scheduler.cancel(str((body or {}).get("id") or ""))
         return {"ok": ok}
 
     async def breakers_get(self, request):
@@ -146,7 +146,7 @@ class OpsApiMixin:
         daily: list[dict] = []
         by_model: dict[str, float] = {}
         total = 0.0
-        for day in self.main._usage_history(14):
+        for day in await self.main._usage_history(14):
             day_cost = 0.0
             for model_id, usage in (day.get("by_model") or {}).items():
                 price = prices.get(str(model_id).lower())
@@ -198,7 +198,7 @@ class OpsApiMixin:
             cooldown_min=int(cooldown) if cooldown is not None else None,
             owner=str((body or {}).get("scope") or ""),
         )
-        self.main.audit("kb_add", {"id": entry.get("id"), "title": title, "scope": str((body or {}).get("scope") or "")})
+        await self.main.audit("kb_add", {"id": entry.get("id"), "title": title, "scope": str((body or {}).get("scope") or "")})
         return {"ok": True, "entry": entry}
 
     async def kb_update(self, request):
@@ -223,7 +223,7 @@ class OpsApiMixin:
         entry = self.main.knowledge.update(kb_id, **updates)
         if entry is None:
             return ({"error": texts.t("kb_not_found", kb_id=kb_id)}, 404)
-        self.main.audit("kb_update", {"id": kb_id, "fields": sorted(updates.keys())})
+        await self.main.audit("kb_update", {"id": kb_id, "fields": sorted(updates.keys())})
         return {"ok": True, "entry": entry}
 
     async def kb_delete(self, request):
@@ -233,8 +233,8 @@ class OpsApiMixin:
         ok = self.main.knowledge.delete(kid)
         undo = ""
         if ok and entry:
-            undo = self._trash_put("kb", dict(entry))
-            self.main.audit("kb_delete", {"id": kid, "title": str(entry.get("title") or "")})
+            undo = await self._trash_put("kb", dict(entry))
+            await self.main.audit("kb_delete", {"id": kid, "title": str(entry.get("title") or "")})
         return {"ok": ok, "undo": undo if ok else ""}
 
     async def kb_search(self, request):
@@ -255,7 +255,7 @@ class OpsApiMixin:
         return {"ok": True, "added": added}
 
     async def audit_get(self, request):
-        entries = self.main.sdk.storage.get(AUDIT_STORAGE_KEY, [])
+        entries = await self.main.sdk.storage.aget(AUDIT_STORAGE_KEY, [])
         if not isinstance(entries, list):
             entries = []
         limit = 200
@@ -297,12 +297,12 @@ class OpsApiMixin:
     async def audit_delete(self, request):
         """批删/清空审计。indexes 为前端「最新在前」序号；clear=true 清空全部。"""
         body = await request.json()
-        entries = self.main.sdk.storage.get(AUDIT_STORAGE_KEY, [])
+        entries = await self.main.sdk.storage.aget(AUDIT_STORAGE_KEY, [])
         if not isinstance(entries, list):
             entries = []
         if body.get("clear"):
             removed = len(entries)
-            self.main.sdk.storage.set(AUDIT_STORAGE_KEY, [])
+            await self.main.sdk.storage.aset(AUDIT_STORAGE_KEY, [])
             return {"ok": True, "removed": removed, "cleared": True}
         indexes = body.get("indexes")
         if not isinstance(indexes, list) or not indexes:
@@ -319,7 +319,7 @@ class OpsApiMixin:
         if not drop:
             return {"ok": True, "removed": 0}
         kept = [e for i, e in enumerate(entries) if i not in drop]
-        self.main.sdk.storage.set(AUDIT_STORAGE_KEY, kept)
+        await self.main.sdk.storage.aset(AUDIT_STORAGE_KEY, kept)
         return {"ok": True, "removed": total - len(kept)}
 
     async def kb_batch_delete(self, request):
@@ -335,7 +335,7 @@ class OpsApiMixin:
                 removed += 1
                 if entry:
                     saved.append(dict(entry))
-        undo = self._trash_put("kb_batch", {"entries": saved}) if saved else ""
+        undo = await self._trash_put("kb_batch", {"entries": saved}) if saved else ""
         return {"ok": True, "removed": removed, "undo": undo}
 
     async def skills_batch_delete(self, request):
@@ -353,7 +353,7 @@ class OpsApiMixin:
                     saved.append({"name": sk.get("name") or str(name), "description": sk.get("description") or "", "body": sk.get("body") or ""})
             except Exception:
                 continue
-        undo = self._trash_put("skill_batch", {"items": saved}) if saved else ""
+        undo = await self._trash_put("skill_batch", {"items": saved}) if saved else ""
         return {"ok": True, "removed": removed, "undo": undo}
 
     async def sessions_batch_delete(self, request):
@@ -367,7 +367,7 @@ class OpsApiMixin:
             if not key:
                 continue
             try:
-                if self.main.conversations.delete(key):
+                if await self.main.conversations.delete(key):
                     removed += 1
             except Exception:
                 continue
@@ -594,17 +594,17 @@ def _storage_domain_of(key: str) -> str:
 class StorageApiMixin:
     """依赖宿主提供 self.main / self.sdk / self._query。"""
 
-    def _kv_keys(self) -> list[str]:
+    async def _kv_keys(self) -> list[str]:
         out = []
-        for key in self.sdk.storage.keys():
+        for key in await self.sdk.storage.aget_all_keys():
             if isinstance(key, str) and key.startswith("QvQChat:") and key not in PROTECTED_KEYS:
                 out.append(key)
         return out
 
-    def _domain_keys(self, domain: str) -> list[str]:
+    async def _domain_keys(self, domain: str) -> list[str]:
         if domain in ("uploads", "docs_cache"):
             return []
-        return [k for k in self._kv_keys() if _storage_domain_of(k) == domain]
+        return [k for k in await self._kv_keys() if _storage_domain_of(k) == domain]
 
     def _dir_stats(self, path: str) -> dict:
         from pathlib import Path
@@ -629,13 +629,15 @@ class StorageApiMixin:
         cached = self._storage_overview
         if cached and now - cached[0] < 60:
             return cached[1]
+        kv_keys = await self._kv_keys()
+        kv_values = await self.sdk.storage.aget_multi(kv_keys) if kv_keys else {}
         stats: dict[str, dict] = {}
-        for key in self._kv_keys():
+        for key in kv_keys:
             domain = _storage_domain_of(key)
             entry = stats.setdefault(domain, {"keys": 0, "bytes": 0})
             entry["keys"] += 1
             try:
-                entry["bytes"] += _kv_size(self.sdk.storage.get(key, None))
+                entry["bytes"] += _kv_size(kv_values.get(key))
             except Exception:
                 continue
         files = []
@@ -663,9 +665,11 @@ class StorageApiMixin:
         if not domain or domain in ("uploads", "docs_cache"):
             return ({"error": "bad domain"}, 400)
         keys = []
-        for key in self._domain_keys(domain):
+        domain_keys = await self._domain_keys(domain)
+        values = await self.sdk.storage.aget_multi(domain_keys) if domain_keys else {}
+        for key in domain_keys:
             try:
-                size = _kv_size(self.sdk.storage.get(key, None))
+                size = _kv_size(values.get(key))
             except Exception:
                 size = 0
             keys.append({"key": key, "bytes": size})
@@ -678,7 +682,7 @@ class StorageApiMixin:
         key = self._query(request, "key") or ""
         if not key or not key.startswith("QvQChat:") or key in PROTECTED_KEYS:
             return ({"error": "bad key"}, 400)
-        value = self.sdk.storage.get(key, None)
+        value = await self.sdk.storage.aget(key, None)
         try:
             text = _json.dumps(value, ensure_ascii=False, indent=1, default=str)
         except Exception:
@@ -692,13 +696,15 @@ class StorageApiMixin:
         wanted = [str(k) for k in ((body or {}).get("keys") or []) if isinstance(k, str)]
         wanted = [k for k in wanted if k.startswith("QvQChat:") and k not in PROTECTED_KEYS]
         removed = freed = 0
-        for key in wanted:
-            try:
-                freed += _kv_size(self.sdk.storage.get(key, None))
-                self.sdk.storage.delete(key)
-                removed += 1
-            except Exception:
-                continue
+        try:
+            values = await self.sdk.storage.aget_multi(wanted) if wanted else {}
+            for key, value in values.items():
+                freed += _kv_size(value)
+            if wanted:
+                await self.sdk.storage.adelete_multi(wanted)
+            removed = len(wanted)
+        except Exception:
+            pass
         return {"ok": True, "removed": removed, "freed": freed}
 
     async def storage_cleanup(self, request):
@@ -717,13 +723,17 @@ class StorageApiMixin:
             if domain in ("uploads", "docs_cache"):
                 removed += self._clear_dir(dict(STORAGE_FILE_DOMAINS)[domain])
                 continue
-            for key in self._domain_keys(domain):
-                try:
-                    freed += _kv_size(self.sdk.storage.get(key, None))
-                    self.sdk.storage.delete(key)
-                    removed += 1
-                except Exception:
-                    continue
+            keys = await self._domain_keys(domain)
+            if not keys:
+                continue
+            try:
+                values = await self.sdk.storage.aget_multi(keys)
+                for key, value in values.items():
+                    freed += _kv_size(value)
+                await self.sdk.storage.adelete_multi(keys)
+                removed += len(keys)
+            except Exception:
+                continue
         return {"ok": True, "domains": domains, "removed": removed, "freed": freed}
 
     def _clear_dir(self, path: str) -> int:
@@ -759,10 +769,11 @@ class StorageApiMixin:
 
         keep = max(6, int(getattr(self.main.cfg, "context_limit", 30) or 30))
         freed = changed = 0
-        for key in self._kv_keys():
-            if not key.startswith(CONV_PREFIX):
-                continue
-            state = self.sdk.storage.get(key, None)
+        all_keys = await self._kv_keys()
+        conv_keys = [k for k in all_keys if k.startswith(CONV_PREFIX)]
+        states = await self.sdk.storage.aget_multi(conv_keys) if conv_keys else {}
+        slimmed: dict = {}
+        for key, state in states.items():
             if not isinstance(state, dict) or not isinstance(state.get("contexts"), list):
                 continue
             contexts = state["contexts"]
@@ -788,6 +799,8 @@ class StorageApiMixin:
                         entry["content"] = content[:1200] + "…[瘦身截断]…" + content[-600:]
                         dirty = True
             if dirty:
-                self.sdk.storage.set(key, state)
-                changed += 1
+                slimmed[key] = state
+        if slimmed:
+            await self.sdk.storage.aset_multi(slimmed)
+            changed = len(slimmed)
         return {"ok": True, "sessions": changed, "freed": freed}

@@ -21,20 +21,20 @@ class TrashStore:
     def __init__(self, sdk: Any):
         self.sdk = sdk
 
-    def put(self, kind: str, payload) -> str:
+    async def put(self, kind: str, payload) -> str:
         token = secrets.token_urlsafe(9)
         try:
-            self.sdk.storage.set(TRASH_PREFIX + token, {"kind": kind, "payload": payload, "ts": time.time()})
+            await self.sdk.storage.aset(TRASH_PREFIX + token, {"kind": kind, "payload": payload, "ts": time.time()})
         except Exception:
             pass
         return token
 
-    def pop(self, token: str):
+    async def pop(self, token: str):
         key = TRASH_PREFIX + str(token or "")
         entry = None
         try:
-            entry = self.sdk.storage.get(key, None)
-            self.sdk.storage.delete(key)
+            entry = await self.sdk.storage.aget(key, None)
+            await self.sdk.storage.adelete(key)
         except Exception:
             entry = None
         if not isinstance(entry, dict):
@@ -43,14 +43,16 @@ class TrashStore:
             return None
         return entry
 
-    def list(self, retention_days: int) -> list[dict]:
+    async def list(self, retention_days: int) -> list[dict]:
         """回收站浏览：kind/摘要/剩余秒（展示口径按 trash_retention_days）。"""
         now = time.time()
         out = []
-        for key in self.sdk.storage.keys():
-            if not (isinstance(key, str) and key.startswith(TRASH_PREFIX)):
-                continue
-            entry = self.sdk.storage.get(key, None)
+        keys = [
+            k for k in await self.sdk.storage.aget_all_keys()
+            if isinstance(k, str) and k.startswith(TRASH_PREFIX)
+        ]
+        entries = await self.sdk.storage.aget_multi(keys) if keys else {}
+        for key, entry in entries.items():
             if not isinstance(entry, dict):
                 continue
             ts = float(entry.get("ts") or 0)
@@ -75,11 +77,12 @@ class TrashStore:
 
 def build_restore_registry(main) -> dict:
     """kind -> restore(payload)。还原实现挂在 main 的各服务上；
-    新的删除类型在这里注册一行，不再往 if/elif 链里塞分支。"""
-    def _restore_session(payload):
+    新的删除类型在这里注册一行，不再往 if/elif 链里塞分支。
+    restore 可为 sync 或 async（调用方 trash_restore 兼容两种）。"""
+    async def _restore_session(payload):
         from ..conversation.service import CONV_PREFIX
 
-        main.sdk.storage.set(CONV_PREFIX + str(payload.get("chat_key") or ""), payload.get("state"))
+        await main.sdk.storage.aset(CONV_PREFIX + str(payload.get("chat_key") or ""), payload.get("state"))
 
     def _restore_skill(payload):
         main.skills.save_skill(str(payload.get("name") or ""), str(payload.get("description") or ""), str(payload.get("body") or ""))

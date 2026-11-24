@@ -1,4 +1,8 @@
-"""用量记账（拆分自 Main.py）：按日 token/调用数/会话/模型维度落 storage，滚动清理。"""
+"""用量记账（拆分自 Main.py）：按日 token/调用数/会话/模型维度落 storage，滚动清理。
+
+全部存储访问走异步 a 前缀 API（aget/aset/adelete/aget_all_keys）：调用方位于
+事件循环，同步版会被框架桥接阻塞（等待超 10s 静默返回 None，丢记账）。
+"""
 from __future__ import annotations
 
 import time
@@ -13,11 +17,11 @@ USAGE_LAST_PRUNE_KEY = "QvQChat:usage:last_prune"
 class UsageMixin:
     """Main 的用量记账 mixin。依赖宿主提供 self.sdk / self.cfg / self.logger。"""
 
-    def _usage_today(self) -> dict:
-        data = self.sdk.storage.get(f"QvQChat:usage:{time.strftime('%Y-%m-%d')}", {})
+    async def _usage_today(self) -> dict:
+        data = await self.sdk.storage.aget(f"QvQChat:usage:{time.strftime('%Y-%m-%d')}", {})
         return data if isinstance(data, dict) else {}
 
-    def record_usage(self, chat_key: str, usage: dict, model: str = "", origin: str = "") -> None:
+    async def record_usage(self, chat_key: str, usage: dict, model: str = "", origin: str = "") -> None:
         try:
             today = time.strftime("%Y-%m-%d")
             key = f"QvQChat:usage:{today}"
@@ -66,15 +70,15 @@ class UsageMixin:
                 return data
 
 # 键级 RMW（并发回合同时记账不再互相覆盖少记）
-            data = utils.storage_update(self.sdk, key, _merge, {})
-            self._append_flow(today, chat_key, origin, model, usage)
-            self._prune_usage(today)
-            self._usage_warn_check(chat_key, int(data.get("tokens", 0) or 0), today)
+            data = await utils.storage_aupdate(self.sdk, key, _merge, {})
+            await self._append_flow(today, chat_key, origin, model, usage)
+            await self._prune_usage(today)
+            await self._usage_warn_check(chat_key, int(data.get("tokens", 0) or 0), today)
         except Exception as e:
 # 记账路径不允许完全静默
             self.logger.debug(f"record_usage failed: {e}")
 
-    def _append_flow(self, today: str, chat_key: str, origin: str, model: str, usage: dict) -> None:
+    async def _append_flow(self, today: str, chat_key: str, origin: str, model: str, usage: dict) -> None:
         """逐条调用流水（用量页明细数据源；每日截断防膨胀）。"""
         flow_key = f"QvQChat:usageflow:{today}"
 
@@ -98,11 +102,11 @@ class UsageMixin:
             return flow
 
         try:
-            utils.storage_update(self.sdk, flow_key, _append, [])
+            await utils.storage_aupdate(self.sdk, flow_key, _append, [])
         except Exception as e:
             self.logger.debug(f"usage flow append failed: {e}")
 
-    def _usage_warn_check(self, chat_key: str, tokens_today: int, today: str) -> None:
+    async def _usage_warn_check(self, chat_key: str, tokens_today: int, today: str) -> None:
         """R5 用量超限预警：跨 usage_warn_at%/100% 各发一次提示（每阈值每天一次）。"""
         limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
         warn_at = int(getattr(self.cfg, "usage_warn_at", 80) or 0)
@@ -125,7 +129,7 @@ class UsageMixin:
 
         try:
 # 键级 RMW（并发回合跨阈值只提示一次，不重复发）
-            utils.storage_update(self.sdk, marker_key, _mark, {})
+            await utils.storage_aupdate(self.sdk, marker_key, _mark, {})
         except Exception as e:
 # 存储故障时不发提示（发了也记不住阈值，会重复打扰）；留调试日志
             self.logger.debug(f"usage warn marker failed: {e}")
@@ -141,36 +145,39 @@ class UsageMixin:
             try:
                 import asyncio as _asyncio
 
-                _asyncio.get_event_loop().create_task(sender(chat_key, reason="usage warn", prompt=message))
+                _asyncio.get_running_loop().create_task(sender(chat_key, reason="usage warn", prompt=message))
             except Exception:
                 pass
 
-    def _prune_usage(self, today: str) -> None:
+    async def _prune_usage(self, today: str) -> None:
         days = int(getattr(self.cfg, "usage_retention_days", 14) or 0)
         if days <= 0:
             return
-# 同一天只扫一次（避免每条消息记账后都全库 keys() 扫描）
-        if self.sdk.storage.get(USAGE_LAST_PRUNE_KEY, "") == today:
+# 同一天只扫一次（避免每条消息记账后都全表键扫描）
+        if await self.sdk.storage.aget(USAGE_LAST_PRUNE_KEY, "") == today:
             return
         try:
             cutoff = datetime.strptime(today, "%Y-%m-%d") - timedelta(days=days)
         except ValueError:
             return
-        for key in self.sdk.storage.keys():
+        stale: list[str] = []
+        for key in await self.sdk.storage.aget_all_keys():
             if isinstance(key, str) and key.startswith("QvQChat:usage:"):
                 date_part = key.rsplit(":", 1)[-1]
                 try:
                     if datetime.strptime(date_part, "%Y-%m-%d") < cutoff:
-                        self.sdk.storage.delete(key)
+                        stale.append(key)
                 except ValueError:
                     continue
-        self.sdk.storage.set(USAGE_LAST_PRUNE_KEY, today)
+        if stale:
+            await self.sdk.storage.adelete_multi(stale)
+        await self.sdk.storage.aset(USAGE_LAST_PRUNE_KEY, today)
 
-    def _usage_history(self, days: int = 14) -> list[dict]:
+    async def _usage_history(self, days: int = 14) -> list[dict]:
         history = []
         for offset in range(days - 1, -1, -1):
             date = (datetime.now() - timedelta(days=offset)).strftime("%Y-%m-%d")
-            data = self.sdk.storage.get(f"QvQChat:usage:{date}", {})
+            data = await self.sdk.storage.aget(f"QvQChat:usage:{date}", {})
             history.append(
                 {
                     "date": date,
@@ -184,12 +191,16 @@ class UsageMixin:
             )
         return history
 
-    def _usage_flow(self, days: int = 7) -> list[dict]:
+    async def _usage_flow(self, days: int = 7) -> list[dict]:
         """最近 N 天逐条流水（新→旧）。"""
+        keys = [
+            (datetime.now() - timedelta(days=offset)).strftime("%Y-%m-%d")
+            for offset in range(days)
+        ]
+        rows_map = await self.sdk.storage.aget_multi([f"QvQChat:usageflow:{d}" for d in keys])
         flow: list[dict] = []
-        for offset in range(days):
-            date = (datetime.now() - timedelta(days=offset)).strftime("%Y-%m-%d")
-            rows = self.sdk.storage.get(f"QvQChat:usageflow:{date}", [])
+        for d in keys:
+            rows = (rows_map or {}).get(f"QvQChat:usageflow:{d}")
             if isinstance(rows, list):
                 flow.extend(rows)
         return flow

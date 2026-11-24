@@ -22,11 +22,11 @@ def bind_cli(main):
     return main
 
 
-def persona_with_opening(main, opening, **extra):
+async def persona_with_opening(main, opening, **extra):
     payload = {"name": "阿波", "system": "你是阿波。", "opening": opening}
     payload.update(extra)
     saved = main.personas.save(payload)
-    main.personas.bind("onebot11:private:u1", saved["id"])
+    await main.personas.bind("onebot11:private:u1", saved["id"])
     return saved["id"]
 
 
@@ -64,7 +64,7 @@ async def test_prepare_first_contact_and_seeded_flags():
 
 async def test_opening_sent_once_and_before_reply():
     main = aggregate_make_main(aggregate_window=0.05)
-    persona_with_opening(main, ["初次见面，我是阿波！"])
+    await persona_with_opening(main, ["初次见面，我是阿波！"])
     ev = FakeChatEvent(text="在吗", group=False)
     captured = await drive(main, ev)
     assert captured, "runner should run"
@@ -84,7 +84,7 @@ async def test_opening_sent_once_and_before_reply():
 async def test_opening_respects_switch_seed_and_dashboard():
 # opening_enabled=False → 不发
     main = aggregate_make_main(aggregate_window=0.05, opening_enabled=False)
-    persona_with_opening(main, ["你好呀"])
+    await persona_with_opening(main, ["你好呀"])
     ev = FakeChatEvent(text="hi", group=False)
     assert await drive(main, ev, wait=0.4)
     assert "你好呀" not in reply_texts(ev)
@@ -95,7 +95,7 @@ async def test_opening_respects_switch_seed_and_dashboard():
     async def history(n):
         return [{"role": "user", "text": "旧消息", "sender": ""}]
 
-    persona_with_opening(main2, ["回填也问好"])
+    await persona_with_opening(main2, ["回填也问好"])
     ev2 = FakeChatEvent(text="hi", group=False)
     ev2.history = history
     assert await drive(main2, ev2, wait=0.4)
@@ -104,7 +104,7 @@ async def test_opening_respects_switch_seed_and_dashboard():
 
 # opening_on_seed=True → 回填场景也发
     main3 = aggregate_make_main(aggregate_window=0.05, opening_on_seed=True)
-    persona_with_opening(main3, ["回填也问好"])
+    await persona_with_opening(main3, ["回填也问好"])
     ev3 = FakeChatEvent(text="hi", group=False)
     ev3.history = history
     assert await drive(main3, ev3)
@@ -112,7 +112,7 @@ async def test_opening_respects_switch_seed_and_dashboard():
 
 # dashboard 平台不触发
     main4 = aggregate_make_main(aggregate_window=0.05)
-    persona_with_opening(main4, ["面板不问好"])
+    await persona_with_opening(main4, ["面板不问好"])
     ev4 = FakeChatEvent(text="hi", group=False, platform="dashboard")
     assert await drive(main4, ev4, wait=0.4)
     assert main4.captured
@@ -121,7 +121,7 @@ async def test_opening_respects_switch_seed_and_dashboard():
 
 async def test_opening_truncated_to_max_len():
     main = aggregate_make_main(aggregate_window=0.05, opening_max_len=10)
-    persona_with_opening(main, ["一二三四五六七八九十零壹贰叁"])
+    await persona_with_opening(main, ["一二三四五六七八九十零壹贰叁"])
     ev = FakeChatEvent(text="hi", group=False)
     await drive(main, ev, wait=1.2)
     sent = [c for c in reply_texts(ev) if c.startswith("一二三四五六七八九")][0]
@@ -132,7 +132,7 @@ async def test_opening_truncated_to_max_len():
 
 async def test_qvq_start_resends_opening_for_admin():
     main = bind_cli(aggregate_make_main(aggregate_window=0.05, admins=["u1"]))
-    persona_with_opening(main, ["手动重发开场白"])
+    await persona_with_opening(main, ["手动重发开场白"])
     ev = FakeChatEvent(text="", group=False)
     ev.get_command_args = lambda: "start"
     await Main._cmd_agent(main, ev)
@@ -141,7 +141,7 @@ async def test_qvq_start_resends_opening_for_admin():
 
 # 非管理员拒绝
     main2 = bind_cli(aggregate_make_main(aggregate_window=0.05, admins=["boss"]))
-    persona_with_opening(main2, ["不该发"])
+    await persona_with_opening(main2, ["不该发"])
     ev2 = FakeChatEvent(text="", group=False)
     ev2.get_command_args = lambda: "start"
     await Main._cmd_agent(main2, ev2)
@@ -159,7 +159,7 @@ async def test_qvq_start_resends_opening_for_admin():
 
 async def test_reset_clears_opening_flag_when_enabled():
     main = bind_cli(aggregate_make_main(aggregate_window=0.05, admins=["u1"], opening_on_reset=True))
-    persona_with_opening(main, ["重来一次问好"])
+    await persona_with_opening(main, ["重来一次问好"])
     ev = FakeChatEvent(text="hi", group=False)
     await drive(main, ev, wait=1.5)
     assert main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
@@ -178,7 +178,7 @@ async def test_reset_clears_opening_flag_when_enabled():
 
 async def test_reset_keeps_opening_flag_by_default():
     main = bind_cli(aggregate_make_main(aggregate_window=0.05, admins=["u1"]))
-    persona_with_opening(main, ["只问一次好"])
+    await persona_with_opening(main, ["只问一次好"])
     ev = FakeChatEvent(text="hi", group=False)
     await drive(main, ev, wait=1.5)
     ev_reset = FakeChatEvent(text="", group=False)
@@ -188,7 +188,7 @@ async def test_reset_keeps_opening_flag_by_default():
     assert main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
 
 
-def test_set_flags_dict_and_legacy_kwargs():
+async def test_set_flags_dict_and_legacy_kwargs():
     main = FakeMain()
     svc = main.sessions
     key = "onebot11:private:u1"
@@ -200,5 +200,5 @@ def test_set_flags_dict_and_legacy_kwargs():
 # 旧关键字签名兼容（dashboard session_flags 路径）
     svc.set_flags(key, pinned=True, archived=False)
     assert svc.get_flag(key, "opening_sent") is False
-    session = next(s for s in svc.list_sessions() if s["chat_key"] == key)
+    session = next(s for s in await svc.list_sessions() if s["chat_key"] == key)
     assert session["pinned"] is True

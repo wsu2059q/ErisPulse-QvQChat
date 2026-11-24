@@ -45,7 +45,7 @@ async def test_notice_inboxed_and_broadcast_but_no_wake_by_default():
                          target_id="bot", account="bot", event_id="n1")
     await Main._on_notice(main, ev)
     assert not main.captured
-    inbox = main._inbox_load("bot")
+    inbox = await main._inbox_load("bot")
     assert len(inbox) == 1
     assert inbox[0]["sub_type"] == "poke" and inbox[0]["read"] is False
     assert "qvq.notice" in emitted(main)
@@ -119,7 +119,7 @@ async def test_request_inbox_and_auto_handle_flow():
     await Main._on_request(main, FakeRequestEvent(detail_type="friend", user_id="u7",
                                                   nickname="陌生人", comment="交个朋友",
                                                   request_id="req-9", account="bot", event_id="r1"))
-    inbox = main._inbox_load("bot")
+    inbox = await main._inbox_load("bot")
     assert inbox[-1]["kind"] == "request" and inbox[-1]["request_id"] == "req-9"
     assert inbox[-1]["comment"] == "交个朋友"
     assert main.prompts == []  # 未开启决策
@@ -158,7 +158,7 @@ async def test_list_events_tool_marks_read_and_filters():
                       user_id="u9", event=None, origin="chat", self_id="bot")
     out = await erispulse.list_events(ctx, kind="request", limit=10)
     assert "req-1" in out
-    inbox = main._inbox_load("bot")
+    inbox = await main._inbox_load("bot")
     req_entry = next(e for e in inbox if e["kind"] == "request")
     notice_entry = next(e for e in inbox if e["kind"] == "notice")
     assert req_entry["read"] is True and notice_entry["read"] is False
@@ -183,7 +183,7 @@ async def test_event_raw_and_platform_fields_preserved():
     await Main._on_notice(main, FakeNoticeEvent(detail_type="onebot11_honor", sub_type="talkative",
                                                 group_id="1", user_id="u5", account="bot",
                                                 event_id="n-raw", raw={"honor_type": "talkative", "nick": "某群友"}))
-    entry = main._inbox_load("bot")[-1]
+    entry = (await main._inbox_load("bot"))[-1]
     assert entry["detail_type"] == "onebot11_honor"
     assert "honor_type" in (entry["raw"] or "")
 
@@ -218,22 +218,22 @@ async def test_inbox_panel_api_aggregate_delete_clear():
     await Main._on_notice(main, FakeNoticeEvent(group_id="2", target_id="bot2", account="bot2", event_id="n2"))
     api = _api_stub(main)
 
-    entries = api._inbox_entries()
+    entries = await api._inbox_entries()
     assert len(entries) == 3
     assert entries[0]["ts"] >= entries[-1]["ts"]  # 新的在前
     assert {e["account"] for e in entries} == {"bot", "bot2"}
-    only_req = api._inbox_entries(kind="request")
+    only_req = await api._inbox_entries(kind="request")
     assert len(only_req) == 1 and only_req[0]["id"] == "r1"
 
     result = await api.inbox_delete(_Req({"account": "bot", "id": "n1"}))
     assert result["ok"] is True
-    assert len(api._inbox_entries()) == 2
+    assert len(await api._inbox_entries()) == 2
     # 缓存失效：AI 侧（list_events）读到的是删除后的收件箱
-    assert "n1" not in [e["id"] for e in main._inbox_load("bot")]
+    assert "n1" not in [e["id"] for e in await main._inbox_load("bot")]
 
     result2 = await api.inbox_clear(_Req({}))
-    assert result2["ok"] is True and api._inbox_entries() == []
-    assert main._inbox_load("bot") == []
+    assert result2["ok"] is True and await api._inbox_entries() == []
+    assert await main._inbox_load("bot") == []
 
 
 def test_inbox_note_in_system_parts():

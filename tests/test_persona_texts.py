@@ -20,15 +20,15 @@ def test_builtin_persona_present_and_editable():
     assert manager.delete(ASSISTANT_ID) is False
 
 
-def test_persona_crud_and_binding():
+async def test_persona_crud_and_binding():
     main = FakeMain()
     manager = PersonaManager(main.sdk)
     saved = manager.save({"name": "学者", "system": "你是严谨的学者。", "tools": ["recall"]})
     pid = saved["id"]
     assert manager.get(pid)["name"] == "学者"
-    manager.bind("a:b:c", pid)
+    await manager.bind("a:b:c", pid)
     assert manager.resolve("a:b:c")["id"] == pid
-    manager.bind("a:b:c", None)
+    await manager.bind("a:b:c", None)
     assert manager.resolve("a:b:c")["id"] == ASSISTANT_ID
     assert manager.delete(pid) is True
     assert manager.get(pid)["id"] == ASSISTANT_ID
@@ -108,20 +108,20 @@ def test_builtin_personas_have_extended_defaults():
         assert persona["owner_title"] == "" and persona["nickname"] == ""
 
 
-def test_bindings_listing_and_removal():
-    """P3bindings() 直扫 KV 绑定前缀，unbind 即从表消失。"""
+async def test_bindings_listing_and_removal():
+    """P3abindings() 直扫 KV 绑定前缀，unbind 即从表消失。"""
     main = FakeMain()
     manager = PersonaManager(main.sdk)
-    assert manager.bindings() == {}
+    assert await manager.abindings() == {}
     saved = manager.save({"name": "P", "system": "s"})
-    manager.bind("qq:private:1", saved["id"])
-    manager.bind("qq:group:9", "concise")
-    assert manager.bindings() == {"qq:private:1": saved["id"], "qq:group:9": "concise"}
-    manager.bind("qq:group:9", None)
-    assert manager.bindings() == {"qq:private:1": saved["id"]}
+    await manager.bind("qq:private:1", saved["id"])
+    await manager.bind("qq:group:9", "concise")
+    assert await manager.abindings() == {"qq:private:1": saved["id"], "qq:group:9": "concise"}
+    await manager.bind("qq:group:9", None)
+    assert await manager.abindings() == {"qq:private:1": saved["id"]}
 
 
-def test_resolve_group_fallback_two_levels():
+async def test_resolve_group_fallback_two_levels():
     """P4隔离成员 key → 群 base key → 全局默认 → assistant 两级回落。"""
     main = FakeMain()
     manager = PersonaManager(main.sdk)
@@ -129,25 +129,25 @@ def test_resolve_group_fallback_two_levels():
     member_key = "qq:group:100:u7"
     saved = manager.save({"name": "群设", "system": "群人格"})
 # 1) 群 base 绑定对隔离成员 key 生效
-    manager.bind(group_key, saved["id"])
+    await manager.bind(group_key, saved["id"])
     assert manager.resolve(member_key)["id"] == saved["id"]
 # 2) 成员精确绑定优先于群 base
-    manager.bind(member_key, "concise")
+    await manager.bind(member_key, "concise")
     assert manager.resolve(member_key)["id"] == "concise"
-    manager.bind(member_key, None)
+    await manager.bind(member_key, None)
     assert manager.resolve(member_key)["id"] == saved["id"]
 # 3) 未绑定回落全局默认
-    manager.bind(group_key, None)
-    manager.set_global_default("detailed")
+    await manager.bind(group_key, None)
+    await manager.set_global_default("detailed")
     assert manager.resolve(member_key)["id"] == "detailed"
 # 4) 无任何绑定回落 assistant
-    manager.set_global_default(None)
+    await manager.set_global_default(None)
     assert manager.resolve(member_key)["id"] == ASSISTANT_ID
 # 非隔离 key 不做 strip 回落（直接精确查）
     assert manager.resolve("qq:private:2")["id"] == ASSISTANT_ID
 
 
-def test_migrate_state_mirror_backfills_from_kv():
+async def test_migrate_state_mirror_backfills_from_kv():
     """启动迁移：KV 权威，state.persona 过期则回填；无 KV 绑定不动。"""
     from QvQChat.conversation.service import CONV_PREFIX
 
@@ -155,7 +155,7 @@ def test_migrate_state_mirror_backfills_from_kv():
     manager = PersonaManager(main.sdk)
     main.sdk.storage.set(CONV_PREFIX + "qq:private:1", {"persona": "old", "contexts": []})
     main.sdk.storage.set(CONV_PREFIX + "qq:private:2", {"persona": "keep", "contexts": []})
-    manager.bind("qq:private:1", "concise")
+    await manager.bind("qq:private:1", "concise")
     moved = manager.migrate_state_mirror()
     assert moved == 1
     assert main.sdk.storage.get(CONV_PREFIX + "qq:private:1")["persona"] == "concise"

@@ -10,34 +10,34 @@ def make_manager(view_token=""):
     return main, DashboardManager(main)
 
 
-def test_own_token_generated_and_stable():
+async def test_own_token_generated_and_stable():
     main, manager = make_manager()
-    token = manager._own_token()
+    token = await manager._own_token()
     assert len(token) >= 20
-    assert manager._own_token() == token
+    assert await manager._own_token() == token
     assert main.sdk.storage.get("QvQChat:auth_token") == token
 
 
-def test_own_token_config_override():
+async def test_own_token_config_override():
     main, manager = make_manager(view_token="my-fixed-token")
-    assert manager._own_token() == "my-fixed-token"
+    assert await manager._own_token() == "my-fixed-token"
 
 
-def test_authorized_rejects_missing_and_wrong():
+async def test_authorized_rejects_missing_and_wrong():
     main, manager = make_manager()
-    assert manager._authorized(FakeRequest()) is False
-    assert manager._authorized(FakeRequest(bearer="nope")) is False
-    assert manager._authorized(FakeRequest(token="nope")) is False
+    assert await manager._authorized(FakeRequest()) is False
+    assert await manager._authorized(FakeRequest(bearer="nope")) is False
+    assert await manager._authorized(FakeRequest(token="nope")) is False
 
 
-def test_authorized_accepts_own_token():
+async def test_authorized_accepts_own_token():
     main, manager = make_manager()
-    token = manager._own_token()
-    assert manager._authorized(FakeRequest(bearer=token)) is True
-    assert manager._authorized(FakeRequest(token=token)) is True
+    token = await manager._own_token()
+    assert await manager._authorized(FakeRequest(bearer=token)) is True
+    assert await manager._authorized(FakeRequest(token=token)) is True
 
 
-def test_authorized_accepts_dashboard_token():
+async def test_authorized_accepts_dashboard_token():
     class FakeDashboard:
         def verify_token(self, token):
             return token == "dash-token"
@@ -47,10 +47,10 @@ def test_authorized_accepts_dashboard_token():
 
     main, manager = make_manager()
     main.sdk.module._catalog = {"Dashboard": FakeDashboard()}
-    assert manager._authorized(FakeRequest(bearer="dash-token")) is True
-    assert manager._authorized(FakeRequest(bearer="still-own")) is False
-    own = manager._own_token()
-    assert manager._authorized(FakeRequest(bearer=own)) is True
+    assert await manager._authorized(FakeRequest(bearer="dash-token")) is True
+    assert await manager._authorized(FakeRequest(bearer="still-own")) is False
+    own = await manager._own_token()
+    assert await manager._authorized(FakeRequest(bearer=own)) is True
 
 
 async def test_guard_returns_401_when_unauthorized():
@@ -62,7 +62,7 @@ async def test_guard_returns_401_when_unauthorized():
     wrapped = manager._guard(handler)
     result = await wrapped(FakeRequest(bearer="wrong"))
     assert result[1] == 401
-    token = manager._own_token()
+    token = await manager._own_token()
     result = await wrapped(FakeRequest(bearer=token))
     assert result == {"ok": True}
 

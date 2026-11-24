@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import time
@@ -498,7 +499,7 @@ async def handle_request(ctx: ToolContext, platform: str, request_id: str,
 # 请求类型路由：群邀请/加群申请必须走 set_group_add_request（带 sub_type/group_id），
 # 落到 set_friend_add_request 会把 flag 当 uid → 平台报 OIDB uid/openid invalid。
 # 类型信息缺省从收件箱原始请求条目还原（AI 无需感知平台差异），显式传参可覆盖
-        extra = _request_route_kwargs(ctx, account, str(request_id), sub_type, group_id)
+        extra = await _request_route_kwargs(ctx, account, str(request_id), sub_type, group_id)
         operation = getattr(request, action, None)
         if not callable(operation):
             return texts.t("request_action_invalid", action=action)
@@ -510,8 +511,8 @@ async def handle_request(ctx: ToolContext, platform: str, request_id: str,
     return utils.to_text(result)
 
 
-def _request_route_kwargs(ctx: ToolContext, account: str, request_id: str,
-                          sub_type: str = "", group_id: str = "") -> dict:
+async def _request_route_kwargs(ctx: ToolContext, account: str, request_id: str,
+                                sub_type: str = "", group_id: str = "") -> dict:
     """组装请求处理的平台扩展参数：群请求带 _request_type/sub_type/group_id，好友请求为空。
 
     sub_type/group_id 优先用 AI 显式传参，缺省从收件箱同 request_id 的条目还原。
@@ -526,7 +527,7 @@ def _request_route_kwargs(ctx: ToolContext, account: str, request_id: str,
                 for acct in (account, "default"):
                     if not acct or acct in (c.get("account") for c in candidates):
                         continue
-                    candidates.extend(loader(acct))
+                    candidates.extend(await loader(acct))
             for entry in candidates:
                 if (str(entry.get("kind") or "") == "request"
                         and str(entry.get("request_id") or "") == request_id):
@@ -718,7 +719,7 @@ async def list_events(ctx: ToolContext, kind: str = "", limit: int = 20) -> str:
     """
     main = ctx.main
     account = str(getattr(ctx, "self_id", "") or "") or "default"
-    entries = main._inbox_load(account)
+    entries = await main._inbox_load(account)
     want = str(kind or "").strip().lower()
     picked: list = []
     for entry in reversed(entries):  # 新的在前
@@ -730,7 +731,7 @@ async def list_events(ctx: ToolContext, kind: str = "", limit: int = 20) -> str:
     for entry in picked:
         entry["read"] = True
     if picked:
-        main._inbox_save(account)
+        await main._inbox_save(account)
     return utils.to_text({"events": picked, "total": len(entries)})
 
 

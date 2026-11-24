@@ -27,12 +27,12 @@ def test_session_append_trim_and_reset():
     assert manager.get_contexts(key) == []
 
 
-def test_session_persona_pointer_and_list():
+async def test_session_persona_pointer_and_list():
     main = FakeMain()
     manager = ConversationService(main)
     manager.set_persona("a:b:c", "custom")
     assert manager.persona_of("a:b:c") == "custom"
-    sessions = manager.list_sessions()
+    sessions = await manager.list_sessions()
     assert any(s["chat_key"] == "a:b:c" and s["persona"] == "custom" for s in sessions)
 
 
@@ -90,7 +90,7 @@ def test_group_name_cache_roundtrip():
     assert manager.group_name_of("g") == "测试群"
 
 
-def test_recent_user_messages_cross_session():
+async def test_recent_user_messages_cross_session():
     main = FakeMain()
     manager = ConversationService(main)
     group_key = "onebot11:group:1"
@@ -105,18 +105,18 @@ def test_recent_user_messages_cross_session():
     seen = main.sdk.storage.get("QvQChat:user_seen:u1")
     assert isinstance(seen, list) and seen[0]["chat_key"] == group_key
 
-    found = manager.recent_user_messages("u1", exclude_chat_key="onebot11:private:u1")
+    found = await manager.recent_user_messages("u1", exclude_chat_key="onebot11:private:u1")
     assert len(found) == 2
     assert all("测试群" in item["label"] for item in found)
     assert "(u1):" in found[0]["content"]
     assert "私聊说" in found[-1]["content"]
 
-    assert manager.recent_user_messages("nobody") == []
-    same_key = manager.recent_user_messages("u1", exclude_chat_key=group_key)
+    assert await manager.recent_user_messages("nobody") == []
+    same_key = await manager.recent_user_messages("u1", exclude_chat_key=group_key)
     assert same_key == []
 
 
-def test_recent_user_messages_fallback_scan():
+async def test_recent_user_messages_fallback_scan():
     """倒排键缺失（旧数据）时回退旧 keys() 全扫，结果一致。"""
     main = FakeMain()
     manager = ConversationService(main)
@@ -126,10 +126,10 @@ def test_recent_user_messages_fallback_scan():
     manager.append_user(group_key, "群主(u1): 适配器信息私聊说", sender_id="u1")
     main.sdk.storage.delete("QvQChat:user_seen:u1")# 模拟倒排缺失
 
-    found = manager.recent_user_messages("u1", exclude_chat_key="onebot11:private:u1")
+    found = await manager.recent_user_messages("u1", exclude_chat_key="onebot11:private:u1")
     assert len(found) == 2
     assert all("测试群" in item["label"] for item in found)
-    assert manager.recent_user_messages("u1", exclude_chat_key=group_key) == []
+    assert await manager.recent_user_messages("u1", exclude_chat_key=group_key) == []
 
 
 def test_seed_contexts_persists_once():

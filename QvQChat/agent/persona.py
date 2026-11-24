@@ -117,6 +117,7 @@ def _normalize(entry: dict) -> dict:
 class PersonaManager:
     def __init__(self, sdk: Any):
         self.sdk = sdk
+        self._gd_cache: str | None = None
 
     def list(self) -> list[dict]:
         stored = self.sdk.storage.get(PERSONAS_KEY, {})
@@ -133,21 +134,24 @@ class PersonaManager:
         return list(personas.values())
 
     def get(self, persona_id: str | None) -> dict:
-        wanted = persona_id or self.global_default()
+        wanted = persona_id or (self._gd_cache or "")
         if wanted:
             for persona in self.list():
                 if persona["id"] == wanted:
                     return persona
         return _normalize(_default_personas()[ASSISTANT_ID])
 
-    def global_default(self) -> str:
-        return str(self.sdk.storage.get(DEFAULT_PERSONA_KEY, "") or "")
+    async def global_default(self) -> str:
+        if self._gd_cache is None:
+            self._gd_cache = str(await self.sdk.storage.aget(DEFAULT_PERSONA_KEY, "") or "")
+        return self._gd_cache
 
-    def set_global_default(self, persona_id: str | None) -> None:
+    async def set_global_default(self, persona_id: str | None) -> None:
         if persona_id:
-            self.sdk.storage.set(DEFAULT_PERSONA_KEY, str(persona_id))
+            await self.sdk.storage.aset(DEFAULT_PERSONA_KEY, str(persona_id))
         else:
-            self.sdk.storage.delete(DEFAULT_PERSONA_KEY)
+            await self.sdk.storage.adelete(DEFAULT_PERSONA_KEY)
+        self._gd_cache = str(persona_id or "")
 
     def save(self, data: dict) -> dict:
         persona_id = str(data.get("id") or utils.new_id())
@@ -247,21 +251,23 @@ class PersonaManager:
         utils.storage_update(self.sdk, PERSONAS_KEY, _drop, {})
         return bool(found)
 
-    def bind(self, chat_key: str, persona_id: str | None) -> None:
+    async def bind(self, chat_key: str, persona_id: str | None) -> None:
         if persona_id:
-            self.sdk.storage.set(BINDING_PREFIX + chat_key, persona_id)
+            await self.sdk.storage.aset(BINDING_PREFIX + chat_key, persona_id)
         else:
-            self.sdk.storage.delete(BINDING_PREFIX + chat_key)
+            await self.sdk.storage.adelete(BINDING_PREFIX + chat_key)
 
-    def bindings(self) -> dict[str, str]:
-        """P3chat_key → persona_id 的权威绑定表（低频调用，KV 直扫）。"""
+    async def abindings(self) -> dict[str, str]:
+        """chat_key → persona_id 的权威绑定表（异步路径；按前缀一次取键再批量读值）。"""
+        keys = [
+            key for key in await self.sdk.storage.aget_all_keys()
+            if isinstance(key, str) and key.startswith(BINDING_PREFIX)
+        ]
+        values = await self.sdk.storage.aget_multi(keys) if keys else {}
         out: dict[str, str] = {}
-        for key in self.sdk.storage.keys():
-            if not (isinstance(key, str) and key.startswith(BINDING_PREFIX)):
-                continue
-            value = str(self.sdk.storage.get(key, "") or "")
-            if value:
-                out[key[len(BINDING_PREFIX):]] = value
+        for key, value in (values or {}).items():
+            if str(value or ""):
+                out[key[len(BINDING_PREFIX):]] = str(value)
         return out
 
     def _single_account_keys(self, platform: str) -> list[str]:
@@ -319,11 +325,11 @@ class PersonaManager:
                 pass
         return list(dict.fromkeys(keys))
 
-    def resolve(self, chat_key: str) -> dict:
-        """绑定回落链（从具体到宽泛，首个命中生效）：
+    def _binding_candidates(self, chat_key: str) -> list[str]:
+        """绑定回落链候选（从具体到宽泛）：
 
         会话精确 key → 群 base key（跨账户的同一群）→ @账户 级（该 bot 账户全部会话）
-        → platform:* 平台级 → 全局默认 → assistant。
+        → platform:* 平台级。全局默认与 assistant 兜底由调用方追加。
         层级 key 通过 bind() 直接写入即可（chat_key 填 "@账号" / "平台名:*"）。
 
         base 层只对群聊生效：群里不同 bot 账号看到的确实是同一场对话，共享绑定合理；
@@ -350,8 +356,20 @@ class PersonaManager:
                 candidates.extend(self._single_account_keys(platform))
             if platform:
                 candidates.append(f"{platform}:*")
-        for candidate in candidates:
+        return candidates
+
+    def resolve(self, chat_key: str) -> dict:
+        """同步版：仅供无事件循环的路径（启动迁移/线程）使用；事件循环内用 aresolve。"""
+        for candidate in self._binding_candidates(chat_key):
             bound = str(self.sdk.storage.get(BINDING_PREFIX + candidate, "") or "")
+            if bound:
+                return self.get(bound)
+        return self.get(None)
+
+    async def aresolve(self, chat_key: str) -> dict:
+        """resolve 的异步版（事件循环内一律走这里，避免同步桥阻塞）。"""
+        for candidate in self._binding_candidates(chat_key):
+            bound = str(await self.sdk.storage.aget(BINDING_PREFIX + candidate, "") or "")
             if bound:
                 return self.get(bound)
         return self.get(None)

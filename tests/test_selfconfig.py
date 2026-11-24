@@ -195,7 +195,7 @@ async def test_manage_personas_bind_and_global():
     assert resolved["id"] == "terse"
 
     out = json.loads(await selfconfig.manage_personas(ctx, action="set_global", persona_id="concise"))
-    assert ctx.main.personas.global_default() == "concise"
+    assert await ctx.main.personas.global_default() == "concise"
     fallback = ctx.main.personas.resolve("other:private:9")
     assert fallback["id"] == "concise"
 
@@ -315,10 +315,8 @@ async def test_run_task_binds_account_identity():
     assert captured[2] == "onebot11:group:42"
 
 
-def test_schedule_tool_defaults_account_from_ctx():
+async def test_schedule_tool_defaults_account_from_ctx():
     """创建任务工具：缺省 account 取当前会话的 self_id（多账户不再错身份）。"""
-    import asyncio
-
     from QvQChat.tools_builtin import schedule as sched
     from test_aggregate import make_main
     from tests.fakes import make_ctx
@@ -326,10 +324,10 @@ def test_schedule_tool_defaults_account_from_ctx():
     main = make_main()
     ctx = make_ctx(main)
     ctx.self_id = "Amer"
-    asyncio.run(sched.create_scheduled_task(
+    await sched.create_scheduled_task(
         ctx, name="日报", schedule="cron:0 9 * * *", platform="onebot11",
-        target_type="group", target_id="42", prompt="写日报"))
-    task = next(t for t in main.scheduler.list() if t.get("name") == "日报")
+        target_type="group", target_id="42", prompt="写日报")
+    task = next(t for t in await main.scheduler.list() if t.get("name") == "日报")
     assert task.get("account") == "Amer"
 
 

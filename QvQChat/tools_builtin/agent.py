@@ -86,7 +86,7 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
 
     if background:
 # 后台模式：立即返回，跑完经 qvq.subagent_done 事件插回主会话（Main 监听消化）
-        _launch_background(main, sub_key, sub_ctx, system, [str(t) for t in (tools or [])], task)
+        await _launch_background(main, sub_key, sub_ctx, system, [str(t) for t in (tools or [])], task)
         return texts.t("subagent_background_started", session=sub_key)
 
     started = time.monotonic()
@@ -104,19 +104,19 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
     answer = (result.text or "").strip() or "-"
     main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
     if isinstance(getattr(result, "usage", None), dict) and result.usage:
-        main.record_usage(sub_key, result.usage, getattr(result, "model", ""), origin="subagent")
+        await main.record_usage(sub_key, result.usage, getattr(result, "model", ""), origin="subagent")
     ms = int((time.monotonic() - started) * 1000)
     meta = texts.t("subagent_meta", session=sub_key, tools=len(result.tool_trace), ms=ms)
     return answer + "\n\n" + meta
 
 
-def _launch_background(main, sub_key: str, sub_ctx, system: str, tools: list[str], task: str) -> asyncio.Task:
+async def _launch_background(main, sub_key: str, sub_ctx, system: str, tools: list[str], task: str) -> asyncio.Task:
     """后台执行公共体：探针写 running + spawn _run_background + 注册进程内可取消任务。
 
     spawn_agent 的 background 分支与 demote_to_background 共用，保证两条路径的
     崩溃恢复探针 / qvq.subagent_done 回插 / 取消注册表行为完全一致。
     """
-    _subjob_probe(main, sub_key, {
+    await _subjob_probe(main, sub_key, {
         "sub_key": sub_key,
 # parent_chat_key 存在 sub_ctx 上（它自己的 chat_key 是 sub: 键）——探针与回插都靠它溯源
         "parent_chat_key": str(getattr(sub_ctx, "parent_chat_key", "") or ""),
@@ -200,7 +200,7 @@ async def demote_to_background(main, event, chat_key: str, task_prompt: str) -> 
     system = texts.t("subagent_system", task=utils.truncate(task_prompt, 500))
     main.sessions.append(sub_key, "user", task_prompt)
     main.sessions.set_group_name(sub_key, utils.truncate(task_prompt, 40))
-    _launch_background(main, sub_key, sub_ctx, system, [], task_prompt)
+    await _launch_background(main, sub_key, sub_ctx, system, [], task_prompt)
     return sub_key
 
 
@@ -298,15 +298,15 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
         answer = (result.text or "").strip() or "-"
         main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
         if isinstance(getattr(result, "usage", None), dict) and result.usage:
-            main.record_usage(sub_key, result.usage, getattr(result, "model", ""), origin="subagent")
+            await main.record_usage(sub_key, result.usage, getattr(result, "model", ""), origin="subagent")
         status = "done"
         error = ""
     except asyncio.CancelledError:
 # 取消也是终态：探针标 cancelled，插回一条取消说明（不是 error）
-        probe = main.sdk.storage.get(SUBJOB_PREFIX + sub_key, None)
+        probe = await main.sdk.storage.aget(SUBJOB_PREFIX + sub_key, None)
         if isinstance(probe, dict):
             probe.update({"status": "cancelled", "finished": time.time()})
-            main.sdk.storage.set(SUBJOB_PREFIX + sub_key, probe)
+            await main.sdk.storage.aset(SUBJOB_PREFIX + sub_key, probe)
         parent = str(getattr(sub_ctx, "parent_chat_key", "") or "")
         if parent:
             try:
@@ -360,29 +360,29 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
         main.logger.warning(f"subagent_done emit failed: {type(e).__name__}: {e}")
 
 
-def _subjob_probe(main, sub_key: str, payload: dict) -> None:
+async def _subjob_probe(main, sub_key: str, payload: dict) -> None:
     """写探针 + 维护索引（崩溃恢复免全库扫描）。"""
     try:
-        main.sdk.storage.set(SUBJOB_PREFIX + sub_key, payload)
-        index = main.sdk.storage.get(SUBJOB_INDEX_KEY, [])
+        await main.sdk.storage.aset(SUBJOB_PREFIX + sub_key, payload)
+        index = await main.sdk.storage.aget(SUBJOB_INDEX_KEY, [])
         index = [k for k in (index if isinstance(index, list) else []) if k != sub_key]
-        main.sdk.storage.set(SUBJOB_INDEX_KEY, (index + [sub_key])[-100:])
+        await main.sdk.storage.aset(SUBJOB_INDEX_KEY, (index + [sub_key])[-100:])
     except Exception as e:
         main.logger.debug(f"subjob probe write failed: {type(e).__name__}: {e}")
 
 
-def recover_subjobs(main) -> None:
+async def recover_subjobs(main) -> None:
     """启动恢复：上次进程遗留 running 的后台子智能体标记 interrupted（结果已丢失）。"""
     try:
-        index = main.sdk.storage.get(SUBJOB_INDEX_KEY, [])
+        index = await main.sdk.storage.aget(SUBJOB_INDEX_KEY, [])
     except Exception:
         return
     for sub_key in (index if isinstance(index, list) else []):
-        probe = main.sdk.storage.get(SUBJOB_PREFIX + str(sub_key), None)
+        probe = await main.sdk.storage.aget(SUBJOB_PREFIX + str(sub_key), None)
         if isinstance(probe, dict) and probe.get("status") == "running":
             probe["status"] = "interrupted"
             probe["finished"] = time.time()
-            main.sdk.storage.set(SUBJOB_PREFIX + str(sub_key), probe)
+            await main.sdk.storage.aset(SUBJOB_PREFIX + str(sub_key), probe)
 
 
 # ===== 可观测：进程内子任务注册表（运行中可取消，终态查探针） =====
@@ -408,14 +408,14 @@ def cancel_subjob(main, sub_key: str) -> bool:
     return True
 
 
-def list_subjobs(main, limit: int = 50) -> list:
+async def list_subjobs(main, limit: int = 50) -> list:
     """子智能体任务列表：运行中（进程内注册表）+ 终态（探针，新在前）。"""
     rows: list = []
     listed: set = set()
     for sub_key, task in _LIVE_SUBJOBS.items():
         if task.done():
             continue
-        probe = main.sdk.storage.get(SUBJOB_PREFIX + str(sub_key), None) or {}
+        probe = await main.sdk.storage.aget(SUBJOB_PREFIX + str(sub_key), None) or {}
         rows.append({
             "sub_key": str(sub_key),
             "status": "running",
@@ -425,14 +425,14 @@ def list_subjobs(main, limit: int = 50) -> list:
         })
         listed.add(str(sub_key))
     try:
-        index = main.sdk.storage.get(SUBJOB_INDEX_KEY, [])
+        index = await main.sdk.storage.aget(SUBJOB_INDEX_KEY, [])
     except Exception:
         index = []
     for sub_key in (index if isinstance(index, list) else []):
         key = str(sub_key)
         if key in listed:
             continue
-        probe = main.sdk.storage.get(SUBJOB_PREFIX + key, None)
+        probe = await main.sdk.storage.aget(SUBJOB_PREFIX + key, None)
         if isinstance(probe, dict):
             rows.append({
                 "sub_key": key,
@@ -489,7 +489,7 @@ def _context_block(main, ctx) -> str:
 def register(registry: ToolRegistry, main) -> None:
     if not bool(getattr(main.cfg, "multi_agent", True)):
         return
-    recover_subjobs(main)
+    main.spawn(recover_subjobs(main))
     registry.register(Tool(
         name="spawn_agent",
         access="admin",

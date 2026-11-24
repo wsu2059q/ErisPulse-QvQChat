@@ -255,14 +255,14 @@ class EventsMixin:
             if adapter is not None:
                 yield adapter
 
-    def _inbox_load(self, account: str) -> list:
+    async def _inbox_load(self, account: str) -> list:
         cached = self.rt.event_inbox.get(account)
         if cached is not None:
             return cached
         entries: list = []
         for key in self._inbox_alias_keys(account):
             try:
-                stored = self.sdk.storage.get(EVENT_INBOX_KEY + key)
+                stored = await self.sdk.storage.aget(EVENT_INBOX_KEY + key)
             except Exception:
                 stored = None
             if isinstance(stored, list) and stored:
@@ -275,16 +275,16 @@ class EventsMixin:
         self.rt.event_inbox[account] = entries
         return entries
 
-    def _inbox_save(self, account: str) -> None:
-        entries = self._inbox_load(account)
+    async def _inbox_save(self, account: str) -> None:
+        entries = await self._inbox_load(account)
         if len(entries) > EVENT_INBOX_CAP:
             del entries[:-EVENT_INBOX_CAP]
         try:
-            self.sdk.storage.set(EVENT_INBOX_KEY + account, entries)
+            await self.sdk.storage.aset(EVENT_INBOX_KEY + account, entries)
         except Exception as e:
             self.logger.debug(f"inbox persist failed: {e}")
 
-    def _inbox_add(self, event, kind: str, chat_key: str) -> dict:
+    async def _inbox_add(self, event, kind: str, chat_key: str) -> dict:
         """事件入箱：通用字段平铺 + summary + 平台原始载荷截断。同 id 幂等。"""
         account = self._event_self_id(event) or "default"
         try:
@@ -313,11 +313,11 @@ class EventsMixin:
         }
         if kind == "request":
             entry["request_id"] = self._ev_s(event, lambda: event.get_request_id())
-        entries = self._inbox_load(account)
+        entries = await self._inbox_load(account)
         if any(e.get("id") == entry["id"] for e in entries):
             return entry
         entries.append(entry)
-        self._inbox_save(account)
+        await self._inbox_save(account)
         return entry
 
     def _inbox_pick(self, entry: dict, keys: tuple) -> dict:
@@ -337,13 +337,13 @@ class EventsMixin:
             if not self._dup_delivery_gate(event, ""):
                 return
             chat_key = self._event_chat_key(event)
-            entry = self._inbox_add(event, "notice", chat_key)
+            entry = await self._inbox_add(event, "notice", chat_key)
 # 撤回感知：recall 类通知挂短时效注记，下一轮真实对话的 scene 注入
 # （上下文里被撤回的消息无从定位，注记是认知一致性的最小实现）
             sub = self._event_sub_type(event)
             if "recall" in sub:
                 who = self._ev_s(event, lambda: event.get_user_id()) or self._ev_s(event, lambda: event.get_operator_id()) or ""
-                self._scene_memo_push(chat_key, texts.t("scene_recall_note", who=who or "有人"))
+                await self._scene_memo_push(chat_key, texts.t("scene_recall_note", who=who or "有人"))
 # 生态开放接口：qvq.notice 广播（listen_off 与 observe 同语义：群要隐私就静音）
             if not self.sessions.get_flag(chat_key, "listen_off"):
                 try:
@@ -466,7 +466,7 @@ class EventsMixin:
             if not self._dup_delivery_gate(event, ""):
                 return
             chat_key = self._event_chat_key(event)
-            entry = self._inbox_add(event, "request", chat_key)
+            entry = await self._inbox_add(event, "request", chat_key)
 # 生态开放接口：qvq.request 恒广播（请求是冲着 bot 来的，不挂 listen_off）
             try:
                 await self.sdk.lifecycle.emit(

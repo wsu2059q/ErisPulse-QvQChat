@@ -138,21 +138,21 @@ async def test_persona_resolve_tiered_fallback():
     assert personas.resolve(key)["id"] != grp["id"]
 
     # 平台级
-    personas.bind("onebot11:*", plat["id"])
+    await personas.bind("onebot11:*", plat["id"])
     assert personas.resolve(key)["id"] == plat["id"]
     # 账户级覆盖平台级
-    personas.bind("@bot_b", acct["id"])
+    await personas.bind("@bot_b", acct["id"])
     assert personas.resolve(key)["id"] == acct["id"]
     # 会话级覆盖账户级
-    personas.bind(key, cat["id"])
+    await personas.bind(key, cat["id"])
     assert personas.resolve(key)["id"] == cat["id"]
     # 群 base（跨账户同群）：会话级仍优先；群 base 优先于 @账户（回落链：会话→群→账户→平台）
-    personas.bind("onebot11:group:777", grp["id"])
+    await personas.bind("onebot11:group:777", grp["id"])
     assert personas.resolve(key)["id"] == cat["id"]
     other = "onebot11:group:777@bot_c"
     assert personas.resolve(other)["id"] == grp["id"]  # 群 base 命中，先于账户
     # 账户绑定对没有群绑定的其它会话生效
-    personas.bind("@bot_c", acct["id"])
+    await personas.bind("@bot_c", acct["id"])
     assert personas.resolve("onebot11:private:9@bot_c")["id"] == acct["id"]
     assert personas.resolve("onebot11:group:888@bot_c")["id"] == acct["id"]
 
@@ -266,13 +266,13 @@ async def test_trash_kb_batch_delete_and_restore():
 async def test_trash_binding_unbind_restore():
     main, manager = make_manager()
     key = "onebot11:group:1"
-    main.personas.bind(key, "cat")
+    await main.personas.bind(key, "cat")
     resp = await manager.personas_bind(_Req({"chat_key": key, "persona": None}))
     assert resp["ok"] and resp["undo"]
-    assert main.personas.bindings().get(key) is None
+    assert (await main.personas.abindings()).get(key) is None
     rst = await manager.trash_restore(_Req({"token": resp["undo"]}))
     assert rst["ok"] is True
-    assert main.personas.bindings().get(key) == "cat"
+    assert (await main.personas.abindings()).get(key) == "cat"
 
 
 async def test_breakers_reset():

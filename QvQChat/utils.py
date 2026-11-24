@@ -26,12 +26,17 @@ REPLY_PREFERENCE = ("Markdown", "Html", "Text")
 _RMW_LOCKS: dict[str, threading.Lock] = {}
 _RMW_LOCKS_GUARD = threading.Lock()
 
+# 异步读改写的锁表（事件循环内使用；与同步版锁独立，两条路径不竞争同一把锁）
+_ARMW_LOCKS: dict[str, asyncio.Lock] = {}
+
 
 def storage_update(sdk: Any, key: str, fn, default: Any) -> Any:
     """storage 键级读改写：fn(current) -> new，读改写全程持该键的进程锁。
 
     fn 内自行判型兜底（存储值可能损坏/为缺省形状）；异常向上抛，
-    由调用方的既有 try 决定吞咽策略。返回 fn 的结果（新值）。"""
+    由调用方的既有 try 决定吞咽策略。返回 fn 的结果（新值）。
+    同步版仅供无事件循环的路径（启动迁移/后台线程）使用；异步上下文一律用
+    storage_aupdate（同步版在事件循环内会经框架桥接阻塞且超时返回 None）。"""
     with _RMW_LOCKS_GUARD:
         lock = _RMW_LOCKS.get(key)
         if lock is None:
@@ -39,6 +44,21 @@ def storage_update(sdk: Any, key: str, fn, default: Any) -> Any:
     with lock:
         new = fn(sdk.storage.get(key, default))
         sdk.storage.set(key, new)
+        return new
+
+
+async def storage_aupdate(sdk: Any, key: str, fn, default: Any) -> Any:
+    """storage 键级读改写的异步版：aget/aset 直连后端异步驱动，不经过同步桥。
+
+    锁语义与同步版一致（同键串行、跨键并行），锁表按事件循环隔离在
+    _ARMW_LOCKS；fn(current) -> new 的契约与 storage_update 相同。"""
+    lock = _ARMW_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _ARMW_LOCKS[key] = lock
+    async with lock:
+        new = fn(await sdk.storage.aget(key, default))
+        await sdk.storage.aset(key, new)
         return new
 
 

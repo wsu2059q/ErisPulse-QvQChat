@@ -154,8 +154,8 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
                 {k: p.get(k) for k in ("id", "name", "builtin")}
                 for p in personas.list()
             ],
-            "global_default": personas.global_default(),
-            "bindings": personas.bindings(),
+            "global_default": await personas.global_default(),
+            "bindings": await personas.abindings(),
             "current_chat": current,
 # 当前接收账户（多账户隔离后缀）；绑定该账户全部会话用 chat_key="@<account>"
             "current_account": account,
@@ -200,17 +200,17 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
         if persona is None and not persona_id:
             return "bind needs persona (existing persona id); use unbind to clear"
 # 仅写 KV 权威绑定（state.persona 镜像已废弃）
-        personas.bind(target, str(persona or persona_id))
+        await personas.bind(target, str(persona or persona_id))
         return utils.to_text({"ok": True, "chat_key": target, "persona": str(persona or persona_id)})
     if action == "unbind":
         target = str(chat_key or "").strip() or ctx.chat_key
-        personas.bind(target, None)
+        await personas.bind(target, None)
         return utils.to_text({"ok": True, "chat_key": target})
     if action == "set_global":
-        personas.set_global_default(str(persona_id or "") or None)
+        await personas.set_global_default(str(persona_id or "") or None)
         return utils.to_text({"ok": True, "global_default": str(persona_id or "")})
     if action == "clear_global":
-        personas.set_global_default(None)
+        await personas.set_global_default(None)
         return utils.to_text({"ok": True})
     return f"unknown action: {action} (list / save / delete / bind / unbind / set_global / clear_global)"
 
@@ -425,7 +425,7 @@ async def session_settings(ctx: ToolContext, action: str = "get", chat_key: str 
         from ..conversation.policy import budget_effective, get_policy
 
         policy = get_policy(ctx.sdk, key)
-        usage = main._usage_today() if hasattr(main, "_usage_today") else {}
+        usage = await main._usage_today() if hasattr(main, "_usage_today") else {}
         if not isinstance(usage, dict):
             usage = {}
         by_chat = usage.get("by_chat")

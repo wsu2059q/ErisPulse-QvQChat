@@ -116,13 +116,13 @@ def pending_key(chat_key: str) -> str:
     return f"{PENDING_KEY_PREFIX}{chat_key}"
 
 
-def enqueue_pending(sdk, config, chat_key: str, entry: dict) -> bool:
+async def enqueue_pending(sdk, config, chat_key: str, entry: dict) -> bool:
     """D4：发送最终失败的消息入 KV 待发队列（FIFO，超上限淘汰最旧）。"""
     if sdk is None or not chat_key:
         return False
     key = pending_key(chat_key)
     try:
-        data = sdk.storage.get(key, [])
+        data = await sdk.storage.aget(key, [])
         if not isinstance(data, list):
             data = []
     except Exception:
@@ -132,7 +132,7 @@ def enqueue_pending(sdk, config, chat_key: str, entry: dict) -> bool:
     if cap > 0 and len(data) > cap:
         data = data[len(data) - cap:]
     try:
-        sdk.storage.set(key, data)
+        await sdk.storage.aset(key, data)
     except Exception:
         return False
     return True
@@ -187,7 +187,7 @@ async def dispatch_text(sdk, config, sender, methods, text: str,
     if queue:
         entry = dict(queue)
         entry.update({"text": text, "ts": time.time()})
-        if enqueue_pending(sdk, config, entry.get("chat_key", ""), entry) and logger is not None:
+        if await enqueue_pending(sdk, config, entry.get("chat_key", ""), entry) and logger is not None:
             try:
                 logger.warning("send failed after retries, message queued as pending")
             except Exception:
@@ -485,7 +485,7 @@ class Delivery:
             personas = getattr(self.main, "personas", None)
             if personas is not None:
                 try:
-                    persona = personas.resolve(self._event_chat_key(event))
+                    persona = await personas.aresolve(self._event_chat_key(event))
                     persona_nick = str((persona or {}).get("nickname") or "")
                 except Exception:
                     persona_nick = ""
@@ -577,7 +577,7 @@ class Delivery:
                 for rest, _ in segments[index + 1:]:
                     entry = dict(queue)
                     entry.update({"text": rest, "ts": time.time()})
-                    enqueue_pending(self.sdk, self.config, queue["chat_key"], entry)
+                    await enqueue_pending(self.sdk, self.config, queue["chat_key"], entry)
             break
 
     async def _send_media_reply(self, event, parts, quote: bool = False,
@@ -630,7 +630,7 @@ class Delivery:
                     for rest, _ in segments[index + 1:]:
                         entry = dict(queue)
                         entry.update({"text": rest, "ts": time.time()})
-                        enqueue_pending(self.sdk, self.config, queue["chat_key"], entry)
+                        await enqueue_pending(self.sdk, self.config, queue["chat_key"], entry)
                 return
 
     async def deliver_reply(self, event, reply: str, tool_trace: list, force: bool | None = None,
@@ -767,7 +767,7 @@ class Delivery:
                 personas = getattr(self.main, "personas", None)
                 if personas is not None and chat_key:
                     try:
-                        persona = personas.resolve(chat_key)
+                        persona = await personas.aresolve(chat_key)
                         persona_nick = str((persona or {}).get("nickname") or "")
                     except Exception:
                         persona_nick = ""

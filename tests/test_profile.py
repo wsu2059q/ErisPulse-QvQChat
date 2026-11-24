@@ -376,30 +376,30 @@ async def test_qvq_memories_clear_graded(cli_host):
 # ===== scheduler：固化定时任务 =====
 
 
-def test_ensure_profile_task_registers_interval_task():
+async def test_ensure_profile_task_registers_interval_task():
     main = FakeMain()
     scheduler = Scheduler(main)
-    task = scheduler.ensure_profile_task()
+    task = await scheduler.ensure_profile_task()
     assert task is not None
     assert task["task_kind"] == "profile_consolidate"
     assert task["schedule"] == {"type": "interval", "seconds": 6 * 3600}
-    assert any(t["task_kind"] == "profile_consolidate" for t in scheduler.list())
-    assert scheduler.ensure_profile_task() is None, "幂等：不重复注册"
+    assert any(t["task_kind"] == "profile_consolidate" for t in await scheduler.list())
+    assert await scheduler.ensure_profile_task() is None, "幂等：不重复注册"
 
 
-def test_ensure_profile_task_disabled():
+async def test_ensure_profile_task_disabled():
     main = FakeMain(profile_enabled=False)
-    assert Scheduler(main).ensure_profile_task() is None
+    assert await Scheduler(main).ensure_profile_task() is None
     main2 = FakeMain(profile_consolidate_hours=0)
-    assert Scheduler(main2).ensure_profile_task() is None
+    assert await Scheduler(main2).ensure_profile_task() is None
 
 
 async def test_tick_fires_profile_task_and_consolidates():
     main = FakeMain()
     scheduler = Scheduler(main)
-    scheduler.ensure_profile_task()
+    await scheduler.ensure_profile_task()
     _seed_user_sessions(main)
-    tasks = scheduler.list()
+    tasks = await scheduler.list()
     tasks[0]["next_run"] = time.time() - 10
     main.sdk.storage.set("QvQChat:tasks", tasks)
     main.pool = BoomingPool()# LLM 失败 → 兜底路径也能固化
@@ -408,7 +408,7 @@ async def test_tick_fires_profile_task_and_consolidates():
     assert main.tasks_fired == [], "画像任务不得走 run_prompt"
     profile = main.conversations.profile.get("onebot11:u1")
     assert profile["traits"] or profile["facts"], "固化循环应产出画像"
-    assert any(t["task_kind"] == "profile_consolidate" for t in scheduler.list()), "interval 任务保留"
+    assert any(t["task_kind"] == "profile_consolidate" for t in await scheduler.list()), "interval 任务保留"
 
 
 async def test_profile_fire_skips_failed_users():

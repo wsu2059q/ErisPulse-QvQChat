@@ -213,6 +213,63 @@ class SessionRepository:
         self._index_save(scanned)
         return scanned
 
+# ===== 索引异步门面（事件循环内的调用走这里；同步版留给启动/迁移路径） =====
+
+    async def a_index_load(self) -> list[str] | None:
+        data = await self.sdk.storage.aget(CONV_INDEX_KEY, None)
+        if not isinstance(data, list):
+            return None
+        return [str(k) for k in data if isinstance(k, str) and k]
+
+    async def a_index_save(self, keys: list[str]) -> None:
+        await self.sdk.storage.aset(CONV_INDEX_KEY, keys)
+
+    async def a_index_add(self, chat_key: str) -> None:
+        """a_save 路径的索引维护（去重）；索引缺失时以单键索引落盘（首次会话场景）。"""
+        index = await self.a_index_load()
+        if index is None:
+            index = [chat_key]
+        elif chat_key not in index:
+            index = index + [chat_key]
+        else:
+            return
+        await self.a_index_save(index)
+
+    async def a_index_remove(self, chat_key: str) -> None:
+        index = await self.a_index_load()
+        if index is None or chat_key not in index:
+            return
+        await self.a_index_save([k for k in index if k != chat_key])
+
+    async def a_session_keys(self) -> list[str]:
+        """list_sessions 专用：索引优先；首访全量对账一次；索引缺失/损坏回退
+        全表键扫描并写回自愈（与同步 _session_keys 同款语义，走异步存储 API）。"""
+        index = await self.a_index_load()
+        if index is not None and self._index_ready:
+            return index
+        scanned = sorted(
+            key[len(CONV_PREFIX):]
+            for key in await self.sdk.storage.aget_all_keys()
+            if isinstance(key, str) and key.startswith(CONV_PREFIX)
+        )
+        if index is None or sorted(index) != scanned:
+            await self.a_index_save(scanned)
+            self._index_ready = True
+            return scanned
+        self._index_ready = True
+        return index
+
+    async def a_state(self, chat_key: str) -> dict | None:
+        raw = await self.sdk.storage.aget(CONV_PREFIX + chat_key, None)
+        return self._normalize_state(raw) if isinstance(raw, dict) else None
+
+    async def a_user_seen(self, uid: str) -> list[dict] | None:
+        """读倒排（异步）；损坏/缺失返回 None（调用方回退全表扫描）。"""
+        data = await self.sdk.storage.aget(USER_SEEN_PREFIX + uid, None)
+        if not isinstance(data, list):
+            return None
+        return [item for item in data if isinstance(item, dict) and isinstance(item.get("chat_key"), str) and item["chat_key"]]
+
 
     def get_contexts(self, chat_key: str) -> list:
         return list(self._state(chat_key)["contexts"])

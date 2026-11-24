@@ -46,35 +46,38 @@ class RecoveryMixin:
         if delay > 0:
             await asyncio.sleep(delay)
         try:
-            self._mark_interrupted_task_runs()
+            await self._mark_interrupted_task_runs()
             await self._replay_pending_on_boot(gap=replay_gap)
             await self._recover_inflight_marks()
         except Exception as e:
             self.logger.warning(f"recovery routine failed: {e}")
 
-    def _mark_interrupted_task_runs(self) -> None:
+    async def _mark_interrupted_task_runs(self) -> None:
         """定时任务执行标记对账：running 残留（重启打断）改 interrupted，仅 debug 观测。"""
         try:
-            keys = list(self.sdk.storage.keys())
+            keys = await self.sdk.storage.aget_all_keys()
         except Exception:
             return
+        stale_states: list[tuple[str, dict]] = []
         for key in keys:
             if not isinstance(key, str) or not key.startswith(TASK_RUN_STATE_PREFIX):
                 continue
             task_id = key[len(TASK_RUN_STATE_PREFIX):]
             try:
-                state = self.sdk.storage.get(key, None)
+                state = await self.sdk.storage.aget(key, None)
             except Exception:
                 continue
             if not isinstance(state, dict) or str(state.get("status") or "") != "running":
                 continue
             state["status"] = "interrupted"
             state["interrupted_at"] = time.time()
+            stale_states.append((key, state))
+            self.logger.debug(f"task run {task_id} marked interrupted (restart during run)")
+        for key, state in stale_states:
             try:
-                self.sdk.storage.set(key, state)
-                self.logger.debug(f"task run {task_id} marked interrupted (restart during run)")
+                await self.sdk.storage.aset(key, state)
             except Exception as e:
-                self.logger.debug(f"task run {task_id} interrupt mark failed: {e}")
+                self.logger.debug(f"task run interrupt mark failed: {e}")
 
     async def _replay_pending_on_boot(self, gap: float | None = None) -> None:
         """待发队列启动重放：replay_on_boot 开启时逐会话串行各重放一条，失败跳过。

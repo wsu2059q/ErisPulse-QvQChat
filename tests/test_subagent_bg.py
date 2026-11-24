@@ -143,19 +143,19 @@ async def test_on_subagent_done_ignores_bad_payload():
 
 async def test_recover_subjobs_marks_interrupted():
     main = FakeMain()
-    agent_tool._subjob_probe(main, "sub:onebot11:group:1:dead", {
+    await agent_tool._subjob_probe(main, "sub:onebot11:group:1:dead", {
         "sub_key": "sub:onebot11:group:1:dead",
         "parent_chat_key": "onebot11:group:1",
         "task": "残留任务",
         "status": "running",
         "started": 0,
     })
-    agent_tool.recover_subjobs(main)
+    await agent_tool.recover_subjobs(main)
     probe = main.sdk.storage.get(agent_tool.SUBJOB_PREFIX + "sub:onebot11:group:1:dead", None)
     assert probe["status"] == "interrupted"
     # 已完成的探针不动
-    agent_tool._subjob_probe(main, "sub:k2", {"status": "done"})
-    agent_tool.recover_subjobs(main)
+    await agent_tool._subjob_probe(main, "sub:k2", {"status": "done"})
+    await agent_tool.recover_subjobs(main)
     assert main.sdk.storage.get(agent_tool.SUBJOB_PREFIX + "sub:k2")["status"] == "done"
 
 
@@ -226,7 +226,7 @@ async def test_subjob_observability_and_cancel():
         ctx = _group_ctx(main)
         await agent_tool.spawn_agent(ctx, task="慢慢跑", background=True)
         await asyncio.sleep(0.05)
-        jobs = agent_tool.list_subjobs(main)
+        jobs = await agent_tool.list_subjobs(main)
         running = [j for j in jobs if j["status"] == "running"]
         assert running and running[0]["sub_key"].startswith("sub:")
         assert agent_tool.cancel_subjob(main, running[0]["sub_key"]) is True

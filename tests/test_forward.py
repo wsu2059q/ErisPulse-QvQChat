@@ -348,9 +348,11 @@ async def test_force_tags_keep_priority_over_structure_awareness():
 async def test_forward_nodes_use_persona_nickname():
     """会话人格配置 nickname → 转发节点显示人格昵称而非机器人自身昵称。"""
     harness = make_harness()
-    harness.personas = SimpleNamespace(
-        resolve=lambda chat_key: {"id": "p1", "nickname": "阿波"}
-    )
+
+    async def _aresolve(chat_key, **kw):
+        return {"id": "p1", "nickname": "阿波"}
+
+    harness.personas = SimpleNamespace(resolve=lambda chat_key: {"id": "p1", "nickname": "阿波"}, aresolve=_aresolve)
     event = FakeForwardEvent()
     assert await Delivery(harness)._try_forward(event, "综上", tool_trace(), rounds=rounds_multi_replies()) is True
     calls = forward_calls(harness)

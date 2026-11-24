@@ -301,10 +301,10 @@ async def test_send_plain_failure_enqueued():
     assert entry["target_id"] == "u9" and entry["ts"] > 0
 
 
-def test_pending_queue_fifo_eviction():
+async def test_pending_queue_fifo_eviction():
     delivery, main = make_delivery(pending_send_max=3)
     for i in range(5):
-        assert enqueue_pending(main.sdk, main.cfg, "k", {"text": f"m{i}"}) is True
+        assert await enqueue_pending(main.sdk, main.cfg, "k", {"text": f"m{i}"}) is True
     data = main.sdk.storage.get(pending_key("k"))
     assert [d["text"] for d in data] == ["m2", "m3", "m4"]
 
@@ -323,7 +323,7 @@ async def test_split_mid_failure_queues_rest_without_breaking_sent():
 async def test_replay_pending_success_pops_head():
     delivery, main = make_delivery(send_retry=0, retry_delay=0)
     main.sdk.adapter.add("onebot11", FakeSendChain(sends=("Text",)), sends=("Text",))
-    enqueue_pending(main.sdk, main.cfg, "onebot11:private:u9", {
+    await enqueue_pending(main.sdk, main.cfg, "onebot11:private:u9", {
         "platform": "onebot11", "detail_type": "user", "target_id": "u9",
         "text": "补发的消息", "ts": 1.0,
     })
@@ -336,7 +336,7 @@ async def test_replay_pending_success_pops_head():
 
 async def test_replay_pending_failure_keeps_entry():
     delivery, main = make_delivery(send_retry=0, retry_delay=0)
-    enqueue_pending(main.sdk, main.cfg, "onebot11:private:u9", {
+    await enqueue_pending(main.sdk, main.cfg, "onebot11:private:u9", {
         "platform": "ghost", "detail_type": "user", "target_id": "u9",
         "text": "补发", "ts": 1.0,
     })
@@ -348,7 +348,7 @@ async def test_replay_pending_failure_keeps_entry():
 async def test_deliver_reply_replays_queue_head_on_first_delivery():
     delivery, main = make_delivery(send_retry=0, retry_delay=0)
     main.sdk.adapter.add("onebot11", FakeSendChain(sends=("Text",)), sends=("Text",))
-    enqueue_pending(main.sdk, main.cfg, "onebot11:private:u9", {
+    await enqueue_pending(main.sdk, main.cfg, "onebot11:private:u9", {
         "platform": "onebot11", "detail_type": "user", "target_id": "u9",
         "text": "补发消息", "ts": 1.0,
     })
@@ -357,7 +357,7 @@ async def test_deliver_reply_replays_queue_head_on_first_delivery():
     assert main.sdk.storage.get(pending_key("onebot11:private:u9"), []) == []
     assert "普通回复" in event.sent
 # 每进程每个会话只顺带重放一次
-    enqueue_pending(main.sdk, main.cfg, "onebot11:private:u9", {
+    await enqueue_pending(main.sdk, main.cfg, "onebot11:private:u9", {
         "platform": "onebot11", "detail_type": "user", "target_id": "u9",
         "text": "第二条", "ts": 2.0,
     })

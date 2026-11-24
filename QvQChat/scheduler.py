@@ -37,24 +37,24 @@ class Scheduler:
             return None
         return None
 
-    def _load(self) -> list[dict]:
-        data = self.sdk.storage.get(TASKS_KEY, [])
+    async def _load(self) -> list[dict]:
+        data = await self.sdk.storage.aget(TASKS_KEY, [])
         return data if isinstance(data, list) else []
 
-    def _save(self, tasks: list[dict]) -> None:
-        self.sdk.storage.set(TASKS_KEY, tasks)
+    async def _save(self, tasks: list[dict]) -> None:
+        await self.sdk.storage.aset(TASKS_KEY, tasks)
 
-    def list(self) -> list[dict]:
-        return self._load()
+    async def list(self) -> list[dict]:
+        return await self._load()
 
-    def runs(self, limit: int = TASK_RUNS_KEEP) -> list[dict]:
-        data = self.sdk.storage.get(TASK_RUNS_KEY, [])
+    async def runs(self, limit: int = TASK_RUNS_KEEP) -> list[dict]:
+        data = await self.sdk.storage.aget(TASK_RUNS_KEY, [])
         runs = [r for r in data if isinstance(r, dict)] if isinstance(data, list) else []
         return runs[-limit:]
 
-    def _record_run(self, task: dict, status: str, error: str = "") -> None:
+    async def _record_run(self, task: dict, status: str, error: str = "") -> None:
         try:
-            runs = self.runs(TASK_RUNS_KEEP - 1)
+            runs = await self.runs(TASK_RUNS_KEEP - 1)
             runs.append(
                 {
                     "task_id": str(task.get("id") or ""),
@@ -64,13 +64,13 @@ class Scheduler:
                     "error": utils.truncate(error, 160),
                 }
             )
-            self.sdk.storage.set(TASK_RUNS_KEY, runs)
+            await self.sdk.storage.aset(TASK_RUNS_KEY, runs)
             if status == "error":
-                self._alert_if_persistent(task, error)
+                await self._alert_if_persistent(task, error)
         except Exception:
             pass
 
-    def _mark_run_state(self, task_id: str, status: str) -> None:
+    async def _mark_run_state(self, task_id: str, status: str) -> None:
         """单次执行状态标记（执行中断探针）：running 落盘、结束落 done/failed。
 
         实例在执行中崩溃则残留 running，重启后由恢复例程改 interrupted。
@@ -78,13 +78,13 @@ class Scheduler:
         if not task_id:
             return
         try:
-            self.sdk.storage.set(
+            await self.sdk.storage.aset(
                 TASK_RUN_STATE_PREFIX + task_id, {"status": status, "ts": utils.now_ts()}
             )
         except Exception:
             pass
 
-    def add(self, spec: dict) -> dict:
+    async def add(self, spec: dict) -> dict:
         schedule = spec["schedule"]
         now = utils.now_ts()
         update_id = str(spec.get("id") or "")
@@ -112,7 +112,7 @@ class Scheduler:
             "cron_ref": "",
         }
         task["next_run"] = self._next_with_jitter(task, now)
-        tasks = self._load()
+        tasks = await self._load()
         replaced = False
         if update_id:
             for i, old in enumerate(tasks):
@@ -132,14 +132,14 @@ class Scheduler:
                 break
         if not replaced:
             tasks.append(task)
-        self._save(tasks)
-        self._maybe_delegate(task, tasks)
+        await self._save(tasks)
+        await self._maybe_delegate(task, tasks)
         return task
 
     def _delegate_enabled(self) -> bool:
         return bool(getattr(self.main.cfg, "task_use_cron_module", True))
 
-    def _maybe_delegate(self, task: dict, tasks: list[dict] | None = None) -> None:
+    async def _maybe_delegate(self, task: dict, tasks: list[dict] | None = None) -> None:
         cron = self._cron_module() if self._delegate_enabled() else None
         if cron is None:
             return
@@ -172,20 +172,21 @@ class Scheduler:
             return
         task["managed_by"] = "Cron"
         task["cron_ref"] = str(ref)
-        self._save(tasks if tasks is not None else self._load())
+        await self._save(tasks if tasks is not None else await self._load())
 
-    def ensure_delegations(self) -> None:
-        tasks = self._load()
+    async def ensure_delegations(self) -> None:
+        tasks = await self._load()
         changed = False
         for task in tasks:
             if not task.get("managed_by"):
-                self._maybe_delegate(task, tasks)
+                await self._maybe_delegate(task, tasks)
                 if task.get("managed_by"):
                     changed = True
         if changed:
-            self._save(tasks)
+            await self._save(tasks)
 
     def register_cron_handler(self) -> None:
+        """注册 Cron 触发回调（纯内存操作，不读存储）：仅同步上下文调用安全。"""
         cron = self._cron_module()
         if cron is None:
             return
@@ -202,10 +203,10 @@ class Scheduler:
         task_id = (data or {}).get("qvq_task_id") if isinstance(data, dict) else None
         if not task_id:
             return
-        for task in self._load():
+        for task in await self._load():
             if task.get("id") == task_id:
                 if (task.get("schedule") or {}).get("type") == "once":
-                    self.cancel(task_id)
+                    await self.cancel(task_id)
                 self.main.spawn(self._fire(task))
                 return
 
@@ -221,9 +222,9 @@ class Scheduler:
             nxt += random.uniform(0.0, jitter * 60.0)
         return nxt
 
-    def run_now(self, task_id: str) -> str:
+    async def run_now(self, task_id: str) -> str:
         """手动触发一次：立即执行，不改 next_run 计划。返回任务名；未找到返回空串。"""
-        for task in self._load():
+        for task in await self._load():
             if str(task.get("id")) == str(task_id):
                 try:
                     asyncio.get_running_loop().create_task(self._fire(dict(task)))
@@ -232,8 +233,8 @@ class Scheduler:
                     return ""
         return ""
 
-    def cancel(self, task_id: str) -> bool:
-        tasks = self._load()
+    async def cancel(self, task_id: str) -> bool:
+        tasks = await self._load()
         remaining = []
         target = None
         for task in tasks:
@@ -250,14 +251,14 @@ class Scheduler:
                     cron.cancel(target["cron_ref"])
                 except Exception:
                     pass
-        self._save(remaining)
+        await self._save(remaining)
         return True
 
     async def start(self) -> None:
-        self.ensure_delegations()
+        await self.ensure_delegations()
         self.register_cron_handler()
-        self.ensure_profile_task()
-        self.ensure_storage_maintain_task()
+        await self.ensure_profile_task()
+        await self.ensure_storage_maintain_task()
         self.main.spawn(self._loop())
 # 启动恢复钩子：悬空回复重跑 / 待发队列重放 / 任务中断对账（例程自带延迟避开加载期）
         recover = getattr(self.main, "recover_inflight_routine", None)
@@ -266,7 +267,7 @@ class Scheduler:
 
 # ===== 用户画像固化定时任务 =====
 
-    def ensure_profile_task(self) -> dict | None:
+    async def ensure_profile_task(self) -> dict | None:
         """
         注册画像固化内置任务（幂等），按 profile_consolidate_hours 配置设定周期。
 
@@ -281,12 +282,12 @@ class Scheduler:
         if hours <= 0:
             return None
         raw = f"every:{int(hours) if hours.is_integer() else hours}h"
-        for task in self._load():
+        for task in await self._load():
             if task.get("task_kind") != PROFILE_TASK_KIND:
                 continue
             if task.get("schedule_raw") == raw:
                 return None
-            return self.add({
+            return await self.add({
                 "id": task["id"],
                 "name": PROFILE_TASK_NAME,
                 "schedule": {"type": "interval", "seconds": max(60, int(hours * 3600))},
@@ -294,7 +295,7 @@ class Scheduler:
                 "prompt": "",
                 "task_kind": PROFILE_TASK_KIND,
             })
-        return self.add(
+        return await self.add(
             {
                 "name": PROFILE_TASK_NAME,
                 "schedule": {"type": "interval", "seconds": max(60, int(hours * 3600))},
@@ -304,7 +305,7 @@ class Scheduler:
             }
         )
 
-    def ensure_storage_maintain_task(self) -> dict | None:
+    async def ensure_storage_maintain_task(self) -> dict | None:
         """
         注册存储自动维护内置任务（幂等），按 storage_maintain_hours 配置设定周期。
 
@@ -320,12 +321,12 @@ class Scheduler:
             return None
         raw = f"every:{int(hours) if hours.is_integer() else hours}h"
         seconds = max(600, int(hours * 3600))
-        for task in self._load():
+        for task in await self._load():
             if task.get("task_kind") != MAINTAIN_TASK_KIND:
                 continue
             if task.get("schedule_raw") == raw:
                 return None
-            return self.add({
+            return await self.add({
                 "id": task["id"],
                 "name": MAINTAIN_TASK_NAME,
                 "schedule": {"type": "interval", "seconds": seconds},
@@ -333,7 +334,7 @@ class Scheduler:
                 "prompt": "",
                 "task_kind": MAINTAIN_TASK_KIND,
             })
-        return self.add(
+        return await self.add(
             {
                 "name": MAINTAIN_TASK_NAME,
                 "schedule": {"type": "interval", "seconds": seconds},
@@ -353,13 +354,19 @@ class Scheduler:
         trash_days = int(getattr(self.main.cfg, "trash_retention_days", 14) or 0)
         if trash_days > 0:
             cutoff = _time.time() - trash_days * 86400
-            for key in list(sdk.storage.keys()):
-                if isinstance(key, str) and key.startswith("QvQChat:trash:"):
-                    entry = sdk.storage.get(key, None)
-                    ts = float(entry.get("ts") or 0) if isinstance(entry, dict) else 0
-                    if ts and ts < cutoff:
-                        sdk.storage.delete(key)
-                        report["trash"] += 1
+            trash_keys = [
+                k for k in await sdk.storage.aget_all_keys()
+                if isinstance(k, str) and k.startswith("QvQChat:trash:")
+            ]
+            entries = await sdk.storage.aget_multi(trash_keys) if trash_keys else {}
+            expired = []
+            for key, entry in entries.items():
+                ts = float(entry.get("ts") or 0) if isinstance(entry, dict) else 0
+                if ts and ts < cutoff:
+                    expired.append(key)
+            if expired:
+                await sdk.storage.adelete_multi(expired)
+                report["trash"] = len(expired)
         work_days = int(getattr(self.main.cfg, "work_retention_days", 30) or 0)
         if work_days > 0:
             root = _Path(str(getattr(self.main.cfg, "file_workdir", "") or "data/QvQChat/work"))
@@ -375,10 +382,13 @@ class Scheduler:
                     except OSError:
                         continue
         conv_prefix = "QvQChat:conv:"
-        for key in list(sdk.storage.keys()):
-            if not (isinstance(key, str) and key.startswith(conv_prefix)):
-                continue
-            state = sdk.storage.get(key, None)
+        conv_keys = [
+            k for k in await sdk.storage.aget_all_keys()
+            if isinstance(k, str) and k.startswith(conv_prefix)
+        ]
+        states = await sdk.storage.aget_multi(conv_keys) if conv_keys else {}
+        slimmed: dict = {}
+        for key, state in states.items():
             if not (isinstance(state, dict) and isinstance(state.get("contexts"), list)):
                 continue
             dirty = False
@@ -387,8 +397,10 @@ class Scheduler:
                     del entry["trace"]
                     dirty = True
             if dirty:
-                sdk.storage.set(key, state)
-                report["slimmed"] += 1
+                slimmed[key] = state
+        if slimmed:
+            await sdk.storage.aset_multi(slimmed)
+            report["slimmed"] = len(slimmed)
         logger = getattr(self.main, "logger", None)
         if logger is not None:
             logger.info(f"storage maintain: {report}")
@@ -433,7 +445,7 @@ class Scheduler:
                 await docs.maybe_sync_daily()
             except Exception as e:
                 self.main.logger.debug(f"docs daily check failed: {e}")
-        tasks = self._load()
+        tasks = await self._load()
         remaining: list[dict] = []
         to_fire: list[dict] = []
         changed = False
@@ -461,17 +473,17 @@ class Scheduler:
             remaining.append(task)
             to_fire.append(task)
         if changed:
-            self._save(remaining)
+            await self._save(remaining)
         for task in to_fire:
             await self._fire(task)
 
 
-    def _alert_if_persistent(self, task: dict, error: str) -> None:
+    async def _alert_if_persistent(self, task: dict, error: str) -> None:
         """R9B 定时任务连续失败告警：≥3 次时向首个管理员会话每日提醒一次。"""
         try:
             task_id = str(task.get("id") or "")
             marker_day = f"QvQChat:tasks:alerted:{time.strftime('%Y-%m-%d')}"
-            recent = [r for r in self.runs(30) if r.get("task_id") == task_id]
+            recent = [r for r in await self.runs(30) if r.get("task_id") == task_id]
             streak = 0
             for r in reversed(recent):
                 if r.get("status") != "error":
@@ -479,9 +491,9 @@ class Scheduler:
                 streak += 1
             if streak < 3:
                 return
-            if self.sdk.storage.get(marker_day, "") == "1":
+            if await self.sdk.storage.aget(marker_day, "") == "1":
                 return
-            self.sdk.storage.set(marker_day, "1")
+            await self.sdk.storage.aset(marker_day, "1")
             admins = [str(a) for a in (getattr(self.main.cfg, "admins", []) or []) if str(a).strip()]
             if not admins:
                 return
@@ -504,7 +516,7 @@ class Scheduler:
 
     async def _fire(self, task: dict) -> None:
         task_id = str(task.get("id") or "")
-        self._mark_run_state(task_id, "running")
+        await self._mark_run_state(task_id, "running")
         try:
             if task.get("task_kind") == PROFILE_TASK_KIND:
                 await self._fire_profile_consolidate()
@@ -512,10 +524,10 @@ class Scheduler:
                 await self._fire_storage_maintain()
             else:
                 await self.main.run_task(task)
-            self._record_run(task, "ok")
-            self._mark_run_state(task_id, "done")
+            await self._record_run(task, "ok")
+            await self._mark_run_state(task_id, "done")
             self.main.logger.info(f"task fired: {task.get('id')} {task.get('name')}")
         except Exception as e:
-            self._record_run(task, "error", str(e))
-            self._mark_run_state(task_id, "failed")
+            await self._record_run(task, "error", str(e))
+            await self._mark_run_state(task_id, "failed")
             self.main.logger.warning(f"task {task.get('id')} failed: {e}")
