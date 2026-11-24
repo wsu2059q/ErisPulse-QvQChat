@@ -50,14 +50,14 @@ async def test_prepare_first_contact_and_seeded_flags():
     assert prepared["first_contact"] is True
     assert prepared["seeded"] is False
 # seed 回填发生 → seeded=True
-    svc.reset(key)
+    await svc.reset(key)
     prepared = await svc.prepare(key, "hi", seed_provider=lambda: [{"role": "user", "content": "旧"}], persist=False)
     assert prepared["first_contact"] is True and prepared["seeded"] is True
 # 已有上下文 → first_contact=False
     prepared = await svc.prepare(key, "hi", persist=False)
     assert prepared["first_contact"] is False
 # 无 seed_provider 且空 contexts → False
-    svc.reset(key)
+    await svc.reset(key)
     prepared = await svc.prepare(key, "hi", seed_provider=None, persist=False)
     assert prepared["first_contact"] is False and prepared["seeded"] is False
 
@@ -73,7 +73,7 @@ async def test_opening_sent_once_and_before_reply():
     assert replies[0] == "初次见面，我是阿波！"
     assert replies[1] == "收到"
     assert replies.count("初次见面，我是阿波！") == 1
-    assert main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
+    assert await main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
 # 第二条消息不再发开场白
     ev2 = FakeChatEvent(text="再说点啥", group=False)
     captured2 = await drive(main, ev2, wait=0.4)
@@ -137,7 +137,7 @@ async def test_qvq_start_resends_opening_for_admin():
     ev.get_command_args = lambda: "start"
     await Main._cmd_agent(main, ev)
     assert reply_texts(ev) == ["手动重发开场白"]
-    assert main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
+    assert await main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
 
 # 非管理员拒绝
     main2 = bind_cli(aggregate_make_main(aggregate_window=0.05, admins=["boss"]))
@@ -162,11 +162,11 @@ async def test_reset_clears_opening_flag_when_enabled():
     await persona_with_opening(main, ["重来一次问好"])
     ev = FakeChatEvent(text="hi", group=False)
     await drive(main, ev, wait=1.5)
-    assert main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
+    assert await main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
     ev_reset = FakeChatEvent(text="", group=False)
     ev_reset.get_command_args = lambda: "reset"
     await Main._cmd_agent(main, ev_reset)
-    assert main.sessions.get_flag("onebot11:private:u1", "opening_sent") is False
+    assert await main.sessions.get_flag("onebot11:private:u1", "opening_sent") is False
     from QvQChat import texts
 
     assert texts.t("opening_sent") in reply_texts(ev_reset)[-1]
@@ -185,20 +185,20 @@ async def test_reset_keeps_opening_flag_by_default():
     ev_reset.get_command_args = lambda: "reset"
     await Main._cmd_agent(main, ev_reset)
 # 默认 opening_on_reset=False：标记保留
-    assert main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
+    assert await main.sessions.get_flag("onebot11:private:u1", "opening_sent") is True
 
 
 async def test_set_flags_dict_and_legacy_kwargs():
     main = FakeMain()
     svc = main.sessions
     key = "onebot11:private:u1"
-    assert svc.get_flag(key, "opening_sent") is False
-    svc.set_flags(key, {"opening_sent": True})
-    assert svc.get_flag(key, "opening_sent") is True
-    svc.set_flags(key, {"opening_sent": False})
-    assert svc.get_flag(key, "opening_sent") is False
+    assert await svc.get_flag(key, "opening_sent") is False
+    await svc.set_flags(key, {"opening_sent": True})
+    assert await svc.get_flag(key, "opening_sent") is True
+    await svc.set_flags(key, {"opening_sent": False})
+    assert await svc.get_flag(key, "opening_sent") is False
 # 旧关键字签名兼容（dashboard session_flags 路径）
-    svc.set_flags(key, pinned=True, archived=False)
-    assert svc.get_flag(key, "opening_sent") is False
+    await svc.set_flags(key, pinned=True, archived=False)
+    assert await svc.get_flag(key, "opening_sent") is False
     session = next(s for s in await svc.list_sessions() if s["chat_key"] == key)
     assert session["pinned"] is True

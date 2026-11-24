@@ -112,8 +112,8 @@ async def test_prepare_packing_integration():
     manager = main.sessions
     key = "test:private:budget"
     for i in range(10):
-        manager.append(key, "user", f"历史问题{i}" + "细节" * 100)
-        manager.append(key, "assistant", f"历史回答{i}" + "说明" * 100)
+        await manager.append(key, "user", f"历史问题{i}" + "细节" * 100)
+        await manager.append(key, "assistant", f"历史回答{i}" + "说明" * 100)
     prepared = await manager.prepare(key, "最新的一条消息")
     assert prepared["user_msg"]["content"] == "最新的一条消息"
     assert prepared["contexts"], "装填后应保留最近若干轮"
@@ -133,7 +133,7 @@ async def test_prepare_budget_off_keeps_legacy_behavior():
     manager = main.sessions
     key = "test:private:legacy"
     for i in range(6):
-        manager.append(key, "user", f"消息{i}")
+        await manager.append(key, "user", f"消息{i}")
     prepared = await manager.prepare(key, "你好")
 # off 模式：全部历史照带（发送级轮窗口为 0 不裁剪）
     assert len(prepared["contexts"]) == 6

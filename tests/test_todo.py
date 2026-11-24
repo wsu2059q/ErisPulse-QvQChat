@@ -14,34 +14,34 @@ def make_store():
 
 async def test_todo_replace_and_render():
     main, store = make_store()
-    items = store.replace("chat:1", ["第一步", "第二步", "第三步"])
+    items = await store.replace("chat:1", ["第一步", "第二步", "第三步"])
     assert [i["status"] for i in items] == ["pending", "pending", "pending"]
     assert len({i["id"] for i in items}) == 3
-    assert store.render("chat:1") == "[ ] 第一步\n[ ] 第二步\n[ ] 第三步"
+    assert await store.render("chat:1") == "[ ] 第一步\n[ ] 第二步\n[ ] 第三步"
     # 空清单 render 为空串（不注入部件）
-    assert store.render("chat:none") == ""
+    assert await store.render("chat:none") == ""
 
 
 async def test_todo_update_status_flow():
     main, store = make_store()
-    items = store.replace("chat:1", ["查资料", "写报告"])
+    items = await store.replace("chat:1", ["查资料", "写报告"])
     tid = items[0]["id"]
-    updated = store.update("chat:1", tid, status="in_progress")
+    updated = await store.update("chat:1", tid, status="in_progress")
     assert updated["status"] == "in_progress"
-    assert store.render("chat:1").startswith("[~] 查资料")
-    store.update("chat:1", tid, status="completed")
-    assert store.render("chat:1").startswith("[x] 查资料")
+    assert (await store.render("chat:1")).startswith("[~] 查资料")
+    await store.update("chat:1", tid, status="completed")
+    assert (await store.render("chat:1")).startswith("[x] 查资料")
     # 非法状态 / 不存在 id
-    assert store.update("chat:1", tid, status="bogus") is None
-    assert store.update("chat:1", "nope", status="completed") is None
+    assert await store.update("chat:1", tid, status="bogus") is None
+    assert await store.update("chat:1", "nope", status="completed") is None
 
 
 async def test_todo_replace_keeps_in_progress():
     """全量重写保留进行中的条目（不易丢正在做的任务）。"""
     main, store = make_store()
-    items = store.replace("chat:1", ["旧任务A", "旧任务B"])
-    store.update("chat:1", items[0]["id"], status="in_progress")
-    fresh = store.replace("chat:1", ["新计划"])
+    items = await store.replace("chat:1", ["旧任务A", "旧任务B"])
+    await store.update("chat:1", items[0]["id"], status="in_progress")
+    fresh = await store.replace("chat:1", ["新计划"])
     contents = [i["content"] for i in fresh]
     assert "新计划" in contents
     assert "旧任务A" in contents and "旧任务B" not in contents
@@ -52,17 +52,17 @@ async def test_todo_replace_keeps_in_progress():
 async def test_todo_add_and_cap():
     main, store = make_store()
     for n in range(TODO_MAX + 5):
-        store.add("chat:1", f"任务{n}")
-    items = store.items("chat:1")
+        await store.add("chat:1", f"任务{n}")
+    items = await store.items("chat:1")
     assert len(items) == TODO_MAX
 
 
 async def test_todo_clear_on_session_delete():
     main, store = make_store()
-    store.replace("chat:del", ["事情"])
-    assert store.items("chat:del")
+    await store.replace("chat:del", ["事情"])
+    assert await store.items("chat:del")
     await main.sessions.delete("chat:del")
-    assert store.items("chat:del") == []
+    assert await store.items("chat:del") == []
 
 
 async def test_todo_tools_end_to_end():
@@ -70,7 +70,7 @@ async def test_todo_tools_end_to_end():
     ctx = make_ctx(main=main, chat_key="test:group:9")
     out = await todo_tools.todo_write(ctx, ["摸鱼", "干活"])
     assert '"updated": 2' in out or '"updated":2' in out
-    items = main.conversations.todos.items("test:group:9")
+    items = await main.conversations.todos.items("test:group:9")
     tid = items[1]["id"]
     out = await todo_tools.todo_update(ctx, tid, status="in_progress")
     assert '"in_progress"' in out

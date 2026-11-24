@@ -56,7 +56,7 @@ async def test_background_spawn_runs_and_probes_done(monkeypatch=None):
         assert probe["status"] == "done"
         assert probe["parent_chat_key"] == "onebot11:group:9"
         # 子会话有任务与结果双方
-        ctxs = main.sessions.get_contexts(probe["sub_key"])
+        ctxs = await main.sessions.get_contexts(probe["sub_key"])
         texts = [str(m.get("content")) for m in ctxs]
         assert any("慢慢查资料" in t for t in texts)
         assert any("后台结果完成" in t for t in texts)
@@ -117,7 +117,7 @@ async def test_foreground_still_waits_inline():
 async def test_on_subagent_done_spawns_digest_with_persist():
     main = FakeMain()
     setattr(main, "_digest_subagent", Main._digest_subagent.__get__(main))
-    Main._on_subagent_done(main, {
+    await Main._on_subagent_done(main, {
         "sub_key": "sub:onebot11:group:9:abcd",
         "parent_chat_key": "onebot11:group:9",
         "task": "慢慢查资料",
@@ -135,9 +135,9 @@ async def test_on_subagent_done_spawns_digest_with_persist():
 
 async def test_on_subagent_done_ignores_bad_payload():
     main = FakeMain()
-    Main._on_subagent_done(main, None)
-    Main._on_subagent_done(main, {"answer": "x"})  # 无 parent_chat_key
-    Main._on_subagent_done(main, {"parent_chat_key": ""})
+    await Main._on_subagent_done(main, None)
+    await Main._on_subagent_done(main, {"answer": "x"})  # 无 parent_chat_key
+    await Main._on_subagent_done(main, {"parent_chat_key": ""})
     assert not main.prompts and not main.spawned
 
 
@@ -173,12 +173,12 @@ async def test_run_prompt_persist_writes_both_sides():
     setattr(main, "_lock_for", Main._lock_for.__get__(main))
     chat_key = "onebot11:group:9"
     await main.run_prompt(chat_key, "后台汇报内容", origin="proactive", send=False, persist=True)
-    texts = [str(m.get("content")) for m in main.sessions.get_contexts(chat_key)]
+    texts = [str(m.get("content")) for m in await main.sessions.get_contexts(chat_key)]
     assert any("后台汇报内容" in t for t in texts)
     assert any("插回的消化结论" in t for t in texts)
     # 默认 persist=False：一次性调用不留痕
     await main.run_prompt(chat_key, "一次性任务提示", origin="task", send=False)
-    texts2 = [str(m.get("content")) for m in main.sessions.get_contexts(chat_key)]
+    texts2 = [str(m.get("content")) for m in await main.sessions.get_contexts(chat_key)]
     assert not any("一次性任务提示" in t for t in texts2)
 
 

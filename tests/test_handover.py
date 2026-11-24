@@ -95,9 +95,9 @@ async def test_message_routes_to_sub_session_and_main_stays_clean():
     assert kwargs["model"] == "p:m1"
     assert kwargs["messages"][-1]["content"] == "我头疼"
     # 历史落在 sub: 会话，主会话上下文一动不动
-    sub_contexts = main.sessions.get_contexts(state["sub_key"])
+    sub_contexts = await main.sessions.get_contexts(state["sub_key"])
     assert [c["content"] for c in sub_contexts] == ["我头疼", "（咳嗽两声）医生你好……"]
-    assert main.sessions.get_contexts(KEY) == []
+    assert await main.sessions.get_contexts(KEY) == []
     # 回复照常投递、轮数推进
     assert ev.replies
     assert (await handover.get_state(main.sdk, KEY))["turns"] == 1
@@ -112,7 +112,7 @@ async def test_model_falls_back_to_cfg_handover_model():
 
 async def test_tool_injects_orientation_into_role_prompt():
     main = make_main()
-    main.sessions.append(KEY, "user", "我们来玩看病游戏吧")
+    await main.sessions.append(KEY, "user", "我们来玩看病游戏吧")
     ctx = Main._chat_ctx(main, FakeChatEvent(text="", group=False), KEY)
     ctx.scene_note = "〔场景〕群「喵之领域」 当前说话人：甲(u1)"
     await handover_tool.handover_session(ctx, setup="你扮演一位感冒来就诊的病人")
@@ -140,10 +140,10 @@ async def test_exit_tag_ends_handover_and_leaves_note():
     await drain(main)
     # 状态清空 + 主会话恰好多出一条事实注记（user 角色），让渡内容仍在 sub: 会话
     assert await handover.get_state(main.sdk, KEY) is None
-    contexts = main.sessions.get_contexts(KEY)
+    contexts = await main.sessions.get_contexts(KEY)
     assert len(contexts) == 1 and contexts[0]["role"] == "user"
     assert "你扮演病人" in contexts[0]["content"]
-    assert main.sessions.get_contexts(state["sub_key"])
+    assert await main.sessions.get_contexts(state["sub_key"])
 
 
 async def test_end_handover_appends_plot_summary():
@@ -168,7 +168,7 @@ async def test_end_handover_appends_plot_summary():
     await drive(main)  # 一轮（turns=1）
     await main._end_handover(KEY, state)
     await drain(main)
-    contexts = main.sessions.get_contexts(KEY)
+    contexts = await main.sessions.get_contexts(KEY)
     joined = "\n".join(str(c.get("content") or "") for c in contexts)
     assert "会话让渡" in joined or "handover" in joined.lower()  # 事实注记先行
     assert "病人来诊感冒" in joined      # 剧情摘要随后
@@ -192,7 +192,7 @@ async def test_summary_failure_leaves_fact_note_only():
     await drive(main)
     await main._end_handover(KEY, state)
     await drain(main)  # 异常被吞，不外抛
-    contexts = main.sessions.get_contexts(KEY)
+    contexts = await main.sessions.get_contexts(KEY)
     joined = str(contexts[0].get("content"))
     assert len(contexts) == 1 and ("会话让渡" in joined or "handover" in joined.lower())
 
@@ -204,7 +204,7 @@ async def test_max_turns_auto_end():
     await drive(main)
     await drain(main)
     assert await handover.get_state(main.sdk, KEY) is None
-    contexts = main.sessions.get_contexts(KEY)
+    contexts = await main.sessions.get_contexts(KEY)
     assert len(contexts) == 1 and contexts[0]["role"] == "user"
 
 
@@ -238,7 +238,7 @@ async def test_cmd_handover_start_status_off():
     assert await handover.get_state(main.sdk, KEY) is None
     assert any("handover" in str(c).lower() or "结束" in str(c) or "讓渡" in str(c) or "让渡" in str(c) for _, c in ev3.replies)
     await drain(main)
-    contexts = main.sessions.get_contexts(KEY)
+    contexts = await main.sessions.get_contexts(KEY)
     assert len(contexts) == 1 and contexts[0]["role"] == "user"
 
 
@@ -309,7 +309,7 @@ async def test_exit_phrase_ends_handover_without_model_call():
     assert len(captured_calls) == 1
     assert captured_calls[0]["persona_tools"] is None
     # 落回主链路：注记先行、本条消息由主智能体正常处理
-    contexts = main.sessions.get_contexts(KEY)
+    contexts = await main.sessions.get_contexts(KEY)
     assert contexts and contexts[0]["role"] == "user"
     assert "你扮演病人" in contexts[0]["content"]
     # 主链路 system 是能力契约（含让渡段），但绝不带角色守则（收场规则是守则独有词）

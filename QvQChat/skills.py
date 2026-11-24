@@ -6,6 +6,9 @@ from typing import Any
 
 from . import texts
 
+# KV 存储（QvQChat:skills）访问走异步接口（aget/aset）：框架同步 get/set 在事件循环内
+# 会经 AsyncBridge 阻塞，超时返回 None。仅文件系统读取（_file_skills）与 set_enabled（走 sdk.config）保持 sync。
+
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 
 BUILTIN_SKILLS: list[dict] = [
@@ -185,8 +188,8 @@ class SkillManager:
             )
         return result
 
-    def _stored_skills(self) -> list[dict]:
-        stored = self.sdk.storage.get(self._store_key, {})
+    async def _stored_skills(self) -> list[dict]:
+        stored = await self.sdk.storage.aget(self._store_key, {})
         result: list[dict] = []
         if isinstance(stored, dict):
             for name, data in stored.items():
@@ -222,39 +225,39 @@ class SkillManager:
             if gates.get(s["name"], True)
         ]
 
-    def list_skills(self) -> list[dict]:
+    async def list_skills(self) -> list[dict]:
         merged = {s["name"]: s for s in self._builtin_skills()}
 # 生态模块贡献的技能：内置同名优先（setdefault），文件/面板可覆盖
         for s in self._external_skills():
             merged.setdefault(s["name"], s)
         for s in self._file_skills():
             merged.setdefault(s["name"], s)
-        for s in self._stored_skills():
+        for s in await self._stored_skills():
             merged[s["name"]] = s
         return sorted(merged.values(), key=lambda s: s["name"])
 
-    def get_skill(self, name: str) -> dict | None:
-        for skill in self.list_skills():
+    async def get_skill(self, name: str) -> dict | None:
+        for skill in await self.list_skills():
             if skill["name"] == name:
                 return skill
         return None
 
-    def save_skill(self, name: str, description: str, body: str) -> dict:
+    async def save_skill(self, name: str, description: str, body: str) -> dict:
         name = str(name).strip()
         if not name:
             raise ValueError(texts.t("skills_name_required"))
-        stored = self.sdk.storage.get(self._store_key, {})
+        stored = await self.sdk.storage.aget(self._store_key, {})
         if not isinstance(stored, dict):
             stored = {}
         stored[name] = {"description": description, "body": body}
-        self.sdk.storage.set(self._store_key, stored)
+        await self.sdk.storage.aset(self._store_key, stored)
         return {"name": name, "description": description, "body": body, "source": "dashboard"}
 
-    def delete_skill(self, name: str) -> bool:
-        stored = self.sdk.storage.get(self._store_key, {})
+    async def delete_skill(self, name: str) -> bool:
+        stored = await self.sdk.storage.aget(self._store_key, {})
         if isinstance(stored, dict) and name in stored:
             del stored[name]
-            self.sdk.storage.set(self._store_key, stored)
+            await self.sdk.storage.aset(self._store_key, stored)
             return True
         path = self.skills_dir() / f"{name}.md"
         if path.is_file():
@@ -263,6 +266,8 @@ class SkillManager:
         return False
 
     def set_enabled(self, name: str, enabled: bool) -> None:
+        """启用/禁用开关走框架配置 API（sdk.config.setConfig，非 KV 存储）：
+        仅同步上下文——无 storage 同步阻塞问题，保持 sync。"""
         disabled = self._disabled()
         if enabled and name in disabled:
             disabled.remove(name)
@@ -272,13 +277,13 @@ class SkillManager:
 
 # ===== 技能自动习得：运行结果 → 技能草稿（不落盘）=====
 
-    def propose_from_run(self, user_text: str, result: Any) -> dict | None:
+    async def propose_from_run(self, user_text: str, result: Any) -> dict | None:
         """从一次完成的运行中提炼技能草稿，返回 {name, description, steps} 或 None。
 
         启发式（纯本地，不调模型）：需要用户任务文本 + 至少一次工具调用；
         name 取用户文本中第一个实义 ASCII 词（短英文 id），无则回退 "task-{首个工具名}"；
         description 取最终回复首行（空则回退任务文本）；steps 来自连续去重的工具序列。
-        同名技能已存在时返回 None（不重复提议）。草稿仅返回给调用方，绝不写存储。
+        同名技能已存在时返回 None（不重复提议，get_skill 为异步 KV 读）。草稿仅返回给调用方，绝不写存储。
         """
         user_text = str(user_text or "").strip()
         trace = list(getattr(result, "tool_trace", None) or [])
@@ -294,7 +299,7 @@ class SkillManager:
         words = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", user_text)]
         candidates = [w for w in words if w not in self._NAME_STOPWORDS]
         name = (candidates[0] if candidates else "task-" + sequence[0])[:32]
-        if self.get_skill(name) is not None:
+        if await self.get_skill(name) is not None:
             return None
         reply_lines = str(getattr(result, "text", "") or "").strip().splitlines()
         description = (reply_lines[0].strip() if reply_lines and reply_lines[0].strip() else user_text)[:120]

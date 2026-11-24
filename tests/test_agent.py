@@ -372,7 +372,7 @@ async def test_spawn_agent_inherits_user_context():
         parent_ctx.target_id = "67890"
         parent_ctx.event = object()
         parent_ctx.scene_note = "平台：onebot11 群：测试群"
-        main.sessions.append("onebot11:group:67890", "user", "樱城の心: 帮我导出记录")
+        await main.sessions.append("onebot11:group:67890", "user", "樱城の心: 帮我导出记录")
         result = await agent_tool.spawn_agent(parent_ctx, task="导出群记录")
         assert "子任务完成" in result
         assert captured["platform"] == "onebot11"

@@ -233,23 +233,23 @@ async def test_enqueue_announces_only_for_first_message():
 # ---------- policy：屏蔽 / 白名单 / 优先级 ----------
 
 
-def test_policy_mute_gate_blocks_message():
+async def test_policy_mute_gate_blocks_message():
     main = FakeMain()
-    set_policy(main.sdk, "onebot11:group:1", muted=True)
-    assert listen_allowed(main.cfg, main.sdk, "onebot11:group:1") is False
-    assert listen_allowed(main.cfg, main.sdk, "onebot11:group:2") is True
+    await set_policy(main.sdk, "onebot11:group:1", muted=True)
+    assert await listen_allowed(main.cfg, main.sdk, "onebot11:group:1") is False
+    assert await listen_allowed(main.cfg, main.sdk, "onebot11:group:2") is True
 
 
-def test_policy_whitelist_mode():
+async def test_policy_whitelist_mode():
     main = FakeMain()
     main.cfg.chat_listen_mode = "whitelist"
     main.cfg.chat_whitelist = ["onebot11:group:100", "qqmail:"]
-    assert listen_allowed(main.cfg, main.sdk, "onebot11:group:100") is True
-    assert listen_allowed(main.cfg, main.sdk, "onebot11:group:200") is False
-    assert listen_allowed(main.cfg, main.sdk, "qqmail:private:x") is True  # 前缀匹配
+    assert await listen_allowed(main.cfg, main.sdk, "onebot11:group:100") is True
+    assert await listen_allowed(main.cfg, main.sdk, "onebot11:group:200") is False
+    assert await listen_allowed(main.cfg, main.sdk, "qqmail:private:x") is True  # 前缀匹配
 # 名单为空 = 全拒
     main.cfg.chat_whitelist = []
-    assert listen_allowed(main.cfg, main.sdk, "onebot11:group:100") is False
+    assert await listen_allowed(main.cfg, main.sdk, "onebot11:group:100") is False
 
 
 def test_apply_priority_offsets():
@@ -260,12 +260,12 @@ def test_apply_priority_offsets():
     assert apply_priority({"priority": "low"}, 8) == 9  # 钳制上限
 
 
-def test_set_policy_normalizes_invalid():
+async def test_set_policy_normalizes_invalid():
     main = FakeMain()
-    policy = set_policy(main.sdk, "k", priority="ultra", muted="yes")
+    policy = await set_policy(main.sdk, "k", priority="ultra", muted="yes")
     assert policy["priority"] == "normal"
     assert policy["muted"] is True
-    assert get_policy(main.sdk, "k") == policy
+    assert await get_policy(main.sdk, "k") == policy
 
 
 # ---------- live.stale：running 态回收护栏 ----------
@@ -292,15 +292,16 @@ async def test_live_stale_running_guards():
 # ---------- 省流模式：build_system_parts 跳过重组件 ----------
 
 
-def test_build_system_parts_low_token_skips_heavy_parts():
+@pytest.mark.asyncio
+async def test_build_system_parts_low_token_skips_heavy_parts():
     main = FakeMain()
-    main.knowledge.add("恐龙", "霸王龙生活于白垩纪晚期。", triggers=["恐龙"])  # kb 命中才有 kb 部件
+    await main.knowledge.add("恐龙", "霸王龙生活于白垩纪晚期。", triggers=["恐龙"])  # kb 命中才有 kb 部件
     persona = {"id": "p1", "name": "测试", "system": "你是测试。"}
     kb = ["给我讲讲恐龙的知识"]
-    full = main.sessions.build_system_parts(
+    full = await main.sessions.build_system_parts(
         persona, chat_key="onebot11:group:1", scene="s", kb_texts=kb, kb_query="恐龙",
     )
-    slim = main.sessions.build_system_parts(
+    slim = await main.sessions.build_system_parts(
         persona, chat_key="onebot11:group:1", scene="s", kb_texts=kb, kb_query="恐龙", low_token=True,
     )
     kinds_full = {p.kind for p in full}

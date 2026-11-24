@@ -1,4 +1,8 @@
 from QvQChat import texts
+
+import asyncio
+
+import pytest
 from QvQChat.agent.persona import ASSISTANT_ID, PersonaManager
 from QvQChat.conversation.budget import ContextPacker, SystemPart
 from QvQChat.engine.openai import OpenAIEngine
@@ -178,12 +182,13 @@ def _rich_persona(main) -> str:
     return saved["id"]
 
 
-def test_build_system_injects_persona_extras():
+@pytest.mark.asyncio
+async def test_build_system_injects_persona_extras():
     """P2身份行在首行；owner_title/style/examples/禁词口头禅注入；persona_extra 部件可被 pack 兜底。"""
     main = FakeMain()
     pid = _rich_persona(main)
     persona = main.personas.get(pid)
-    parts = main.sessions.build_system_parts(persona)
+    parts = await main.sessions.build_system_parts(persona)
     kinds = [p.kind for p in parts]
     assert kinds[0] == "persona" and kinds[1] == "persona_extra" and "capability" in kinds
     system = "\n".join(p.text for p in parts if p.text)
@@ -196,9 +201,9 @@ def test_build_system_injects_persona_extras():
     assert texts.t("persona_catchphrases", phrases="喵～") in system
 # 素人格不产生 persona_extra 部件
     plain = main.personas.get("assistant")
-    assert all(p.kind != "persona_extra" for p in main.sessions.build_system_parts(plain))
+    assert all(p.kind != "persona_extra" for p in await main.sessions.build_system_parts(plain))
 # build_system 兼容层同样带上注入
-    assert texts.t("persona_identity", name="小蝶", id=pid) in main.sessions.build_system(persona).splitlines()[0]
+    assert texts.t("persona_identity", name="小蝶", id=pid) in (await main.sessions.build_system(persona)).splitlines()[0]
 
 
 def test_context_packer_handles_persona_extra_kind():
@@ -264,26 +269,27 @@ def test_h1_system_parts_switches():
 
     persona = {"id": "p", "name": "P", "system": "sys"}
     main = FakeMain()
-    parts_on = main.conversations.build_system_parts(persona, scene="s", chat_key="onebot11:group:1")
+    parts_on = asyncio.run(main.conversations.build_system_parts(persona, scene="s", chat_key="onebot11:group:1"))
     joined = "\n".join(p.text for p in parts_on)
     assert "闲聊输出规则" in joined
     assert "其他机器人或智能体" in joined
 
     main_off = FakeMain(chat_output_rules=False, identity_note_other_agents=False)
-    parts_off = main_off.conversations.build_system_parts(persona, scene="s", chat_key="onebot11:group:1")
+    parts_off = asyncio.run(main_off.conversations.build_system_parts(persona, scene="s", chat_key="onebot11:group:1"))
     joined_off = "\n".join(p.text for p in parts_off)
     assert "闲聊输出规则" not in joined_off
     assert "其他机器人或智能体" not in joined_off
 
 
-def test_persona_roster_recognition():
+@pytest.mark.asyncio
+async def test_persona_roster_recognition():
     """人格名册感知：其它已定义人格以 名字/别名 注入 roster 部件；当前人格不进名册；可关闭。"""
     from fakes import FakeMain
 
     main = FakeMain()
     saved = main.personas.save({"id": "cat", "name": "猫娘", "system": "你是猫娘。", "nickname": "喵喵"})
     # 用内置 assistant 视角看名册：应含 猫娘（别名：喵喵）等其它人格，不含 assistant 自己
-    parts = main.sessions.build_system_parts(main.personas.get("assistant"))
+    parts = await main.sessions.build_system_parts(main.personas.get("assistant"))
     roster = [p for p in parts if p.kind == "roster"]
     assert roster, "应产生 roster 部件"
     text = roster[0].text
@@ -295,4 +301,4 @@ def test_persona_roster_recognition():
             assert pid in text, pid
     # 关闭开关 → 无 roster 部件
     main_off = FakeMain(persona_roster_enabled=False)
-    assert all(p.kind != "roster" for p in main_off.sessions.build_system_parts(main_off.personas.get("assistant")))
+    assert all(p.kind != "roster" for p in await main_off.sessions.build_system_parts(main_off.personas.get("assistant")))

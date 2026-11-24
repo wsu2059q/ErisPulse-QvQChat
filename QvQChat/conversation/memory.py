@@ -14,6 +14,9 @@ FORGET_PRUNE_KEY = "QvQChat:memforget:last_prune"  # 前缀避开 MEM_PREFIX（l
 # 5 级与人工记忆不过期——"有些是要长期记忆的，不是一刀切"
 RETENTION_DAYS = {1: 14, 2: 14, 3: 60, 4: 180, 5: 0}  # 0 = 永久
 
+# 存储访问走异步接口（aget/aset/adelete/aget_all_keys/aget_multi/aset_multi）：
+# 框架同步 get/set 在事件循环内会经 AsyncBridge 阻塞，超时返回 None。
+
 
 class MemoryStore:
     def __init__(self, sdk: Any, config: Any):
@@ -69,23 +72,23 @@ class MemoryStore:
             pass
         return None
 
-    def entries(self, chat_key: str) -> list[dict]:
-        data = self.sdk.storage.get(MEM_PREFIX + chat_key, [])
+    async def entries(self, chat_key: str) -> list[dict]:
+        data = await self.sdk.storage.aget(MEM_PREFIX + chat_key, [])
         return data if isinstance(data, list) else []
 
-    def _save(self, chat_key: str, entries: list[dict]) -> None:
-        self.sdk.storage.set(MEM_PREFIX + chat_key, entries)
+    async def _save(self, chat_key: str, entries: list[dict]) -> None:
+        await self.sdk.storage.aset(MEM_PREFIX + chat_key, entries)
 
     @staticmethod
     def _normalized(text: str) -> str:
         return "".join(str(text).lower().split())
 
-    def remember(self, chat_key: str, content: str, category: str = "", importance: int = 3,
-                 source: str = "user") -> str:
+    async def remember(self, chat_key: str, content: str, category: str = "", importance: int = 3,
+                       source: str = "user") -> str:
         content = content.strip()
         if not content:
             return texts.t("memory_empty_content")
-        entries = self.entries(chat_key)
+        entries = await self.entries(chat_key)
         normalized = self._normalized(content)
         for entry in entries:
             existing = self._normalized(entry.get("content", ""))
@@ -102,24 +105,25 @@ class MemoryStore:
                 "source": source if source in ("user", "auto") else "user",
             }
         )
-        self._maybe_forget(chat_key, entries)
+        await self._maybe_forget(chat_key, entries)
         max_items = int(getattr(self.config, "memory_max", 200))
         if len(entries) > max_items:
             entries.sort(key=lambda e: (e.get("importance", 3), e.get("ts", 0)), reverse=True)
             entries = entries[:max_items]
-        self._save(chat_key, entries)
+        await self._save(chat_key, entries)
         return texts.t("memory_added", count=len(entries))
 
-    def _maybe_forget(self, chat_key: str, entries: list) -> int:
+    async def _maybe_forget(self, chat_key: str, entries: list) -> int:
         """遗忘曲线懒清理：跨天首条写入时对全部会话执行一次（照 usage 滚动清理模式）。
 
         只淡出 source="auto" 且超过分级保留期的条目；user 记忆与 importance 5 永不过期。
+        keys + 逐键 get/set 合并为 aget_all_keys + aget_multi + aset_multi（一次往返批量处理）。
         返回本次清理条数。"""
         if not bool(getattr(self.config, "memory_forget", True)):
             return 0
         today = time.strftime("%Y-%m-%d")
         try:
-            last = self.sdk.storage.get(FORGET_PRUNE_KEY, "")
+            last = await self.sdk.storage.aget(FORGET_PRUNE_KEY, "")
             if last == today:
                 return 0
         except Exception:
@@ -127,8 +131,10 @@ class MemoryStore:
         removed_total = 0
         try:
             now = time.time()
-            for key in [str(k) for k in (self.sdk.storage.keys() or []) if str(k).startswith(MEM_PREFIX)]:
-                stored = self.sdk.storage.get(key, [])
+            mem_keys = [str(k) for k in (await self.sdk.storage.aget_all_keys() or []) if str(k).startswith(MEM_PREFIX)]
+            stored_map = await self.sdk.storage.aget_multi(mem_keys) if mem_keys else {}
+            updates: dict = {}
+            for key, stored in stored_map.items():
                 if not isinstance(stored, list) or not stored:
                     continue
                 kept = []
@@ -145,14 +151,16 @@ class MemoryStore:
                         continue
                     kept.append(entry)
                 if len(kept) != len(stored):
-                    self.sdk.storage.set(key, kept)
-            self.sdk.storage.set(FORGET_PRUNE_KEY, today)
+                    updates[key] = kept
+            if updates:
+                await self.sdk.storage.aset_multi(updates)
+            await self.sdk.storage.aset(FORGET_PRUNE_KEY, today)
         except Exception:
             return removed_total
         return removed_total
 
-    def recall(self, chat_key: str, query: str = "", limit: int = 0) -> list[dict]:
-        entries = self.entries(chat_key) + self._external_entries()
+    async def recall(self, chat_key: str, query: str = "", limit: int = 0) -> list[dict]:
+        entries = await self.entries(chat_key) + self._external_entries()
         if not entries:
             return []
         now = utils.now_ts()
@@ -195,11 +203,11 @@ class MemoryStore:
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return [entry for score, entry in scored[:limit] if score > 0.2]
 
-    def forget(self, chat_key: str, query: str) -> int:
+    async def forget(self, chat_key: str, query: str) -> int:
         query_norm = self._normalized(query)
         if not query_norm:
             return 0
-        entries = self.entries(chat_key)
+        entries = await self.entries(chat_key)
         remaining = [
             e
             for e in entries
@@ -208,40 +216,45 @@ class MemoryStore:
         ]
         removed = len(entries) - len(remaining)
         if removed:
-            self._save(chat_key, remaining)
+            await self._save(chat_key, remaining)
         return removed
 
-    def remove(self, chat_key: str, content: str) -> bool:
-        entries = self.entries(chat_key)
+    async def remove(self, chat_key: str, content: str) -> bool:
+        entries = await self.entries(chat_key)
         remaining = [e for e in entries if e.get("content") != content]
         if len(remaining) == len(entries):
             return False
         if remaining:
-            self._save(chat_key, remaining)
+            await self._save(chat_key, remaining)
         else:
-            self.sdk.storage.delete(MEM_PREFIX + chat_key)
+            await self.sdk.storage.adelete(MEM_PREFIX + chat_key)
         return True
 
-    def clear(self, chat_key: str) -> int:
-        entries = self.entries(chat_key)
+    async def clear(self, chat_key: str) -> int:
+        entries = await self.entries(chat_key)
         if entries:
-            self.sdk.storage.delete(MEM_PREFIX + chat_key)
+            await self.sdk.storage.adelete(MEM_PREFIX + chat_key)
         return len(entries)
 
-    def list_scopes(self) -> list[dict]:
+    async def list_scopes(self) -> list[dict]:
+        """全作用域清单：keys + 逐键 get 合并为 aget_all_keys + aget_multi（一次批量读取）。"""
         scopes: list[dict] = []
-        for key in self.sdk.storage.keys():
-            if isinstance(key, str) and key.startswith(MEM_PREFIX):
-                chat_key = key[len(MEM_PREFIX):]
-                entries = self.entries(chat_key)
-                last = entries[-1] if entries else {}
-                scopes.append(
-                    {
-                        "chat_key": chat_key,
-                        "count": len(entries),
-                        "last_ts": float(last.get("ts") or 0),
-                        "last_text": str(last.get("content") or "")[:80],
-                    }
-                )
+        mem_keys = [
+            str(k) for k in (await self.sdk.storage.aget_all_keys() or [])
+            if isinstance(k, str) and k.startswith(MEM_PREFIX)
+        ]
+        stored_map = await self.sdk.storage.aget_multi(mem_keys) if mem_keys else {}
+        for key, stored in stored_map.items():
+            entries = stored if isinstance(stored, list) else []
+            chat_key = key[len(MEM_PREFIX):]
+            last = entries[-1] if entries else {}
+            scopes.append(
+                {
+                    "chat_key": chat_key,
+                    "count": len(entries),
+                    "last_ts": float(last.get("ts") or 0),
+                    "last_text": str(last.get("content") or "")[:80],
+                }
+            )
         scopes.sort(key=lambda s: s["chat_key"])
         return scopes

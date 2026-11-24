@@ -5,6 +5,11 @@
 2. 本地目录源（docs_source）可直接指向框架仓库 docs/，开发环境零网络
 3. 离线兜底：复用 epsdk-mcp 的 ~/.cache/erispulse-mcp/docs 缓存（若存在）
 4. 检索：markdown 按标题切块 + 词面打分（与知识库同一套 bigram 打分）
+
+存储访问（QvQChat:docs_meta 元数据）全部走异步接口（aget/aset）：框架同步
+get/set 在事件循环内会经 AsyncBridge 阻塞（超时返回 None），cached_version/
+active_root/_build_index/search/read/status 及同步链一律 async def，调用方必须
+await。纯本地文件 I/O（_extract/_file 读取）保持 sync。
 """
 from __future__ import annotations
 
@@ -103,20 +108,21 @@ class ErisPulseDocs:
     def lang(self) -> str:
         return str(getattr(self.config, "docs_lang", "zh-CN") or "zh-CN")
 
-    def _meta(self) -> dict:
-        data = self.sdk.storage.get(META_KEY, {})
+    async def _meta(self) -> dict:
+        data = await self.sdk.storage.aget(META_KEY, {})
         return dict(data) if isinstance(data, dict) else {}
 
-    def _set_meta(self, **updates) -> None:
-        meta = self._meta()
+    async def _set_meta(self, **updates) -> None:
+        meta = await self._meta()
         meta.update(updates)
         try:
-            self.sdk.storage.set(META_KEY, meta)
+            await self.sdk.storage.aset(META_KEY, meta)
         except Exception as e:
             self.main.logger.debug(f"docs meta persist failed: {e}")
 
-    def cached_version(self) -> str:
-        return str(self._meta().get("version") or "")
+    async def cached_version(self) -> str:
+        meta = await self._meta()
+        return str(meta.get("version") or "")
 
     # ==================== 本地源解析 ====================
 
@@ -151,12 +157,12 @@ class ErisPulseDocs:
             return None
         return self._lang_root(MCP_CACHE)
 
-    def active_root(self) -> Path | None:
+    async def active_root(self) -> Path | None:
         """当前生效的文档根目录（本地源 > 版本缓存 > MCP 缓存）。"""
         local = self._local_source_root()
         if local is not None:
             return local
-        cached = self._cache_root(self.cached_version())
+        cached = self._cache_root(await self.cached_version())
         if cached.is_dir() and any(cached.glob("**/*.md")):
             return cached
         return self._mcp_cache_root()
@@ -168,30 +174,30 @@ class ErisPulseDocs:
         if not bool(getattr(self.config, "docs_builtin", True)):
             return {"enabled": False}
         if self._local_source_root() is not None:
-            self._set_meta(version=f"local:{framework_version() or 'dev'}", source="local", synced_at=time.time())
+            await self._set_meta(version=f"local:{framework_version() or 'dev'}", source="local", synced_at=time.time())
             self._invalidate()
             return {"enabled": True, "source": "local", "root": str(self._local_source_root())}
         version = framework_version() or "latest"
-        meta = self._meta()
+        meta = await self._meta()
         last_check = float(meta.get("checked_at") or 0)
         auto = bool(getattr(self.config, "docs_auto_sync", True))
         if not force:
-            if self.cached_version() == version and self.active_root() is not None:
+            if await self.cached_version() == version and await self.active_root() is not None:
                 return {"enabled": True, "source": "cache", "version": version, "cached": True}
             if not auto:
-                root = self.active_root()
-                return {"enabled": True, "source": "stale", "version": self.cached_version(),
+                root = await self.active_root()
+                return {"enabled": True, "source": "stale", "version": await self.cached_version(),
                         "root": str(root) if root else ""}
 # 非强制时每日最多尝试一次下载，离线环境不会反复撞网
             if last_check and time.time() - last_check < 86400:
-                root = self.active_root()
-                return {"enabled": True, "source": "stale", "version": self.cached_version(),
+                root = await self.active_root()
+                return {"enabled": True, "source": "stale", "version": await self.cached_version(),
                         "root": str(root) if root else "", "throttled": True}
         async with self._lock:
-            if not force and self.cached_version() == version and self.active_root() is not None:
+            if not force and await self.cached_version() == version and await self.active_root() is not None:
                 return {"enabled": True, "source": "cache", "version": version, "cached": True}
             result = await self._download(version)
-            self._set_meta(checked_at=time.time())
+            await self._set_meta(checked_at=time.time())
             return result
 
     async def _download(self, version: str) -> dict:
@@ -212,7 +218,7 @@ class ErisPulseDocs:
                     continue
                 written = self._extract(data, version)
                 if written:
-                    self._set_meta(version=version, source=url, synced_at=time.time())
+                    await self._set_meta(version=version, source=url, synced_at=time.time())
                     self._invalidate()
                     self.main.logger.info(f"docs synced for framework {version}: {written} files ({url})")
                     return {"enabled": True, "source": "github", "version": version,
@@ -220,10 +226,10 @@ class ErisPulseDocs:
             except Exception as e:
                 last_error = str(e)
                 self.main.logger.debug(f"docs download failed ({url}): {e}")
-        root = self.active_root()
+        root = await self.active_root()
         if last_error:
             self.main.logger.warning(f"docs sync failed for {version}: {last_error}")
-        return {"enabled": True, "source": "stale", "version": self.cached_version(),
+        return {"enabled": True, "source": "stale", "version": await self.cached_version(),
                 "root": str(root) if root else "", "error": last_error}
 
     async def _fetch_bytes(self, url: str) -> bytes:
@@ -295,11 +301,11 @@ class ErisPulseDocs:
         self._index = None
         self._index_version = ""
 
-    def _build_index(self) -> list[dict]:
-        version = self.cached_version() or "local"
+    async def _build_index(self) -> list[dict]:
+        version = (await self.cached_version()) or "local"
         if self._index is not None and self._index_version == version:
             return self._index
-        root = self.active_root()
+        root = await self.active_root()
         index: list[dict] = []
         if root is not None and root.is_dir():
             files = sorted(root.rglob("*.md"))[:MAX_FILES]
@@ -319,12 +325,12 @@ class ErisPulseDocs:
         self._index_version = version
         return index
 
-    def search(self, query: str, top_k: int = 5) -> list[dict]:
+    async def search(self, query: str, top_k: int = 5) -> list[dict]:
         query = str(query or "").strip()
         if not query:
             return []
         scored: list[tuple[float, dict]] = []
-        for chunk in self._build_index():
+        for chunk in await self._build_index():
             title_score = utils.overlap_score(query, chunk["title"]) * 1.5
             body_score = utils.overlap_score(query, chunk["content"])
             score = title_score + body_score
@@ -339,8 +345,8 @@ class ErisPulseDocs:
                             "snippet": snippet, "score": round(score, 3)})
         return results
 
-    def read(self, file: str, limit: int = 8000) -> str:
-        root = self.active_root()
+    async def read(self, file: str, limit: int = 8000) -> str:
+        root = await self.active_root()
         if root is None:
             return texts.t("docs_not_ready")
         try:
@@ -359,12 +365,12 @@ class ErisPulseDocs:
             return texts.t("docs_read_failed", error=e)
         return utils.truncate(text, limit)
 
-    def status(self) -> dict:
-        root = self.active_root()
+    async def status(self) -> dict:
+        root = await self.active_root()
         return {
             "framework_version": framework_version(),
-            "cached_version": self.cached_version(),
+            "cached_version": await self.cached_version(),
             "root": str(root) if root else "",
-            "chunks": len(self._build_index()),
+            "chunks": len(await self._build_index()),
             "lang": self.lang(),
         }

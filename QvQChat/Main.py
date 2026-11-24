@@ -507,7 +507,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             return
         lifecycle.register("qvq.subagent_done", self._on_subagent_done)
 
-    def _on_subagent_done(self, data) -> None:
+    async def _on_subagent_done(self, data) -> None:
 # 事件链立刻返回：插回消化在独立任务里跑（emit 等全部处理器完成才返回，
 # 不 spawn 会拖住后台子智能体收尾）
         if not isinstance(data, dict):
@@ -758,7 +758,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             try:
                 from .conversation.policy import budget_effective as _budget_eff
 
-                budget_pref = "cheap" if (task_kind == "chat" and _budget_eff(self.sdk, self.cfg, chat_key)) else ""
+                budget_pref = "cheap" if (task_kind == "chat" and await _budget_eff(self.sdk, self.cfg, chat_key)) else ""
             except Exception:
                 budget_pref = ""
             result = await self.runner.run(

@@ -67,7 +67,7 @@ async def test_user_scope_falls_back_without_identity():
 
 async def test_prepare_injects_user_memory_only_when_key_given():
     main, ctx = make_ctx()
-    main.memory.remember("usermem:onebot11:u1", "用户有胃病，忌辛辣", category="fact")
+    await main.memory.remember("usermem:onebot11:u1", "用户有胃病，忌辛辣", category="fact")
     prepared = await main.sessions.prepare(
         PKEY, "胃病 忌口 提醒我一下",
         user_mem_key="usermem:onebot11:u1", persist=False,

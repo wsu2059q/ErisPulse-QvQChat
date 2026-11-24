@@ -158,11 +158,11 @@ async def test_full_access_policy_roundtrip_and_audit():
     main, manager = make_manager()
     resp = await manager.session_policy(_Req(body={"chat_key": PARENT, "full_access": True}))
     assert resp["policy"]["full_access"] is True
-    assert get_policy(main.sdk, PARENT)["full_access"] is True
+    assert (await get_policy(main.sdk, PARENT))["full_access"] is True
     assert any(e["tool"] == "session_full_access" for e in main.audits)
     resp = await manager.session_policy(_Req(body={"chat_key": PARENT, "full_access": False}))
     assert resp["policy"]["full_access"] is False
 
 
-def test_set_policy_rejects_junk():
-    set_policy(FakeMain().sdk, PARENT, full_access="not-a-bool")
+async def test_set_policy_rejects_junk():
+    await set_policy(FakeMain().sdk, PARENT, full_access="not-a-bool")

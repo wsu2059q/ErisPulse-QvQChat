@@ -125,8 +125,8 @@ async def test_session_context_edit_replaces_attachments():
     mgr = _manager()
     main = mgr.main
     key = "dashboard:private:web"
-    main.sessions.append_user(key, "旧消息", sender_id="dashboard")
-    contexts = main.sessions.get_contexts(key)
+    await main.sessions.append_user(key, "旧消息", sender_id="dashboard")
+    contexts = await main.sessions.get_contexts(key)
     index = len(contexts) - 1
     try:
         body = {"chat_key": key, "index": index, "content": "新文字",
@@ -138,7 +138,7 @@ async def test_session_context_edit_replaces_attachments():
 
         resp = await mgr.session_context_edit(FakeRequest())
         assert resp == {"ok": True}
-        updated = main.sessions.get_contexts(key)[index]
+        updated = (await main.sessions.get_contexts(key))[index]
         assert updated["content"][0]["text"] == "新文字"
         assert updated["content"][1]["type"] == "image_url"
     finally:

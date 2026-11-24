@@ -158,7 +158,7 @@ async def test_persist_sender_group():
         persist=True,
         sender_id="u9",
     )
-    stored = svc.get_contexts(GROUP_KEY)
+    stored = await svc.get_contexts(GROUP_KEY)
     assert stored and stored[-1].get("sender") == "u9"
 
 

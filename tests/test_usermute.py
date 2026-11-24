@@ -37,30 +37,30 @@ def _loads(out):
 
 async def test_store_add_refresh_remove():
     store, _ = make_store()
-    item = store.add("c1", "u1", reason="骂人", hours=1, by="ai")
+    item = await store.add("c1", "u1", reason="骂人", hours=1, by="ai")
     assert item["until"] > time.time()
-    assert [e["user_id"] for e in store.active("c1")] == ["u1"]
-    assert store.get("c1", "u1")["reason"] == "骂人"
+    assert [e["user_id"] for e in await store.active("c1")] == ["u1"]
+    assert (await store.get("c1", "u1"))["reason"] == "骂人"
 # 同一用户重复 add：刷新原因与期限，不新增条目
-    store.add("c1", "u1", reason="又骂", hours=2, by="ai")
-    assert len(store.active("c1")) == 1
-    assert store.get("c1", "u1")["reason"] == "又骂"
-    assert store.remove("c1", "u1") is True
-    assert store.get("c1", "u1") is None
-    assert store.remove("c1", "u1") is False
+    await store.add("c1", "u1", reason="又骂", hours=2, by="ai")
+    assert len(await store.active("c1")) == 1
+    assert (await store.get("c1", "u1"))["reason"] == "又骂"
+    assert await store.remove("c1", "u1") is True
+    assert await store.get("c1", "u1") is None
+    assert await store.remove("c1", "u1") is False
 
 
 async def test_store_permanent_and_lazy_expiry():
     store, sdk = make_store()
-    item = store.add("c1", "u1", "spam", hours=0, by="admin")
+    item = await store.add("c1", "u1", "spam", hours=0, by="admin")
     assert item["until"] == 0
-    assert store.get("c1", "u1") is not None
+    assert await store.get("c1", "u1") is not None
 # 过期条目读取时惰性剔除
     items = sdk.storage.get(MUTE_KEY)
     items[0]["until"] = time.time() - 10
     sdk.storage.set(MUTE_KEY, items)
-    assert store.active("c1") == []
-    assert store.get("c1", "u1") is None
+    assert await store.active("c1") == []
+    assert await store.get("c1", "u1") is None
 
 
 async def test_tool_ai_add_clamps_to_cap():
@@ -69,7 +69,7 @@ async def test_tool_ai_add_clamps_to_cap():
     out = await um.user_mute(ctx, action="add", user_id="u1", reason="辱骂", hours=999)
     data = _loads(out)
     assert data["ok"] is True
-    entry = main.conversations.user_mutes.get("c1", "u1")
+    entry = await main.conversations.user_mutes.get("c1", "u1")
     assert entry["by"] == "ai"
     assert 0 < entry["until"] - time.time() <= 24 * 3600 + 5
     assert main.audits and main.audits[-1]["tool"] == "user_mute_add"
@@ -81,7 +81,7 @@ async def test_tool_admin_mute_permanent_and_admin_target_rejected():
     out = await um.user_mute(ctx, action="add", user_id="u2", reason="spam", hours=0)
     data = _loads(out)
     assert data["ok"] is True
-    entry = main.conversations.user_mutes.get("c1", "u2")
+    entry = await main.conversations.user_mutes.get("c1", "u2")
     assert entry["until"] == 0 and entry["by"] == "admin"
 # 管理员不可被屏蔽（管理员发起也不行）
     out2 = await um.user_mute(ctx, action="add", user_id="u1", reason="x")
@@ -107,7 +107,7 @@ async def test_tool_list_and_remove():
     assert listed2["muted"] == []
 
 
-def _sender_muted(main, user_id, chat_key="c1"):
+async def _sender_muted(main, user_id, chat_key="c1"):
     obj = SimpleNamespace(is_admin=main.is_admin, sessions=main.sessions, logger=main.logger)
 
     class FakeEvent:
@@ -117,16 +117,16 @@ def _sender_muted(main, user_id, chat_key="c1"):
         def get_platform(self):
             return "onebot11"
 
-    return types.MethodType(InboxMixin._sender_muted, obj)(chat_key, FakeEvent())
+    return await types.MethodType(InboxMixin._sender_muted, obj)(chat_key, FakeEvent())
 
 
-def test_intake_gate_mutes_non_admin_only():
+async def test_intake_gate_mutes_non_admin_only():
     main = FakeMain(admins=["boss"])
-    main.conversations.user_mutes.add("c1", "u1", "reason", hours=5, by="ai")
-    assert _sender_muted(main, "u1") is True
-    assert _sender_muted(main, "boss") is False
-    assert _sender_muted(main, "u2") is False
-    assert _sender_muted(main, "", chat_key="c1") is False
+    await main.conversations.user_mutes.add("c1", "u1", "reason", hours=5, by="ai")
+    assert await _sender_muted(main, "u1") is True
+    assert await _sender_muted(main, "boss") is False
+    assert await _sender_muted(main, "u2") is False
+    assert await _sender_muted(main, "", chat_key="c1") is False
 
 
 def test_tool_registered():

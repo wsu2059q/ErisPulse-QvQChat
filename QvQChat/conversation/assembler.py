@@ -110,7 +110,7 @@ class PromptAssembler:
         except Exception:
             return False
 
-    def build_system_parts(
+    async def build_system_parts(
         self,
         persona: dict,
         scene: str = "",
@@ -198,14 +198,14 @@ class PromptAssembler:
         if scene:
             parts.append(SystemPart("scene", scene))
         if chat_key:
-            summary = self.svc.summary_of(chat_key)
+            summary = await self.svc.summary_of(chat_key)
             if summary:
                 parts.append(SystemPart("summary", texts.t("summary_header") + "\n" + summary))
-            facts = self.svc.facts_of(chat_key)
+            facts = await self.svc.facts_of(chat_key)
             if facts:
                 parts.append(SystemPart("facts", texts.t("facts_header") + "\n" + "\n".join(f"- {f}" for f in facts)))
 # TODO 清单注入（facts 之后）：长任务进度对 AI 持续可见，推进即勾选
-            todo_text = self.svc.todos.render(chat_key)
+            todo_text = await self.svc.todos.render(chat_key)
             if todo_text:
                 parts.append(SystemPart("todo", texts.t("todo_system_note") + "\n" + todo_text))
             else:
@@ -215,14 +215,14 @@ class PromptAssembler:
 # 跨会话用户画像注入（profile_user = platform:uid；PRIORITY 位于 facts 与 memory 之间）
 # 输入取舍：画像摘要可整体延后一拍，丢它不丢任务上下文，低token时跳过
         if profile_user and getattr(self.config, "profile_enabled", True) and not low_token:
-            lines = self.svc.profile.digest(profile_user)
+            lines = await self.svc.profile.digest(profile_user)
             if lines:
                 parts.append(SystemPart("profile", texts.t("profile_header") + "\n" + "\n".join(f"- {line}" for line in lines)))
         skills = getattr(self.main, "skills", None)
         if skills:
             if active_skills:
                 for name in active_skills:
-                    skill = skills.get_skill(str(name))
+                    skill = await skills.get_skill(str(name))
                     if not skill:
                         continue
                     parts.append(
@@ -234,7 +234,7 @@ class PromptAssembler:
                         )
                     )
 # 输入取舍：技能全量清单可能很长；显式激活的 skill_full 保留（用户点名要的任务不能丢）
-            enabled = [s for s in skills.list_skills() if s.get("enabled")]
+            enabled = [s for s in await skills.list_skills() if s.get("enabled")]
             if enabled and not low_token:
                 lines = "\n".join(f"- {s['name']}: {s.get('description') or ''}" for s in enabled)
                 parts.append(SystemPart("skill_list", "<skills>\n" + texts.t("skills_system_note") + "\n" + lines + "\n</skills>"))
@@ -246,9 +246,9 @@ class PromptAssembler:
         if getattr(self.config, "kb_auto_inject", True) and kb_query and not low_token:
             kb = getattr(self.main, "knowledge", None)
 # 可见域：全局条目 + 本会话/本适配器私有条目（AI 默认写会话级，跨会话共享需显式声明）
-            hits = kb.search(kb_query, top_k=int(getattr(self.config, "kb_top_k", 2) or 0), viewer=chat_key) if kb else []
+            hits = await kb.search(kb_query, top_k=int(getattr(self.config, "kb_top_k", 2) or 0), viewer=chat_key) if kb else []
 # Lorebook：最近上下文命中触发条目优先排前合并注入（[triggered] 标记，同条目去重）
-            lore = kb.triggered(kb_texts or [], viewer=chat_key) if (kb and kb_texts) else []
+            lore = await kb.triggered(kb_texts or [], viewer=chat_key) if (kb and kb_texts) else []
             hit_ids = {e.get("id") for e in lore}
             hits = [h for h in hits if h.get("id") not in hit_ids]
             if hits or lore:
@@ -264,7 +264,7 @@ class PromptAssembler:
                 parts.append(SystemPart("extra", line))
         return parts
 
-    def build_system(
+    async def build_system(
         self,
         persona: dict,
         scene: str = "",
@@ -274,7 +274,7 @@ class PromptAssembler:
         kb_query: str = "",
     ) -> str:
 # 兼容层：原字符串拼接入口改为部件 join
-        parts = self.build_system_parts(
+        parts = await self.build_system_parts(
             persona,
             scene=scene,
             chat_key=chat_key,
@@ -315,7 +315,7 @@ class PromptAssembler:
                     data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
                     name = str(data.get("group_name") or "")
                     if name:
-                        self.svc.set_group_name(chat_key, name)
+                        await self.svc.set_group_name(chat_key, name)
                 else:
 # 只用 OB11 标准 get_stranger_info（get_user_info 是 OB12 动作名，裸 call_api 无映射必 404）；
 # 昵称在信封 data 层（{status, retcode, data:{nickname,...}}），读顶层永远拿不到
@@ -326,7 +326,7 @@ class PromptAssembler:
                         data = info.get("data") if isinstance(info.get("data"), dict) else info
                         name = str(data.get("nickname") or data.get("card") or "")
                     if name:
-                        self.svc.set_user_name(chat_key, name)
+                        await self.svc.set_user_name(chat_key, name)
             except Exception:
                 continue
 
@@ -360,7 +360,7 @@ class PromptAssembler:
             title = (resp.content or "").strip().strip("\"“”‘’。.!!??")
             title = title.splitlines()[0][:40] if title else ""
             if title:
-                self.svc.set_group_name(chat_key, title)
+                await self.svc.set_group_name(chat_key, title)
         except Exception as e:
             self.main.logger.warning(f"title generation failed: {e}")
 
@@ -375,7 +375,7 @@ class PromptAssembler:
         if callable(getattr(pool, "background_blocked", None)) and pool.background_blocked():
             self.main.logger.debug("background skip: group-style (saturated)")
             return
-        contexts = self.svc.get_contexts(chat_key)
+        contexts = await self.svc.get_contexts(chat_key)
         window = contexts[-30:]
         if len(window) < 6:
             return
@@ -405,7 +405,7 @@ class PromptAssembler:
                 resp = await pool.chat(request)
             style = (resp.content or "").strip().splitlines()[0][:160] if (resp.content or "").strip() else ""
             if style:
-                self.svc.set_group_style(chat_key, style)
+                await self.svc.set_group_style(chat_key, style)
         except Exception as e:
             self.main.logger.debug(f"group style learn failed: {e}")
 

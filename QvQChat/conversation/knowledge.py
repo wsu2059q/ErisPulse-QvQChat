@@ -1,6 +1,10 @@
 """知识库：全文条目存储 + 即时分块 + 词面打分检索（零依赖默认）
 + Lorebook 世界书（触发式注入，SillyTavern World Info 模式）
-+ 语义检索（可选 embedding 向量层，任何环节不可用回退词面打分）"""
++ 语义检索（可选 embedding 向量层，任何环节不可用回退词面打分）
+
+存储访问全部走异步接口（aget/aset/adelete）：框架同步 get/set 在事件循环内
+会经 AsyncBridge 阻塞（超时返回 None），所有读写/检索方法一律 async def，
+调用方必须 await。仅纯内存/纯计算的辅助方法（chunk/_tokenize 等）保持 sync。"""
 from __future__ import annotations
 
 import re
@@ -64,12 +68,13 @@ class KnowledgeBase:
         size, overlap = self._chunk_params()
         return chunk_text(content, size=size, overlap=overlap)
 
-    def _load(self) -> dict:
-        data = self.sdk.storage.get(KB_KEY, {})
+    async def _load(self) -> dict:
+        """存储异步接口（aget 直连后端异步驱动；同步 get 在事件循环内会经桥阻塞）。"""
+        data = await self.sdk.storage.aget(KB_KEY, {})
         return data if isinstance(data, dict) else {}
 
-    def _save(self, entries: dict) -> None:
-        self.sdk.storage.set(KB_KEY, entries)
+    async def _save(self, entries: dict) -> None:
+        await self.sdk.storage.aset(KB_KEY, entries)
 
     def set_external_provider(self, provider) -> None:
         """注入生态模块贡献的只读知识条目（经 qvq_extensions）。"""
@@ -107,7 +112,7 @@ class KnowledgeBase:
         except (TypeError, ValueError):
             return DEFAULT_COOLDOWN_MIN
 
-    def add(
+    async def add(
         self,
         title: str,
         content: str,
@@ -130,19 +135,19 @@ class KnowledgeBase:
             entry["triggers"] = trig
             entry["priority"] = int(priority or 0)
             entry["cooldown_min"] = int(cooldown_min if cooldown_min is not None else self._default_cooldown())
-        entries = self._load()
+        entries = await self._load()
         entries[entry["id"]] = entry
-        self._save(entries)
+        await self._save(entries)
         return entry
 
-    def update(self, kb_id: str, title: str | None = None, content: str | None = None,
-               source: str | None = None, triggers: list | None = None,
-               owner: str | None = None) -> dict | None:
+    async def update(self, kb_id: str, title: str | None = None, content: str | None = None,
+                     source: str | None = None, triggers: list | None = None,
+                     owner: str | None = None) -> dict | None:
         """编辑知识库条目：只改传入的字段；triggers 传 [] 清空触发词，None 不动。
 
         内容变化时同步失效向量缓存，下一次检索按新内容重嵌入。
         """
-        entries = self._load()
+        entries = await self._load()
         entry = entries.get(kb_id)
         if not isinstance(entry, dict):
             return None
@@ -166,42 +171,45 @@ class KnowledgeBase:
                 entry.pop("cooldown_min", None)
         entry["updated"] = utils.now_ts()
         entries[kb_id] = entry
-        self._save(entries)
+        await self._save(entries)
         if content_changed:
             try:
-                self.sdk.storage.delete(VEC_PREFIX + kb_id)
+                await self.sdk.storage.adelete(VEC_PREFIX + kb_id)
             except Exception:
                 pass
         return entry
 
-    def restore_entry(self, entry: dict) -> bool:
+    async def restore_entry(self, entry: dict) -> bool:
         """按原 id 写回条目（回收站恢复；不重生成 id）。"""
-        data = self._load()
+        data = await self._load()
         eid = str(entry.get("id") or "")
         if not eid:
             return False
         data[eid] = dict(entry)
-        self._save(data)
+        await self._save(data)
         return True
 
-    def delete(self, kb_id: str) -> bool:
-        entries = self._load()
+    async def delete(self, kb_id: str) -> bool:
+        entries = await self._load()
         if kb_id not in entries:
             return False
         entries.pop(kb_id)
-        self._save(entries)
-        self.sdk.storage.delete(VEC_PREFIX + kb_id)# 同步清理向量缓存
+        await self._save(entries)
+        await self.sdk.storage.adelete(VEC_PREFIX + kb_id)# 同步清理向量缓存
         return True
 
-    def list(self) -> list[dict]:
-        return sorted(self._load().values(), key=lambda e: e.get("created", 0), reverse=True)
+    async def list(self) -> list[dict]:
+        entries = await self._load()
+        return sorted(entries.values(), key=lambda e: e.get("created", 0), reverse=True)
 
-    def get(self, kb_id: str) -> dict | None:
-        return self._load().get(kb_id)
+    async def get(self, kb_id: str) -> dict | None:
+        entries = await self._load()
+        return entries.get(kb_id)
 
-    def _chunks(self, viewer: str | None = None) -> list[dict]:
+    async def _chunks(self, viewer: str | None = None) -> list[dict]:
         out = []
-        entries = list(self._load().values()) + self._external_entries()
+        stored = await self._load()
+        entries = list(stored.values()) + self._external_entries()
         for entry in entries:
             if not self._visible(entry, viewer):
                 continue
@@ -211,8 +219,8 @@ class KnowledgeBase:
 
 # ===== Lorebook 世界书（触发式注入） =====
 
-    def triggered(self, context_texts: list[str], now: float | None = None,
-                  viewer: str | None = None) -> list[dict]:
+    async def triggered(self, context_texts: list[str], now: float | None = None,
+                        viewer: str | None = None) -> list[dict]:
         """扫描最近消息文本：任一 trigger 关键词命中（大小写不敏感包含）且不在冷却期
         → 按 priority 降序返回条目，并刷新 last_trigger_ts 写回 KV（命中即刷新）。
         无 triggers 字段的条目不参与（保持词面/语义检索行为，两机制并存互补）。
@@ -223,7 +231,7 @@ class KnowledgeBase:
         if not texts:
             return []
         ts = float(now if now is not None else time.time())
-        entries = self._load()
+        entries = await self._load()
         # 外部条目只读：命中不回写冷却时间，也不落库
         external = self._external_entries()
         hits: list[dict] = []
@@ -243,18 +251,18 @@ class KnowledgeBase:
                 entry["last_trigger_ts"] = ts
                 changed = True
         if changed:
-            self._save(entries)
+            await self._save(entries)
         hits.sort(key=lambda e: (-int(e.get("priority", 0) or 0), float(e.get("created", 0) or 0)))
         return hits
 
 # ===== 语义检索（向量层） =====
 
-    def _entry_vectors(self, entry: dict, texts: list[str]) -> list[list[float]] | None:
+    async def _entry_vectors(self, entry: dict, texts: list[str]) -> list[list[float]] | None:
         """条目向量懒计算 + KV 缓存（QvQChat:kbvec:{doc_id}）；模型/分块参数变化自动重算。"""
         size, overlap = self._chunk_params()
         model = self.vectors.model_of(self.cfg)
         cache_key = VEC_PREFIX + str(entry.get("id") or "")
-        cached = self.sdk.storage.get(cache_key, None)
+        cached = await self.sdk.storage.aget(cache_key, None)
         if (
             isinstance(cached, dict)
             and cached.get("model") == model
@@ -266,10 +274,10 @@ class KnowledgeBase:
         vecs = self.vectors.embed(texts, self.cfg)
         if vecs is None or len(vecs) != len(texts):
             return None
-        self.sdk.storage.set(cache_key, {"model": model, "size": size, "overlap": overlap, "vecs": vecs})
+        await self.sdk.storage.aset(cache_key, {"model": model, "size": size, "overlap": overlap, "vecs": vecs})
         return vecs
 
-    def _semantic_search(self, query: str, top_k: int, viewer: str | None = None) -> list[dict] | None:
+    async def _semantic_search(self, query: str, top_k: int, viewer: str | None = None) -> list[dict] | None:
         """embedding_enabled 且向量层可用时的余弦检索；None = 不可用/失败 → 调用方回退词面。"""
         if not getattr(self.cfg, "embedding_enabled", False) or not self.vectors.available(self.cfg):
             return None
@@ -278,13 +286,14 @@ class KnowledgeBase:
             return None
         qvec = qvecs[0]
         scored: list[tuple[float, dict, str]] = []
-        for entry in self._load().values():
+        stored = await self._load()
+        for entry in stored.values():
             if not self._visible(entry, viewer):
                 continue
             texts = self.chunk(entry.get("content", ""))
             if not texts:
                 continue
-            vecs = self._entry_vectors(entry, texts)
+            vecs = await self._entry_vectors(entry, texts)
             if vecs is None:
                 return None# 向量环节部分失败 → 整体回退词面
             best_vec, best_text = max(
@@ -308,16 +317,16 @@ class KnowledgeBase:
             )
         return results
 
-    def search(self, query: str, top_k: int = 2, viewer: str | None = None) -> list[dict]:
+    async def search(self, query: str, top_k: int = 2, viewer: str | None = None) -> list[dict]:
         """检索知识库。viewer=None 全量（面板）；给 chat_key 则全局条目 + 该会话/平台私有条目。"""
         tokens = _tokenize(query)
         if not tokens:
             return []
-        semantic = self._semantic_search(query, top_k, viewer)
+        semantic = await self._semantic_search(query, top_k, viewer)
         if semantic is not None:
             return semantic
         scored = []
-        for chunk in self._chunks(viewer):
+        for chunk in await self._chunks(viewer):
             chunk_tokens = _tokenize(chunk["text"])
             if not chunk_tokens:
                 continue
@@ -343,15 +352,15 @@ class KnowledgeBase:
             )
         return results
 
-    def stats(self) -> dict:
-        entries = self._load()
+    async def stats(self) -> dict:
+        entries = await self._load()
         chunks = sum(len(self.chunk(e.get("content", ""))) for e in entries.values())
         return {"entries": len(entries), "chunks": chunks}
 
-    def export(self) -> list[dict]:
-        return self.list()
+    async def export(self) -> list[dict]:
+        return await self.list()
 
-    def import_entries(self, items: list) -> int:
+    async def import_entries(self, items: list) -> int:
         added = 0
         for item in items if isinstance(items, list) else []:
             if not isinstance(item, dict):
@@ -360,7 +369,7 @@ class KnowledgeBase:
             content = str(item.get("content") or "")
             if not title or not content.strip():
                 continue
-            self.add(
+            await self.add(
                 title,
                 content,
                 source=str(item.get("source") or ""),

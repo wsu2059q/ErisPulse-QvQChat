@@ -72,11 +72,11 @@ class SessionsApiMixin:
             text_of = self.main.sessions._text_of
             scanned: dict[str, str] = {}
 
-            def _body_scan(chat_key: str) -> str:
+            async def _body_scan(chat_key: str) -> str:
                 # 内容扫描结果进程内缓存（同 key 二次输入防抖免重扫；列表请求高频不进此路径）
                 if chat_key not in scanned:
                     try:
-                        contexts = self.main.sessions.get_contexts(chat_key) or []
+                        contexts = await self.main.sessions.get_contexts(chat_key) or []
                     except Exception:
                         contexts = []
                     scanned[chat_key] = "\n".join(
@@ -84,19 +84,19 @@ class SessionsApiMixin:
                     )
                 return scanned[chat_key]
 
-            def _hit(s: dict) -> bool:
+            async def _hit(s: dict) -> bool:
                 name = str(s.get("name") or "").lower()
                 key = str(s.get("chat_key") or "").lower()
                 if query in name or query in key:
                     return True
-                body = _body_scan(str(s.get("chat_key") or ""))
+                body = await _body_scan(str(s.get("chat_key") or ""))
                 return query in body.lower()
 
-            rows = [s for s in rows if _hit(s)]
+            rows = [s for s in rows if await _hit(s)]
             for s in rows:
                 if query in str(s.get("name") or "").lower() or query in str(s.get("chat_key") or "").lower():
                     continue  # 名字/key 命中：不扫正文，snippet 留空
-                body = _body_scan(str(s.get("chat_key") or ""))
+                body = await _body_scan(str(s.get("chat_key") or ""))
                 idx = body.lower().find(query)
                 if idx >= 0:
                     head = max(0, idx - 40)
@@ -112,12 +112,12 @@ class SessionsApiMixin:
         for session in window:
             if str(session.get("platform") or "") == "dashboard" and not session.get("name"):
                 session["name"] = texts.t("dashboard_session_name")
-            session["members"] = self.main.sessions.members_of(session.get("chat_key") or "")
-            session["sources"] = self.main.sessions.routes_into(session.get("chat_key") or "")
+            session["members"] = await self.main.sessions.members_of(session.get("chat_key") or "")
+            session["sources"] = await self.main.sessions.routes_into(session.get("chat_key") or "")
 # 人工接管态随行下发（头部横幅 + composer 直发分支）
-            session["manual"] = bool(self.main.sessions.get_flag(session.get("chat_key") or "", "manual"))
+            session["manual"] = bool(await self.main.sessions.get_flag(session.get("chat_key") or "", "manual"))
 # 会话治理策略随行下发：面板开关直接渲染 muted/low_token/priority 当前值
-            session["policy"] = get_policy(self.sdk, session.get("chat_key") or "")
+            session["policy"] = await get_policy(self.sdk, session.get("chat_key") or "")
 # 子会话装饰：面板侧栏给 sub: 键挂 子智能体/让渡 徽标与父会话链接
             deco = _sub_decoration(session.get("chat_key") or "")
             if deco:
@@ -141,8 +141,8 @@ class SessionsApiMixin:
             "limit": limit_n,
             "live_sessions": sorted(live_keys),
             "ui_defaults": await self._ui_defaults(),
-            "identity_map": self.main.sessions.identity_map(),
-            "identity_suggestions": self._identity_suggestions(sessions),
+            "identity_map": await self.main.sessions.identity_map(),
+            "identity_suggestions": await self._identity_suggestions(sessions),
             "accounts": await self._accounts_overview(sessions),
         }
 
@@ -203,7 +203,7 @@ class SessionsApiMixin:
         mode = str((body or {}).get("mode") or "alias").strip().lower()
         if not source or not target or source == target:
             return ({"error": "source/target required and must differ"}, 400)
-        summary = self.main.sessions.migrate_identity(source, target, mode)
+        summary = await self.main.sessions.migrate_identity(source, target, mode)
         if not summary.get("ok"):
             return ({"error": summary.get("error") or "migrate failed"}, 400)
         return summary
@@ -211,7 +211,7 @@ class SessionsApiMixin:
     async def identity_remove(self, request):
         body = await request.json()
         source = str((body or {}).get("source") or "")
-        return {"ok": self.main.sessions.remove_identity(source)}
+        return {"ok": await self.main.sessions.remove_identity(source)}
 
     async def _inbox_entries(self, kind: str = "", account: str = "") -> list:
         """聚合全部账户的事件收件箱（storage 为准），新的在前。"""
@@ -296,7 +296,7 @@ class SessionsApiMixin:
         ctx = ToolContext(main=self.main, sdk=self.sdk, config=self.main.cfg,
                           chat_key=str(entry.get("chat_key") or ""), platform=platform,
                           user_id=str(entry.get("user_id") or ""), origin="dashboard")
-        extra = _request_route_kwargs(ctx, account, request_id,
+        extra = await _request_route_kwargs(ctx, account, request_id,
                                       str(entry.get("sub_type") or ""),
                                       str(entry.get("group_id") or ""))
         adapter = self.sdk.adapter.get(platform) if platform else None
@@ -502,7 +502,7 @@ class SessionsApiMixin:
             "display_names": display_names,
         }
 
-    def _identity_suggestions(self, sessions: list) -> list:
+    async def _identity_suggestions(self, sessions: list) -> list:
         """疑似同源会话对：同 target_id 跨平台的会话（换平台场景），供迁移面板一键预填。
 
         只做发现不做自动迁移——方向（谁是源谁是目标）与模式由用户确认
@@ -512,7 +512,7 @@ class SessionsApiMixin:
         from ..conversation.service import strip_isolation
 
         try:
-            mapped = set(self.main.sessions.identity_map().keys())
+            mapped = set((await self.main.sessions.identity_map()).keys())
         except Exception:
             mapped = set()
         seen: dict[str, dict] = {}
@@ -556,7 +556,7 @@ class SessionsApiMixin:
             if not key.startswith(f"{platform}:") or not key.endswith(f"@{from_acct}"):
                 continue
             target = key[: -len(f"@{from_acct}")] + f"@{to_acct}"
-            summary = self.main.sessions.migrate_identity(key, target, mode)
+            summary = await self.main.sessions.migrate_identity(key, target, mode)
             if summary.get("ok"):
                 migrated += 1
             else:
@@ -592,7 +592,7 @@ class SessionsApiMixin:
         chat_key = self._query(request, "chat_key")
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
-        contexts = self.main.sessions.get_contexts(chat_key)
+        contexts = await self.main.sessions.get_contexts(chat_key)
         total = len(contexts)
 # 窗口参数：start/limit 按需加载；start 缺省且给 limit 时取尾部一页
         start_raw = self._query(request, "start")
@@ -622,14 +622,14 @@ class SessionsApiMixin:
                         {"isImage": True, "name": "image", "data": (p.get("image_url") or {}).get("url", "")}
                         for p in images
                     ]
-        return {"chat_key": chat_key, "summary": self.main.sessions.summary_of(chat_key) if start_i == 0 else "",
+        return {"chat_key": chat_key, "summary": await self.main.sessions.summary_of(chat_key) if start_i == 0 else "",
                 "messages": window, "total": total, "start": start_i}
 
     async def session_message_delete(self, request):
         body = await request.json()
         chat_key = str((body or {}).get("chat_key") or "")
         index = int((body or {}).get("index", -1))
-        if self.main.conversations.delete_message(chat_key, index):
+        if await self.main.conversations.delete_message(chat_key, index):
             return {"ok": True}
         return ({"error": "index out of range"}, 400)
 
@@ -639,7 +639,7 @@ class SessionsApiMixin:
         index = int((body or {}).get("index", -1))
         content = str((body or {}).get("content") or "")
         attachments = (body or {}).get("attachments")
-        if self.main.conversations.edit_message(chat_key, index, content, attachments):
+        if await self.main.conversations.edit_message(chat_key, index, content, attachments):
             return {"ok": True}
         return ({"error": "index out of range"}, 400)
 
@@ -655,7 +655,7 @@ class SessionsApiMixin:
             return ({"error": "bad index"}, 400)
         if self._live.busy(chat_key):
             return ({"error": "session busy"}, 409)
-        ok, text = self.main.conversations.rewind_to(chat_key, index)
+        ok, text = await self.main.conversations.rewind_to(chat_key, index)
         if not ok:
             return ({"error": "index out of range"}, 400)
         return {"ok": True, "text": text}
@@ -677,7 +677,7 @@ class SessionsApiMixin:
 
     async def sessions_create(self, request):
         body = await request.json()
-        chat_key = self.main.conversations.create(
+        chat_key = await self.main.conversations.create(
             platform=str((body or {}).get("platform") or "dashboard"),
             detail_type=str((body or {}).get("detail_type") or "private"),
             target_id=str((body or {}).get("target_id") or ""),
@@ -754,7 +754,7 @@ class SessionsApiMixin:
     async def sessions_reset(self, request):
         body = await request.json()
         chat_key = str((body or {}).get("chat_key") or "")
-        self.main.sessions.reset(chat_key)
+        await self.main.sessions.reset(chat_key)
         return {"ok": True}
 
     async def session_flags(self, request):
@@ -764,7 +764,7 @@ class SessionsApiMixin:
             return ({"error": "chat_key required"}, 400)
         pinned = (body or {}).get("pinned")
         archived = (body or {}).get("archived")
-        self.main.sessions.set_flags(
+        await self.main.sessions.set_flags(
             chat_key,
             pinned=None if pinned is None else bool(pinned),
             archived=None if archived is None else bool(archived),
@@ -792,7 +792,7 @@ class SessionsApiMixin:
             )
         except Exception as e:
             return ({"error": f"{type(e).__name__}: {e}"}, 502)
-        self.main.sessions.append(chat_key, "assistant", text)
+        await self.main.sessions.append(chat_key, "assistant", text)
         await self.main.audit("takeover_say", {"chat_key": chat_key, "chars": len(text)})
         return {"ok": True}
 
@@ -804,17 +804,17 @@ class SessionsApiMixin:
         ui = (body or {}).get("settings")
         if not isinstance(ui, dict):
             return ({"error": "settings object required"}, 400)
-        saved = self.main.sessions.set_ui(chat_key, {k: str(ui[k]) for k in ("density", "model", "effort", "trigger_mode") if ui.get(k) is not None})
+        saved = await self.main.sessions.set_ui(chat_key, {k: str(ui[k]) for k in ("density", "model", "effort", "trigger_mode") if ui.get(k) is not None})
         members = ui.get("members")
         if isinstance(members, list):
-            saved["members"] = self.main.sessions.set_members(chat_key, members)
+            saved["members"] = await self.main.sessions.set_members(chat_key, members)
 # 隐私开关：关闭监听后本群消息不进入旁听/插话/回执事件
         if "listen_off" in ui:
-            self.main.sessions.set_flags(chat_key, {"listen_off": bool(ui["listen_off"])})
+            await self.main.sessions.set_flags(chat_key, {"listen_off": bool(ui["listen_off"])})
             saved["listen_off"] = bool(ui["listen_off"])
 # 人工接管：面板发送以 bot 身份直发平台并写入上下文（AI 不响应该条，见 takeover_say）
         if "manual" in ui:
-            self.main.sessions.set_flags(chat_key, {"manual": bool(ui["manual"])})
+            await self.main.sessions.set_flags(chat_key, {"manual": bool(ui["manual"])})
             saved["manual"] = bool(ui["manual"])
         await self.main.audit("session_settings", {"chat_key": chat_key, "keys": sorted(ui.keys())})
         return {"ok": True, "ui": saved}
@@ -829,7 +829,7 @@ class SessionsApiMixin:
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
         updates = {k: body[k] for k in ("muted", "low_token", "priority", "session_budget", "full_access") if k in body}
-        policy = set_policy(self.sdk, chat_key, **updates)
+        policy = await set_policy(self.sdk, chat_key, **updates)
         if "full_access" in updates:
             await self.main.audit("session_full_access", {"chat_key": chat_key, "value": bool(policy.get("full_access"))})
 # 面板改策略与聊天命令同源，审计留痕（detail 记录本次变更的键值）
@@ -842,7 +842,7 @@ class SessionsApiMixin:
         name = str((body or {}).get("name") or "").strip()[:60]
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
-        self.main.sessions.set_name(chat_key, name)
+        await self.main.sessions.set_name(chat_key, name)
         return {"ok": True, "name": name}
 
     async def session_regenerate(self, request):
@@ -853,7 +853,7 @@ class SessionsApiMixin:
             return ({"error": "chat_key required"}, 400)
         if self._live.busy(chat_key):
             return ({"error": "session busy"}, 409)
-        text = str(self.main.sessions.pop_last_exchange(chat_key) or "")
+        text = str(await self.main.sessions.pop_last_exchange(chat_key) or "")
         if not text:
             return ({"error": "nothing to regenerate"}, 409)
         return {"ok": True, "text": text}
@@ -865,14 +865,14 @@ class SessionsApiMixin:
             return ({"error": "target required"}, 400)
         sources = (body or {}).get("sources")
         if isinstance(sources, list):
-            routes = {k: v for k, v in self.main.sessions.routes().items() if v != target}
+            routes = {k: v for k, v in (await self.main.sessions.routes()).items() if v != target}
             for src in sources:
                 src = str(src).strip()
                 if src and src != target:
                     routes[src] = target
-            self.main.sessions.save_routes(routes)
+            await self.main.sessions.save_routes(routes)
             return {"ok": True, "sources": sorted(k for k, v in routes.items() if v == target)}
-        return {"sources": self.main.sessions.routes_into(target)}
+        return {"sources": await self.main.sessions.routes_into(target)}
 
     async def _ui_defaults(self) -> dict:
         d = await self.sdk.storage.aget(UI_DEFAULTS_KEY, {})
@@ -897,10 +897,10 @@ class SessionsApiMixin:
         await self.sdk.storage.aset(UI_DEFAULTS_KEY, cur)
         return {"ok": True, "ui_defaults": cur}
 
-    def _session_profile(self, chat_key: str) -> tuple[str, dict]:
+    async def _session_profile(self, chat_key: str) -> tuple[str, dict]:
         """会话最近发言者（platform:uid）与其画像；无发言者/画像返回 ("", 空结构)。"""
         try:
-            contexts = self.main.sessions.get_contexts(chat_key)
+            contexts = await self.main.sessions.get_contexts(chat_key)
         except Exception:
             return ("", {"traits": [], "preferences": [], "facts": [], "updated": 0.0})
         sender = ""
@@ -915,7 +915,7 @@ class SessionsApiMixin:
         profile = getattr(self.main.conversations, "profile", None)
         if profile is None:
             return ("", {"traits": [], "preferences": [], "facts": [], "updated": 0.0})
-        return (user_key, profile.get(user_key))
+        return (user_key, await profile.get(user_key))
 
     async def profile_edit(self, request):
         """画像纠错：整段替换 traits/preferences/facts 之一（前端逐条编辑后保存）。"""
@@ -928,11 +928,11 @@ class SessionsApiMixin:
         profile = getattr(self.main.conversations, "profile", None)
         if profile is None:
             return ({"error": "profile store unavailable"}, 500)
-        data = profile.get(user_key)
+        data = await profile.get(user_key)
         texts = [profile._clean_item(x) for x in items]
         texts = [x for x in texts if x]
         data[section] = [{"text": x, "ts": utils.now_ts()} for x in texts]
-        profile._save(user_key, data)
+        await profile._save(user_key, data)
         await self.main.audit("profile_edit", {"user_key": user_key, "section": section, "count": len(texts)})
         return {"ok": True, "profile": data}
 
@@ -943,10 +943,10 @@ class SessionsApiMixin:
             profile_user, profile = "", {"traits": [], "preferences": [], "facts": [], "updated": 0.0}
             sessions = await self.main.sessions.list_sessions()
             if sessions:
-                profile_user, profile = self._session_profile(str(sessions[0].get("chat_key") or ""))
-            return {"scopes": self.main.memory.list_scopes(), "entries": [], "profile_user": profile_user, "profile": profile}
-        profile_user, profile = self._session_profile(chat_key)
-        return {"scopes": [], "entries": self.main.memory.entries(chat_key), "profile_user": profile_user, "profile": profile}
+                profile_user, profile = await self._session_profile(str(sessions[0].get("chat_key") or ""))
+            return {"scopes": await self.main.memory.list_scopes(), "entries": [], "profile_user": profile_user, "profile": profile}
+        profile_user, profile = await self._session_profile(chat_key)
+        return {"scopes": [], "entries": await self.main.memory.entries(chat_key), "profile_user": profile_user, "profile": profile}
 
     async def profile_clear(self, request):
         body = await request.json()
@@ -956,7 +956,7 @@ class SessionsApiMixin:
         profile = getattr(self.main.conversations, "profile", None)
         if profile is None:
             return ({"error": "profile store unavailable"}, 500)
-        return {"ok": True, "user_key": user_key, "removed": profile.clear(user_key)}
+        return {"ok": True, "user_key": user_key, "removed": await profile.clear(user_key)}
 
     async def memory_delete(self, request):
         body = await request.json()
@@ -964,11 +964,11 @@ class SessionsApiMixin:
         query = str((body or {}).get("query") or "")
         content = (body or {}).get("content")
         if content is not None:
-            removed = 1 if self.main.memory.remove(chat_key, str(content)) else 0
+            removed = 1 if await self.main.memory.remove(chat_key, str(content)) else 0
         elif query:
-            removed = self.main.memory.forget(chat_key, query)
+            removed = await self.main.memory.forget(chat_key, query)
         else:
-            removed = self.main.memory.clear(chat_key)
+            removed = await self.main.memory.clear(chat_key)
         await self.main.audit("memory_delete", {"chat_key": chat_key})
         return {"ok": True, "removed": removed}
 
@@ -987,9 +987,9 @@ class SessionsApiMixin:
             return None
         return share
 
-    def _share_contexts(self, share: dict) -> list:
+    async def _share_contexts(self, share: dict) -> list:
 
-        contexts = self.main.sessions.get_contexts(str(share.get("chat_key") or ""))
+        contexts = await self.main.sessions.get_contexts(str(share.get("chat_key") or ""))
         budget = int(share.get("max_tokens", 4000) or 4000) * 2
         picked: list = []
         used = 0
@@ -1084,9 +1084,9 @@ class SessionsApiMixin:
             return ({"error": f"{type(e).__name__}: {e}"}, 500)
 
     async def _share_payload(self, share: dict) -> dict:
-        contexts = self._share_contexts(share)
+        contexts = await self._share_contexts(share)
         chat_key = str(share.get("chat_key") or "")
-        summary = self.main.sessions.summary_of(chat_key)
+        summary = await self.main.sessions.summary_of(chat_key)
         rounds = int(share.get("rounds") or 0)
         return {
             "chat_key": share.get("chat_key"),
@@ -1135,7 +1135,7 @@ class SessionsApiMixin:
             return ({"error": "token budget exhausted"}, 429)
 # 上下文 = 分享可见消息 + 既有续聊记录 + 本轮提问；纯 pool.chat，不带任何工具
         messages: list = [{"role": "system", "content": texts.t("share_chat_system")}]
-        for message in self._share_contexts(share):
+        for message in await self._share_contexts(share):
             role = str(message.get("role") or "user")
             if role not in ("user", "assistant"):
                 continue

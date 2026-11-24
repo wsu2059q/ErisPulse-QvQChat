@@ -32,7 +32,7 @@ async def handover_session(ctx: ToolContext, setup: str, model: str = "",
         return texts.t("handover_already_active", setup=str(existing.get("setup") or "-"))
     # 接手定向：场景注记（群名/当前说话人）+ 让渡前主会话最近几条对话
     try:
-        recent = list(main.sessions.get_contexts(str(ctx.chat_key)) or [])[-6:]
+        recent = list(await main.sessions.get_contexts(str(ctx.chat_key)) or [])[-6:]
     except Exception:
         recent = []
     state = await handover.start(

@@ -196,7 +196,7 @@ class RecoveryMixin:
                 )
             popped = False
             try:
-                popped = self.sessions.pop_last_user_if(chat_key, text)
+                popped = await self.sessions.pop_last_user_if(chat_key, text)
             except Exception as e:
                 self.logger.debug(f"pop_last_user_if failed for {chat_key}: {e}")
             try:

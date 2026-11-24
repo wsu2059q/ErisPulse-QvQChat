@@ -61,26 +61,26 @@ async def test_lurk_and_off_never_reply():
 async def test_session_override_beats_global():
     main = make_main(aggregate_window=0.01)
     key = "onebot11:group:1"
-    main.sessions.set_trigger(key, "off")
+    await main.sessions.set_trigger(key, "off")
     await _send(main, at=True)
     assert not main.captured
 # 改回 all：恢复触发
-    main.sessions.set_trigger(key, "all")
+    await main.sessions.set_trigger(key, "all")
     await _send(main, at=True)
     assert main.captured
-    assert main.sessions.trigger_mode_of(key) == ""  # all 视为未覆盖
+    assert await main.sessions.trigger_mode_of(key) == ""  # all 视为未覆盖
 
 
-def test_set_trigger_validates_mode():
+async def test_set_trigger_validates_mode():
     main = FakeMain()
-    main.sessions.set_trigger("k", "bogus")
-    assert main.sessions.trigger_mode_of("k") == ""  # 非法值不落库
+    await main.sessions.set_trigger("k", "bogus")
+    assert await main.sessions.trigger_mode_of("k") == ""  # 非法值不落库
 
 
 async def test_session_cannot_exceed_global():
     """会话级只能收紧：全局 at_only 时，会话设 all 被钳回 at_only。"""
     main = make_main(aggregate_window=0.01, trigger_mode="at_only")
-    main.sessions.set_trigger("onebot11:group:1", "all")
+    await main.sessions.set_trigger("onebot11:group:1", "all")
     await _send(main, at=False)
     assert not main.captured  # 仍不响应未 @ 消息
     await _send(main, at=True)
@@ -89,14 +89,14 @@ async def test_session_cannot_exceed_global():
 
 async def test_session_can_tighten_beyond_global():
     main = make_main(aggregate_window=0.01, trigger_mode="at_only")
-    main.sessions.set_trigger("onebot11:group:1", "lurk")  # 收紧到窥屏：@ 也不回
+    await main.sessions.set_trigger("onebot11:group:1", "lurk")  # 收紧到窥屏：@ 也不回
     await _send(main, at=True)
     assert not main.captured
 
 
 async def test_global_lurk_clamps_looser_session():
     main = make_main(aggregate_window=0.01, trigger_mode="lurk")
-    main.sessions.set_trigger("onebot11:group:1", "at_only")  # 想放宽 → 钳回 lurk
+    await main.sessions.set_trigger("onebot11:group:1", "at_only")  # 想放宽 → 钳回 lurk
     await _send(main, at=True)
     assert not main.captured
 
@@ -105,30 +105,30 @@ async def test_listen_off_blocks_observe_and_replied():
     """隐私开关：listen_off 时 observe/replied 事件不再外发；恢复监听后照常。"""
     main = make_main(aggregate_window=0.01)
     key = "onebot11:group:1"
-    main.sessions.set_flags(key, {"listen_off": True})
+    await main.sessions.set_flags(key, {"listen_off": True})
     await _send(main, at=True)
     events = [e for e, _ in main.sdk.lifecycle.emitted]
     assert "qvq.observe" not in events
     assert "qvq.replied" not in events
 # 恢复监听
-    main.sessions.set_flags(key, {"listen_off": False})
+    await main.sessions.set_flags(key, {"listen_off": False})
     await _send(main, at=True)
     events = [e for e, _ in main.sdk.lifecycle.emitted]
     assert "qvq.observe" in events
 
 
-def test_restricted_note_only_for_non_admin():
+async def test_restricted_note_only_for_non_admin():
     """受限模式：非管理员注入 permission 部件（遇边界提醒找管理员），管理员不注入。"""
     main = FakeMain()
     main.cfg.admins = ["10001"]
     persona = {"id": "p", "name": "P", "system": "sys"}
 
-    parts = main.sessions.build_system_parts(persona, restricted=True)
+    parts = await main.sessions.build_system_parts(persona, restricted=True)
     joined = "\n".join(p.text for p in parts if p.kind == "permission")
 # 测试环境语言不定：中英任一命中即可
     assert ("管理员" in joined) or ("admin" in joined.lower())
 
-    parts_admin = main.sessions.build_system_parts(persona, restricted=False)
+    parts_admin = await main.sessions.build_system_parts(persona, restricted=False)
     assert all(p.kind != "permission" for p in parts_admin)
 
 
@@ -140,12 +140,12 @@ def test_sender_restricted_uses_is_admin():
     assert main.sessions._sender_restricted("", "onebot11:x") is False  # 无发送者不限制
 
 
-def test_restricted_note_includes_platform_admin_ids():
+async def test_restricted_note_includes_platform_admin_ids():
     """受限提示带本平台管理员 id（该找谁一目了然）。"""
     main = FakeMain()
     main.cfg.admins = ["10001"]
     persona = {"id": "p", "name": "P", "system": "sys"}
-    parts = main.sessions.build_system_parts(persona, restricted=True, admin_ids=["10001", "42"])
+    parts = await main.sessions.build_system_parts(persona, restricted=True, admin_ids=["10001", "42"])
     joined = "\n".join(p.text for p in parts if p.kind == "permission")
     assert "10001" in joined and "42" in joined
 
@@ -179,7 +179,7 @@ async def test_identity_migration_alias_and_merge():
     await asyncio.sleep(0.05)  # 等聚合窗：第一条也要真正进会话
     assert main.captured
 # 迁移（合并模式）
-    summary = main.sessions.migrate_identity(key_old, key_new, "merge")
+    summary = await main.sessions.migrate_identity(key_old, key_new, "merge")
     assert summary["ok"] and summary["contexts"] >= 1
 # 新键来的消息：历史跟到新会话（上下文里带着旧对话）
     new_ev = FakeChatEvent(text="我刚才说我玩什么来着", group=False,
@@ -191,31 +191,31 @@ async def test_identity_migration_alias_and_merge():
 # 上下文合并：旧键的消息在新会话上下文里可见
     assert any("UNDERVALE" in str(m.get("content") or "") for m in main.captured[-1].get("messages") or [])
 # 映射登记在案
-    assert main.sessions.identity_map()[key_old] == key_new
-    assert main.sessions.resolve_identity(key_old) == key_new
+    assert (await main.sessions.identity_map())[key_old] == key_new
+    assert await main.sessions.resolve_identity(key_old) == key_new
 
 
-def test_identity_merge_dedup_and_overwrite_backup():
+async def test_identity_merge_dedup_and_overwrite_backup():
     """合并去重（完全重复条目只留一份）；覆盖替换上下文且先进回收站。"""
     main = make_main()
     s, t = "k:src", "k:dst"
-    main.sessions._save_no_touch(s, {"contexts": [
+    await main.sessions._save_no_touch(s, {"contexts": [
         {"role": "user", "content": "hello", "ts": 100},
         {"role": "user", "content": "world", "ts": 200},
     ], "facts": ["喜欢猫"]})
-    main.sessions._save_no_touch(t, {"contexts": [
+    await main.sessions._save_no_touch(t, {"contexts": [
         {"role": "user", "content": "hello", "ts": 150},  # 与 source 重复
         {"role": "assistant", "content": "hi", "ts": 160},
     ], "facts": ["喜欢狗"]})
-    summary = main.sessions.migrate_identity(s, t, "merge")
-    merged = main.sessions._state(t)["contexts"]
+    summary = await main.sessions.migrate_identity(s, t, "merge")
+    merged = (await main.sessions._state(t))["contexts"]
     assert summary["contexts"] == 3  # hello 去重，world/hi 保留
     assert [e["content"] for e in merged] == ["hello", "hi", "world"]
-    assert set(main.sessions._state(t)["facts"]) == {"喜欢猫", "喜欢狗"}
+    assert set((await main.sessions._state(t))["facts"]) == {"喜欢猫", "喜欢狗"}
 
-    summary2 = main.sessions.migrate_identity(t, s, "overwrite")
+    summary2 = await main.sessions.migrate_identity(t, s, "overwrite")
     assert summary2["ok"] and summary2["backup"]  # 覆盖前备份
-    now_src = main.sessions._state(s)["contexts"]
+    now_src = (await main.sessions._state(s))["contexts"]
     assert [e["content"] for e in now_src] == ["hello", "hi", "world"]  # 被目标历史替换
     # 回收站里有被覆盖前的目标历史
     hits = [k for k in main.sdk.storage.keys() if "trash" in str(k)]
@@ -343,9 +343,9 @@ async def test_identity_merge_account_bulk():
     main = make_main()
     s = main.sessions
 # 旧账户两个会话
-    s.append("snowluma:group:1@Amer", "user", "旧群聊一")
-    s.append("snowluma:private:u9@Amer", "user", "旧私聊")
-    s.append("onebot11:group:2@Amer", "user", "别的平台不动")
+    await s.append("snowluma:group:1@Amer", "user", "旧群聊一")
+    await s.append("snowluma:private:u9@Amer", "user", "旧私聊")
+    await s.append("onebot11:group:2@Amer", "user", "别的平台不动")
     _Req = type("R", (), {"__init__": lambda self, b: setattr(self, "_b", b),
                           "json": lambda self: _async_ret(self._b)})
 
@@ -363,9 +363,9 @@ async def test_identity_merge_account_bulk():
         {"platform": "snowluma", "from": "Amer", "to": "1325859446", "mode": "merge"}))
     assert result["migrated"] == 2 and result["ok"]
 # 目标会话有旧账户的历史
-    assert main.sessions.get_contexts("snowluma:group:1@1325859446")
-    assert main.sessions.get_contexts("snowluma:private:u9@1325859446")
+    assert await main.sessions.get_contexts("snowluma:group:1@1325859446")
+    assert await main.sessions.get_contexts("snowluma:private:u9@1325859446")
 # 映射建立：旧键新消息由目标接手
-    assert main.sessions.identity_map().get("snowluma:group:1@Amer") == "snowluma:group:1@1325859446"
+    assert (await main.sessions.identity_map()).get("snowluma:group:1@Amer") == "snowluma:group:1@1325859446"
 # 别平台不动
-    assert main.sessions.identity_map().get("onebot11:group:2@Amer") is None
+    assert (await main.sessions.identity_map()).get("onebot11:group:2@Amer") is None

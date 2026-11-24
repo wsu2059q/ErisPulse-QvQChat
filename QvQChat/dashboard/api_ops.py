@@ -26,7 +26,7 @@ class OpsApiMixin:
             if key.startswith("sub:"):
                 continue
             try:
-                contexts = self.main.sessions.get_contexts(key)
+                contexts = await self.main.sessions.get_contexts(key)
             except Exception:
                 continue
             name = str(session.get("name") or key)
@@ -189,7 +189,7 @@ class OpsApiMixin:
 # Lorebook 透传：triggers（世界书触发关键词）/ priority / cooldown_min
 # 可见域透传：scope 空=全局（运维默认）；chat:<key> / <platform> 为私有域
         cooldown = (body or {}).get("cooldown_min")
-        entry = self.main.knowledge.add(
+        entry = await self.main.knowledge.add(
             title,
             content,
             source=str((body or {}).get("source") or ""),
@@ -220,7 +220,7 @@ class OpsApiMixin:
             updates["triggers"] = raw
         if (body or {}).get("scope") is not None:
             updates["owner"] = str((body or {}).get("scope") or "")
-        entry = self.main.knowledge.update(kb_id, **updates)
+        entry = await self.main.knowledge.update(kb_id, **updates)
         if entry is None:
             return ({"error": texts.t("kb_not_found", kb_id=kb_id)}, 404)
         await self.main.audit("kb_update", {"id": kb_id, "fields": sorted(updates.keys())})
@@ -229,8 +229,8 @@ class OpsApiMixin:
     async def kb_delete(self, request):
         body = await request.json()
         kid = str((body or {}).get("id") or "")
-        entry = self.main.knowledge.get(kid)
-        ok = self.main.knowledge.delete(kid)
+        entry = await self.main.knowledge.get(kid)
+        ok = await self.main.knowledge.delete(kid)
         undo = ""
         if ok and entry:
             undo = await self._trash_put("kb", dict(entry))
@@ -243,15 +243,15 @@ class OpsApiMixin:
         query = str((body or {}).get("query") or "").strip()
         if not query:
             return ({"error": "query required"}, 400)
-        hits = self.main.knowledge.search(query, top_k=5)
+        hits = await self.main.knowledge.search(query, top_k=5)
         return {"hits": hits}
 
     async def kb_export(self, request):
-        return {"entries": self.main.knowledge.export()}
+        return {"entries": await self.main.knowledge.export()}
 
     async def kb_import(self, request):
         body = await request.json()
-        added = self.main.knowledge.import_entries((body or {}).get("entries") or [])
+        added = await self.main.knowledge.import_entries((body or {}).get("entries") or [])
         return {"ok": True, "added": added}
 
     async def audit_get(self, request):
@@ -330,8 +330,8 @@ class OpsApiMixin:
         removed = 0
         saved = []
         for kid in ids:
-            entry = self.main.knowledge.get(str(kid))
-            if self.main.knowledge.delete(str(kid)):
+            entry = await self.main.knowledge.get(str(kid))
+            if await self.main.knowledge.delete(str(kid)):
                 removed += 1
                 if entry:
                     saved.append(dict(entry))
@@ -347,8 +347,8 @@ class OpsApiMixin:
         saved = []
         for name in names:
             try:
-                sk = self.main.skills.get_skill(str(name))
-                if sk and self.main.skills.delete_skill(str(name)):
+                sk = await self.main.skills.get_skill(str(name))
+                if sk and await self.main.skills.delete_skill(str(name)):
                     removed += 1
                     saved.append({"name": sk.get("name") or str(name), "description": sk.get("description") or "", "body": sk.get("body") or ""})
             except Exception:
@@ -404,7 +404,7 @@ class OpsApiMixin:
 
     async def kb_organize(self, request):
         """AI 整理知识库：合并重复/补触发词/改标题，直接应用并返回报告。"""
-        entries = self.main.knowledge.list()
+        entries = await self.main.knowledge.list()
         if not entries:
             return {"ok": True, "report": "empty", "actions": 0}
         listing = []
@@ -438,11 +438,11 @@ class OpsApiMixin:
             op = str(act.get("op") or "")
             try:
                 if op == "delete":
-                    if self.main.knowledge.delete(str(act.get("id") or "")):
+                    if await self.main.knowledge.delete(str(act.get("id") or "")):
                         applied += 1
                         deleted += 1
                 elif op == "update":
-                    entry = self.main.knowledge.update(
+                    entry = await self.main.knowledge.update(
                         str(act.get("id") or ""),
                         title=str(act.get("title") or "") or None,
                         triggers=act.get("triggers"),
@@ -453,7 +453,7 @@ class OpsApiMixin:
                 elif op == "merge":
                     ids = [str(x) for x in (act.get("ids") or []) if x]
                     if len(ids) >= 2 and str(act.get("content") or "").strip():
-                        first = self.main.knowledge.update(
+                        first = await self.main.knowledge.update(
                             ids[0],
                             title=str(act.get("title") or "") or None,
                             content=str(act.get("content")),
@@ -463,14 +463,14 @@ class OpsApiMixin:
                             applied += 1
                             merged += 1
                             for extra in ids[1:]:
-                                self.main.knowledge.delete(extra)
+                                await self.main.knowledge.delete(extra)
             except Exception:
                 continue
         return {"ok": True, "report": f"删除 {deleted}，合并 {merged}，更新 {updated}", "actions": applied}
 
     async def skills_organize(self, request):
         """AI 整理技能：合并近似技能/修描述/删陈旧，仅动 dashboard 来源的技能。"""
-        skills = [s for s in self.main.skills.list_skills() if s.get("source") == "dashboard"]
+        skills = [s for s in await self.main.skills.list_skills() if s.get("source") == "dashboard"]
         if not skills:
             return {"ok": True, "report": "empty", "actions": 0}
         listing = []
@@ -501,21 +501,21 @@ class OpsApiMixin:
             op = str(act.get("op") or "")
             try:
                 if op == "delete":
-                    if self.main.skills.delete_skill(str(act.get("name") or "")):
+                    if await self.main.skills.delete_skill(str(act.get("name") or "")):
                         applied += 1
                 elif op == "merge":
                     names = [str(x) for x in (act.get("names") or []) if x]
                     if len(names) >= 2 and str(act.get("body") or "").strip():
                         keep = str(act.get("name") or names[0])
-                        self.main.skills.save_skill(keep, str(act.get("description") or ""), str(act.get("body")))
+                        await self.main.skills.save_skill(keep, str(act.get("description") or ""), str(act.get("body")))
                         applied += 1
                         for extra in names:
                             if extra != keep:
-                                self.main.skills.delete_skill(extra)
+                                await self.main.skills.delete_skill(extra)
                 elif op == "update":
-                    sk = self.main.skills.get_skill(str(act.get("name") or ""))
+                    sk = await self.main.skills.get_skill(str(act.get("name") or ""))
                     if sk and sk.get("source") == "dashboard":
-                        self.main.skills.save_skill(
+                        await self.main.skills.save_skill(
                             sk["name"],
                             str(act.get("description") or sk.get("description") or ""),
                             sk.get("body") or "",

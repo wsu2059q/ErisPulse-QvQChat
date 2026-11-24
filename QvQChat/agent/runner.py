@@ -669,7 +669,7 @@ class AgentRunner:
         full_access = bool(getattr(ctx, "_full_access_override", False) or False)
         if not full_access and getattr(ctx, "main", None) is not None:
             try:
-                full_access = bool(_policy_get(ctx.main.sdk, str(ctx.chat_key or "")).get("full_access"))
+                full_access = bool((await _policy_get(ctx.main.sdk, str(ctx.chat_key or ""))).get("full_access"))
             except Exception:
                 full_access = False
             try:

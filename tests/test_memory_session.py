@@ -1,6 +1,8 @@
 import asyncio
 import time as _time
 
+import pytest
+
 from QvQChat.conversation.service import ConversationService, make_chat_key, parse_chat_key
 from QvQChat.conversation.memory import FORGET_PRUNE_KEY, MemoryStore
 
@@ -14,64 +16,64 @@ def test_chat_key_roundtrip():
     assert parse_chat_key("broken") == ("", "", "")
 
 
-def test_session_append_trim_and_reset():
+async def test_session_append_trim_and_reset():
     main = FakeMain(context_limit=3)
     manager = ConversationService(main)
     key = "test:private:1"
     for i in range(10):
-        manager.append(key, "user", f"m{i}")
-    contexts = manager.get_contexts(key)
+        await manager.append(key, "user", f"m{i}")
+    contexts = await manager.get_contexts(key)
     assert len(contexts) == 6
     assert contexts[-1]["content"] == "m9"
-    manager.reset(key)
-    assert manager.get_contexts(key) == []
+    await manager.reset(key)
+    assert await manager.get_contexts(key) == []
 
 
 async def test_session_persona_pointer_and_list():
     main = FakeMain()
     manager = ConversationService(main)
-    manager.set_persona("a:b:c", "custom")
-    assert manager.persona_of("a:b:c") == "custom"
+    await manager.set_persona("a:b:c", "custom")
+    assert await manager.persona_of("a:b:c") == "custom"
     sessions = await manager.list_sessions()
     assert any(s["chat_key"] == "a:b:c" and s["persona"] == "custom" for s in sessions)
 
 
-def test_memory_remember_dedup_and_cap():
+async def test_memory_remember_dedup_and_cap():
     from QvQChat import texts
 
     main = FakeMain(memory_max=3)
     store = MemoryStore(main.sdk, main.cfg)
-    assert store.remember("s", "用户喜欢蓝色", importance=4) == texts.t("memory_added", count=1)
-    assert "跳过" in store.remember("s", "用户喜欢蓝色") or "skipped" in store.remember("s", "用户喜欢蓝色")
-    store.remember("s", "用户在杭州")
-    store.remember("s", "养了一只猫", importance=2)
-    store.remember("s", "第四条记忆", importance=1)
-    assert len(store.entries("s")) == 3
-    contents = [e["content"] for e in store.entries("s")]
+    assert await store.remember("s", "用户喜欢蓝色", importance=4) == texts.t("memory_added", count=1)
+    assert "跳过" in await store.remember("s", "用户喜欢蓝色") or "skipped" in await store.remember("s", "用户喜欢蓝色")
+    await store.remember("s", "用户在杭州")
+    await store.remember("s", "养了一只猫", importance=2)
+    await store.remember("s", "第四条记忆", importance=1)
+    assert len(await store.entries("s")) == 3
+    contents = [e["content"] for e in await store.entries("s")]
     assert "第四条记忆" not in contents
 
 
-def test_memory_recall_and_forget():
+async def test_memory_recall_and_forget():
     main = FakeMain()
     store = MemoryStore(main.sdk, main.cfg)
-    store.remember("s", "用户喜欢蓝色")
-    store.remember("s", "用户在杭州工作")
-    hits = store.recall("s", "喜欢的颜色")
+    await store.remember("s", "用户喜欢蓝色")
+    await store.remember("s", "用户在杭州工作")
+    hits = await store.recall("s", "喜欢的颜色")
     assert hits and "蓝色" in hits[0]["content"]
-    assert store.forget("s", "杭州") == 1
-    assert store.forget("s", "不存在的记忆") == 0
-    assert len(store.entries("s")) == 1
+    assert await store.forget("s", "杭州") == 1
+    assert await store.forget("s", "不存在的记忆") == 0
+    assert len(await store.entries("s")) == 1
 
 
-def test_memory_scopes_and_clear():
+async def test_memory_scopes_and_clear():
     main = FakeMain()
     store = MemoryStore(main.sdk, main.cfg)
-    store.remember("a", "x1")
-    store.remember("global", "g1")
-    scopes = {s["chat_key"] for s in store.list_scopes()}
+    await store.remember("a", "x1")
+    await store.remember("global", "g1")
+    scopes = {s["chat_key"] for s in await store.list_scopes()}
     assert scopes == {"a", "global"}
-    assert store.clear("a") == 1
-    assert store.entries("a") == []
+    assert await store.clear("a") == 1
+    assert await store.entries("a") == []
 
 
 def test_label_incoming_group_format():
@@ -82,24 +84,24 @@ def test_label_incoming_group_format():
     assert manager.label_incoming("大家好") == "大家好"
 
 
-def test_group_name_cache_roundtrip():
+async def test_group_name_cache_roundtrip():
     main = FakeMain()
     manager = ConversationService(main)
-    assert manager.group_name_of("g") == ""
-    manager.set_group_name("g", "测试群")
-    assert manager.group_name_of("g") == "测试群"
+    assert await manager.group_name_of("g") == ""
+    await manager.set_group_name("g", "测试群")
+    assert await manager.group_name_of("g") == "测试群"
 
 
 async def test_recent_user_messages_cross_session():
     main = FakeMain()
     manager = ConversationService(main)
     group_key = "onebot11:group:1"
-    manager.set_group_name(group_key, "测试群")
+    await manager.set_group_name(group_key, "测试群")
     labeled1 = manager.label_incoming("安装云湖适配器", sender_id="u1", sender_name="群主")
-    manager.append_user(group_key, labeled1, sender_id="u1")
-    manager.append(group_key, "assistant", "好的")
+    await manager.append_user(group_key, labeled1, sender_id="u1")
+    await manager.append(group_key, "assistant", "好的")
     labeled2 = manager.label_incoming("适配器信息私聊说", sender_id="u1", sender_name="群主")
-    manager.append_user(group_key, labeled2, sender_id="u1")
+    await manager.append_user(group_key, labeled2, sender_id="u1")
 
 # append_user 已维护 user_seen 倒排 → 本查询走倒排路径
     seen = main.sdk.storage.get("QvQChat:user_seen:u1")
@@ -121,9 +123,9 @@ async def test_recent_user_messages_fallback_scan():
     main = FakeMain()
     manager = ConversationService(main)
     group_key = "onebot11:group:1"
-    manager.set_group_name(group_key, "测试群")
-    manager.append_user(group_key, "群主(u1): 安装云湖适配器", sender_id="u1")
-    manager.append_user(group_key, "群主(u1): 适配器信息私聊说", sender_id="u1")
+    await manager.set_group_name(group_key, "测试群")
+    await manager.append_user(group_key, "群主(u1): 安装云湖适配器", sender_id="u1")
+    await manager.append_user(group_key, "群主(u1): 适配器信息私聊说", sender_id="u1")
     main.sdk.storage.delete("QvQChat:user_seen:u1")# 模拟倒排缺失
 
     found = await manager.recent_user_messages("u1", exclude_chat_key="onebot11:private:u1")
@@ -132,17 +134,17 @@ async def test_recent_user_messages_fallback_scan():
     assert await manager.recent_user_messages("u1", exclude_chat_key=group_key) == []
 
 
-def test_seed_contexts_persists_once():
+async def test_seed_contexts_persists_once():
     main = FakeMain()
     manager = ConversationService(main)
     seed = [{"role": "user", "content": "历史"}]
-    first = manager.seed_contexts("s", seed)
+    first = await manager.seed_contexts("s", seed)
     assert first == seed
-    manager.append("s", "user", "新消息")
-    stored = manager.get_contexts("s")
+    await manager.append("s", "user", "新消息")
+    stored = await manager.get_contexts("s")
     assert stored[0]["content"] == "历史"
     assert stored[-1]["content"] == "新消息"
-    again = manager.seed_contexts("s", [{"role": "user", "content": "不该覆盖"}])
+    again = await manager.seed_contexts("s", [{"role": "user", "content": "不该覆盖"}])
     assert again[0]["content"] == "历史"
 
 
@@ -154,10 +156,10 @@ async def test_append_summary_over_cap_fallback_keeps_head_and_tail():
     manager = ConversationService(main)
     key = "s"
     old = "头部身份信息：用户是张三，在杭州工作。" * 10# 远超 cap
-    manager.append_summary(key, old)
+    await manager.append_summary(key, old)
     new = "新增内容，尾部待办：周五前交付报告。" * 5
-    manager.append_summary(key, new)
-    summary = manager.summary_of(key)
+    await manager.append_summary(key, new)
+    summary = await manager.summary_of(key)
 # 兜底合并不丢头尾：头 60% + 省略标记 + 尾 40%
     assert "头部身份信息" in summary, "头部（含身份/长期事实）不能丢"
     assert "周五前交付报告" in summary, "尾部新增内容不能丢"
@@ -180,11 +182,11 @@ async def test_append_summary_over_cap_llm_merge_replaces_fallback():
     main.pool = MergePool()
     manager = ConversationService(main)
     key = "s2"
-    manager.append_summary(key, "旧摘要开头" + "旧细节" * 40)
-    manager.append_summary(key, "新摘要结尾" + "新细节" * 40)
-    assert "…[中段省略]…" in manager.summary_of(key), "先写兜底"
+    await manager.append_summary(key, "旧摘要开头" + "旧细节" * 40)
+    await manager.append_summary(key, "新摘要结尾" + "新细节" * 40)
+    assert "…[中段省略]…" in await manager.summary_of(key), "先写兜底"
     await asyncio.gather(*tasks)
-    assert manager.summary_of(key) == "合并后的紧凑摘要：张三在杭州，周五交报告。"
+    assert await manager.summary_of(key) == "合并后的紧凑摘要：张三在杭州，周五交报告。"
 
 
 def test_extract_facts_loose_parsing():
@@ -205,23 +207,23 @@ def test_extract_facts_loose_parsing():
     assert facts2 == []
 
 
-def test_append_facts_dedupe_truncate_and_cap():
+async def test_append_facts_dedupe_truncate_and_cap():
     main = FakeMain(facts_max=3)
     manager = ConversationService(main)
     key = "s3"
-    assert manager.append_facts(key, ["ENTITY|张三", "ENTITY|张三"]) == 1, "重复不入库"
+    assert await manager.append_facts(key, ["ENTITY|张三", "ENTITY|张三"]) == 1, "重复不入库"
     long_fact = "PREFERENCE|" + "长" * 300
-    manager.append_facts(key, [long_fact, "TODO|交报告"])
-    facts = manager.facts_of(key)
+    await manager.append_facts(key, [long_fact, "TODO|交报告"])
+    facts = await manager.facts_of(key)
     assert len(facts) == 3, "facts_max 上限生效（保最新）"
     assert all(len(f) <= 200 for f in facts), "单条截 200 字符"
     assert facts[-1] == "TODO|交报告"
 # reset 同步清空
-    manager.reset(key)
-    assert manager.facts_of(key) == []
+    await manager.reset(key)
+    assert await manager.facts_of(key) == []
 
 
-def test_compact_extracts_facts_into_state():
+async def test_compact_extracts_facts_into_state():
     from QvQChat.engine.base import ChatResponse
 
     main = FakeMain()
@@ -237,26 +239,27 @@ def test_compact_extracts_facts_into_state():
     main.pool = FactsPool()
     manager.compactor.config = main.cfg
     for i in range(12):
-        manager.append(key, "user", f"消息{i}")
-    report = asyncio.run(manager.compactor.compact(key, force=True))
+        await manager.append(key, "user", f"消息{i}")
+    report = await manager.compactor.compact(key, force=True)
     assert any(a.startswith("facts:+") for a in report["actions"]), f"facts 应入库: {report['actions']}"
-    facts = manager.facts_of(key)
+    facts = await manager.facts_of(key)
     assert "ENTITY|生产服务器 prod-01" in facts
     assert "TODO|迁移数据库" in facts
-    summary = manager.summary_of(key)
+    summary = await manager.summary_of(key)
     assert "生产服务器" not in summary or "<facts>" not in summary, "facts 不应混入摘要正文"
 
 
-def test_build_system_injects_facts_section():
+@pytest.mark.asyncio
+async def test_build_system_injects_facts_section():
     main = FakeMain()
     manager = ConversationService(main)
     key = "s5"
-    manager.append_facts(key, ["ENTITY|张三", "PREFERENCE|喜欢蓝色"])
+    await manager.append_facts(key, ["ENTITY|张三", "PREFERENCE|喜欢蓝色"])
     persona = main.personas.resolve(key)
-    system = manager.build_system(persona, chat_key=key)
+    system = await manager.build_system(persona, chat_key=key)
     assert "ENTITY|张三" in system
     assert "PREFERENCE|喜欢蓝色" in system
-    parts = manager.build_system_parts(persona, chat_key=key)
+    parts = await manager.build_system_parts(persona, chat_key=key)
     kinds = [p.kind for p in parts]
     assert "facts" in kinds and "persona" in kinds and "capability" in kinds
     assert all(p.required for p in parts if p.kind in ("persona", "capability"))
@@ -264,7 +267,7 @@ def test_build_system_injects_facts_section():
     assert "喜欢蓝色" in facts_part.text
 
 
-def test_skills_merge_external_and_builtin_wins():
+async def test_skills_merge_external_and_builtin_wins():
     from QvQChat.skills import SkillManager
 
     main = FakeMain()
@@ -273,7 +276,7 @@ def test_skills_merge_external_and_builtin_wins():
         {"name": "ext-skill", "description": "外部技能", "body": "步骤", "source": "module:TTS"},
         {"name": "self-config", "description": "试图覆盖内置", "body": "x", "source": "module:TTS"},
     ])
-    skills = {s["name"]: s for s in manager.list_skills()}
+    skills = {s["name"]: s for s in await manager.list_skills()}
     assert skills["ext-skill"]["source"] == "module:TTS"
     assert skills["ext-skill"]["enabled"] is True
 # 内置同名优先
@@ -283,18 +286,18 @@ def test_skills_merge_external_and_builtin_wins():
 # ---------- 遗忘曲线 / 压缩沉淀 / 记忆分页 / 群语气学习 ----------
 
 
-def test_forgetting_curve_spares_user_and_importance5():
+async def test_forgetting_curve_spares_user_and_importance5():
     main = FakeMain()
     store = MemoryStore(main.sdk, main.cfg)
     old_ts = _time.time() - 200 * 86400  # 200 天前
 # auto 记忆：1 级超 14 天 → 该清；5 级永久 → 保留
-    store._save("s", [
+    await store._save("s", [
         {"content": "旧闲聊", "category": "auto", "importance": 1, "ts": old_ts, "source": "auto"},
         {"content": "重要结论", "category": "auto", "importance": 5, "ts": old_ts, "source": "auto"},
         {"content": "用户亲口让记的", "category": "fact", "importance": 1, "ts": old_ts, "source": "user"},
     ])
-    store._maybe_forget("s", store.entries("s"))
-    contents = [e["content"] for e in store.entries("s")]
+    await store._maybe_forget("s", await store.entries("s"))
+    contents = [e["content"] for e in await store.entries("s")]
     assert "旧闲聊" not in contents
     assert "重要结论" in contents          # importance 5 永久
     assert "用户亲口让记的" in contents     # user 来源永不自动清
@@ -302,35 +305,35 @@ def test_forgetting_curve_spares_user_and_importance5():
     assert main.sdk.storage.get(FORGET_PRUNE_KEY) == _time.strftime("%Y-%m-%d")
 
 
-def test_forgetting_curve_disabled_and_levels():
+async def test_forgetting_curve_disabled_and_levels():
     main = FakeMain(memory_forget=False)
     store = MemoryStore(main.sdk, main.cfg)
     old_ts = _time.time() - 200 * 86400
-    store._save("s", [{"content": "旧闲聊", "category": "auto", "importance": 1, "ts": old_ts, "source": "auto"}])
-    assert store._maybe_forget("s", store.entries("s")) == 0
-    assert store.entries("s")[0]["content"] == "旧闲聊"
+    await store._save("s", [{"content": "旧闲聊", "category": "auto", "importance": 1, "ts": old_ts, "source": "auto"}])
+    assert await store._maybe_forget("s", await store.entries("s")) == 0
+    assert (await store.entries("s"))[0]["content"] == "旧闲聊"
 # 分级：3 级 60 天内保留、4 级 180 天内保留（关掉开关才测到这步，避免跨天键污染）
     main2 = FakeMain()
     store2 = MemoryStore(main2.sdk, main2.cfg)
-    store2._save("s", [
+    await store2._save("s", [
         {"content": "三个月前", "category": "auto", "importance": 3, "ts": _time.time() - 50 * 86400, "source": "auto"},
         {"content": "半年前", "category": "auto", "importance": 4, "ts": _time.time() - 170 * 86400, "source": "auto"},
     ])
-    store2._maybe_forget("s", store2.entries("s"))
-    contents = [e["content"] for e in store2.entries("s")]
+    await store2._maybe_forget("s", await store2.entries("s"))
+    contents = [e["content"] for e in await store2.entries("s")]
     assert "三个月前" in contents and "半年前" in contents
 
 
-def test_remember_auto_source_roundtrip():
+async def test_remember_auto_source_roundtrip():
     main = FakeMain()
     store = MemoryStore(main.sdk, main.cfg)
-    store.remember("s", "压缩抽出的事实", source="auto")
-    store.remember("s", "人工记忆", importance=5)
-    by_src = {e["content"]: e["source"] for e in store.entries("s")}
+    await store.remember("s", "压缩抽出的事实", source="auto")
+    await store.remember("s", "人工记忆", importance=5)
+    by_src = {e["content"]: e["source"] for e in await store.entries("s")}
     assert by_src["压缩抽出的事实"] == "auto" and by_src["人工记忆"] == "user"
 # 非法 source 归一为 user（防自动记忆冒充人工记忆逃过遗忘）
-    store.remember("s", "另一个", source="hacker")
-    assert [e for e in store.entries("s") if e["content"] == "另一个"][0]["source"] == "user"
+    await store.remember("s", "另一个", source="hacker")
+    assert [e for e in await store.entries("s") if e["content"] == "另一个"][0]["source"] == "user"
 
 
 async def test_list_memory_pagination_and_filter():
@@ -340,7 +343,7 @@ async def test_list_memory_pagination_and_filter():
     main = ctx.main
     store = main.memory
     for i in range(45):
-        store.remember("test:private:1", f"关于猫咪的第{i}条观察记录", category="fact" if i % 2 else "auto")
+        await store.remember("test:private:1", f"关于猫咪的第{i}条观察记录", category="fact" if i % 2 else "auto")
     out = await memory_tools.list_memory(ctx)
     assert out.startswith("total=45 page=1/2")
     assert "第44条" in out  # 最新在前
@@ -366,11 +369,11 @@ async def test_learn_group_style_updates_state():
             return False
 
     main.pool = StylePool()
-    main.conversations.set_group_name("test:group:9", "测试群")
+    await main.conversations.set_group_name("test:group:9", "测试群")
     for i in range(8):
-        main.conversations.append("test:group:9", "user" if i % 2 else "assistant", f"消息{i}")
+        await main.conversations.append("test:group:9", "user" if i % 2 else "assistant", f"消息{i}")
     await main.conversations.learn_group_style("test:group:9")
-    assert main.conversations.group_style_of("test:group:9") == "大家互称老铁，爱玩梗，语气活跃"
+    assert await main.conversations.group_style_of("test:group:9") == "大家互称老铁，爱玩梗，语气活跃"
 
 
 def test_group_style_trigger_threshold():

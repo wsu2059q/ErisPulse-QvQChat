@@ -320,7 +320,7 @@ async def test_save_skill_tool_metadata_and_persistence():
     assert "deploy-site" in out
     stored = main.sdk.storage.get("QvQChat:skills", {})
     assert stored["deploy-site"]["description"] == "部署站点流程"
-    skill = main.skills.get_skill("deploy-site")
+    skill = await main.skills.get_skill("deploy-site")
     assert skill is not None and skill["source"] == "dashboard" and "git pull" in skill["body"]
 
 
@@ -335,7 +335,7 @@ async def test_save_skill_rejects_empty_name_and_content():
     assert "save_skill" in out
 
 
-def test_propose_from_run_draft_shape():
+async def test_propose_from_run_draft_shape():
     main = FakeMain()
     result = AgentResult(
         text="部署完成，站点已上线\n详细信息见日志",
@@ -345,7 +345,7 @@ def test_propose_from_run_draft_shape():
             {"tool": "send_message", "arguments": "{}", "output": "sent"},
         ],
     )
-    draft = main.skills.propose_from_run("帮我 deploy 新版本", result)
+    draft = await main.skills.propose_from_run("帮我 deploy 新版本", result)
     assert draft is not None
     assert draft["name"] == "deploy"
     assert draft["description"] == "部署完成，站点已上线"
@@ -357,29 +357,29 @@ def test_propose_from_run_draft_shape():
     assert main.sdk.storage.get("QvQChat:skills", {}) == {}
 
 
-def test_propose_from_run_none_cases():
+async def test_propose_from_run_none_cases():
     main = FakeMain()
 # 无工具调用 → None
-    assert main.skills.propose_from_run("plain task", AgentResult(text="ok")) is None
+    assert await main.skills.propose_from_run("plain task", AgentResult(text="ok")) is None
 # 无用户文本 → None
-    assert main.skills.propose_from_run("", AgentResult(text="ok", tool_trace=[{"tool": "t", "arguments": "", "output": ""}])) is None
+    assert await main.skills.propose_from_run("", AgentResult(text="ok", tool_trace=[{"tool": "t", "arguments": "", "output": ""}])) is None
 # 同名技能已存在 → None（不重复提议）
     result = AgentResult(
         text="done",
         tool_trace=[{"tool": "run_command", "arguments": "", "output": "ok"}],
     )
-    assert main.skills.propose_from_run("please deploy it", result)["name"] == "deploy"
-    main.skills.save_skill("deploy", "existing", "body")
-    assert main.skills.propose_from_run("please deploy it", result) is None
+    assert (await main.skills.propose_from_run("please deploy it", result))["name"] == "deploy"
+    await main.skills.save_skill("deploy", "existing", "body")
+    assert await main.skills.propose_from_run("please deploy it", result) is None
 
 
-def test_propose_from_run_name_fallback_without_ascii_words():
+async def test_propose_from_run_name_fallback_without_ascii_words():
     main = FakeMain()
     result = AgentResult(
         text="完成",
         tool_trace=[{"tool": "run_command", "arguments": "", "output": "ok"}],
     )
-    draft = main.skills.propose_from_run("帮我部署网站", result)
+    draft = await main.skills.propose_from_run("帮我部署网站", result)
     assert draft is not None
     assert draft["name"] == "task-run_command"
     assert draft["description"] == "完成"
@@ -501,8 +501,8 @@ async def test_group_roster_injects_recent_speakers():
     main._group_roster = InboxMixin._group_roster.__get__(main)
     main._group_nicknames = InboxMixin._group_nicknames.__get__(main)
     key = "snowluma:group:871684833"
-    main.sessions.append_user(key, "hello", sender_id="10001")
-    main.sessions.append_user(key, "hi", sender_id="10002")
+    await main.sessions.append_user(key, "hello", sender_id="10001")
+    await main.sessions.append_user(key, "hi", sender_id="10002")
     roster = await main._group_roster(key, "snowluma", "871684833")
     # fake 适配器无 get_group_member_list → 退路生效；无昵称 → (uid) 形态
     assert "10001" in roster and "10002" in roster

@@ -66,13 +66,13 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
 # 「以下为子智能体的进度更新」（subagent_label_on 可关）——来源必须可见
     sub_ctx.agent_label = texts.t("subagent_send_header")
 # 场景与最近对话注入：让子智能体知道在为谁、在哪个群、最近聊了什么
-    context_block = _context_block(main, ctx)
+    context_block = await _context_block(main, ctx)
     system = texts.t("subagent_system", task=utils.truncate(task, 500))
     if context_block:
         system = system + "\n\n" + context_block
     runner = AgentRunner(main.pool, main.registry, sub_cfg)
-    main.sessions.append(sub_key, "user", task)
-    main.sessions.set_group_name(sub_key, utils.truncate(task, 40))
+    await main.sessions.append(sub_key, "user", task)
+    await main.sessions.set_group_name(sub_key, utils.truncate(task, 40))
     # 子智能体步骤透传：加 agent=sub 标记 + step_id 前缀，父/子事件不会互相配对错
     outer_hook = getattr(ctx, "on_tool_event", None)
 
@@ -102,7 +102,7 @@ async def spawn_agent(ctx: ToolContext, task: str, tools: list[str] | None = Non
     except Exception as e:
         return texts.t("tool_error", name="spawn_agent", error=f"{type(e).__name__}: {e}")
     answer = (result.text or "").strip() or "-"
-    main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
+    await main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
     if isinstance(getattr(result, "usage", None), dict) and result.usage:
         await main.record_usage(sub_key, result.usage, getattr(result, "model", ""), origin="subagent")
     ms = int((time.monotonic() - started) * 1000)
@@ -198,8 +198,8 @@ async def demote_to_background(main, event, chat_key: str, task_prompt: str) -> 
     )
 # 不加 _context_block：主会话正要让路给新消息，历史对话塞给续跑任务反而干扰
     system = texts.t("subagent_system", task=utils.truncate(task_prompt, 500))
-    main.sessions.append(sub_key, "user", task_prompt)
-    main.sessions.set_group_name(sub_key, utils.truncate(task_prompt, 40))
+    await main.sessions.append(sub_key, "user", task_prompt)
+    await main.sessions.set_group_name(sub_key, utils.truncate(task_prompt, 40))
     await _launch_background(main, sub_key, sub_ctx, system, [], task_prompt)
     return sub_key
 
@@ -296,7 +296,7 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
         else:
             result = await _job()
         answer = (result.text or "").strip() or "-"
-        main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
+        await main.sessions.append(sub_key, "assistant", answer, trace=result.tool_trace)
         if isinstance(getattr(result, "usage", None), dict) and result.usage:
             await main.record_usage(sub_key, result.usage, getattr(result, "model", ""), origin="subagent")
         status = "done"
@@ -328,21 +328,21 @@ async def _run_background(main, sub_key: str, sub_ctx, system: str, tools: list[
         answer = ""
         status = "error"
         error = f"timeout: subjob_timeout={timeout:.0f}s exceeded"
-        main.sessions.append(sub_key, "assistant", f"[error] {error}")
+        await main.sessions.append(sub_key, "assistant", f"[error] {error}")
         main.logger.warning(f"background subagent timeout: {error}")
     except Exception as e:
         answer = ""
         status = "error"
         error = f"{type(e).__name__}: {e}"
-        main.sessions.append(sub_key, "assistant", f"[error] {error}")
+        await main.sessions.append(sub_key, "assistant", f"[error] {error}")
         main.logger.warning(f"background subagent failed: {error}")
     _live_finish()
     ms = int((time.monotonic() - started) * 1000)
-    probe = main.sdk.storage.get(SUBJOB_PREFIX + sub_key, None)
+    probe = await main.sdk.storage.aget(SUBJOB_PREFIX + sub_key, None)
     if isinstance(probe, dict):
         probe.update({"status": status, "finished": time.time(), "ms": ms,
                       "error": error if status == "error" else ""})
-        main.sdk.storage.set(SUBJOB_PREFIX + sub_key, probe)
+        await main.sdk.storage.aset(SUBJOB_PREFIX + sub_key, probe)
     parent = str(getattr(sub_ctx, "parent_chat_key", "") or "")
     if not parent:
         return
@@ -447,7 +447,7 @@ async def list_subjobs(main, limit: int = 50) -> list:
     return rows[: max(1, int(limit))]
 
 
-def _context_block(main, ctx) -> str:
+async def _context_block(main, ctx) -> str:
     """子智能体上下文块：场景注记 + 父会话最近对话摘要（带发言人标注）。"""
     parts: list[str] = []
     scene = str(getattr(ctx, "scene_note", "") or "").strip()
@@ -455,7 +455,7 @@ def _context_block(main, ctx) -> str:
         parts.append("<scene>\n" + scene + "\n</scene>")
     try:
 # 传入的是父 ctx：读它自己的 chat_key（parent_chat_key 只存在于子 ctx 上）
-        contexts = main.sessions.get_contexts(str(getattr(ctx, "chat_key", "") or ""))
+        contexts = await main.sessions.get_contexts(str(getattr(ctx, "chat_key", "") or ""))
     except Exception:
         contexts = []
     lines: list[str] = []

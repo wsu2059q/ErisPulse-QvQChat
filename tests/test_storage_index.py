@@ -27,8 +27,8 @@ class CountingStorage(FakeStorage):
 async def test_index_selfheal_after_manual_delete():
     main = FakeMain()
     manager = ConversationService(main)
-    manager.append("g:group:1", "user", "hi")
-    manager.append("g:group:2", "user", "yo")
+    await manager.append("g:group:1", "user", "hi")
+    await manager.append("g:group:2", "user", "yo")
     assert set(main.sdk.storage.get(CONV_INDEX_KEY)) == {"g:group:1", "g:group:2"}
 # 手工删除索引键（模拟损坏）→ list_sessions 回退扫描并自愈重建
     main.sdk.storage.delete(CONV_INDEX_KEY)
@@ -40,7 +40,7 @@ async def test_index_selfheal_after_manual_delete():
 async def test_index_selfheal_after_corrupt():
     main = FakeMain()
     manager = ConversationService(main)
-    manager.append("g:group:1", "user", "hi")
+    await manager.append("g:group:1", "user", "hi")
     main.sdk.storage.set(CONV_INDEX_KEY, "not-a-list")# 损坏
     sessions = await manager.list_sessions()
     assert {s["chat_key"] for s in sessions} == {"g:group:1"}
@@ -69,13 +69,13 @@ async def test_index_reconciles_legacy_sessions_on_first_list():
 async def test_create_delete_maintain_index():
     main = FakeMain()
     manager = ConversationService(main)
-    key1 = manager.create("dashboard", "private")
-    manager.append(key1, "user", "hello")# 非空后 create 才会另开新 web 会话
-    key2 = manager.create("dashboard", "private")
+    key1 = await manager.create("dashboard", "private")
+    await manager.append(key1, "user", "hello")# 非空后 create 才会另开新 web 会话
+    key2 = await manager.create("dashboard", "private")
     assert key1 != key2
     assert set(main.sdk.storage.get(CONV_INDEX_KEY)) == {key1, key2}
 # reset 保留 state（只清空内容）→ 索引不动
-    manager.reset(key1)
+    await manager.reset(key1)
     assert key1 in main.sdk.storage.get(CONV_INDEX_KEY)
     assert await manager.list_sessions() and any(s["chat_key"] == key1 for s in await manager.list_sessions())
 # delete 彻底删除 → 索引移除
@@ -117,20 +117,20 @@ async def test_prune_usage_marker_not_deleted_by_scan():
     assert main.sdk.storage.get("QvQChat:usage:last_prune") == today
 
 
-def test_user_seen_inverted_maintained_on_group_messages():
+async def test_user_seen_inverted_maintained_on_group_messages():
     main = FakeMain()
     manager = ConversationService(main)
-    manager.append_user("onebot11:group:1", "群主(u1): 你好", sender_id="u1")
+    await manager.append_user("onebot11:group:1", "群主(u1): 你好", sender_id="u1")
     seen = main.sdk.storage.get(USER_SEEN_PREFIX + "u1")
     assert isinstance(seen, list) and seen[0]["chat_key"] == "onebot11:group:1"
     assert seen[0]["head"] == "群主(u1): 你好"
 # 私聊不入倒排（recent_user_messages 只查群）
-    manager.append_user("onebot11:private:u1", "私聊内容", sender_id="u1")
+    await manager.append_user("onebot11:private:u1", "私聊内容", sender_id="u1")
     seen = main.sdk.storage.get(USER_SEEN_PREFIX + "u1")
     assert [i["chat_key"] for i in seen] == ["onebot11:group:1"]
 # 同群再发言：去重、新在前
-    manager.append_user("onebot11:group:2", "u1 在群2", sender_id="u1")
-    manager.append_user("onebot11:group:1", "群主(u1): 又发言", sender_id="u1")
+    await manager.append_user("onebot11:group:2", "u1 在群2", sender_id="u1")
+    await manager.append_user("onebot11:group:1", "群主(u1): 又发言", sender_id="u1")
     seen = main.sdk.storage.get(USER_SEEN_PREFIX + "u1")
     assert [i["chat_key"] for i in seen] == ["onebot11:group:1", "onebot11:group:2"]
 
@@ -139,10 +139,10 @@ async def test_recent_user_messages_via_inverted_index():
     main = FakeMain()
     manager = ConversationService(main)
     group_key = "onebot11:group:1"
-    manager.set_group_name(group_key, "测试群")
-    manager.append_user(group_key, "群主(u1): 安装云湖适配器", sender_id="u1")
-    manager.append(group_key, "assistant", "好的")
-    manager.append_user(group_key, "群主(u1): 适配器信息私聊说", sender_id="u1")
+    await manager.set_group_name(group_key, "测试群")
+    await manager.append_user(group_key, "群主(u1): 安装云湖适配器", sender_id="u1")
+    await manager.append(group_key, "assistant", "好的")
+    await manager.append_user(group_key, "群主(u1): 适配器信息私聊说", sender_id="u1")
 # 倒排存在：走倒排路径
     found = await manager.recent_user_messages("u1", exclude_chat_key="onebot11:private:u1")
     assert len(found) == 2
@@ -157,7 +157,7 @@ async def test_recent_user_messages_fallback_without_inverted():
     main = FakeMain()
     manager = ConversationService(main)
     group_key = "onebot11:group:7"
-    manager.append_user(group_key, "群主(u1): 旧消息", sender_id="u1")
+    await manager.append_user(group_key, "群主(u1): 旧消息", sender_id="u1")
     main.sdk.storage.delete(USER_SEEN_PREFIX + "u1")
     found = await manager.recent_user_messages("u1", exclude_chat_key="onebot11:private:u1")
     assert len(found) == 1

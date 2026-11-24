@@ -301,7 +301,7 @@ async def send_message(ctx: ToolContext, platform: str = "", target_type: str = 
 # 发送落库：工具直发的消息写进发起会话上下文（AI 下一轮知道自己发过什么，
 # 不再"发完即忘"反复折腾），跨会话发送时目标会话也补一条（bot 真实发言历史）
     if used and text:
-        _persist_sent(ctx, platform, target_type, target_id, text)
+        await _persist_sent(ctx, platform, target_type, target_id, text)
 
     if image_url:
         result = await chain.Image(image_url)
@@ -352,7 +352,7 @@ async def send_dsl(ctx: ToolContext, platform: str, target_type: str, target_id:
     return utils.to_text(result)
 
 
-def _persist_sent(ctx, platform: str, target_type: str, target_id: str, text: str) -> None:
+async def _persist_sent(ctx, platform: str, target_type: str, target_id: str, text: str) -> None:
     """工具直发落库：发起会话记 assistant 条目（标注来源）；跨会话目标会话同样补记。
 
     AI"发完即忘"的根源——发送成功不写上下文，下一轮不知道自己发过图/说过话，
@@ -366,9 +366,9 @@ def _persist_sent(ctx, platform: str, target_type: str, target_id: str, text: st
     body = "[通过工具发送] " + str(text or "")
     try:
         if origin_key:
-            sessions.append(origin_key, "assistant", body)
+            await sessions.append(origin_key, "assistant", body)
         if target_key != origin_key:
-            sessions.append(target_key, "assistant", str(text or ""))
+            await sessions.append(target_key, "assistant", str(text or ""))
     except Exception:
         pass
 

@@ -250,7 +250,7 @@ class Compactor:
     async def compact(self, chat_key: str, force: bool = False, reason: str = "") -> dict:
 
         service = self.main.conversations
-        contexts = service.get_contexts(chat_key)
+        contexts = await service.get_contexts(chat_key)
         if not contexts:
             return {"chat_key": chat_key, "actions": [], "reason": reason or "empty"}
 
@@ -262,7 +262,7 @@ class Compactor:
 
         threshold = self._threshold()
         over = bool(threshold and context_tokens(contexts) > threshold)
-        turns_since = service.turns_since_compact(chat_key)
+        turns_since = await service.turns_since_compact(chat_key)
         every = int(getattr(self.config, "compact_every_turns", 10) or 0)
         preventive = bool(every and turns_since >= every)
         strategy = str(getattr(self.config, "context_strategy", "auto") or "auto").lower()
@@ -284,23 +284,23 @@ class Compactor:
                     if clean:
                         summary = clean
                     if facts and getattr(self.config, "facts_extract", True):
-                        added = service.append_facts(chat_key, facts)
+                        added = await service.append_facts(chat_key, facts)
                         if added:
                             actions.append(f"facts:+{added}")
                 if summary:
-                    service.append_summary(chat_key, summary)
-                service.replace_contexts(chat_key, kept)
-                service.mark_compacted(chat_key)
+                    await service.append_summary(chat_key, summary)
+                await service.replace_contexts(chat_key, kept)
+                await service.mark_compacted(chat_key)
                 actions.append(f"kept:{len(kept)}")
             else:
-                service.mark_compacted(chat_key)
+                await service.mark_compacted(chat_key)
                 actions.append("noop:few-turns")
         elif over or preventive:
-            service.replace_contexts(chat_key, contexts)
-            service.mark_compacted(chat_key)
+            await service.replace_contexts(chat_key, contexts)
+            await service.mark_compacted(chat_key)
             actions.append("strategy-off:slim-only")
         elif changed:
-            service.replace_contexts(chat_key, contexts)
+            await service.replace_contexts(chat_key, contexts)
             actions.append("slim-only")
 
         return {"chat_key": chat_key, "actions": actions, "reason": reason, "tokens": context_tokens(contexts)}

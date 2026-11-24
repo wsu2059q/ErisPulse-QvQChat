@@ -48,17 +48,17 @@ class BoomingPool:
         raise RuntimeError("llm down")
 
 
-def _seed_user_sessions(main) -> str:
+async def _seed_user_sessions(main) -> str:
     """u1 在两个群发言（建 user_seen 倒排）+ 群 facts + 记忆条目，返回 user_key。"""
     svc = main.conversations
     g1, g2 = "onebot11:group:1", "onebot11:group:2"
-    svc.append_user(g1, "(u1): 大家好", sender_id="u1")
-    svc.append_user(g2, "(u1): 又见面了", sender_id="u1")
-    svc.append_facts(g1, ["PREFERENCE|喜欢蓝色", "ENTITY|张三"])
-    svc.append_facts(g2, ["PREFERENCE|喜欢蓝色，深色的那种", "TODO|周五交报告"])
-    main.memory.remember(g1, "用户是资深 Python 工程师", importance=5)
-    main.memory.remember(g1, "低重要度逐会话记忆", importance=2)
-    main.memory.remember("global", "回复要简洁", importance=3)
+    await svc.append_user(g1, "(u1): 大家好", sender_id="u1")
+    await svc.append_user(g2, "(u1): 又见面了", sender_id="u1")
+    await svc.append_facts(g1, ["PREFERENCE|喜欢蓝色", "ENTITY|张三"])
+    await svc.append_facts(g2, ["PREFERENCE|喜欢蓝色，深色的那种", "TODO|周五交报告"])
+    await main.memory.remember(g1, "用户是资深 Python 工程师", importance=5)
+    await main.memory.remember(g1, "低重要度逐会话记忆", importance=2)
+    await main.memory.remember("global", "回复要简洁", importance=3)
     return "onebot11:u1"
 
 
@@ -67,7 +67,7 @@ def _seed_user_sessions(main) -> str:
 
 async def test_consolidate_aggregates_and_dedupes():
     main = FakeMain()
-    user_key = _seed_user_sessions(main)
+    user_key = await _seed_user_sessions(main)
     main.pool = DistillPool(
         "<traits>\n- 张三是资深 Python 工程师\n</traits>\n<preferences>\n- 喜欢蓝色（深色）\n</preferences>"
     )
@@ -77,7 +77,7 @@ async def test_consolidate_aggregates_and_dedupes():
     specs = main.pool.specs
     assert specs and specs[0].kind == "compact" and specs[0].prefer == "cheap"
 
-    profile = main.conversations.profile.get(user_key)
+    profile = await main.conversations.profile.get(user_key)
     traits = [t["text"] for t in profile["traits"]]
     prefs = [p["text"] for p in profile["preferences"]]
     facts = [f["text"] for f in profile["facts"]]
@@ -93,11 +93,11 @@ async def test_consolidate_aggregates_and_dedupes():
 
 async def test_consolidate_llm_failure_keeps_raw_items():
     main = FakeMain()
-    user_key = _seed_user_sessions(main)
+    user_key = await _seed_user_sessions(main)
     main.pool = BoomingPool()
 
     await main.conversations.profile.consolidate(user_key)
-    profile = main.conversations.profile.get(user_key)
+    profile = await main.conversations.profile.get(user_key)
     traits = [t["text"] for t in profile["traits"]]
     prefs = [p["text"] for p in profile["preferences"]]
 # 兜底分类：PREFERENCE| → preferences；ENTITY/TODO/memory → traits
@@ -128,7 +128,7 @@ async def test_consolidate_decays_stale_traits():
         },
     )
     report = await main.conversations.profile.consolidate("onebot11:u1")
-    traits = [t["text"] for t in main.conversations.profile.get("onebot11:u1")["traits"]]
+    traits = [t["text"] for t in (await main.conversations.profile.get("onebot11:u1"))["traits"]]
     assert "过时的特点" not in traits, "40 天未强化的 traits 应被淘汰"
     assert "新鲜的特点" in traits
     assert report["decayed"] == 1
@@ -138,8 +138,8 @@ async def test_consolidate_reinforcement_survives_decay():
     main = FakeMain(profile_decay_days=30)
     g1 = "onebot11:group:1"
     svc = main.conversations
-    svc.append_user(g1, "(u1): 我喜欢蓝色", sender_id="u1")
-    svc.append_facts(g1, ["PREFERENCE|喜欢蓝色"])
+    await svc.append_user(g1, "(u1): 我喜欢蓝色", sender_id="u1")
+    await svc.append_facts(g1, ["PREFERENCE|喜欢蓝色"])
     main.pool = BoomingPool()# 兜底：PREFERENCE| 归 preferences
 
     stale_ts = time.time() - 40 * 86400
@@ -154,8 +154,8 @@ async def test_consolidate_reinforcement_survives_decay():
     )
     await svc.profile.consolidate("onebot11:u1")
     texts_all = [
-        *[t["text"] for t in svc.profile.get("onebot11:u1")["traits"]],
-        *[p["text"] for p in svc.profile.get("onebot11:u1")["preferences"]],
+        *[t["text"] for t in (await svc.profile.get("onebot11:u1"))["traits"]],
+        *[p["text"] for p in (await svc.profile.get("onebot11:u1"))["preferences"]],
     ]
     assert "PREFERENCE|喜欢蓝色" in texts_all, "被新事实强化的条目应存活（ts 刷新）"
 
@@ -169,13 +169,13 @@ async def test_decay_disabled_keeps_stale():
         {"traits": [{"text": "老条目", "ts": stale_ts}], "preferences": [], "facts": [], "updated": stale_ts},
     )
     await main.conversations.profile.consolidate("onebot11:u1")
-    assert [t["text"] for t in main.conversations.profile.get("onebot11:u1")["traits"]] == ["老条目"]
+    assert [t["text"] for t in (await main.conversations.profile.get("onebot11:u1"))["traits"]] == ["老条目"]
 
 
 # ===== digest 与条目上限 =====
 
 
-def test_digest_limit_and_truncation():
+async def test_digest_limit_and_truncation():
     main = FakeMain(profile_inject=3)
     store = ProfileStore(main)
     _put_profile(
@@ -185,48 +185,48 @@ def test_digest_limit_and_truncation():
         preferences=["偏好A"],
         facts=["ENTITY|张三"],
     )
-    lines = store.digest("onebot11:u1")
+    lines = await store.digest("onebot11:u1")
     assert len(lines) == 3
     assert all(line.startswith("[trait] ") for line in lines)
 
     long_trait = "长" * 300
     _put_profile(main, "onebot11:u2", traits=[long_trait])
-    lines = store.digest("onebot11:u2", limit=8)
+    lines = await store.digest("onebot11:u2", limit=8)
     assert len(lines) == 1 and len(lines[0]) <= len("[trait] ") + 160
 
 
-def test_profile_max_caps_categories():
+async def test_profile_max_caps_categories():
     main = FakeMain(profile_max=2)
     store = ProfileStore(main)
-    store._save("onebot11:u1", {"traits": [{"text": f"t{i}", "ts": 1.0} for i in range(5)],
-                                "preferences": [], "facts": [], "updated": 1.0})
-    profile = store.get("onebot11:u1")
+    await store._save("onebot11:u1", {"traits": [{"text": f"t{i}", "ts": 1.0} for i in range(5)],
+                                      "preferences": [], "facts": [], "updated": 1.0})
+    profile = await store.get("onebot11:u1")
     assert [t["text"] for t in profile["traits"]] == ["t3", "t4"], "超限保最新"
 
 
-def test_clear_returns_removed_count():
+async def test_clear_returns_removed_count():
     main = FakeMain()
     _put_profile(main, "onebot11:u1", traits=["a"], preferences=["b"], facts=["c"])
     store = ProfileStore(main)
-    assert store.clear("onebot11:u1") == 3
-    assert store.get("onebot11:u1")["traits"] == []
-    assert store.clear("onebot11:u1") == 0
+    assert await store.clear("onebot11:u1") == 3
+    assert (await store.get("onebot11:u1"))["traits"] == []
+    assert await store.clear("onebot11:u1") == 0
 
 
 # ===== active_user_keys（近期活跃） =====
 
 
-def test_active_user_keys_from_user_seen():
+async def test_active_user_keys_from_user_seen():
     main = FakeMain()
     svc = main.conversations
-    svc.append_user("onebot11:group:1", "(u1): hi", sender_id="u1")
-    svc.append_user("onebot11:group:2", "(u2): hi", sender_id="u2")
+    await svc.append_user("onebot11:group:1", "(u1): hi", sender_id="u1")
+    await svc.append_user("onebot11:group:2", "(u2): hi", sender_id="u2")
 # u3 很久没说话
     main.sdk.storage.set(
         "QvQChat:user_seen:u3",
         [{"chat_key": "onebot11:group:3", "ts": time.time() - 48 * 3600, "head": ""}],
     )
-    keys = ProfileStore(main).active_user_keys(within_hours=24)
+    keys = await ProfileStore(main).active_user_keys(within_hours=24)
     assert "onebot11:u1" in keys and "onebot11:u2" in keys
     assert all(not k.endswith(":u3") for k in keys)
 
@@ -242,15 +242,15 @@ def test_priority_profile_between_facts_and_memory():
 # ===== service 注入 =====
 
 
-def test_build_system_parts_injects_profile():
+async def test_build_system_parts_injects_profile():
     main = FakeMain()
     svc = main.conversations
     key = "onebot11:group:1"
-    svc.append_facts(key, ["ENTITY|张三"])
+    await svc.append_facts(key, ["ENTITY|张三"])
     _put_profile(main, "onebot11:u1", traits=["熟悉 Python"], preferences=["喜欢简洁"])
     persona = main.personas.resolve(key)
 
-    parts = svc.build_system_parts(persona, chat_key=key, profile_user="onebot11:u1")
+    parts = await svc.build_system_parts(persona, chat_key=key, profile_user="onebot11:u1")
     kinds = [p.kind for p in parts]
     assert "profile" in kinds
     assert kinds.index("facts") < kinds.index("profile")
@@ -258,10 +258,10 @@ def test_build_system_parts_injects_profile():
     assert "[trait] 熟悉 Python" in part.text and "[pref] 喜欢简洁" in part.text
 
 # 无 profile_user / 功能关闭时不注入
-    assert "profile" not in [p.kind for p in svc.build_system_parts(persona, chat_key=key)]
+    assert "profile" not in [p.kind for p in await svc.build_system_parts(persona, chat_key=key)]
     main.cfg.profile_enabled = False
     assert "profile" not in [
-        p.kind for p in svc.build_system_parts(persona, chat_key=key, profile_user="onebot11:u1")
+        p.kind for p in await svc.build_system_parts(persona, chat_key=key, profile_user="onebot11:u1")
     ]
 
 
@@ -310,8 +310,8 @@ def cli_host(monkeypatch):
 async def test_qvq_memories_displays_overview(cli_host):
     host = cli_host
     chat_key = "onebot11:group:1"
-    host.conversations.append_facts(chat_key, ["ENTITY|张三"])
-    host.memory.remember(chat_key, "用户喜欢蓝色")
+    await host.conversations.append_facts(chat_key, ["ENTITY|张三"])
+    await host.memory.remember(chat_key, "用户喜欢蓝色")
     _put_profile(host, "onebot11:u1", traits=["熟悉 Python"])
 
     event = CliEvent(args="memories", user_id="u1", group=True, group_id="1")
@@ -327,8 +327,8 @@ async def test_qvq_memories_displays_overview(cli_host):
 async def test_qvq_memories_clear_requires_admin_and_confirm(cli_host):
     host = cli_host
     _put_profile(host, "onebot11:u1", traits=["a"], preferences=["b"], facts=["c"])
-    host.conversations.append_facts("onebot11:group:1", ["ENTITY|张三"])
-    host.memory.remember("onebot11:group:1", "m")
+    await host.conversations.append_facts("onebot11:group:1", ["ENTITY|张三"])
+    await host.memory.remember("onebot11:group:1", "m")
 
 # 非管理员
     event = CliEvent(args="memories clear profile confirm", user_id="stranger", group=True, group_id="1")
@@ -339,7 +339,7 @@ async def test_qvq_memories_clear_requires_admin_and_confirm(cli_host):
     event = CliEvent(args="memories clear profile", user_id="u1", group=True, group_id="1")
     await host._cmd_agent(event)
     assert texts.t("memories_clear_need_confirm") in event.replies[0][1]
-    assert host.conversations.profile.get("onebot11:u1")["traits"], "未确认不得清空"
+    assert (await host.conversations.profile.get("onebot11:u1"))["traits"], "未确认不得清空"
 
 # 未知目标
     event = CliEvent(args="memories clear nonsense confirm", user_id="u1", group=True, group_id="1")
@@ -351,26 +351,26 @@ async def test_qvq_memories_clear_graded(cli_host):
     host = cli_host
     chat_key = "onebot11:group:1"
     _put_profile(host, "onebot11:u1", traits=["a"], preferences=["b"], facts=["c"])
-    host.conversations.append_user(chat_key, "(u1): hi", sender_id="u1")
-    host.conversations.append_facts(chat_key, ["ENTITY|张三", "TODO|交报告"])
-    host.memory.remember(chat_key, "记忆1")
-    host.memory.remember(chat_key, "记忆2")
+    await host.conversations.append_user(chat_key, "(u1): hi", sender_id="u1")
+    await host.conversations.append_facts(chat_key, ["ENTITY|张三", "TODO|交报告"])
+    await host.memory.remember(chat_key, "记忆1")
+    await host.memory.remember(chat_key, "记忆2")
 
     event = CliEvent(args="memories clear facts confirm", user_id="u1", group=True, group_id="1")
     await host._cmd_agent(event)
     assert texts.t("memories_cleared", target="facts", count=2) in event.replies[0][1]
-    assert host.conversations.facts_of(chat_key) == []
-    assert host.memory.entries(chat_key), "清 facts 不得动 memory"
+    assert await host.conversations.facts_of(chat_key) == []
+    assert await host.memory.entries(chat_key), "清 facts 不得动 memory"
 
     event = CliEvent(args="memories clear memory confirm", user_id="u1", group=True, group_id="1")
     await host._cmd_agent(event)
     assert texts.t("memories_cleared", target="memory", count=2) in event.replies[0][1]
-    assert host.memory.entries(chat_key) == []
+    assert await host.memory.entries(chat_key) == []
 
     event = CliEvent(args="memories clear profile confirm", user_id="u1", group=True, group_id="1")
     await host._cmd_agent(event)
     assert texts.t("memories_cleared", target="profile", count=3) in event.replies[0][1]
-    assert host.conversations.profile.get("onebot11:u1")["traits"] == []
+    assert (await host.conversations.profile.get("onebot11:u1"))["traits"] == []
 
 
 # ===== scheduler：固化定时任务 =====
@@ -398,7 +398,7 @@ async def test_tick_fires_profile_task_and_consolidates():
     main = FakeMain()
     scheduler = Scheduler(main)
     await scheduler.ensure_profile_task()
-    _seed_user_sessions(main)
+    await _seed_user_sessions(main)
     tasks = await scheduler.list()
     tasks[0]["next_run"] = time.time() - 10
     main.sdk.storage.set("QvQChat:tasks", tasks)
@@ -406,7 +406,7 @@ async def test_tick_fires_profile_task_and_consolidates():
 
     await scheduler._tick()
     assert main.tasks_fired == [], "画像任务不得走 run_prompt"
-    profile = main.conversations.profile.get("onebot11:u1")
+    profile = await main.conversations.profile.get("onebot11:u1")
     assert profile["traits"] or profile["facts"], "固化循环应产出画像"
     assert any(t["task_kind"] == "profile_consolidate" for t in await scheduler.list()), "interval 任务保留"
 
@@ -419,7 +419,7 @@ async def test_profile_fire_skips_failed_users():
         def __init__(self):
             self.calls = []
 
-        def active_user_keys(self, within_hours=24.0):
+        async def active_user_keys(self, within_hours=24.0):
             return ["a:1", "b:2"]
 
         async def consolidate(self, user_key):
@@ -458,20 +458,20 @@ async def test_memory_get_returns_session_profile():
     main = FakeMain()
     svc = main.conversations
     chat_key = "onebot11:group:1"
-    svc.append_user(chat_key, "(u1): hi", sender_id="u1")
-    svc.append(chat_key, "assistant", "hello")
+    await svc.append_user(chat_key, "(u1): hi", sender_id="u1")
+    await svc.append(chat_key, "assistant", "hello")
     _put_profile(main, "onebot11:u1", traits=["熟悉 Python"])
 
     host = SessionsHost(main)
     data = await host.memory_get(ApiRequest(query={"chat_key": chat_key}))
     assert data["profile_user"] == "onebot11:u1"
     assert [t["text"] for t in data["profile"]["traits"]] == ["熟悉 Python"]
-    assert data["entries"] == main.memory.entries(chat_key)
+    assert data["entries"] == await main.memory.entries(chat_key)
 
 
 async def test_memory_get_without_chat_key_returns_latest_profile():
     main = FakeMain()
-    _seed_user_sessions(main)
+    await _seed_user_sessions(main)
     _put_profile(main, "onebot11:u1", traits=["T1"])
     host = SessionsHost(main)
     data = await host.memory_get(ApiRequest())
@@ -486,7 +486,7 @@ async def test_profile_clear_endpoint():
     host = SessionsHost(main)
     data = await host.profile_clear(ApiRequest(body={"user_key": "onebot11:u1"}))
     assert data["ok"] is True and data["removed"] == 1
-    assert main.conversations.profile.get("onebot11:u1")["traits"] == []
+    assert (await main.conversations.profile.get("onebot11:u1"))["traits"] == []
 
     status, code = await host.profile_clear(ApiRequest(body={"user_key": ""}))
     assert code == 400

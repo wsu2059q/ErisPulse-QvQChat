@@ -17,7 +17,7 @@ async def search_docs(ctx: ToolContext, query: str, top_k: int = 5) -> str:
     docs = getattr(ctx.main, "docs", None)
     if docs is None:
         return texts.t("docs_disabled")
-    results = docs.search(query, top_k=top_k)
+    results = await docs.search(query, top_k=top_k)
     if not results:
         return texts.t("docs_empty", query=query)
     blocks = []
@@ -30,7 +30,7 @@ async def read_doc(ctx: ToolContext, file: str, limit: int = 8000) -> str:
     docs = getattr(ctx.main, "docs", None)
     if docs is None:
         return texts.t("docs_disabled")
-    return docs.read(file, limit=limit)
+    return await docs.read(file, limit=limit)
 
 
 async def refresh_docs(ctx: ToolContext) -> str:

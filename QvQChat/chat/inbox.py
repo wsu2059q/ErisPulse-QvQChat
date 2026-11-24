@@ -604,7 +604,7 @@ class InboxMixin(RecoveryMixin):
         global_limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
         if global_limit > 0 and int(data.get("tokens", 0) or 0) >= global_limit:
             return True
-        session_limit = int(get_policy(self.sdk, chat_key).get("session_budget") or 0)
+        session_limit = int((await get_policy(self.sdk, chat_key)).get("session_budget") or 0)
         if session_limit > 0:
             by_chat = data.get("by_chat")
             used = int((by_chat or {}).get(chat_key, 0) or 0) if isinstance(by_chat, dict) else 0
@@ -686,13 +686,13 @@ class InboxMixin(RecoveryMixin):
         except Exception as e:
             self.logger.debug(f"rate limit notice reply failed: {e}")
 
-    def _trigger_mode_of(self, chat_key: str) -> str:
+    async def _trigger_mode_of(self, chat_key: str) -> str:
         """生效触发规则：会话覆盖只能比全局更严（取两者中更严格的档）。"""
         g = str(getattr(self.cfg, "trigger_mode", "all") or "all").lower()
         if g not in TRIGGER_RANK:
             g = "all"
         try:
-            per = self.sessions.trigger_mode_of(chat_key).lower()
+            per = (await self.sessions.trigger_mode_of(chat_key)).lower()
         except Exception:
             per = ""
         if per not in TRIGGER_RANK:
@@ -773,7 +773,7 @@ class InboxMixin(RecoveryMixin):
         claims[key] = now
         return True
 
-    def _record_lurker_message(self, event, chat_key: str, text: str) -> None:
+    async def _record_lurker_message(self, event, chat_key: str, text: str) -> None:
         """旁听落库：未触发 bot 的群消息记入会话历史（带发言人标注，与触发路径同形）。
 
         不进 AI 管线、不回应、不问询——只保证"群里聊过的东西都在上下文里"，
@@ -784,7 +784,7 @@ class InboxMixin(RecoveryMixin):
                 sender_id=str(event.get_user_id() or ""),
                 sender_name=self._sender_name(event),
             )
-            self.sessions.append_user(chat_key, labeled, sender_id=str(event.get_user_id() or ""))
+            await self.sessions.append_user(chat_key, labeled, sender_id=str(event.get_user_id() or ""))
         except Exception as e:
             self.logger.debug(f"lurker message record failed: {e}")
 
@@ -804,7 +804,7 @@ class InboxMixin(RecoveryMixin):
                     return True
         return False
 
-    def _sender_muted(self, chat_key: str, event) -> bool:
+    async def _sender_muted(self, chat_key: str, event) -> bool:
         """用户级屏蔽早闸：管理员豁免；屏蔽中的用户整条消息直接丢弃。"""
         sender_id = str(event.get_user_id() or "")
         if not sender_id:
@@ -814,14 +814,14 @@ class InboxMixin(RecoveryMixin):
         store = getattr(self.sessions, "user_mutes", None)
         if store is None:
             return False
-        return store.get(chat_key, sender_id) is not None
+        return await store.get(chat_key, sender_id) is not None
 
-    def _mutes_note(self, chat_key: str) -> str:
+    async def _mutes_note(self, chat_key: str) -> str:
         """活跃屏蔽的场景告知：让模型知道哪些人被自己屏蔽、收不到 TA 的消息。"""
         store = getattr(self.sessions, "user_mutes", None)
         if store is None:
             return ""
-        entries = store.active(chat_key)
+        entries = await store.active(chat_key)
         if not entries:
             return ""
         items = "、".join(
@@ -851,19 +851,19 @@ class InboxMixin(RecoveryMixin):
             chat_key = self._chat_key_of(event)
 # 身份迁移：跨平台/换号后旧键映射到新键——历史/人格/记忆/事实全部跟随
 # （映射在路由解析之前应用，映射目标自身仍可再走路由）
-            chat_key = self.sessions.resolve_identity(chat_key)
-            routed = self.sessions.resolve_route(chat_key)
+            chat_key = await self.sessions.resolve_identity(chat_key)
+            routed = await self.sessions.resolve_route(chat_key)
             if routed:
                 chat_key = routed
 # mute/白名单早闸：屏蔽会话与白名单外会话整条消息丢弃（回复+旁听都不做）。
 # 放在路由解析之后：策略键跟随的是最终会话键；命令消息已在更早的 _is_command_message
 # 让路（/qvq unmute 仍可用），走到这里的不会是命令
-            if not listen_allowed(self.cfg, self.sdk, chat_key):
+            if not await listen_allowed(self.cfg, self.sdk, chat_key):
                 self.logger.debug(f"listen blocked by policy ({chat_key})")
                 return
 # 用户级屏蔽：被 AI/管理员屏蔽的用户整条丢弃——不旁听、不进 observe、不触发、不进历史。
 # 管理员永不被屏蔽；命令消息已在更早的 _is_command_message 让路
-            if self._sender_muted(chat_key, event):
+            if await self._sender_muted(chat_key, event):
                 self.logger.debug(f"sender muted by user-mute ({chat_key})")
                 return
 # H3 硬打断：本会话还有未发完的分段时，新消息命中强信号 → 丢弃剩余段
@@ -880,7 +880,7 @@ class InboxMixin(RecoveryMixin):
             sender_id = str(event.get_user_id() or "")
             sibling = self._is_sibling_bot(event, sender_id)
 # 隐私开关：会话开了 listen_off 就不向第三方广播本群消息（Stalker/插话随之静音）
-            if not self.sessions.get_flag(chat_key, "listen_off"):
+            if not await self.sessions.get_flag(chat_key, "listen_off"):
                 try:
                     is_group = event.is_group_message()
                     await self.sdk.lifecycle.emit(
@@ -937,12 +937,12 @@ class InboxMixin(RecoveryMixin):
                 quoted_me = await self._quote_targets_me(event)
             # 触发规则（会话级覆盖全局）：off 不响应 / lurk 只旁听（observe 已发出）/ at_only 群里仅点名。
             # 让渡 listen=all：全场接话，放宽 at_only 与群 @/唤醒门槛；off/lurk 硬闸不因让渡放行
-            mode = self._trigger_mode_of(chat_key)
+            mode = await self._trigger_mode_of(chat_key)
             if mode in ("off", "lurk"):
 # lurk 只旁听：observe 已广播，但消息本身也要进会话历史——否则 lurk 会话
 # 后续被 @/触发时 AI 的上下文里没有刚才群里聊的内容
                 if mode == "lurk":
-                    self._record_lurker_message(event, chat_key, text)
+                    await self._record_lurker_message(event, chat_key, text)
                 return
             ho_all = bool(
                 getattr(self.cfg, "handover_enabled", True)
@@ -951,7 +951,7 @@ class InboxMixin(RecoveryMixin):
             if mode == "at_only" and event.is_group_message() and not (
                 self._is_direct_address(event, text, quoted_me, at_targets) or ho_all
             ):
-                self._record_lurker_message(event, chat_key, text)
+                await self._record_lurker_message(event, chat_key, text)
                 return
             if not ho_all and not self._should_trigger(event, chat_key, text, quoted_me, at_targets):
 #  扩展点 B：未被 @/前缀命中时问询参与决策提供者（默认关闭），
@@ -977,9 +977,9 @@ class InboxMixin(RecoveryMixin):
                         await self._interject(manager, event, chat_key, text, decision)
 # 旁听落库：未触发 bot 的群消息也进会话历史——否则 @ 之类后续触发时 AI 的上下文
 # 里没有最近讨论（只能靠旧记忆瞎猜话题），「总结一下」就没对象可总结
-                self._record_lurker_message(event, chat_key, text)
+                await self._record_lurker_message(event, chat_key, text)
                 return
-            if event.is_group_message() and not self.sessions.member_allowed(
+            if event.is_group_message() and not await self.sessions.member_allowed(
                 chat_key, str(event.get_user_id() or ""), event.get_platform() or ""
             ):
                 return
@@ -1045,7 +1045,7 @@ class InboxMixin(RecoveryMixin):
         if decision.get("speak"):
             sender_id = str(event.get_user_id() or "")
 # 成员准入（按会话整体）：白名单非 * 时仅名单内发送者可作为插话由头
-            if not self.sessions.member_allowed(chat_key, sender_id, event.get_platform() or ""):
+            if not await self.sessions.member_allowed(chat_key, sender_id, event.get_platform() or ""):
                 budget_ok, budget_reason = False, texts.t("participate_member_denied")
             else:
                 budget_ok, budget_reason = manager.budget.allow(chat_key, "interject")
@@ -1096,9 +1096,9 @@ class InboxMixin(RecoveryMixin):
             return ""
         name = str(event.get("group_name") or "")
         if name:
-            self.sessions.set_group_name(chat_key, name)
+            await self.sessions.set_group_name(chat_key, name)
             return name
-        cached = self.sessions.group_name_of(chat_key)
+        cached = await self.sessions.group_name_of(chat_key)
         if cached:
             return cached
         adapter = self.sdk.adapter.get(event.get_platform() or "")
@@ -1114,7 +1114,7 @@ class InboxMixin(RecoveryMixin):
             self.logger.debug(f"get_group_info failed: {e}")
             name = ""
         if name:
-            self.sessions.set_group_name(chat_key, name)
+            await self.sessions.set_group_name(chat_key, name)
         return name
 
     async def _auto_interrupt_decide(self, chat_key: str, old_live, new_text: str) -> tuple[str, str, str]:
@@ -1143,7 +1143,7 @@ class InboxMixin(RecoveryMixin):
 # 只看当前任务输出+新消息会把"同意/停/不是这个"之类短回复判错
             recent_lines: list[str] = []
             try:
-                for msg in list(self.sessions.get_contexts(chat_key) or [])[-5:]:
+                for msg in list(await self.sessions.get_contexts(chat_key) or [])[-5:]:
                     if not isinstance(msg, dict):
                         continue
                     role = str(msg.get("role") or "")
@@ -1600,7 +1600,7 @@ class InboxMixin(RecoveryMixin):
 # 会话策略叠加闸门优先级：插话让位于用户直接提问（0=直答 / 6=插话），
 # mute 之外还有 low/high 档会话在满载时的让位/抢先（数值小者先拿并发空位）
 # 人格级覆盖：prefill 开场白 + temperature/max_tokens（聊天链路无显式参数，人格即覆盖层）
-                    policy = get_policy(self.sdk, chat_key)
+                    policy = await get_policy(self.sdk, chat_key)
 # 低token生效态（会话 low_token / 超限自动进入）→ chat 回合显式 prefer cheap：
 # runner 内只认全局 budget_mode，会话级与自动态在此传入（显式档位不被自动档覆盖）
                     budget_pref = "cheap" if (
@@ -1631,7 +1631,7 @@ class InboxMixin(RecoveryMixin):
                     if live is not None:
                         partial, partial_trace, partial_rounds = live.partial_record()
                         if partial:
-                            self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
+                            await self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
                         live.reply = partial or None
                         live.status = "done"
                         live.publish("done", {"reply": partial, "session": chat_key})
@@ -1644,7 +1644,7 @@ class InboxMixin(RecoveryMixin):
                     if live is not None:
                         partial, partial_trace, partial_rounds = live.partial_record()
                         if partial:
-                            self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
+                            await self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
                             saved = True
                         live.reply = partial or None
                         live.status = "done"
@@ -1731,7 +1731,7 @@ class InboxMixin(RecoveryMixin):
                 await self.sessions.finalize(chat_key, reply, trace=result.tool_trace, rounds=getattr(result, "rounds", None), usage=result.usage, model=getattr(result, "model", ""), user_id=sender_id)
                 try:
 # 隐私开关：listen_off 时回执事件也不出群
-                    if not self.sessions.get_flag(chat_key, "listen_off"):
+                    if not await self.sessions.get_flag(chat_key, "listen_off"):
                         await self.sdk.lifecycle.emit(
                             "qvq.replied",
                             {"chat_key": chat_key, "reply": reply, "tools": len(result.tool_trace)},
@@ -1769,9 +1769,9 @@ class InboxMixin(RecoveryMixin):
                 try:
                     partial, partial_trace, partial_rounds = failed_live.partial_record()
                     if partial or partial_trace:
-                        self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
+                        await self.sessions.append(chat_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
                     else:
-                        self.sessions.append(chat_key, "assistant", texts.t("turn_aborted_note", error=utils.truncate(str(e), 120)))
+                        await self.sessions.append(chat_key, "assistant", texts.t("turn_aborted_note", error=utils.truncate(str(e), 120)))
                 except Exception as save_err:
                     self.logger.debug(f"partial save on failure failed: {save_err}")
             if origin == "plugin" and not bool(getattr(self.cfg, "notify_on_passive_failure", False)):
@@ -1836,7 +1836,7 @@ class InboxMixin(RecoveryMixin):
 # 场景注记随 ctx 走：spawn_agent 时注入子智能体（群名/发言人/触发方式）
             ctx.scene_note = scene
 # 群语气画像：后台学习出的本群说话风格（很小的一段，低token也不影响语气一致性）
-            group_style = self.sessions.group_style_of(chat_key)
+            group_style = await self.sessions.group_style_of(chat_key)
             if group_style:
                 scene += texts.t("scene_group_style", style=group_style)
 # 成员名册：模型"认识"这个群的常客（最近发言者反查昵称；API 名单有权限时更全）
@@ -1849,7 +1849,7 @@ class InboxMixin(RecoveryMixin):
             if sender_name:
                 scene = texts.t("scene_private", name=sender_name, id=sender_id)
 # 活跃屏蔽告知（群/私聊都注入）：模型知道自己屏蔽了谁，且收不到 TA 的消息
-        mutes_note = self._mutes_note(chat_key)
+        mutes_note = await self._mutes_note(chat_key)
         if mutes_note:
             scene += mutes_note
 # 重逢感知：距上次对话超过阈值时告知模型——隔三天回来接得像隔三秒一样是拟人化穿帮点
@@ -1934,7 +1934,7 @@ class InboxMixin(RecoveryMixin):
     async def _over_budget_gate(self, event, chat_key: str, sender_id: str, origin: str) -> bool:
         """预算闸门步：日/会话超限拦截（True=本轮跳过）。拦截语义见内注。"""
         limit = int(getattr(self.cfg, "daily_token_limit", 0) or 0)
-        session_budget = int(get_policy(self.sdk, chat_key).get("session_budget") or 0)
+        session_budget = int((await get_policy(self.sdk, chat_key)).get("session_budget") or 0)
         if limit or session_budget:
             usage_today = await self._usage_today()
             used_today = int(usage_today.get("tokens", 0) or 0)
@@ -2091,7 +2091,7 @@ class InboxMixin(RecoveryMixin):
             turns=int(state.get("turns") or 0),
         )
         try:
-            self.sessions.append(chat_key, "user", note)
+            await self.sessions.append(chat_key, "user", note)
         except Exception as e:
             self.logger.warning(f"handover note append failed: {e}")
         if int(state.get("turns") or 0) >= 1 and str(state.get("sub_key") or ""):
@@ -2108,7 +2108,7 @@ class InboxMixin(RecoveryMixin):
         if pool is None or not callable(getattr(pool, "dispatch", None)) or (callable(blocked) and blocked()):
             return
         try:
-            transcript = handover.transcript_of(self.sessions.get_contexts(sub_key))
+            transcript = handover.transcript_of(await self.sessions.get_contexts(sub_key))
         except Exception:
             transcript = ""
         if not transcript.strip():
@@ -2126,14 +2126,14 @@ class InboxMixin(RecoveryMixin):
             summary = strip_stray_tags(str(getattr(response, "text", "") or "").strip())
             if not summary:
                 return
-            self.sessions.append(
+            await self.sessions.append(
                 chat_key, "user",
                 texts.t("handover_summary_note", summary=utils.truncate(summary, 500)),
             )
         except Exception as e:
             self.logger.debug(f"handover summary failed: {e}")
 
-    def _handover_partial_save(self, sub_key: str, live) -> None:
+    async def _handover_partial_save(self, sub_key: str, live) -> None:
         """
         {!--< internal-use >!--}
         让渡回合中止：部分输出归 sub: 会话，live 置终态放行会话。
@@ -2142,7 +2142,7 @@ class InboxMixin(RecoveryMixin):
             return
         partial, partial_trace, partial_rounds = live.partial_record()
         if partial:
-            self.sessions.append(sub_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
+            await self.sessions.append(sub_key, "assistant", partial, trace=partial_trace, rounds=partial_rounds)
         live.reply = partial or None
         live.status = "done"
         live.publish("done", {"reply": partial, "session": sub_key})
@@ -2196,8 +2196,8 @@ class InboxMixin(RecoveryMixin):
             {"text": labeled, "origin": origin, "ts": time.time()},
         )
         try:
-            self.sessions.append(sub_key, "user", labeled)
-            contexts = self.sessions.get_contexts(sub_key)
+            await self.sessions.append(sub_key, "user", labeled)
+            contexts = await self.sessions.get_contexts(sub_key)
             model = (
                 str(state.get("model") or "")
                 or str(getattr(self.cfg, "handover_model", "") or "")
@@ -2226,13 +2226,13 @@ class InboxMixin(RecoveryMixin):
                     on_reset=on_reset,
                     on_tool_event=on_tool_event,
                     on_reasoning=counting_reasoning,
-                    priority=apply_priority(get_policy(self.sdk, chat_key), 6 if origin == "plugin" else 0),
+                    priority=apply_priority(await get_policy(self.sdk, chat_key), 6 if origin == "plugin" else 0),
                 )
                 result = await self._guarded_run(
                     run_coro, timeout=_turn_timeout, think_cap=think_cap, box=think_box,
                 )
             except _HandoverAbort as abort:
-                self._handover_partial_save(sub_key, live)
+                await self._handover_partial_save(sub_key, live)
                 if abort.reason == _HANDOVER_ABORT_DROOL:
                     self.logger.warning(
                         f"handover turn aborted: reasoning exceeded {think_cap} chars ({chat_key}), ending handover"
@@ -2252,10 +2252,10 @@ class InboxMixin(RecoveryMixin):
                         self.logger.debug(f"handover timeout notice failed: {inner}")
                 return
             except asyncio.CancelledError:
-                self._handover_partial_save(sub_key, live)
+                await self._handover_partial_save(sub_key, live)
                 raise
             except Exception as e:
-                self._handover_partial_save(sub_key, live)
+                await self._handover_partial_save(sub_key, live)
                 self.logger.warning(f"handover turn failed: {e}")
                 try:
                     await event.reply(texts.t("run_failed", error=utils.truncate(str(e), 200)))
@@ -2273,7 +2273,7 @@ class InboxMixin(RecoveryMixin):
                 reply = utils.sub_marker_pattern(_HANDOVER_EXIT_RE, reply).strip()
             skip = utils.is_skip_reply(reply)
             if not skip and reply.strip():
-                self.sessions.append(sub_key, "assistant", reply)
+                await self.sessions.append(sub_key, "assistant", reply)
                 try:
                     await self.delivery.deliver_reply(event, reply, [], origin=origin)
                     self.rt.last_reply_ts[chat_key] = time.time()
@@ -2328,7 +2328,7 @@ class InboxMixin(RecoveryMixin):
                 return
             if str(event.get_platform() or "") == DASHBOARD_PLATFORM:
                 return
-            if self.sessions.get_flag(chat_key, "opening_sent"):
+            if await self.sessions.get_flag(chat_key, "opening_sent"):
                 return
             opening = [str(o).strip() for o in (persona.get("opening") or []) if str(o or "").strip()]
             if not opening:
@@ -2338,7 +2338,7 @@ class InboxMixin(RecoveryMixin):
                 max(1, int(getattr(self.cfg, "opening_max_len", 200) or 200)),
             )
             await event.reply(text)
-            self.sessions.set_flags(chat_key, {"opening_sent": True})
+            await self.sessions.set_flags(chat_key, {"opening_sent": True})
             await asyncio.sleep(0.8)
         except Exception as e:
             self.logger.debug(f"opening send failed: {e}")
@@ -2381,7 +2381,7 @@ class InboxMixin(RecoveryMixin):
                     continue
                 filtered.append(row)
             rows = filtered
-        rows = _seed_dedupe(rows, self.sessions.get_contexts(chat_key)) if chat_key else rows
+        rows = _seed_dedupe(rows, await self.sessions.get_contexts(chat_key)) if chat_key else rows
         if not rows:
 # 降级：框架收件箱不可用时走 event.history（无 sender，统一标注为未记录）
             try:
@@ -2589,7 +2589,7 @@ class InboxMixin(RecoveryMixin):
 # 退路：会话历史最近发言者（去重，新在前）
         if not entries:
             try:
-                contexts = self.sessions.get_contexts(chat_key)
+                contexts = await self.sessions.get_contexts(chat_key)
             except Exception:
                 contexts = []
             seen: list[str] = []

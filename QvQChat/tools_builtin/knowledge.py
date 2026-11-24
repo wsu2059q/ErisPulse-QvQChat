@@ -23,7 +23,7 @@ def _owner_of(ctx: ToolContext, scope: str) -> str:
 
 
 async def knowledge_search(ctx: ToolContext, query: str, top_k: int = 2) -> str:
-    results = ctx.main.knowledge.search(query, top_k=top_k, viewer=str(getattr(ctx, "chat_key", "") or ""))
+    results = await ctx.main.knowledge.search(query, top_k=top_k, viewer=str(getattr(ctx, "chat_key", "") or ""))
     if not results:
         return texts.t("kb_empty")
     return "\n\n".join(
@@ -36,7 +36,7 @@ async def knowledge_search(ctx: ToolContext, query: str, top_k: int = 2) -> str:
 async def knowledge_add(ctx: ToolContext, title: str, content: str, source: str = "",
                         scope: str = "chat", triggers: str = "") -> str:
     trig = [t.strip() for t in str(triggers or "").split(",") if t.strip()]
-    entry = ctx.main.knowledge.add(
+    entry = await ctx.main.knowledge.add(
         title, content, source=source, triggers=trig or None, owner=_owner_of(ctx, scope)
     )
     return utils.to_text({"ok": True, "id": entry["id"], "scope": scope or "chat"})
@@ -55,14 +55,14 @@ async def knowledge_update(ctx: ToolContext, kb_id: str, title: str = "", conten
         updates["triggers"] = [t.strip() for t in str(triggers or "").split(",") if t.strip()]
     if scope:
         updates["owner"] = _owner_of(ctx, scope)
-    entry = ctx.main.knowledge.update(kb_id, **updates)
+    entry = await ctx.main.knowledge.update(kb_id, **updates)
     if entry is None:
         return texts.t("kb_not_found", kb_id=kb_id)
     return utils.to_text({"ok": True, "id": kb_id})
 
 
 async def knowledge_delete(ctx: ToolContext, kb_id: str) -> str:
-    removed = ctx.main.knowledge.delete(kb_id)
+    removed = await ctx.main.knowledge.delete(kb_id)
     return utils.to_text({"ok": removed})
 
 

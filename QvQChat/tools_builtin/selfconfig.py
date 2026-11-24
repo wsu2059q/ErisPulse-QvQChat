@@ -82,7 +82,7 @@ async def manage_mcp(ctx: ToolContext, action: str = "list", name: str = "", tra
     mcp = ctx.main.mcp
     action = str(action or "list").lower()
     if action == "list":
-        return utils.to_text({"servers": mcp.list_servers(), "clients": mcp.status()})
+        return utils.to_text({"servers": await mcp.list_servers(), "clients": mcp.status()})
     if action == "status":
         return utils.to_text(mcp.status())
     if action == "save":
@@ -100,7 +100,7 @@ async def manage_mcp(ctx: ToolContext, action: str = "list", name: str = "", tra
         if timeout:
             entry["timeout"] = timeout
         try:
-            saved = mcp.save_server(entry)
+            saved = await mcp.save_server(entry)
         except ValueError as e:
             return str(e)
         info = None
@@ -115,9 +115,9 @@ async def manage_mcp(ctx: ToolContext, action: str = "list", name: str = "", tra
             await mcp.disconnect(str(name or ""))
         except Exception:
             pass
-        return utils.to_text({"ok": mcp.delete_server(str(name or ""))})
+        return utils.to_text({"ok": await mcp.delete_server(str(name or ""))})
     if action == "connect":
-        server_cfg = next((s for s in mcp.list_servers() if s.get("name") == name), None)
+        server_cfg = next((s for s in await mcp.list_servers() if s.get("name") == name), None)
         if server_cfg is None:
             return f"server not found: {name}"
         try:
@@ -393,16 +393,16 @@ async def manage_identity(ctx: ToolContext, action: str = "list", source: str = 
     action = str(action or "list").strip().lower()
     if action == "list":
         return utils.to_text({
-            "identity_map": sessions.identity_map(),
+            "identity_map": await sessions.identity_map(),
             "hint": "source → target: 新消息按 target 会话处理；映射可 remove 回退",
         })
     if action == "migrate":
-        summary = sessions.migrate_identity(str(source or ""), str(target or ""), str(mode or "alias"))
+        summary = await sessions.migrate_identity(str(source or ""), str(target or ""), str(mode or "alias"))
         if not summary.get("ok"):
             return utils.to_text({"ok": False, "error": summary.get("error")})
         return utils.to_text(summary)
     if action == "remove":
-        return utils.to_text({"ok": sessions.remove_identity(str(source or ""))})
+        return utils.to_text({"ok": await sessions.remove_identity(str(source or ""))})
     return f"unknown action: {action} (list / migrate / remove)"
 
 
@@ -424,7 +424,7 @@ async def session_settings(ctx: ToolContext, action: str = "get", chat_key: str 
     if action == "get":
         from ..conversation.policy import budget_effective, get_policy
 
-        policy = get_policy(ctx.sdk, key)
+        policy = await get_policy(ctx.sdk, key)
         usage = await main._usage_today() if hasattr(main, "_usage_today") else {}
         if not isinstance(usage, dict):
             usage = {}
@@ -432,14 +432,14 @@ async def session_settings(ctx: ToolContext, action: str = "get", chat_key: str 
         session_tokens = int((by_chat or {}).get(key, 0) or 0) if isinstance(by_chat, dict) else 0
         return utils.to_text({
             "chat_key": key,
-            "trigger_mode": main.sessions.trigger_mode_of(key),
-            "listen_off": bool(main.sessions.get_flag(key, "listen_off")),
-            "ui": (main.sessions._state(key).get("ui") or {}),
+            "trigger_mode": await main.sessions.trigger_mode_of(key),
+            "listen_off": bool(await main.sessions.get_flag(key, "listen_off")),
+            "ui": ((await main.sessions._state(key)).get("ui") or {}),
             "muted": policy.get("muted"),
             "low_token": policy.get("low_token"),
             "priority": policy.get("priority"),
             "session_budget": policy.get("session_budget"),
-            "low_token_active": budget_effective(ctx.sdk, ctx.config, key),
+            "low_token_active": await budget_effective(ctx.sdk, ctx.config, key),
             "usage_today": {
                 "session_tokens": session_tokens,
                 "session_budget": policy.get("session_budget"),
@@ -455,10 +455,10 @@ async def session_settings(ctx: ToolContext, action: str = "get", chat_key: str 
         ui_patch = {k: str(settings[k]) for k in ("density", "model", "effort", "trigger_mode")
                     if settings.get(k) is not None}
         if ui_patch:
-            main.sessions.set_ui(key, ui_patch)
+            await main.sessions.set_ui(key, ui_patch)
             applied.extend(sorted(ui_patch))
         if "listen_off" in settings:
-            main.sessions.set_flags(key, {"listen_off": _as_bool(settings["listen_off"])})
+            await main.sessions.set_flags(key, {"listen_off": _as_bool(settings["listen_off"])})
             applied.append("listen_off")
 # 会话策略与 chatcfg（policy.set_policy）同源：静音/低token/优先级/会话日限额
         from ..conversation.policy import set_policy
@@ -472,7 +472,7 @@ async def session_settings(ctx: ToolContext, action: str = "get", chat_key: str 
         if "session_budget" in settings:
             policy_patch["session_budget"] = settings["session_budget"]
         if policy_patch:
-            set_policy(ctx.sdk, key, **policy_patch)
+            await set_policy(ctx.sdk, key, **policy_patch)
             applied.extend(sorted(policy_patch))
         return utils.to_text({"ok": True, "applied": applied, "chat_key": key})
     return f"unknown action: {action} (get / set)"

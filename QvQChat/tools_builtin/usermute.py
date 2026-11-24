@@ -42,13 +42,13 @@ async def user_mute(ctx: ToolContext, action: str = "list", user_id: str = "",
     uid = str(user_id or "").strip()
 
     if action == "list":
-        return utils.to_text({"muted": [_entry_view(i) for i in store.active(ctx.chat_key)]})
+        return utils.to_text({"muted": [_entry_view(i) for i in await store.active(ctx.chat_key)]})
 
     if not uid:
         return utils.to_text({"ok": False, "error": "user_id is required for add/remove"})
 
     if action == "remove":
-        removed = store.remove(ctx.chat_key, uid)
+        removed = await store.remove(ctx.chat_key, uid)
         if removed:
             await ctx.main.audit("user_mute_remove", {"user_id": uid}, ctx)
         return utils.to_text({"ok": removed, "user_id": uid})
@@ -57,7 +57,7 @@ async def user_mute(ctx: ToolContext, action: str = "list", user_id: str = "",
         if _is_admin(ctx, uid):
             return utils.to_text({"ok": False, "error": "cannot mute an admin"})
         if _is_admin(ctx, ctx.user_id):
-            item = store.add(ctx.chat_key, uid, reason, hours=hours, by="admin")
+            item = await store.add(ctx.chat_key, uid, reason, hours=hours, by="admin")
             await ctx.main.audit("user_mute_add", {"user_id": uid, "hours": hours,
                                              "reason": utils.truncate(reason, 80)}, ctx)
             return utils.to_text({"ok": True, "muted": _entry_view(item)})
@@ -77,7 +77,7 @@ async def user_mute(ctx: ToolContext, action: str = "list", user_id: str = "",
             hours_f = 0
         if hours_f <= 0 or hours_f > max_hours:
             hours_f = float(max_hours)
-        item = store.add(ctx.chat_key, uid, reason, hours=hours_f, by="ai")
+        item = await store.add(ctx.chat_key, uid, reason, hours=hours_f, by="ai")
         await ctx.main.audit("user_mute_add", {"user_id": uid, "hours": hours_f, "by": "ai",
                                          "reason": utils.truncate(reason, 80)}, ctx)
         return utils.to_text({"ok": True, "muted": _entry_view(item),

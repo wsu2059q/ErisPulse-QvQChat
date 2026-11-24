@@ -124,8 +124,8 @@ async def test_resolve_session_names_strips_account_and_reads_data():
     assert strip_account("onebot11:private:3838648009@643319481") == "onebot11:private:3838648009"
     await main.sessions.resolve_session_names(sessions)
     assert calls and calls[0][1] == "3838648009", calls  # 复合后缀已剥离
-    assert sessions[0]["name"] == "小白" or main.sessions._state(
-        "onebot11:private:3838648009@643319481").get("user_name") == "小白"
+    assert sessions[0]["name"] == "小白" or (await main.sessions._state(
+        "onebot11:private:3838648009@643319481")).get("user_name") == "小白"
 
 
 async def test_group_name_reads_envelope_data():

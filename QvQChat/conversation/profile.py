@@ -10,6 +10,10 @@ LLM（dispatch kind="compact" prefer="cheap"）提炼为 traits/preferences（�
 原始条目）；traits 超过 ``profile_decay_days`` 天未被新事实强化则淘汰。
 
 digest(user_key, limit=profile_inject)：注入系统提示用的紧凑行列表。
+
+存储访问全部走异步接口（aget/aset/adelete/aget_all_keys/aget_multi）：
+框架同步 get/set 在事件循环内会经 AsyncBridge 阻塞，读写方法一律 async def，
+调用方必须 await。
 """
 from __future__ import annotations
 
@@ -47,8 +51,8 @@ class ProfileStore:
     def _key(self, user_key: str) -> str:
         return PROFILE_PREFIX + str(user_key or "")
 
-    def _load(self, user_key: str) -> dict:
-        data = self.sdk.storage.get(self._key(user_key), None)
+    async def _load(self, user_key: str) -> dict:
+        data = await self.sdk.storage.aget(self._key(user_key), None)
         if not isinstance(data, dict):
             return {"traits": [], "preferences": [], "facts": [], "updated": 0.0}
         for name in ("traits", "preferences", "facts"):
@@ -61,23 +65,23 @@ class ProfileStore:
         data.setdefault("updated", 0.0)
         return data
 
-    def _save(self, user_key: str, data: dict) -> None:
+    async def _save(self, user_key: str, data: dict) -> None:
         max_n = max(1, int(getattr(self.config, "profile_max", 20) or 20))
         for name in ("traits", "preferences", "facts"):
             items = data.get(name) or []
             data[name] = items[-max_n:] if len(items) > max_n else items
         data["updated"] = utils.now_ts()
-        self.sdk.storage.set(self._key(user_key), data)
+        await self.sdk.storage.aset(self._key(user_key), data)
 
-    def get(self, user_key: str) -> dict:
+    async def get(self, user_key: str) -> dict:
         """画像全文（结构化 dict，供 CLI/Dashboard 只读展示）。"""
-        return self._load(user_key)
+        return await self._load(user_key)
 
-    def clear(self, user_key: str) -> int:
-        data = self._load(user_key)
+    async def clear(self, user_key: str) -> int:
+        data = await self._load(user_key)
         removed = len(data["traits"]) + len(data["preferences"]) + len(data["facts"])
         if removed:
-            self.sdk.storage.delete(self._key(user_key))
+            await self.sdk.storage.adelete(self._key(user_key))
         return removed
 
     @staticmethod
@@ -118,11 +122,11 @@ class ProfileStore:
 
 # ===== 注入 =====
 
-    def digest(self, user_key: str, limit: int = 0) -> list[str]:
+    async def digest(self, user_key: str, limit: int = 0) -> list[str]:
         """注入用紧凑行列表（limit<=0 时用 profile_inject 配置）。"""
         if limit <= 0:
             limit = int(getattr(self.config, "profile_inject", 8) or 8)
-        data = self._load(user_key)
+        data = await self._load(user_key)
         lines: list[str] = []
         for name, tag in (("traits", "trait"), ("preferences", "pref"), ("facts", "fact")):
             for item in data.get(name) or []:
@@ -133,9 +137,9 @@ class ProfileStore:
                     return lines
         return lines
 
-    def describe(self, user_key: str) -> str:
+    async def describe(self, user_key: str) -> str:
         """画像全文的多行文本（CLI 透明展示用；空画像返回 profile_empty）。"""
-        data = self._load(user_key)
+        data = await self._load(user_key)
         blocks: list[str] = []
         for name, key in (("traits", "profile_section_traits"), ("preferences", "profile_section_preferences"), ("facts", "profile_section_facts")):
             items = data.get(name) or []
@@ -149,12 +153,12 @@ class ProfileStore:
 
 # ===== 聚合源 =====
 
-    def session_candidates(self, user_key: str) -> list[str]:
+    async def session_candidates(self, user_key: str) -> list[str]:
         """该用户的会话候选：user_seen 倒排（群）+ 平台私聊会话 key（去重）。"""
         platform, uid = split_user_key(user_key)
         if not uid:
             return []
-        seen = self.sdk.storage.get(USER_SEEN_PREFIX + uid, None)
+        seen = await self.sdk.storage.aget(USER_SEEN_PREFIX + uid, None)
         candidates: list[str] = []
         if isinstance(seen, list):
             for item in seen:
@@ -164,16 +168,17 @@ class ProfileStore:
             candidates.append(f"{platform}:private:{uid}")
         return list(dict.fromkeys(candidates))
 
-    def _collect_raw_items(self, user_key: str) -> list[str]:
+    async def _collect_raw_items(self, user_key: str) -> list[str]:
         """聚合各会话 facts + memory 条目（global 全量 / 逐会话 importance>=4）。"""
         service = getattr(self.main, "conversations", None)
         memory = getattr(self.main, "memory", None)
         items: list[str] = []
-        for chat_key in self.session_candidates(user_key):
+        for chat_key in await self.session_candidates(user_key):
             if service is not None:
-                items.extend(str(f) for f in service.facts_of(chat_key) if f)
+                facts = await service.facts_of(chat_key)
+                items.extend(str(f) for f in facts if f)
             if memory is not None:
-                for entry in memory.entries(chat_key):
+                for entry in await memory.entries(chat_key):
                     if not (isinstance(entry, dict) and str(entry.get("content") or "").strip()):
                         continue
 # 逐会话记忆仅取 importance>=4（global 作用域不受此限）
@@ -184,7 +189,7 @@ class ProfileStore:
                     if importance >= 4:
                         items.append(str(entry["content"]).strip())
         if memory is not None:
-            for entry in memory.entries(GLOBAL_SCOPE):
+            for entry in await memory.entries(GLOBAL_SCOPE):
                 if isinstance(entry, dict) and str(entry.get("content") or "").strip():
                     items.append(str(entry["content"]).strip())
         return items
@@ -258,8 +263,8 @@ class ProfileStore:
         if not user_key:
             return {"user_key": "", "changed": False}
         now = utils.now_ts()
-        existing = self._load(user_key)
-        raw_items = self._merge_texts([self._clean_item(i) for i in self._collect_raw_items(user_key)])
+        existing = await self._load(user_key)
+        raw_items = self._merge_texts([self._clean_item(i) for i in await self._collect_raw_items(user_key)])
         facts_raw = [item for item in raw_items if _re.match(r"^(ENTITY|PREFERENCE|TODO)\|", item, _re.IGNORECASE)]
 
         traits, preferences = await self._distill(raw_items)
@@ -297,7 +302,7 @@ class ProfileStore:
             or [f["text"] for f in merged_facts] != [f["text"] for f in existing["facts"]]
         )
         if changed or merged_traits or merged_prefs or merged_facts:
-            self._save(user_key, data)
+            await self._save(user_key, data)
         return {"user_key": user_key, "changed": changed, "decayed": decayed,
                 "traits": len(merged_traits), "preferences": len(merged_prefs), "facts": len(merged_facts)}
 
@@ -317,18 +322,20 @@ class ProfileStore:
 
 # ===== 近期活跃用户 =====
 
-    def active_user_keys(self, within_hours: float = 24.0) -> list[str]:
-        """user_seen 倒排里 updated 近 within_hours 的用户 → platform:uid 键列表（去重）。"""
+    async def active_user_keys(self, within_hours: float = 24.0) -> list[str]:
+        """user_seen 倒排里 updated 近 within_hours 的用户 → platform:uid 键列表（去重）。
+
+        keys + 逐键 get 合并为 aget_all_keys + aget_multi（一次往返取全部倒排）。"""
         cutoff = utils.now_ts() - max(0.0, float(within_hours)) * 3600
         keys: list[str] = []
-        for key in self.sdk.storage.keys():
-            if not (isinstance(key, str) and key.startswith(USER_SEEN_PREFIX)):
-                continue
-            uid = key[len(USER_SEEN_PREFIX):]
-            if not uid:
-                continue
-            seen = self.sdk.storage.get(key, None)
-            if not isinstance(seen, list):
+        all_keys = [
+            k for k in await self.sdk.storage.aget_all_keys()
+            if isinstance(k, str) and k.startswith(USER_SEEN_PREFIX)
+        ]
+        seen_map = await self.sdk.storage.aget_multi(all_keys) if all_keys else {}
+        for key, seen in seen_map.items():
+            uid = str(key)[len(USER_SEEN_PREFIX):]
+            if not uid or not isinstance(seen, list):
                 continue
             latest = max((float(item.get("ts") or 0.0) for item in seen if isinstance(item, dict)), default=0.0)
             if latest < cutoff:

@@ -98,26 +98,26 @@ async def test_residue_recovers_via_run_prompt_and_pops_duplicated_user():
     main = RecoveryMain()
     chat_key = "test:private:1"
 # 悬空现场：prepare 已把该轮 user 消息持久化为 contexts 末条 + inflight 残留标记
-    main.sessions.append_user(chat_key, "在吗？")
+    await main.sessions.append_user(chat_key, "在吗？")
     set_marker(main, chat_key, "在吗？", age=300)
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
 # 经 run_prompt 重跑（origin=recovery，send=True）
     assert main.prompts == [(chat_key, "在吗？", {"origin": "recovery", "send": True})]
 # 标记已删；末条重复 user 被 pop，不再留在上下文
     assert inflight_keys(main.sdk) == []
-    assert main.sessions.get_contexts(chat_key) == []
+    assert await main.sessions.get_contexts(chat_key) == []
 
 
 async def test_residue_pop_mismatch_still_recovers():
     main = RecoveryMain()
     chat_key = "test:private:1"
 # 末条与记录文本不一致（pop 失败）：上下文原样保留，仍照常重跑
-    main.sessions.append(chat_key, "assistant", "旧回答")
-    main.sessions.append_user(chat_key, "另一句话")
+    await main.sessions.append(chat_key, "assistant", "旧回答")
+    await main.sessions.append_user(chat_key, "另一句话")
     set_marker(main, chat_key, "在吗？", age=300)
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
     assert main.prompts == [(chat_key, "在吗？", {"origin": "recovery", "send": True})]
-    contexts = main.sessions.get_contexts(chat_key)
+    contexts = await main.sessions.get_contexts(chat_key)
     assert contexts[-1]["role"] == "user"
     assert contexts[-1]["content"] == "另一句话"
 
@@ -270,30 +270,30 @@ async def test_scheduler_start_tolerates_missing_recovery():
 
 # ==================== pop_last_user_if 精确锚点 ====================
 
-def test_pop_last_user_if_variants():
+async def test_pop_last_user_if_variants():
     main = FakeMain()
     service = main.sessions
     chat_key = "test:private:1"
-    service.append_user(chat_key, "hello")
-    assert service.pop_last_user_if(chat_key, "hello") is True
-    assert service.get_contexts(chat_key) == []
+    await service.append_user(chat_key, "hello")
+    assert await service.pop_last_user_if(chat_key, "hello") is True
+    assert await service.get_contexts(chat_key) == []
 # 末条非 user / 文本不匹配：不动
-    service.append(chat_key, "assistant", "hi")
-    assert service.pop_last_user_if(chat_key, "hello") is False
-    service.append_user(chat_key, "别的")
-    assert service.pop_last_user_if(chat_key, "hello") is False
-    assert len(service.get_contexts(chat_key)) == 2
+    await service.append(chat_key, "assistant", "hi")
+    assert await service.pop_last_user_if(chat_key, "hello") is False
+    await service.append_user(chat_key, "别的")
+    assert await service.pop_last_user_if(chat_key, "hello") is False
+    assert len(await service.get_contexts(chat_key)) == 2
 # 多模态 content（parts 列表）按文本部分拼接比对
-    service.replace_contexts(chat_key, [{"role": "user", "content": [{"type": "text", "text": "看图"}]}])
-    assert service.pop_last_user_if(chat_key, "看图") is True
-    assert service.get_contexts(chat_key) == []
+    await service.replace_contexts(chat_key, [{"role": "user", "content": [{"type": "text", "text": "看图"}]}])
+    assert await service.pop_last_user_if(chat_key, "看图") is True
+    assert await service.get_contexts(chat_key) == []
 
 
 async def test_stale_inflight_marks_dropped_not_rerun():
     """陈旧标记（>RECOVERY_MAX_AGE）直接清除不重跑——重启后不再重放几小时前的旧话题。"""
     main = RecoveryMain()
     chat_key = "test:private:1"
-    main.sessions.append_user(chat_key, "几小时前的问题")
+    await main.sessions.append_user(chat_key, "几小时前的问题")
     set_marker(main, chat_key, "几小时前的问题", age=7200)
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
     assert main.prompts == []  # 陈旧标记不重跑
@@ -307,7 +307,7 @@ async def test_recovery_run_cap_limits_batch():
     main = RecoveryMain()
     for i in range(8):
         ck = f"test:private:{i}"
-        main.sessions.append_user(ck, f"问题{i}")
+        await main.sessions.append_user(ck, f"问题{i}")
         set_marker(main, ck, f"问题{i}", age=120)
     await main.recover_inflight_routine(boot_delay=0, replay_gap=0)
     from QvQChat.chat.recovery import RECOVERY_RUN_CAP

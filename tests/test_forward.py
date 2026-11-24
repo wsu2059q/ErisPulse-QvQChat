@@ -455,14 +455,14 @@ async def test_persist_thinking_off_strips_think_from_rounds():
     from fakes import FakeMain
 
     main = FakeMain(persist_thinking=False)
-    main.sessions.append("dashboard:private:web", "assistant", "答案",
-                         rounds=[{"think": "内心戏", "text": "答案", "tools": []}])
-    entry = main.sessions.get_contexts("dashboard:private:web")[-1]
+    await main.sessions.append("dashboard:private:web", "assistant", "答案",
+                               rounds=[{"think": "内心戏", "text": "答案", "tools": []}])
+    entry = (await main.sessions.get_contexts("dashboard:private:web"))[-1]
     assert "think" not in entry["rounds"][0]
     assert entry["rounds"][0]["text"] == "答案"
 
     main2 = FakeMain(persist_thinking=True)
-    main2.sessions.append("dashboard:private:web", "assistant", "答案",
-                          rounds=[{"think": "内心戏", "text": "答案", "tools": []}])
-    entry2 = main2.sessions.get_contexts("dashboard:private:web")[-1]
+    await main2.sessions.append("dashboard:private:web", "assistant", "答案",
+                                rounds=[{"think": "内心戏", "text": "答案", "tools": []}])
+    entry2 = (await main2.sessions.get_contexts("dashboard:private:web"))[-1]
     assert entry2["rounds"][0]["think"] == "内心戏"

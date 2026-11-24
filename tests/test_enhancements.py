@@ -149,12 +149,12 @@ async def test_context_summarize_on_overflow():
 
     main.pool = SumPool()
     for i in range(6):
-        manager.append(key, "user", f"旧消息{i}")
-    removed = manager.trim_overflow(key, keep=2)
+        await manager.append(key, "user", f"旧消息{i}")
+    removed = await manager.trim_overflow(key, keep=2)
     assert len(removed) == 4
 # 收尾摘要：经 compactor.summarize_entries 写入会话摘要
     await manager._summarize_overflow(key, removed)
-    assert "方案A" in manager.summary_of(key)
+    assert "方案A" in await manager.summary_of(key)
 
 async def test_runner_tool_round_callback():
     main = FakeMain()
@@ -249,14 +249,14 @@ def test_recap_regex_matches_yi_xiang():
     assert __import__('QvQChat.conversation.delivery', fromlist=['Delivery']).Delivery._is_recap("这不是复述，是正经回答。", trace) is False
 
 
-def test_export_import_roundtrip():
+async def test_export_import_roundtrip():
     main = FakeMain()
     manager = DashboardManager(main)
     main.pool.save_provider({"id": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "api_key": "k", "models": [{"id": "deepseek-chat", "enabled": True}]})
     main.personas.save({"id": "custom1", "name": "n", "system": "s"})
-    manager.main.memory.remember("c1", "记住我")
+    await manager.main.memory.remember("c1", "记住我")
 
-    data = asyncio.run(manager.export_data(None))
+    data = await manager.export_data(None)
     assert data["providers"] and data["memory"].get("c1")
 
     main2 = FakeMain()
@@ -270,10 +270,10 @@ def test_export_import_roundtrip():
             return self._d
 
     payload = {"data": {"providers": data["providers"], "personas": data["personas"], "memory": data["memory"]}}
-    result = asyncio.run(manager2.import_data(R(payload)))
+    result = await manager2.import_data(R(payload))
     assert set(["providers", "personas", "memory"]).issubset(set(result["applied"]))
     assert main2.pool.list_models()[0]["model"] == "deepseek-chat"
-    assert main2.memory.entries("c1")[0]["content"] == "记住我"
+    assert (await main2.memory.entries("c1"))[0]["content"] == "记住我"
 
 
 def test_to_model_image_local_file(tmp_path):

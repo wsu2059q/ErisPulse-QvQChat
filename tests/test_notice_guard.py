@@ -121,7 +121,7 @@ async def test_self_join_sends_self_note_not_welcome_summary():
     ev = _join_event(user_id="bot", nickname="小Q")
     chat_key = main._event_chat_key(ev)
     entry = {"summary": "【通知/group_increase:join】 群 1 用户 小Q(bot)", "target_id": ""}
-    main._maybe_wake_on_notice(ev, chat_key, entry)
+    await main._maybe_wake_on_notice(ev, chat_key, entry)
     assert len(calls) == 1
     assert calls[0]["text"] == texts.t("notice_self_join")
     assert "【通知/" not in calls[0]["text"]  # 不是"新人来了"的普通摘要
@@ -139,9 +139,9 @@ async def test_joins_merge_into_one_wake_and_self_join_not_mixed(monkeypatch):
     chat_key = "onebot11:group:1"
     entry = {"summary": "【通知/group_increase:join】 群 1", "target_id": ""}
 
-    main._maybe_wake_on_notice(_join_event(user_id="u1", nickname="小明"), chat_key, entry)
-    main._maybe_wake_on_notice(_join_event(user_id="bot", nickname="小Q"), chat_key, entry)
-    main._maybe_wake_on_notice(_join_event(user_id="u2", nickname="小红"), chat_key, entry)
+    await main._maybe_wake_on_notice(_join_event(user_id="u1", nickname="小明"), chat_key, entry)
+    await main._maybe_wake_on_notice(_join_event(user_id="bot", nickname="小Q"), chat_key, entry)
+    await main._maybe_wake_on_notice(_join_event(user_id="u2", nickname="小红"), chat_key, entry)
     assert len(calls) == 1 and calls[0]["text"] == texts.t("notice_self_join")  # self-join 立即单独醒
 
     await asyncio.sleep(0.3)
@@ -158,7 +158,7 @@ async def test_single_join_goes_through_same_merged_path():
     calls = install_batch_recorder(main)
     chat_key = "onebot11:group:1"
     entry = {"summary": "【通知/group_increase:join】 群 1", "target_id": ""}
-    main._maybe_wake_on_notice(_join_event(user_id="u9", nickname="路人甲"), chat_key, entry)
+    await main._maybe_wake_on_notice(_join_event(user_id="u9", nickname="路人甲"), chat_key, entry)
     await asyncio.sleep(0.2)
     assert len(calls) == 1
     assert calls[0]["text"].endswith(texts.t("notice_join_merged", names="路人甲(u9)"))
@@ -170,10 +170,10 @@ async def test_join_merge_disabled_keeps_per_notice_behavior():
                      trigger_mode="all", join_agg_window=0)
     calls = install_batch_recorder(main)
     chat_key = "onebot11:group:1"
-    main._maybe_wake_on_notice(
+    await main._maybe_wake_on_notice(
         _join_event(user_id="u1", nickname="小明"), chat_key,
         {"summary": "s1", "target_id": ""})
-    main._maybe_wake_on_notice(
+    await main._maybe_wake_on_notice(
         _join_event(user_id="u2", nickname="小红"), chat_key,
         {"summary": "s2", "target_id": ""})
     assert len(calls) == 2  # 不缓冲：每条通知立刻各自唤醒（现有行为）
@@ -190,14 +190,14 @@ async def test_recent_friend_greet_suppresses_private_notice_wake():
     main.rt.recent_friend_greeted = {"onebot11:u7": time.time()}
     session_key = "onebot11:private:u7"
 
-    main._maybe_wake_on_notice(
+    await main._maybe_wake_on_notice(
         FakeNoticeEvent(detail_type="friend_increase", sub_type="", group_id="",
                         user_id="u7", account="bot"),
         session_key, {"summary": "好友已添加", "target_id": ""})
     assert calls == []  # 决策回执已经是欢迎，不再唤醒
 
     main.rt.recent_friend_greeted = {"onebot11:u7": time.time() - 601}  # 过了静默期
-    main._maybe_wake_on_notice(
+    await main._maybe_wake_on_notice(
         FakeNoticeEvent(detail_type="friend_increase", sub_type="", group_id="",
                         user_id="u7", account="bot"),
         session_key, {"summary": "好友已添加", "target_id": ""})
@@ -205,7 +205,7 @@ async def test_recent_friend_greet_suppresses_private_notice_wake():
     assert calls[0]["text"] == texts.t("notice_stimulus", summary="好友已添加")
 
     main.rt.recent_friend_greeted = {"onebot11:u7": time.time()}  # 群聊不受静默影响
-    main._maybe_wake_on_notice(
+    await main._maybe_wake_on_notice(
         FakeNoticeEvent(detail_type="notify", sub_type="poke", group_id="9",
                         target_id="bot", user_id="u7", account="bot"),
         "onebot11:group:9", {"summary": "戳了戳", "target_id": "bot"})

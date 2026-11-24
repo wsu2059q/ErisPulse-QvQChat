@@ -116,11 +116,11 @@ def _sensitive_match(ctx: ToolContext, path: Path) -> str | None:
     return None
 
 
-def _audit(ctx: ToolContext, action: str, detail: dict) -> None:
+async def _audit(ctx: ToolContext, action: str, detail: dict) -> None:
     audit = getattr(ctx.main, "audit", None)
     if callable(audit):
         try:
-            audit(f"file_{action}", detail, ctx)
+            await audit(f"file_{action}", detail, ctx)
         except Exception:
             pass
 
@@ -178,7 +178,7 @@ async def read_file(ctx: ToolContext, path: str) -> str:
         raise ValueError(f"{path} is a directory (use list_files)")
     hit = _sensitive_match(ctx, target)
     if hit:
-        _audit(ctx, "read_denied", {"path": str(target), "pattern": hit})
+        await _audit(ctx, "read_denied", {"path": str(target), "pattern": hit})
         raise ValueError(f"blocked by sensitive-path policy (matched '{hit}'): reading this file is not allowed")
     limit = max(1000, int(getattr(ctx.config, "file_max_read_chars", 20000) or 20000))
     data = target.read_bytes()
@@ -199,7 +199,7 @@ async def write_file(ctx: ToolContext, path: str, content: str, append: bool = F
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a" if append else "w", encoding="utf-8") as fh:
         fh.write(content)
-    _audit(ctx, "write", {"path": str(target), "bytes": len(content), "append": bool(append)})
+    await _audit(ctx, "write", {"path": str(target), "bytes": len(content), "append": bool(append)})
     return f"written: {target.relative_to(sandbox_root(ctx))} ({len(content)} chars)"
 
 
@@ -210,14 +210,14 @@ async def delete_file(ctx: ToolContext, path: str) -> str:
     if target.is_dir():
         raise ValueError(f"{path} is a directory; delete files one by one")
     target.unlink()
-    _audit(ctx, "delete", {"path": str(target)})
+    await _audit(ctx, "delete", {"path": str(target)})
     return f"deleted: {path}"
 
 
 async def download_file(ctx: ToolContext, url: str, path: str = "") -> str:
     blocked = _check_public_url(url)
     if blocked:
-        _audit(ctx, "download_denied", {"url": url, "reason": blocked})
+        await _audit(ctx, "download_denied", {"url": url, "reason": blocked})
         raise ValueError(f"download blocked: {blocked}")
     limit_bytes = max(1, int(getattr(ctx.config, "file_max_download_mb", 20) or 20)) * 1024 * 1024
     target = sandbox_resolve(ctx, path or (_re.sub(r"[^A-Za-z0-9._-]+", "_", url.rsplit("/", 1)[-1] or "download.bin")))
@@ -229,7 +229,7 @@ async def download_file(ctx: ToolContext, url: str, path: str = "") -> str:
         final = str(resp.geturl() or url)
         final_blocked = _check_public_url(final)
         if final_blocked:
-            _audit(ctx, "download_denied", {"url": final, "reason": final_blocked})
+            await _audit(ctx, "download_denied", {"url": final, "reason": final_blocked})
             raise ValueError(f"download blocked after redirect: {final_blocked}")
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("wb") as fh:
@@ -241,7 +241,7 @@ async def download_file(ctx: ToolContext, url: str, path: str = "") -> str:
                 if total > limit_bytes:
                     raise ValueError(f"download exceeds size limit ({limit_bytes // (1024 * 1024)} MB)")
                 fh.write(chunk)
-    _audit(ctx, "download", {"url": url, "path": str(target), "bytes": total})
+    await _audit(ctx, "download", {"url": url, "path": str(target), "bytes": total})
     return f"downloaded {total} bytes -> {target.relative_to(sandbox_root(ctx))}"
 
 
@@ -259,7 +259,7 @@ async def zip_files(ctx: ToolContext, paths: list, out_name: str = "archive.zip"
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for member in members:
             zf.write(member, arcname=member.name)
-    _audit(ctx, "zip", {"out": str(out), "count": len(members)})
+    await _audit(ctx, "zip", {"out": str(out), "count": len(members)})
     return f"archived {len(members)} files -> {out.relative_to(sandbox_root(ctx))}"
 
 
@@ -279,7 +279,7 @@ async def unzip_file(ctx: ToolContext, path: str, dest: str = "") -> str:
         if total > ZIP_MAX_TOTAL_BYTES:
             raise ValueError(f"uncompressed size {total} exceeds limit {ZIP_MAX_TOTAL_BYTES} — possible zip bomb")
         zf.extractall(target_dir)
-    _audit(ctx, "unzip", {"source": str(source), "dest": str(target_dir), "entries": len(names)})
+    await _audit(ctx, "unzip", {"source": str(source), "dest": str(target_dir), "entries": len(names)})
     return f"extracted {len(names)} entries -> {target_dir.relative_to(sandbox_root(ctx))}"
 
 

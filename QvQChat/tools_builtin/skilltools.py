@@ -13,7 +13,7 @@ def _s(**simple) -> dict:
 
 
 async def load_skill(ctx, name: str) -> str:
-    skill = ctx.main.skills.get_skill(name)
+    skill = await ctx.main.skills.get_skill(name)
     if skill is None:
         return texts.t("skills_not_found", name=name)
     body = skill.get("body") or ""
@@ -25,7 +25,7 @@ async def load_skill(ctx, name: str) -> str:
 
 
 async def list_skills(ctx) -> str:
-    skills = ctx.main.skills.list_skills()
+    skills = await ctx.main.skills.list_skills()
     enabled = [s for s in skills if s.get("enabled")]
     if not enabled:
         return texts.t("skills_none_enabled")
@@ -46,7 +46,7 @@ async def save_skill(ctx, name: str, description: str, content: str) -> str:
     if not content:
         return texts.t("tool_param_error", name="save_skill", error="content is empty")
     try:
-        manager.save_skill(name, description, content)
+        await manager.save_skill(name, description, content)
     except Exception as e:
         return texts.t("tool_error", name="save_skill", error=f"{type(e).__name__}: {e}")
     if getattr(main, "audit", None) is not None:

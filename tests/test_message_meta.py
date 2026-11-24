@@ -12,13 +12,13 @@ async def test_finalize_stores_model_meta():
     main = FakeMain()
     manager = ConversationService(main)
     key = "s-meta"
-    manager.append_user(key, "你好")
+    await manager.append_user(key, "你好")
     await manager.finalize(
         key, "喵～",
         usage={"prompt_tokens": 120, "completion_tokens": 34, "total_tokens": 154, "cost": 0.001},
         model="deepseek-chat",
     )
-    entry = manager.get_contexts(key)[-1]
+    entry = (await manager.get_contexts(key))[-1]
     assert entry["role"] == "assistant"
     assert entry["meta"]["model"] == "deepseek-chat"
     assert entry["meta"]["usage"] == {"prompt_tokens": 120, "completion_tokens": 34, "total_tokens": 154}
@@ -32,42 +32,42 @@ async def test_finalize_without_model_has_no_meta():
     manager = ConversationService(main)
     key = "s-meta0"
     await manager.finalize(key, "嗯")
-    entry = manager.get_contexts(key)[-1]
+    entry = (await manager.get_contexts(key))[-1]
     assert "meta" not in entry
 
 
-def test_append_meta_passthrough():
+async def test_append_meta_passthrough():
     main = FakeMain()
     manager = ConversationService(main)
     key = "s-meta1"
-    manager.append(key, "assistant", "带出处的回复", meta={"model": "glm-5"})
-    entry = manager.get_contexts(key)[-1]
+    await manager.append(key, "assistant", "带出处的回复", meta={"model": "glm-5"})
+    entry = (await manager.get_contexts(key))[-1]
     assert entry["meta"] == {"model": "glm-5"}
 
 
-def test_prepare_debug_returns_parts_without_persist():
+async def test_prepare_debug_returns_parts_without_persist():
     """提示词调试器：debug=True 回传部件明细；persist=False 不落库。"""
     main = FakeMain()
     manager = ConversationService(main)
     key = "s-dbg"
-    manager.append_user(key, "早")
-    prepared = asyncio.run(manager.prepare(key, "调试预览", persist=False, debug=True))
+    await manager.append_user(key, "早")
+    prepared = await manager.prepare(key, "调试预览", persist=False, debug=True)
     kinds = [p["kind"] for p in prepared["debug"]["parts"]]
     assert "persona" in kinds and "capability" in kinds
     assert prepared["system"], "system 全文应返回"
     # persist=False：用户消息未落库
-    roles = [c["role"] for c in manager.get_contexts(key)]
+    roles = [c["role"] for c in await manager.get_contexts(key)]
     assert roles.count("user") == 1, "dry-run 不得追加 user 消息"
     # 非 debug 时无该字段
-    prepared2 = asyncio.run(manager.prepare(key, "再次", persist=False))
+    prepared2 = await manager.prepare(key, "再次", persist=False)
     assert prepared2["debug"] == {}
 
 
-def test_profile_edit_replaces_section():
+async def test_profile_edit_replaces_section():
     """画像纠错：整段替换 + 其它段保留 + 审计留痕。"""
     main = FakeMain()
     profile = main.conversations.profile
-    profile._save("snowluma:10001", {"traits": [{"text": "夜猫子", "ts": 0}], "facts": [{"text": "在做框架", "ts": 0}]})
+    await profile._save("snowluma:10001", {"traits": [{"text": "夜猫子", "ts": 0}], "facts": [{"text": "在做框架", "ts": 0}]})
     from QvQChat.dashboard.api_sessions import SessionsApiMixin
 
     api = SessionsApiMixin.__new__(SessionsApiMixin)
@@ -79,10 +79,10 @@ def test_profile_edit_replaces_section():
             return {"user_key": "snowluma:10001", "section": "traits",
                     "items": ["夜猫子（凌晨三点还醒着）", "  ", "咖啡续命"]}
 
-    r = asyncio.run(api.profile_edit(Req()))
+    r = await api.profile_edit(Req())
     assert r["ok"] and len(r["profile"]["traits"]) == 2
     assert r["profile"]["facts"][0]["text"] == "在做框架", "其它段保留"
-    data = profile.get("snowluma:10001")
+    data = await profile.get("snowluma:10001")
     assert data["traits"][0]["text"] == "夜猫子（凌晨三点还醒着）"
     assert any(a["tool"] == "profile_edit" for a in main.audits)
 

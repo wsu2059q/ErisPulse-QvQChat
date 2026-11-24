@@ -345,7 +345,7 @@ class EventsMixin:
                 who = self._ev_s(event, lambda: event.get_user_id()) or self._ev_s(event, lambda: event.get_operator_id()) or ""
                 await self._scene_memo_push(chat_key, texts.t("scene_recall_note", who=who or "有人"))
 # 生态开放接口：qvq.notice 广播（listen_off 与 observe 同语义：群要隐私就静音）
-            if not self.sessions.get_flag(chat_key, "listen_off"):
+            if not await self.sessions.get_flag(chat_key, "listen_off"):
                 try:
                     await self.sdk.lifecycle.emit(
                         "qvq.notice",
@@ -357,7 +357,7 @@ class EventsMixin:
                     )
                 except Exception as e:
                     self.logger.debug(f"emit qvq.notice failed: {e}")
-            self._maybe_wake_on_notice(event, chat_key, entry)
+            await self._maybe_wake_on_notice(event, chat_key, entry)
         except Exception:
             self.logger.error("on_notice failed:\n" + traceback.format_exc())
 
@@ -388,7 +388,7 @@ class EventsMixin:
         self.rt.notice_rate[chat_key] = stamps
         return True
 
-    def _maybe_wake_on_notice(self, event, chat_key: str, entry: dict) -> None:
+    async def _maybe_wake_on_notice(self, event, chat_key: str, entry: dict) -> None:
         """通知唤醒（默认全关）：白名单 + 档位 + 限频三道门，命中才进聊天管线。
 
         入群/加好友通知治理：
@@ -405,7 +405,7 @@ class EventsMixin:
             return
         if not self._notice_type_hit(event):
             return
-        mode = self._trigger_mode_of(chat_key)
+        mode = await self._trigger_mode_of(chat_key)
         if mode in ("off", "lurk"):
             return
 # 被点名的直接互动（如戳的是本账户）视同被 @：at_only 也醒；环境类通知只在 all 醒

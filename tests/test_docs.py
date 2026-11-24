@@ -45,10 +45,10 @@ async def test_local_source_indexing_and_search(tmp_path):
     docs = ErisPulseDocs(main)
     info = await docs.ensure_synced()
     assert info["source"] == "local"
-    results = docs.search("生命周期 on_load")
+    results = await docs.search("生命周期 on_load")
     assert results and results[0]["file"].endswith("module.md")
     assert "on_load" in results[0]["snippet"]
-    full = docs.read(results[0]["file"])
+    full = await docs.read(results[0]["file"])
     assert "BaseModule" in full
 
 
@@ -59,8 +59,8 @@ async def test_search_empty_without_docs(tmp_path, monkeypatch):
     monkeypatch.setattr(docs_module, "MCP_CACHE", tmp_path / "no-mcp-cache")
     main = FakeMain(docs_source=str(tmp_path / "missing"))
     docs = ErisPulseDocs(main)
-    assert docs.search("anything") == []
-    assert "文档" in docs.read("a.md") or "docs" in docs.read("a.md").lower()
+    assert await docs.search("anything") == []
+    assert "文档" in await docs.read("a.md") or "docs" in (await docs.read("a.md")).lower()
 
 
 async def test_read_blocks_path_traversal(tmp_path):
@@ -68,7 +68,7 @@ async def test_read_blocks_path_traversal(tmp_path):
     main = FakeMain(docs_source=str(docs_root))
     docs = ErisPulseDocs(main)
     await docs.ensure_synced()
-    assert "拒绝" in docs.read("../../etc/passwd") or "denied" in docs.read("../../etc/passwd").lower()
+    assert "拒绝" in await docs.read("../../etc/passwd") or "denied" in (await docs.read("../../etc/passwd")).lower()
 
 
 def test_extract_zip_keeps_language_dir(tmp_path):

@@ -416,7 +416,7 @@ class Scheduler:
         profile = getattr(service, "profile", None) if service is not None else None
         if profile is None:
             return 0
-        users = profile.active_user_keys(within_hours=24)
+        users = await profile.active_user_keys(within_hours=24)
         done = 0
         for user_key in users:
             try:

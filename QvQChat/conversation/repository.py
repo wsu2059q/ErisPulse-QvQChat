@@ -90,8 +90,8 @@ class SessionRepository:
     def config(self):
         return self.svc.config
 
-    def _state(self, chat_key: str) -> dict:
-        return self._normalize_state(self.sdk.storage.get(CONV_PREFIX + chat_key, None))
+    async def _state(self, chat_key: str) -> dict:
+        return self._normalize_state(await self.sdk.storage.aget(CONV_PREFIX + chat_key, None))
 
     @staticmethod
     def _normalize_state(raw) -> dict:
@@ -135,18 +135,18 @@ class SessionRepository:
         state.setdefault("updated", 0.0)
         return state
 
-    def _save(self, chat_key: str, state: dict) -> None:
+    async def _save(self, chat_key: str, state: dict) -> None:
         state["updated"] = utils.now_ts()
         limit = max(2, int(getattr(self.config, "context_limit", 30))) * 2
         state["contexts"] = state["contexts"][-limit:]
-        self.sdk.storage.set(CONV_PREFIX + chat_key, state)
-        self._index_add(chat_key)
+        await self.sdk.storage.aset(CONV_PREFIX + chat_key, state)
+        await self._index_add(chat_key)
 
-    def _save_no_touch(self, chat_key: str, state: dict) -> None:
+    async def _save_no_touch(self, chat_key: str, state: dict) -> None:
         limit = max(2, int(getattr(self.config, "context_limit", 30))) * 2
         state["contexts"] = state["contexts"][-limit:]
-        self.sdk.storage.set(CONV_PREFIX + chat_key, state)
-        self._index_add(chat_key)
+        await self.sdk.storage.aset(CONV_PREFIX + chat_key, state)
+        await self._index_add(chat_key)
 
 # ===== 会话索引（单键 list[chat_key]，免全库 keys() 扫描） =====
 
@@ -160,29 +160,29 @@ class SessionRepository:
     def _index_save(self, keys: list[str]) -> None:
         self.sdk.storage.set(CONV_INDEX_KEY, keys)
 
-    def _index_add(self, chat_key: str) -> None:
+    async def _index_add(self, chat_key: str) -> None:
         """会话键落盘时同步维护索引（去重）。索引损坏时先全量对账，防止单键索引覆盖其余会话。"""
-        index = self._index_load()
+        index = await self.a_index_load()
         if index is None:
-            index = self.rebuild_index()
+            index = await self.rebuild_index()
         if chat_key in index:
             return
-        self._index_save(index + [chat_key])
+        await self.a_index_save(index + [chat_key])
 
-    def _index_remove(self, chat_key: str) -> None:
+    async def _index_remove(self, chat_key: str) -> None:
         index = self._index_load()
         if index is None or chat_key not in index:
             return
         self._index_save([k for k in index if k != chat_key])
 
-    def rebuild_index(self) -> list[str]:
+    async def rebuild_index(self) -> list[str]:
         """全量对账：keys() 扫描 vs 索引差集修复（首访一次；索引缺失/失同步时自愈）。"""
         scanned = sorted(
             key[len(CONV_PREFIX):]
-            for key in self.sdk.storage.keys()
+            for key in await self.sdk.storage.aget_all_keys()
             if isinstance(key, str) and key.startswith(CONV_PREFIX)
         )
-        index = self._index_load()
+        index = await self.a_index_load()
         known = list(index) if index is not None else []
         if index is None:
             self.main.logger.debug("conv_index missing/corrupt, rebuilding from storage scan")
@@ -193,24 +193,24 @@ class SessionRepository:
         else:
             self._index_ready = True
             return known
-        self._index_save(scanned)
+        await self.a_index_save(scanned)
         self._index_ready = True
         return scanned
 
-    def _session_keys(self) -> list[str]:
-        """取会话键全集：索引优先；首访全量对账一次；索引损坏回退 keys() 扫描并自愈。"""
+    async def _session_keys(self) -> list[str]:
+        """取会话键全集：索引优先；首访全量对账一次；索引损坏回退全表扫描并自愈。"""
         if not self._index_ready:
-            self.rebuild_index()
-        index = self._index_load()
+            await self.rebuild_index()
+        index = await self.a_index_load()
         if index is not None:
             return index
         self.main.logger.debug("conv_index unreadable, falling back to storage scan")
         scanned = sorted(
             key[len(CONV_PREFIX):]
-            for key in self.sdk.storage.keys()
+            for key in await self.sdk.storage.aget_all_keys()
             if isinstance(key, str) and key.startswith(CONV_PREFIX)
         )
-        self._index_save(scanned)
+        await self.a_index_save(scanned)
         return scanned
 
 # ===== 索引异步门面（事件循环内的调用走这里；同步版留给启动/迁移路径） =====
@@ -271,24 +271,24 @@ class SessionRepository:
         return [item for item in data if isinstance(item, dict) and isinstance(item.get("chat_key"), str) and item["chat_key"]]
 
 
-    def get_contexts(self, chat_key: str) -> list:
-        return list(self._state(chat_key)["contexts"])
+    async def get_contexts(self, chat_key: str) -> list:
+        return list((await self._state(chat_key))["contexts"])
 
-    def replace_contexts(self, chat_key: str, contexts: list) -> None:
-        state = self._state(chat_key)
+    async def replace_contexts(self, chat_key: str, contexts: list) -> None:
+        state = await self._state(chat_key)
         state["contexts"] = list(contexts)
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
 
-    def seed_contexts(self, chat_key: str, seed: list) -> list:
-        state = self._state(chat_key)
+    async def seed_contexts(self, chat_key: str, seed: list) -> list:
+        state = await self._state(chat_key)
         if state["contexts"]:
             return list(state["contexts"])
         state["contexts"] = list(seed)
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
         return list(seed)
 
-    def append(self, chat_key: str, role: str, content, trace: list | None = None, rounds: list | None = None, meta: dict | None = None) -> None:
-        state = self._state(chat_key)
+    async def append(self, chat_key: str, role: str, content, trace: list | None = None, rounds: list | None = None, meta: dict | None = None) -> None:
+        state = await self._state(chat_key)
         entry: dict = {"role": role, "content": content, "ts": utils.now_ts()}
         if meta:
             entry["meta"] = dict(meta)
@@ -309,26 +309,26 @@ class SessionRepository:
                     ]
                     logger.debug(f"persist assistant ({chat_key}): rounds={shape} trace={'dropped' if trace else 'n/a'}")
         state["contexts"].append(entry)
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
 
-    def append_user(self, chat_key: str, content, sender_id: str = "") -> None:
+    async def append_user(self, chat_key: str, content, sender_id: str = "") -> None:
 
-        state = self._state(chat_key)
+        state = await self._state(chat_key)
         entry: dict = {"role": "user", "content": content, "ts": utils.now_ts()}
         if sender_id:
             entry["sender"] = sender_id
         state["contexts"].append(entry)
         state["turns"] = int(state.get("turns") or 0) + 1
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
         if sender_id:
-            self._user_seen_record(sender_id, chat_key, self.svc._text_of(content))
+            await self._user_seen_record(sender_id, chat_key, self.svc._text_of(content))
 
-    def pop_last_exchange(self, chat_key: str) -> str:
+    async def pop_last_exchange(self, chat_key: str) -> str:
         """F2 重新生成：弹出末尾的 assistant 与其前一条 user 消息，返回该 user 文本。
 
         末条非 assistant（如进行中/异常残留）时不动，返回空串。
         """
-        state = self._state(chat_key)
+        state = await self._state(chat_key)
         contexts = state["contexts"]
         if not contexts or contexts[-1].get("role") != "assistant":
             return ""
@@ -337,15 +337,15 @@ class SessionRepository:
         if contexts and contexts[-1].get("role") == "user":
             text = self.svc._text_of(contexts[-1].get("content"))
             contexts.pop()
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
         return text
 
-    def pop_last_user_if(self, chat_key: str, text: str) -> bool:
+    async def pop_last_user_if(self, chat_key: str, text: str) -> bool:
         """末条上下文为内容匹配的 user 消息时弹出并保存（悬空恢复防重复；仅动末条）。
 
         多模态 content（parts 列表）按文本部分拼接比对；不匹配/末条非 user 一律不动。
         """
-        state = self._state(chat_key)
+        state = await self._state(chat_key)
         contexts = state["contexts"]
         if not contexts:
             return False
@@ -355,7 +355,7 @@ class SessionRepository:
         if self.svc._text_of(entry.get("content")) != str(text or ""):
             return False
         contexts.pop()
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
         return True
 
 # ===== 用户→群会话倒排（recent_user_messages 免全库扫描） =====
@@ -367,26 +367,26 @@ class SessionRepository:
             return None
         return [item for item in data if isinstance(item, dict) and isinstance(item.get("chat_key"), str) and item["chat_key"]]
 
-    def _user_seen_record(self, uid: str, chat_key: str, head: str) -> None:
+    async def _user_seen_record(self, uid: str, chat_key: str, head: str) -> None:
         """uid → 最近发言的群会话（新在前、去重、上限 USER_SEEN_MAX）。仅记群会话。"""
         if ":group:" not in chat_key:
             return
-        seen = self._user_seen(uid) or []
+        seen = await self.a_user_seen(uid) or []
         rest = [item for item in seen if item.get("chat_key") != chat_key]
         entry = {"chat_key": chat_key, "ts": utils.now_ts(), "head": utils.truncate(str(head or ""), 60)}
-        self.sdk.storage.set(USER_SEEN_PREFIX + uid, ([entry] + rest)[:USER_SEEN_MAX])
+        await self.sdk.storage.aset(USER_SEEN_PREFIX + uid, ([entry] + rest)[:USER_SEEN_MAX])
 
-    def reset(self, chat_key: str) -> None:
-        state = self._state(chat_key)
+    async def reset(self, chat_key: str) -> None:
+        state = await self._state(chat_key)
         state["contexts"] = []
         state["summary"] = ""
         state["facts"] = []
         state["turns"] = 0
         state["compacted_at_turn"] = 0
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
 
-    def edit_message(self, chat_key: str, index: int, content: str, attachments: list | None = None) -> bool:
-        contexts = self.get_contexts(chat_key)
+    async def edit_message(self, chat_key: str, index: int, content: str, attachments: list | None = None) -> bool:
+        contexts = await self.get_contexts(chat_key)
         if not (0 <= index < len(contexts)):
             return False
         entry = contexts[index]
@@ -398,60 +398,60 @@ class SessionRepository:
             entry["content"] = merged or content
         else:
             entry["content"] = content
-        self.replace_contexts(chat_key, contexts)
+        await self.replace_contexts(chat_key, contexts)
         return True
 
-    def delete_message(self, chat_key: str, index: int) -> bool:
-        contexts = self.get_contexts(chat_key)
+    async def delete_message(self, chat_key: str, index: int) -> bool:
+        contexts = await self.get_contexts(chat_key)
         if not (0 <= index < len(contexts)):
             return False
         contexts.pop(index)
-        self.replace_contexts(chat_key, contexts)
+        await self.replace_contexts(chat_key, contexts)
         return True
 
-    def rewind_to(self, chat_key: str, index: int) -> tuple[bool, str]:
+    async def rewind_to(self, chat_key: str, index: int) -> tuple[bool, str]:
         """回滚到第 index 条之前（删除该条及其之后所有消息）。
 
         用于"编辑并重新发送"：把被编辑的那条及其回答一起丢弃，返回原文供前端预填重发，
         避免旧回答残留在上下文里造成重复/矛盾。
         """
-        contexts = self.get_contexts(chat_key)
+        contexts = await self.get_contexts(chat_key)
         if not (0 <= index < len(contexts)):
             return (False, "")
         text = self.svc._text_of(contexts[index].get("content"))
-        self.replace_contexts(chat_key, contexts[:index])
+        await self.replace_contexts(chat_key, contexts[:index])
         return (True, text)
 
-    def trim_overflow(self, chat_key: str, keep: int) -> list:
-        state = self._state(chat_key)
+    async def trim_overflow(self, chat_key: str, keep: int) -> list:
+        state = await self._state(chat_key)
         contexts = state["contexts"]
         if len(contexts) <= keep:
             return []
         removed = contexts[: len(contexts) - keep]
         state["contexts"] = contexts[-keep:]
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
         return removed
 
 
-    def set_persona(self, chat_key: str, persona_id: str | None) -> None:
-        state = self._state(chat_key)
+    async def set_persona(self, chat_key: str, persona_id: str | None) -> None:
+        state = await self._state(chat_key)
         state["persona"] = persona_id
-        self._save_no_touch(chat_key, state)
+        await self._save_no_touch(chat_key, state)
 
-    def persona_of(self, chat_key: str) -> str | None:
-        return self._state(chat_key)["persona"]
+    async def persona_of(self, chat_key: str) -> str | None:
+        return (await self._state(chat_key))["persona"]
 
-    def set_name(self, chat_key: str, name: str) -> str:
+    async def set_name(self, chat_key: str, name: str) -> str:
         """F2 会话手动改名（空串清除自定义名，回落显示规则）。"""
-        state = self._state(chat_key)
+        state = await self._state(chat_key)
         state["name"] = str(name or "")
-        self._save_no_touch(chat_key, state)
+        await self._save_no_touch(chat_key, state)
         return state["name"]
 
-    def set_flags(self, chat_key: str, flags: dict | None = None, pinned: bool | None = None, archived: bool | None = None) -> None:
+    async def set_flags(self, chat_key: str, flags: dict | None = None, pinned: bool | None = None, archived: bool | None = None) -> None:
         """置会话标记。兼容旧签名（pinned/archived 关键字）；起支持任意布尔标记 dict
 （如 {"opening_sent": True}），供开场白防重等状态写入。"""
-        state = self._state(chat_key)
+        state = await self._state(chat_key)
         if pinned is not None:
             state["pinned"] = bool(pinned)
         if archived is not None:
@@ -459,43 +459,43 @@ class SessionRepository:
         if flags:
             for name, value in flags.items():
                 state[str(name)] = bool(value)
-        self._save_no_touch(chat_key, state)
+        await self._save_no_touch(chat_key, state)
 
-    def get_flag(self, chat_key: str, name: str) -> bool:
+    async def get_flag(self, chat_key: str, name: str) -> bool:
         """读会话布尔标记（缺省 False），与 set_flags 的 dict 形态配对。"""
-        return bool(self._state(chat_key).get(name))
+        return bool((await self._state(chat_key)).get(name))
 
-    def set_trigger(self, chat_key: str, mode: str) -> None:
+    async def set_trigger(self, chat_key: str, mode: str) -> None:
         """会话级触发规则覆盖（all 视为未覆盖，删除覆盖回退全局）。"""
-        state = self._state(chat_key)
+        state = await self._state(chat_key)
         mode = str(mode or "").strip().lower()
         if mode in ("", "all"):
             state.pop("trigger_mode", None)
         elif mode in ("at_only", "lurk", "off"):
             state["trigger_mode"] = mode
-        self._save_no_touch(chat_key, state)
+        await self._save_no_touch(chat_key, state)
 
-    def trigger_mode_of(self, chat_key: str) -> str:
+    async def trigger_mode_of(self, chat_key: str) -> str:
         """会话触发规则覆盖值（"" 表示未覆盖，跟随全局）；设置弹窗存于 ui。"""
-        ui = self._state(chat_key).get("ui")
+        ui = (await self._state(chat_key)).get("ui")
         if isinstance(ui, dict):
             mode = str(ui.get("trigger_mode") or "").strip().lower()
             if mode in ("at_only", "lurk", "off", "all"):
                 return "" if mode == "all" else mode
-        return str(self._state(chat_key).get("trigger_mode") or "")
+        return str((await self._state(chat_key)).get("trigger_mode") or "")
 
 # ===== 会话成员白名单与跨会话路由 =====
 
-    def routes(self) -> dict:
-        data = self.sdk.storage.get(ROUTES_KEY, {})
+    async def routes(self) -> dict:
+        data = await self.sdk.storage.aget(ROUTES_KEY, {})
         return {k: str(v) for k, v in data.items() if isinstance(k, str) and v} if isinstance(data, dict) else {}
 
-    def save_routes(self, routes: dict) -> None:
-        self.sdk.storage.set(ROUTES_KEY, {str(k): str(v) for k, v in (routes or {}).items() if v})
+    async def save_routes(self, routes: dict) -> None:
+        await self.sdk.storage.aset(ROUTES_KEY, {str(k): str(v) for k, v in (routes or {}).items() if v})
 
-    def resolve_route(self, chat_key: str) -> str:
+    async def resolve_route(self, chat_key: str) -> str:
         """消息来源 key → 目标会话 key；群隔离 key 先精确匹配再回落到群 base key"""
-        routes = self.routes()
+        routes = await self.routes()
         if not routes:
             return ""
         if chat_key in routes:
@@ -509,40 +509,40 @@ class SessionRepository:
 # 场景：onebot11 迁到 snowluma、换号、复合 id 变化——旧键数据不搬，
 # 入站事件在键生成后按映射改写，历史/人格/记忆/事实全部自动跟到新身份。
 
-    def identity_map(self) -> dict:
-        data = self.sdk.storage.get(IDENTITY_MAP_KEY, {})
+    async def identity_map(self) -> dict:
+        data = await self.sdk.storage.aget(IDENTITY_MAP_KEY, {})
         return {k: str(v) for k, v in data.items() if isinstance(k, str) and v} if isinstance(data, dict) else {}
 
-    def set_identity(self, source: str, target: str) -> None:
+    async def set_identity(self, source: str, target: str) -> None:
         """绑定身份映射：source 键的事件此后按 target 会话处理。"""
         source, target = str(source or "").strip(), str(target or "").strip()
         if not source or not target or source == target:
             return
-        mapping = self.identity_map()
+        mapping = await self.identity_map()
         mapping[source] = target
-        self.sdk.storage.set(IDENTITY_MAP_KEY, mapping)
+        await self.sdk.storage.aset(IDENTITY_MAP_KEY, mapping)
 
-    def remove_identity(self, source: str) -> bool:
-        mapping = self.identity_map()
+    async def remove_identity(self, source: str) -> bool:
+        mapping = await self.identity_map()
         if str(source or "") in mapping:
             mapping.pop(str(source), None)
-            self.sdk.storage.set(IDENTITY_MAP_KEY, mapping)
+            await self.sdk.storage.aset(IDENTITY_MAP_KEY, mapping)
             return True
         return False
 
-    def resolve_identity(self, chat_key: str) -> str:
+    async def resolve_identity(self, chat_key: str) -> str:
         """跟随身份映射（含链式，环安全）：返回最终会话键；无映射原样返回。"""
         seen = set()
         current = str(chat_key or "")
         while current not in seen:
             seen.add(current)
-            nxt = self.identity_map().get(current, "")
+            nxt = (await self.identity_map()).get(current, "")
             if not nxt or nxt == current:
                 break
             current = nxt
         return current
 
-    def migrate_identity(self, source: str, target: str, mode: str = "alias") -> dict:
+    async def migrate_identity(self, source: str, target: str, mode: str = "alias") -> dict:
         """身份迁移：把 source 的对话身份并入 target，支持三种模式。
 
         - alias    仅映射：source 事件此后按 target 处理，两边历史都不动
@@ -561,8 +561,8 @@ class SessionRepository:
             return {"ok": False, "error": f"未知模式：{mode}"}
 
         summary: dict = {"ok": True, "mode": mode, "contexts": 0, "facts": 0, "memories": 0, "backup": ""}
-        src_state = self._state(source)
-        tgt_state = self._state(target)
+        src_state = await self._state(source)
+        tgt_state = await self._state(target)
 
         if mode in ("merge", "overwrite"):
             if mode == "overwrite":
@@ -611,10 +611,10 @@ class SessionRepository:
 # 记忆合并（content 归一化去重、按时间排序、套 memory_max）
             mem = getattr(self.main, "memory", None)
             if mem is not None:
-                tgt_entries = list(mem.entries(target))
+                tgt_entries = list(await mem.entries(target))
                 seen_n = {mem._normalized(e.get("content", "")) for e in tgt_entries}
                 merged_m = list(tgt_entries)
-                for entry in mem.entries(source):
+                for entry in await mem.entries(source):
                     normalized = mem._normalized(entry.get("content", ""))
                     if not normalized or normalized in seen_n:
                         continue
@@ -624,11 +624,11 @@ class SessionRepository:
                 max_items = int(getattr(self.config, "memory_max", 200) or 200)
                 if len(merged_m) > max_items:
                     merged_m = merged_m[-max_items:]
-                mem._save(target, merged_m)
+                await mem._save(target, merged_m)
                 summary["memories"] = len(merged_m)
-            self._save_no_touch(target, tgt_state)
+            await self._save_no_touch(target, tgt_state)
 
 # 最后建立映射：source 的事件此后按 target 处理（旧键数据原地保留，撤销映射即回退）
-        self.set_identity(source, target)
+        await self.set_identity(source, target)
         return summary
 

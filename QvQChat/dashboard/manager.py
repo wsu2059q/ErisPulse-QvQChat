@@ -797,7 +797,7 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
                 # 否则上下文里最后一条是用户消息，刷新后看起来像"回答丢了"
                 if partial or rounds or trace:
                     try:
-                        self.main.sessions.append(session, "assistant", partial, trace=trace, rounds=rounds)
+                        await self.main.sessions.append(session, "assistant", partial, trace=trace, rounds=rounds)
                     except Exception:
                         pass
                 run_live.reply = partial or None

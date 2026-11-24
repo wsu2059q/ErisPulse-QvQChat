@@ -246,11 +246,11 @@ class CliMixin:
                 if not self.is_admin(user_id, platform=event.get_platform() or ""):
                     await event.reply(texts.t("needs_admin"))
                     return
-                self.sessions.reset(chat_key)
+                await self.sessions.reset(chat_key)
                 reply = texts.t("reset_done")
 # opening_on_reset=True 时连开场白标记一起清，下次对话重新发开场白
-                if getattr(self.cfg, "opening_on_reset", False) and self.sessions.get_flag(chat_key, "opening_sent"):
-                    self.sessions.set_flags(chat_key, {"opening_sent": False})
+                if getattr(self.cfg, "opening_on_reset", False) and await self.sessions.get_flag(chat_key, "opening_sent"):
+                    await self.sessions.set_flags(chat_key, {"opening_sent": False})
                     reply += "\n" + texts.t("opening_sent")
                 await event.reply(reply)
             elif sub in ("start", "开场", "開場"):
@@ -289,15 +289,15 @@ class CliMixin:
             elif sub in ("trigger", "触发", "觸發"):
 # 会话级触发规则：本群任何人可改（只能收紧不能放宽，全局基线钳制兜底）
                 valid = ("all", "at_only", "lurk", "off")
-                override = self.sessions.trigger_mode_of(chat_key)
+                override = await self.sessions.trigger_mode_of(chat_key)
                 if len(tokens) >= 2:
                     mode = tokens[1].strip().lower()
                     if mode not in valid:
                         await event.reply("用法：/qvq trigger all|at_only|lurk|off")
                         return
-                    self.sessions.set_trigger(chat_key, mode)
-                    override = self.sessions.trigger_mode_of(chat_key)
-                effective = self._trigger_mode_of(chat_key)
+                    await self.sessions.set_trigger(chat_key, mode)
+                    override = await self.sessions.trigger_mode_of(chat_key)
+                effective = await self._trigger_mode_of(chat_key)
                 await event.reply(texts.t(
                     "trigger_show",
                     effective=effective,
@@ -311,7 +311,7 @@ class CliMixin:
                     await event.reply("用法：/qvq listen on|off")
                     return
                 listening = action in ("on", "开")
-                self.sessions.set_flags(chat_key, {"listen_off": not listening})
+                await self.sessions.set_flags(chat_key, {"listen_off": not listening})
                 await event.reply(texts.t(
                     "listen_set",
                     state=texts.t("listen_on_state" if listening else "listen_off_state"),
@@ -330,12 +330,12 @@ class CliMixin:
                     await event.reply(texts.t("needs_admin"))
                     return
                 count = min(count, 50)  # 硬上限防误操作清空整段
-                contexts = self.sessions.get_contexts(chat_key)
+                contexts = await self.sessions.get_contexts(chat_key)
                 index = max(0, len(contexts) - count)
                 if index >= len(contexts):
                     await event.reply(texts.t("rewind_empty"))
                     return
-                ok, removed_text = self.sessions.rewind_to(chat_key, index)
+                ok, removed_text = await self.sessions.rewind_to(chat_key, index)
                 await event.reply(texts.t(
                     "rewind_done",
                     count=count,
@@ -444,7 +444,7 @@ class CliMixin:
             max(1, int(getattr(self.cfg, "opening_max_len", 200) or 200)),
         )
         await event.reply(text)
-        self.sessions.set_flags(chat_key, {"opening_sent": True})
+        await self.sessions.set_flags(chat_key, {"opening_sent": True})
 
     async def _cmd_handover(self, event, chat_key: str, tokens: list) -> None:
         """/qvq handover：会话让渡管理——查看/开启人人可用，结束也不设管理员门槛
@@ -532,11 +532,11 @@ class CliMixin:
             return
         sub = tokens[0].lower()
         if sub in ("mute", "屏蔽"):
-            set_policy(self.sdk, chat_key, muted=True)
+            await set_policy(self.sdk, chat_key, muted=True)
             await event.reply(texts.t("policy_muted_on"))
             return
         if sub in ("unmute", "解除屏蔽"):
-            set_policy(self.sdk, chat_key, muted=False)
+            await set_policy(self.sdk, chat_key, muted=False)
             await event.reply(texts.t("policy_muted_off"))
             return
         if sub in ("budget", "限额"):
@@ -545,30 +545,30 @@ class CliMixin:
             try:
                 value = max(0, int(arg))
             except (TypeError, ValueError):
-                await event.reply(texts.t("policy_usage", **self._policy_labels(get_policy(self.sdk, chat_key))))
+                await event.reply(texts.t("policy_usage", **self._policy_labels(await get_policy(self.sdk, chat_key))))
                 return
-            policy = set_policy(self.sdk, chat_key, session_budget=value)
+            policy = await set_policy(self.sdk, chat_key, session_budget=value)
             await event.reply(texts.t("policy_set", **self._policy_labels(policy)))
             return
         if sub in ("lowtoken", "省钱", "省流"):
             action = tokens[1].lower() if len(tokens) >= 2 else ""
             if action in ("on", "开", "開"):
-                policy = set_policy(self.sdk, chat_key, low_token=True)
+                policy = await set_policy(self.sdk, chat_key, low_token=True)
             elif action in ("off", "关", "關"):
-                policy = set_policy(self.sdk, chat_key, low_token=False)
+                policy = await set_policy(self.sdk, chat_key, low_token=False)
             else:
 # 无参/非法参数也回完整用法（附当前值），顺手当状态查询用
-                await event.reply(texts.t("policy_usage", **self._policy_labels(get_policy(self.sdk, chat_key))))
+                await event.reply(texts.t("policy_usage", **self._policy_labels(await get_policy(self.sdk, chat_key))))
                 return
             await event.reply(texts.t("policy_set", **self._policy_labels(policy)))
             return
 # policy [high|normal|low]：带参改优先级，无参/非法回用法（附当前值）
         arg = tokens[1].lower() if len(tokens) >= 2 else ""
         if arg in ("high", "normal", "low"):
-            policy = set_policy(self.sdk, chat_key, priority=arg)
+            policy = await set_policy(self.sdk, chat_key, priority=arg)
             await event.reply(texts.t("policy_set", **self._policy_labels(policy)))
             return
-        await event.reply(texts.t("policy_usage", **self._policy_labels(get_policy(self.sdk, chat_key))))
+        await event.reply(texts.t("policy_usage", **self._policy_labels(await get_policy(self.sdk, chat_key))))
 
 
 # ===== 渲染卡片：/qvq card persona|tasks|usage（takumi 优先，文本回退） =====
@@ -817,7 +817,7 @@ class CliMixin:
                     continue
                 count += 1
                 for item in store.items(k):
-                    todos.append({**item, "_key": k})
+                    await todos.append({**item, "_key": k})
         mark = {"pending": "[ ]", "in_progress": "[~]", "completed": "[x]"}
         if not todos:
             await event.reply(texts.t("todo_empty"))
@@ -842,7 +842,7 @@ class CliMixin:
             ok = cancel_subjob(self, str(tokens[2]))
             await event.reply(texts.t("subjob_cancel_ok" if ok else "subjob_cancel_miss"))
             return
-        jobs = list_subjobs(self, limit=15)
+        jobs = await list_subjobs(self, limit=15)
         if not jobs:
             await event.reply(texts.t("subjob_none"))
             return
@@ -915,8 +915,8 @@ class CliMixin:
         if action in ("clear", "清空"):
             await self._cmd_memories_clear(event, chat_key, user_id, tokens)
             return
-        entries = self.memory.entries(chat_key)
-        facts = self.sessions.facts_of(chat_key)
+        entries = await self.memory.entries(chat_key)
+        facts = await self.sessions.facts_of(chat_key)
         profile_user = self._profile_user_of(event, chat_key, user_id)
         lines = [texts.t("memories_title"),
                  texts.t("memories_memory_count", count=len(entries)),
@@ -927,7 +927,7 @@ class CliMixin:
                 lines.append(f"- {content[:80]}")
         if profile_user:
             lines.append(texts.t("memories_profile_title", user=profile_user))
-            lines.append(self.sessions.profile.describe(profile_user))
+            lines.append(await self.sessions.profile.describe(profile_user))
         else:
             lines.append(texts.t("profile_empty"))
         await event.reply("\n".join(lines))
@@ -958,16 +958,16 @@ class CliMixin:
             if not profile_user:
                 await event.reply(texts.t("profile_empty"))
                 return
-            removed = self.sessions.profile.clear(profile_user)
+            removed = await self.sessions.profile.clear(profile_user)
             await event.reply(texts.t("memories_cleared", target=kind, count=removed))
             return
         if kind == "facts":
 # 直接清会话 state.facts（service 未暴露公开清空方法；_state/_save_no_touch 为包内既有内部 seam）
-            state = self.sessions._state(chat_key)
+            state = await self.sessions._state(chat_key)
             count = len(state.get("facts") or [])
             state["facts"] = []
-            self.sessions._save_no_touch(chat_key, state)
+            await self.sessions._save_no_touch(chat_key, state)
             await event.reply(texts.t("memories_cleared", target=kind, count=count))
             return
-        removed = self.memory.clear(chat_key)
+        removed = await self.memory.clear(chat_key)
         await event.reply(texts.t("memories_cleared", target=kind, count=removed))

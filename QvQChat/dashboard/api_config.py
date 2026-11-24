@@ -193,7 +193,7 @@ class ConfigApiMixin:
         persona_id = str((body or {}).get("id") or "")
         snapshot = self.main.personas.get(persona_id) or {}
         try:
-            ok = self.main.personas.delete(persona_id)
+            ok = await self.main.personas.delete(persona_id)
             undo = await self._trash_put("persona", snapshot) if ok and snapshot else ""
             return {"ok": ok, "undo": undo}
         except ValueError as e:
@@ -241,13 +241,13 @@ class ConfigApiMixin:
         return {"ok": True, "info": info}
 
     async def mcp_get(self, request):
-        return {"servers": self.main.mcp.list_servers(), "clients": self.main.mcp.status()}
+        return {"servers": await self.main.mcp.list_servers(), "clients": self.main.mcp.status()}
 
     async def mcp_save(self, request):
         body = await request.json()
         await self.main.audit("mcp_save", {"name": str((body or {}).get("name") or "")})
         try:
-            saved = self.main.mcp.save_server(body or {})
+            saved = await self.main.mcp.save_server(body or {})
         except ValueError as e:
             return ({"error": str(e)}, 400)
         info = None
@@ -265,13 +265,13 @@ class ConfigApiMixin:
             await self.main.mcp.disconnect(name)
         except Exception as e:
             self.main.logger.debug(f"mcp disconnect on delete failed: {e}")
-        return {"ok": self.main.mcp.delete_server(name)}
+        return {"ok": await self.main.mcp.delete_server(name)}
 
     async def mcp_connect(self, request):
         body = await request.json()
         name = str((body or {}).get("name") or "")
         server_cfg = None
-        for item in self.main.mcp.list_servers():
+        for item in await self.main.mcp.list_servers():
             if item.get("name") == name:
                 server_cfg = item
                 break
@@ -334,12 +334,12 @@ class ConfigApiMixin:
         return {"ok": True, "excluded": sorted(current)}
 
     async def skills_get(self, request):
-        return {"skills": self.main.skills.list_skills()}
+        return {"skills": await self.main.skills.list_skills()}
 
     async def skills_save(self, request):
         body = await request.json()
         try:
-            skill = self.main.skills.save_skill(
+            skill = await self.main.skills.save_skill(
                 str((body or {}).get("name") or ""),
                 str((body or {}).get("description") or ""),
                 str((body or {}).get("body") or ""),
@@ -351,8 +351,8 @@ class ConfigApiMixin:
     async def skills_delete(self, request):
         body = await request.json()
         name = str((body or {}).get("name") or "")
-        snapshot = self.main.skills.get_skill(name) or {}
-        ok = self.main.skills.delete_skill(name)
+        snapshot = await self.main.skills.get_skill(name) or {}
+        ok = await self.main.skills.delete_skill(name)
         undo = await self._trash_put("skill", snapshot) if ok and snapshot else ""
         return {"ok": ok, "undo": undo}
 
@@ -363,7 +363,7 @@ class ConfigApiMixin:
         return {"ok": True}
 
     async def skills_export(self, request):
-        skills = self.main.skills.list_skills()
+        skills = await self.main.skills.list_skills()
         return {
             "skills": [
                 {"name": s["name"], "description": s.get("description", ""), "body": s.get("body", "")}
@@ -428,8 +428,8 @@ class ConfigApiMixin:
             } if want("personas") else {},
             "tasks": await self.main.scheduler.list() if want("tasks") else [],
             "memory": memory if want("memory") else {},
-            "mcp": self.main.mcp.list_servers() if want("mcp") else [],
-            "skills": self.main.skills.list_skills() if want("skills") else [],
+            "mcp": await self.main.mcp.list_servers() if want("mcp") else [],
+            "skills": await self.main.skills.list_skills() if want("skills") else [],
             "config": self._config_snapshot() if want("config") else {},
             "storage": storage_dump,
         }
@@ -622,27 +622,27 @@ class ConfigApiMixin:
             if mode != "skip":
                 servers = [s for s in data["mcp"] if isinstance(s, dict)]
                 if mode == "append":
-                    existing = {s.get("name"): s for s in self.main.mcp.list_servers() if isinstance(s, dict)}
+                    existing = {s.get("name"): s for s in await self.main.mcp.list_servers() if isinstance(s, dict)}
                     for server in servers:
                         if server.get("name") not in existing:
                             existing[server.get("name")] = server
-                    self.main.mcp.replace_servers(list(existing.values()))
+                    await self.main.mcp.replace_servers(list(existing.values()))
                 else:
-                    self.main.mcp.replace_servers(servers)
+                    await self.main.mcp.replace_servers(servers)
                 applied.append("mcp")
 
 # ---- skills ----
         if want("skills") and isinstance(data.get("skills"), list):
             mode = self._mode_of(strategies, "skills")
             if mode != "skip":
-                known_names = {s.get("name") for s in self.main.skills.list_skills()}
+                known_names = {s.get("name") for s in await self.main.skills.list_skills()}
                 for s in data["skills"]:
                     if not (isinstance(s, dict) and s.get("name")):
                         continue
                     if mode == "append" and s.get("name") in known_names:
                         continue  # 追加：同名技能不动
                     try:
-                        self.main.skills.save_skill(
+                        await self.main.skills.save_skill(
                             str(s.get("name")),
                             str(s.get("description") or ""),
                             str(s.get("body") or ""),
@@ -763,7 +763,7 @@ class ConfigApiMixin:
         chat_keys = [str(item.get("chat_key") or "") for item in sessions][:200]
         chat_keys = [k for k in chat_keys if k]
         platforms = sorted({k.split(":", 1)[0] for k in chat_keys if ":" in k})
-        skill_names = [str(item.get("name") or "") for item in self.main.skills.list_skills()]
+        skill_names = [str(item.get("name") or "") for item in await self.main.skills.list_skills()]
         skill_names = [k for k in skill_names if k]
 # 管理员候选：框架主人表（全局+平台）——可视化下拉的选项来源；
 # admins 配置本身仍是权威（可加框架主人之外的人），主人只是默认候选

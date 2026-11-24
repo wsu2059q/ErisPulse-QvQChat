@@ -26,20 +26,20 @@ def _snapshot(items: list) -> list:
 async def todo_write(ctx: ToolContext, items: list) -> str:
     """全量替换清单（长任务开始/计划变更时重写）。"""
     contents = items if isinstance(items, list) else []
-    result = _store(ctx).replace(ctx.chat_key, [str(i) for i in contents])
+    result = await _store(ctx).replace(ctx.chat_key, [str(i) for i in contents])
     return utils.to_text({"updated": len(result), "todos": _snapshot(result)})
 
 
 async def todo_update(ctx: ToolContext, todo_id: str, status: str = "", content: str = "") -> str:
     """更新单条状态/内容（推进进度用：完成一条就标一条）。"""
-    item = _store(ctx).update(ctx.chat_key, str(todo_id), status=status, content=content)
+    item = await _store(ctx).update(ctx.chat_key, str(todo_id), status=status, content=content)
     if item is None:
         return utils.to_text({"ok": False, "error": f"todo {todo_id} not found or invalid status"})
     return utils.to_text({"ok": True, "todo": _snapshot([item])[0]})
 
 
 async def todo_list(ctx: ToolContext) -> str:
-    result = _store(ctx).items(ctx.chat_key)
+    result = await _store(ctx).items(ctx.chat_key)
     if not result:
         return utils.to_text({"todos": []})
     return utils.to_text({"todos": _snapshot(result)})

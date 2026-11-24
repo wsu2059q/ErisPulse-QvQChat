@@ -4,6 +4,8 @@
 import asyncio
 import inspect
 
+import pytest
+
 from QvQChat.Main import Main
 from QvQChat.agent.tools import ToolContext
 from QvQChat.tools_builtin import erispulse
@@ -105,7 +107,7 @@ def test_notice_rate_limit():
 async def test_notice_respects_listen_off_but_request_broadcasts():
     """隐私：listen_off 静音 qvq.notice；请求是冲着 bot 来的，恒广播 qvq.request。"""
     main = make_main()
-    main.sessions.set_flags("onebot11:group:1", {"listen_off": True})
+    await main.sessions.set_flags("onebot11:group:1", {"listen_off": True})
     await Main._on_notice(main, FakeNoticeEvent(group_id="1", target_id="bot", account="bot",
                                                 event_id="n-off"))
     assert "qvq.notice" not in emitted(main)
@@ -236,12 +238,13 @@ async def test_inbox_panel_api_aggregate_delete_clear():
     assert await main._inbox_load("bot") == []
 
 
-def test_inbox_note_in_system_parts():
+@pytest.mark.asyncio
+async def test_inbox_note_in_system_parts():
     """模型感知（默认开启）：system 部件带 inbox_note，模型才知道能自主查看收件箱。"""
     from fakes import FakeMain
 
     main = FakeMain()
     persona = {"id": "p", "name": "P", "system": "sys"}
-    parts = main.sessions.build_system_parts(persona)
+    parts = await main.sessions.build_system_parts(persona)
     note = next(p for p in parts if p.kind == "inbox_note")
     assert "list_events" in note.text

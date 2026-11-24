@@ -10,6 +10,11 @@
   high=-2（满载时先于其它直答）/ normal=0（不干预）/ low=+5（让位）。
 
 全局侧：``chat_listen_mode``=whitelist 时仅 ``chat_whitelist`` 名单内会话响应。
+
+存储访问全部走异步接口（aget/aset）：框架同步 get/set 在事件循环内会经
+AsyncBridge 阻塞（超时返回 None），get_policy/set_policy/listen_allowed/
+budget_effective 一律 async def，调用方必须 await。
+priority_offset / apply_priority 为纯计算，保持同步。
 """
 
 from __future__ import annotations
@@ -22,11 +27,11 @@ PRIORITY_LEVELS = ("high", "normal", "low")
 PRIORITY_OFFSET = {"high": -2, "normal": 0, "low": 5}
 
 
-def get_policy(sdk: Any, chat_key: str) -> dict:
+async def get_policy(sdk: Any, chat_key: str) -> dict:
     """读会话策略；缺省 {muted: False, low_token: False, priority: "normal", session_budget: 0}。"""
     raw = {}
     try:
-        raw = sdk.storage.get(POLICY_PREFIX + str(chat_key or ""), {})
+        raw = await sdk.storage.aget(POLICY_PREFIX + str(chat_key or ""), {})
     except Exception:
         raw = {}
     if not isinstance(raw, dict):
@@ -47,9 +52,9 @@ def get_policy(sdk: Any, chat_key: str) -> dict:
     }
 
 
-def set_policy(sdk: Any, chat_key: str, **updates) -> dict:
+async def set_policy(sdk: Any, chat_key: str, **updates) -> dict:
     """更新会话策略（只传要改的键），返回更新后的完整策略。非法值静默归一。"""
-    current = get_policy(sdk, chat_key)
+    current = await get_policy(sdk, chat_key)
     if "muted" in updates:
         current["muted"] = bool(updates["muted"])
     if "low_token" in updates:
@@ -64,14 +69,14 @@ def set_policy(sdk: Any, chat_key: str, **updates) -> dict:
             current["session_budget"] = 0
     if "full_access" in updates:
         current["full_access"] = bool(updates["full_access"])
-    sdk.storage.set(POLICY_PREFIX + str(chat_key or ""), current)
+    await sdk.storage.aset(POLICY_PREFIX + str(chat_key or ""), current)
     return current
 
 
-def listen_allowed(config: Any, sdk: Any, chat_key: str) -> bool:
+async def listen_allowed(config: Any, sdk: Any, chat_key: str) -> bool:
     """消息入口早闸：muted 或白名单模式未命中名单 → 不响应（含旁听）。"""
     chat_key = str(chat_key or "")
-    if get_policy(sdk, chat_key).get("muted"):
+    if (await get_policy(sdk, chat_key)).get("muted"):
         return False
     if str(getattr(config, "chat_listen_mode", "all") or "all") != "whitelist":
         return True
@@ -82,16 +87,16 @@ def listen_allowed(config: Any, sdk: Any, chat_key: str) -> bool:
     return any(chat_key.startswith(entry) for entry in entries if entry)
 
 
-def budget_effective(sdk: Any, config: Any, chat_key: str) -> bool:
+async def budget_effective(sdk: Any, config: Any, chat_key: str) -> bool:
     """低token模式是否对该会话生效：显式开关（会话 low_token / 全局 budget_mode）
     或超限自动进入（daily_token_limit / 会话日限额命中且配置了 budget_auto_on_limit）。"""
-    policy = get_policy(sdk, chat_key)
+    policy = await get_policy(sdk, chat_key)
     if policy.get("low_token") or bool(getattr(config, "budget_mode", False)):
         return True
     if not bool(getattr(config, "budget_auto_on_limit", False)):
         return False
     today_key = "QvQChat:usage:" + __import__("time").strftime("%Y-%m-%d")
-    data = sdk.storage.get(today_key, {}) if hasattr(sdk, "storage") else {}
+    data = await sdk.storage.aget(today_key, {}) if hasattr(sdk, "storage") else {}
     if not isinstance(data, dict):
         return False
     global_limit = int(getattr(config, "daily_token_limit", 0) or 0)
@@ -107,10 +112,10 @@ def budget_effective(sdk: Any, config: Any, chat_key: str) -> bool:
 
 
 def priority_offset(chat_key_policy: dict) -> int:
-    """策略 → gate 优先级偏移量。"""
+    """策略 → gate 优先级偏移量（纯计算，无存储访问，可安全同步调用）。"""
     return PRIORITY_OFFSET.get(str(chat_key_policy.get("priority") or "normal"), 0)
 
 
 def apply_priority(chat_key_policy: dict, base: int) -> int:
-    """在来源基准优先级上叠加会话策略偏移（钳制在 gate 合法区间）。"""
+    """在来源基准优先级上叠加会话策略偏移（钳制在 gate 合法区间；纯计算，无存储访问）。"""
     return max(-2, min(9, int(base) + priority_offset(chat_key_policy)))

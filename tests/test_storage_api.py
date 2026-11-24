@@ -116,11 +116,11 @@ async def test_storage_slim_drops_duplicate_trace():
 async def test_append_no_longer_dual_writes_trace():
     main = FakeMain()
     key = "dashboard:private:web"
-    main.sessions.append(key, "assistant", "答案", trace=[{"tool": "x"}], rounds=[{"text": "答案", "tools": []}])
-    entry = main.sessions.get_contexts(key)[-1]
+    await main.sessions.append(key, "assistant", "答案", trace=[{"tool": "x"}], rounds=[{"text": "答案", "tools": []}])
+    entry = (await main.sessions.get_contexts(key))[-1]
     assert "rounds" in entry and "trace" not in entry
-    main.sessions.append(key, "assistant", "纯文本", trace=[{"tool": "y"}])
-    entry2 = main.sessions.get_contexts(key)[-1]
+    await main.sessions.append(key, "assistant", "纯文本", trace=[{"tool": "y"}])
+    entry2 = (await main.sessions.get_contexts(key))[-1]
     assert "trace" in entry2 and "rounds" not in entry2  # 无 rounds 时 trace 照存
 
 
@@ -218,22 +218,22 @@ async def test_session_rewind_drops_message_and_after():
     """编辑并重发：删除目标消息及其之后所有内容，返回原文。"""
     main, manager = make_manager()
     key = "dashboard:private:web"
-    main.sessions.append_user(key, "第一问")
-    main.sessions.append(key, "assistant", "第一答")
-    main.sessions.append_user(key, "要改的问题")
-    main.sessions.append(key, "assistant", "旧回答")
+    await main.sessions.append_user(key, "第一问")
+    await main.sessions.append(key, "assistant", "第一答")
+    await main.sessions.append_user(key, "要改的问题")
+    await main.sessions.append(key, "assistant", "旧回答")
 
     resp = await manager.session_rewind(_Req({"chat_key": key, "index": 2}))
     assert resp["ok"] is True
     assert resp["text"] == "要改的问题"
-    contexts = main.sessions.get_contexts(key)
+    contexts = await main.sessions.get_contexts(key)
     assert [c.get("content") for c in contexts] == ["第一问", "第一答"]
 
 
 async def test_session_rewind_rejects_bad_index_and_busy():
     main, manager = make_manager()
     key = "dashboard:private:web"
-    main.sessions.append_user(key, "hi")
+    await main.sessions.append_user(key, "hi")
     assert await manager.session_rewind(_Req({"chat_key": key, "index": 9})) == ({"error": "index out of range"}, 400)
     assert await manager.session_rewind(_Req({"index": 0})) == ({"error": "chat_key required"}, 400)
     manager._live.start(key)
@@ -243,24 +243,24 @@ async def test_session_rewind_rejects_bad_index_and_busy():
 async def test_trash_kb_delete_and_restore():
     """删除知识库条目进回收站，可按 token 恢复原 id。"""
     main, manager = make_manager()
-    added = main.knowledge.add("条目A", "内容A", source="t")
+    added = await main.knowledge.add("条目A", "内容A", source="t")
     kid = added["id"]
     resp = await manager.kb_delete(_Req({"id": kid}))
     assert resp["ok"] and resp["undo"]
-    assert main.knowledge.get(kid) is None
+    assert await main.knowledge.get(kid) is None
     rst = await manager.trash_restore(_Req({"token": resp["undo"]}))
     assert rst["ok"] is True
-    assert main.knowledge.get(kid) is not None
+    assert await main.knowledge.get(kid) is not None
 
 
 async def test_trash_kb_batch_delete_and_restore():
     main, manager = make_manager()
-    ids = [main.knowledge.add(f"t{i}", f"c{i}", source="t")["id"] for i in range(3)]
+    ids = [(await main.knowledge.add(f"t{i}", f"c{i}", source="t"))["id"] for i in range(3)]
     resp = await manager.kb_batch_delete(_Req({"ids": ids}))
     assert resp["removed"] == 3 and resp["undo"]
     rst = await manager.trash_restore(_Req({"token": resp["undo"]}))
     assert rst["ok"] is True
-    assert all(main.knowledge.get(i) is not None for i in ids)
+    assert all([await main.knowledge.get(i) is not None for i in ids])
 
 
 async def test_trash_binding_unbind_restore():

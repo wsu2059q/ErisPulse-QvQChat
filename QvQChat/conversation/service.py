@@ -130,26 +130,26 @@ class ConversationService:
                 pass
         raise AttributeError(name)
 
-    def routes_into(self, target: str) -> list[str]:
-        return sorted(k for k, v in self.routes().items() if v == target)
+    async def routes_into(self, target: str) -> list[str]:
+        return sorted(k for k, v in (await self.routes()).items() if v == target)
 
-    def members_of(self, chat_key: str) -> list[str]:
-        members = self._state(chat_key).get("members")
+    async def members_of(self, chat_key: str) -> list[str]:
+        members = (await self._state(chat_key)).get("members")
         return members if isinstance(members, list) and members else ["*"]
 
-    def set_members(self, chat_key: str, members: list) -> list[str]:
+    async def set_members(self, chat_key: str, members: list) -> list[str]:
         cleaned: list[str] = []
         for item in members if isinstance(members, list) else []:
             text = str(item).strip()
             if text and text not in cleaned:
                 cleaned.append(text)
-        state = self._state(chat_key)
+        state = await self._state(chat_key)
         state["members"] = cleaned or ["*"]
-        self._save_no_touch(chat_key, state)
+        await self._save_no_touch(chat_key, state)
         return state["members"]
 
-    def member_allowed(self, chat_key: str, user_id: str, platform: str = "") -> bool:
-        members = self.members_of(chat_key)
+    async def member_allowed(self, chat_key: str, user_id: str, platform: str = "") -> bool:
+        members = await self.members_of(chat_key)
         if "*" in members:
             return True
         uid = str(user_id or "")
@@ -157,32 +157,32 @@ class ConversationService:
             return False
         return uid in members or f"{platform}:{uid}" in members
 
-    def set_ui(self, chat_key: str, ui: dict) -> dict:
+    async def set_ui(self, chat_key: str, ui: dict) -> dict:
 
-        state = self._state(chat_key)
+        state = await self._state(chat_key)
         cur = state.get("ui") if isinstance(state.get("ui"), dict) else {}
         cur.update({k: v for k, v in (ui or {}).items() if v is not None})
         state["ui"] = cur
-        self._save_no_touch(chat_key, state)
+        await self._save_no_touch(chat_key, state)
         return cur
 
-    def group_name_of(self, chat_key: str) -> str:
-        return str(self._state(chat_key).get("group_name") or "")
+    async def group_name_of(self, chat_key: str) -> str:
+        return str((await self._state(chat_key)).get("group_name") or "")
 
-    def group_style_of(self, chat_key: str) -> str:
-        state = self._state(chat_key)
+    async def group_style_of(self, chat_key: str) -> str:
+        state = await self._state(chat_key)
         style = state.get("group_style")
         return str(style.get("text") or "") if isinstance(style, dict) else ""
 
-    def set_group_style(self, chat_key: str, text: str) -> None:
-        state = self._state(chat_key)
+    async def set_group_style(self, chat_key: str, text: str) -> None:
+        state = await self._state(chat_key)
         state["group_style"] = {"text": str(text or "").strip()[:160], "ts": utils.now_ts()}
-        self._save_no_touch(chat_key, state)
+        await self._save_no_touch(chat_key, state)
 
-    def set_group_name(self, chat_key: str, name: str) -> None:
-        state = self._state(chat_key)
+    async def set_group_name(self, chat_key: str, name: str) -> None:
+        state = await self._state(chat_key)
         state["group_name"] = name
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
 
     async def _recall_hint_allowed(self, chat_key: str, text: str, user_id: str) -> bool:
         """H6：回捞提示准入——仅对方先开口的回合 + 每用户冷却。"""
@@ -199,13 +199,13 @@ class ConversationService:
             last = 0.0
         return (utils.now_ts() - last) >= hours * 3600
 
-    def user_name_of(self, chat_key: str) -> str:
-        return str(self._state(chat_key).get("user_name") or "")
+    async def user_name_of(self, chat_key: str) -> str:
+        return str((await self._state(chat_key)).get("user_name") or "")
 
-    def set_user_name(self, chat_key: str, name: str) -> None:
-        state = self._state(chat_key)
+    async def set_user_name(self, chat_key: str, name: str) -> None:
+        state = await self._state(chat_key)
         state["user_name"] = name
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
 
     def label_incoming(self, text: str, sender_id: str = "", sender_name: str = "") -> str:
         if not sender_id and not sender_name:
@@ -213,8 +213,8 @@ class ConversationService:
         who = f"{sender_name}({sender_id})" if sender_name else f"({sender_id})"
         return f"{who}: {text}"
 
-    def summary_of(self, chat_key: str) -> str:
-        return str(self._state(chat_key).get("summary") or "")
+    async def summary_of(self, chat_key: str) -> str:
+        return str((await self._state(chat_key)).get("summary") or "")
 
     @staticmethod
     def _fallback_merge(old: str, text: str, cap: int) -> str:
@@ -228,10 +228,10 @@ class ConversationService:
         tail = merged[-tail_len:] if tail_len else ""
         return (head + "…[中段省略]…" + tail).strip()
 
-    def _write_summary(self, chat_key: str, text: str) -> None:
-        state = self._state(chat_key)
+    async def _write_summary(self, chat_key: str, text: str) -> None:
+        state = await self._state(chat_key)
         state["summary"] = text
-        self._save(chat_key, state)
+        await self._save(chat_key, state)
 
     def _summary_lock(self, chat_key: str) -> asyncio.Lock:
         lock = self._summary_locks.get(chat_key)
@@ -247,23 +247,23 @@ class ConversationService:
         else:
             coro.close()
 
-    def append_summary(self, chat_key: str, text: str, cap: int | None = None) -> None:
+    async def append_summary(self, chat_key: str, text: str, cap: int | None = None) -> None:
         """追加摘要；超过 cap 时先写兜底合并，再异步 LLM 压缩。"""
         if cap is None:
             cap = int(getattr(self.config, "summary_cap", 1500) or 1500)
         text = str(text or "").strip()
         if not text:
             return
-        old = self.summary_of(chat_key)
+        old = await self.summary_of(chat_key)
         if not old:
-            self._write_summary(chat_key, text[:cap])
+            await self._write_summary(chat_key, text[:cap])
             return
         merged = (old + "\n" + text).strip()
         if len(merged) <= cap:
-            self._write_summary(chat_key, merged)
+            await self._write_summary(chat_key, merged)
             return
         fallback = self._fallback_merge(old, text, cap)
-        self._write_summary(chat_key, fallback)
+        await self._write_summary(chat_key, fallback)
         self._summary_pending.setdefault(chat_key, []).append(text)
         self._spawn_task(self._merge_summary(chat_key, cap))
 
@@ -273,7 +273,7 @@ class ConversationService:
             pending = self._summary_pending.pop(chat_key, [])
             if not pending:
                 return
-            current = self.summary_of(chat_key)
+            current = await self.summary_of(chat_key)
             joined = "\n".join(pending)
             merged = ""
             try:
@@ -281,23 +281,23 @@ class ConversationService:
             except Exception as e:
                 self.main.logger.warning(f"summary merge failed: {e}")
             if merged:
-                self._write_summary(chat_key, merged[:cap])
+                await self._write_summary(chat_key, merged[:cap])
             else:
 # LLM 合并失败：维持/刷新兜底结果
-                self._write_summary(chat_key, self._fallback_merge(current, joined, cap))
+                await self._write_summary(chat_key, self._fallback_merge(current, joined, cap))
 
 # ===== 会话事实（facts） =====
 
-    def facts_of(self, chat_key: str) -> list[str]:
-        facts = self._state(chat_key).get("facts")
+    async def facts_of(self, chat_key: str) -> list[str]:
+        facts = (await self._state(chat_key)).get("facts")
         return [str(f) for f in facts if f] if isinstance(facts, list) else []
 
-    def append_facts(self, chat_key: str, facts: list) -> int:
+    async def append_facts(self, chat_key: str, facts: list) -> int:
         """入库 facts（去重、单条截 200 字符、上限 facts_max 保最新）。返回新增条数。"""
         cleaned_input = [str(f or "").strip() for f in facts or []]
         if not cleaned_input:
             return 0
-        state = self._state(chat_key)
+        state = await self._state(chat_key)
         existing = state["facts"] if isinstance(state.get("facts"), list) else []
         max_n = int(getattr(self.config, "facts_max", 100) or 0)
         added = 0
@@ -311,21 +311,21 @@ class ConversationService:
             del existing[: len(existing) - max_n]
         state["facts"] = existing
         if added:
-            self._save_no_touch(chat_key, state)
+            await self._save_no_touch(chat_key, state)
         return added
 
 
-    def _turn_count(self, chat_key: str) -> int:
-        return int(self._state(chat_key).get("turns") or 0)
+    async def _turn_count(self, chat_key: str) -> int:
+        return int((await self._state(chat_key)).get("turns") or 0)
 
-    def turns_since_compact(self, chat_key: str) -> int:
-        state = self._state(chat_key)
+    async def turns_since_compact(self, chat_key: str) -> int:
+        state = await self._state(chat_key)
         return int(state.get("turns") or 0) - int(state.get("compacted_at_turn") or 0)
 
-    def mark_compacted(self, chat_key: str) -> None:
-        state = self._state(chat_key)
+    async def mark_compacted(self, chat_key: str) -> None:
+        state = await self._state(chat_key)
         state["compacted_at_turn"] = int(state.get("turns") or 0)
-        self._save_no_touch(chat_key, state)
+        await self._save_no_touch(chat_key, state)
 
     async def compact_if_needed(self, chat_key: str) -> dict:
         return await self.compactor.compact(chat_key, force=False, reason="auto")
@@ -339,14 +339,14 @@ class ConversationService:
 
 # ===== 会话健康体检：体积/残留指标（强化压缩与清理入口的数据面） =====
 
-    def health_of(self, chat_key: str) -> dict:
+    async def health_of(self, chat_key: str) -> dict:
         """会话健康体检：上下文体量与残留计数（只读不修改）。
 
         指标：条数/字符量、工具残留(rounds/trace)条数、超长正文条数。
         强化压缩（compact force）会把整段历史浓缩为摘要小作文，这些
         残留随之消失——体检用于排序与前后对比。
         """
-        contexts = self.get_contexts(chat_key)
+        contexts = await self.get_contexts(chat_key)
         messages = [c for c in contexts if isinstance(c, dict)]
         chars = sum(len(self._text_of(c.get("content"))) for c in messages)
         residue = sum(1 for c in messages if c.get("rounds") or c.get("trace"))
@@ -360,23 +360,24 @@ class ConversationService:
             "healthy": not (residue or oversized or chars > 200_000),
         }
 
-    def create(self, platform: str = DASHBOARD_PLATFORM, detail_type: str = "private", target_id: str = "") -> str:
+    async def create(self, platform: str = DASHBOARD_PLATFORM, detail_type: str = "private", target_id: str = "") -> str:
 
         if target_id:
             chat_key = make_chat_key(platform, detail_type, target_id)
-            self._state(chat_key)
+            await self._state(chat_key)
             return chat_key
         prefix = make_chat_key(platform, detail_type, "")
-# 改读会话索引，免全库 keys() 扫描（首访自动对账补齐旧会话）
-        existing = set(self._session_keys())
+# 改读会话索引，免全库扫描（首访自动对账补齐旧会话）
+        existing = set(await self._session_keys())
         chat_key = prefix + "web"
-        if chat_key in existing and (self._state(chat_key).get("contexts") or self._state(chat_key).get("summary")):
+        s0 = await self._state(chat_key)
+        if chat_key in existing and (s0.get("contexts") or s0.get("summary")):
             n = 2
             while (prefix + f"web{n}") in existing:
                 n += 1
             chat_key = prefix + f"web{n}"
-        state = self._state(chat_key)
-        self._save(chat_key, state)
+        state = await self._state(chat_key)
+        await self._save(chat_key, state)
         return chat_key
 
     async def delete(self, chat_key: str) -> bool:
@@ -390,9 +391,9 @@ class ConversationService:
             registry.drop(chat_key)
         await self.sdk.storage.adelete(CONV_PREFIX + chat_key)
         await self.repository.a_index_remove(chat_key)
-        self.main.memory.clear(chat_key)
-        self.todos.clear(chat_key)
-        self.user_mutes.clear(chat_key)
+        await self.main.memory.clear(chat_key)
+        await self.todos.clear(chat_key)
+        await self.user_mutes.clear(chat_key)
         personas = getattr(self.main, "personas", None)
         if personas is not None:
             await personas.bind(chat_key, None)
@@ -459,7 +460,7 @@ class ConversationService:
         for chat_key in candidates:
             if chat_key == exclude_chat_key or ":group:" not in chat_key:
                 continue
-            state = self._state(chat_key)
+            state = await self._state(chat_key)
             contexts = state.get("contexts") or []
             matches = [
                 str(c.get("content") or "")
@@ -509,13 +510,13 @@ class ConversationService:
 
 
         await self.compact_if_needed(chat_key)
-        contexts = self.get_contexts(chat_key)
+        contexts = await self.get_contexts(chat_key)
 # 低token模式：显式开关（会话 low_token / 全局 budget_mode）或超限自动进入
 # （budget_auto_on_limit）——系统提示跳过重组件、历史窗口收紧、预算装填自动启用；
 # 人格与任务连续性部件保留，发言风格不变，省的是输入 token 总量
         from .policy import budget_effective
 
-        low_token = budget_effective(self.sdk, self.config, chat_key)
+        low_token = await budget_effective(self.sdk, self.config, chat_key)
 # 发送级轮窗口：只携带最近 N 轮，历史本身不动
         max_turns = int(getattr(self.config, "max_context_turns", 0) or 0)
         if max_turns > 0:
@@ -549,7 +550,7 @@ class ConversationService:
                     if self._seed_fp_of(str(row.get("content") or "")) != current_fp
                 ]
             if seeded:
-                contexts = self.seed_contexts(chat_key, seeded)
+                contexts = await self.seed_contexts(chat_key, seeded)
                 seeded_done = bool(contexts)
 # 低token模式收紧历史：条数减半 + 单条截 300 字（放在 seed 之后，回填的历史一并收紧）
         if low_token and contexts:
@@ -578,11 +579,11 @@ class ConversationService:
         memory = getattr(self.main, "memory", None)
         recalled: list = []
         if memory is not None:
-            recalled = memory.recall(chat_key, query=self._text_of(text), limit=int(getattr(self.config, "memory_recall", 6))) or []
+            recalled = await memory.recall(chat_key, query=self._text_of(text), limit=int(getattr(self.config, "memory_recall", 6))) or []
 # Lorebook 触发扫描窗口：contexts 尾部 N 条文本 + 本次消息（供 kb 段触发式注入）
         window = max(0, int(getattr(self.config, "kb_trigger_window", 6) or 0))
         kb_texts = [self._text_of(c.get("content")) for c in contexts[-window:]] + [self._text_of(text)]
-        parts = self.build_system_parts(
+        parts = await self.build_system_parts(
             persona,
             scene=scene,
             chat_key=chat_key,
@@ -602,7 +603,7 @@ class ConversationService:
         # 用户级跨会话记忆（仅私聊传入 user_mem_key 时注入）
         if memory is not None and user_mem_key:
             try:
-                user_recalled = memory.recall(
+                user_recalled = await memory.recall(
                     user_mem_key, query=self._text_of(text), limit=int(getattr(self.config, "memory_recall", 6)) or 6
                 ) or []
             except Exception:
@@ -680,7 +681,7 @@ class ConversationService:
         else:
             system = "\n".join(p.text for p in parts if p.text)
         if persist:
-            self.append_user(chat_key, user_msg["content"], sender_id=self._persist_sender(chat_key, cross_user_id, sender_id))
+            await self.append_user(chat_key, user_msg["content"], sender_id=self._persist_sender(chat_key, cross_user_id, sender_id))
         if overflow:
 # 装填溢出：异步压缩存储侧历史（reason="budget"），本次请求先用装填结果
             self._spawn_task(self.compact_budget(chat_key))
@@ -749,17 +750,17 @@ class ConversationService:
                     k: usage[k] for k in ("prompt_tokens", "completion_tokens", "total_tokens")
                     if isinstance(usage.get(k), (int, float))
                 }
-            self.append(chat_key, "assistant", reply, trace=trace, rounds=rounds, meta=meta or None)
+            await self.append(chat_key, "assistant", reply, trace=trace, rounds=rounds, meta=meta or None)
         if usage:
 # 用户维度记账（user_daily_budget 配额读 by_user）
             if user_id:
                 usage = dict(usage)
                 usage["user_id"] = user_id
             await self.main.record_usage(chat_key, usage, model, origin=origin)
-        overflow = self.trim_overflow(chat_key, keep=max(2, int(getattr(self.config, "context_limit", 30))))
+        overflow = await self.trim_overflow(chat_key, keep=max(2, int(getattr(self.config, "context_limit", 30))))
         if overflow:
             self.main.spawn(self._summarize_overflow(chat_key, overflow))
-        if title_from and not self.group_name_of(chat_key):
+        if title_from and not await self.group_name_of(chat_key):
             self.main.spawn(self.title_task(chat_key, title_from, reply))
 # 群语气学习（两段式）：首次 30 轮尽快入乡随俗，之后 120 轮才慢刷一次——
 # 群风格基本固定（一个月都不变），不用频繁同步（state["group_style_turn"] 防重复触发）
@@ -770,7 +771,7 @@ class ConversationService:
             and bool(getattr(self.config, "group_style_learn", True))
             and ":group:" in str(chat_key)
         ):
-            state = self._state(chat_key)
+            state = await self._state(chat_key)
             turns = int(state.get("turns") or 0)
             last_learned = int(state.get("group_style_turn") or 0)
             if last_learned == 0:
@@ -779,7 +780,7 @@ class ConversationService:
                 due = refresh > 0 and turns - last_learned >= refresh
             if due and turns > 0:
                 state["group_style_turn"] = turns
-                self._save_no_touch(chat_key, state)
+                await self._save_no_touch(chat_key, state)
                 self.main.spawn(self.learn_group_style(chat_key))
         return reply
 
@@ -795,7 +796,7 @@ class ConversationService:
 # 分离 <facts> 段（宽松解析，失败不入库）
         clean, facts = extract_facts(summary)
         if facts and getattr(self.config, "facts_extract", True):
-            self.append_facts(chat_key, facts)
+            await self.append_facts(chat_key, facts)
 # 压缩沉淀：关键事实同步进长期记忆（source=auto，随遗忘曲线淡出）——
 # 会话 facts/summary 只在本会话生效，跨天回忆检索靠记忆库
         if facts and bool(getattr(self.config, "compact_to_memory", True)):
@@ -803,8 +804,8 @@ class ConversationService:
             if memory is not None:
                 for fact in facts:
                     try:
-                        memory.remember(chat_key, fact.split("|", 1)[-1].strip()[:200],
-                                        category="auto", importance=3, source="auto")
+                        await memory.remember(chat_key, fact.split("|", 1)[-1].strip()[:200],
+                                              category="auto", importance=3, source="auto")
                     except Exception:
                         pass
 # TODO 类 facts 双写 TodoStore（执行面单源）：压缩抽出的待办进清单，
@@ -813,10 +814,10 @@ class ConversationService:
         if todo_items:
             try:
                 for item in todo_items:
-                    self.todos.add(chat_key, item)
+                    await self.todos.add(chat_key, item)
             except Exception:
                 pass
-        self.append_summary(chat_key, clean or summary)
+        await self.append_summary(chat_key, clean or summary)
 
 
     @staticmethod

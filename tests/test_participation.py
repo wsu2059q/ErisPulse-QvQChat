@@ -422,7 +422,7 @@ async def test_interject_member_whitelist_blocks_sender():
     main = make_part_main(participation_enabled=True)
     add_provider(main, "Stalker", decision="speak")
     await main.participation.discover()
-    main.sessions.set_members(GROUP_KEY, ["u9"])
+    await main.sessions.set_members(GROUP_KEY, ["u9"])
     await Main._on_message(main, FakeChatEvent(text="名单外人", at=False))
     assert not main.rt.pending
     logged = main.participation.decisions[-1]

@@ -12,6 +12,8 @@ from ..utils import sanitize_name
 PROTOCOL_VERSION = "2024-11-05"
 CLIENT_INFO = {"name": "QvQChat", "version": "4.0.0"}
 SERVERS_KEY = "QvQChat:mcp_servers"
+# 服务器配置（QvQChat:mcp_servers）走异步 KV 接口（aget/aset）：框架同步 get/set
+# 在事件循环内会经 AsyncBridge 阻塞，超时返回 None。connect/status 纯内存，保持 sync。
 
 
 class MCPClient:
@@ -176,16 +178,16 @@ class MCPManager:
         self.clients: dict[str, MCPClient] = {}
 
 
-    def list_servers(self) -> list[dict]:
-        servers = self.main.sdk.storage.get(SERVERS_KEY, [])
+    async def list_servers(self) -> list[dict]:
+        servers = await self.main.sdk.storage.aget(SERVERS_KEY, [])
         if not isinstance(servers, list):
             return []
         return [dict(s) for s in servers if isinstance(s, dict)]
 
-    def replace_servers(self, servers: list[dict]) -> None:
-        self.main.sdk.storage.set(SERVERS_KEY, [s for s in servers if isinstance(s, dict)])
+    async def replace_servers(self, servers: list[dict]) -> None:
+        await self.main.sdk.storage.aset(SERVERS_KEY, [s for s in servers if isinstance(s, dict)])
 
-    def save_server(self, entry: dict) -> dict:
+    async def save_server(self, entry: dict) -> dict:
         name = str(entry.get("name") or "").strip()
         if not name:
             raise ValueError(texts.t("mcp_name_required"))
@@ -206,23 +208,23 @@ class MCPManager:
                 clean["env"] = {str(k): str(v) for k, v in env.items()}
         if entry.get("timeout"):
             clean["timeout"] = entry["timeout"]
-        servers = [s for s in self.list_servers() if s.get("name") != name]
+        servers = [s for s in await self.list_servers() if s.get("name") != name]
         servers.append(clean)
-        self.replace_servers(servers)
+        await self.replace_servers(servers)
         return clean
 
-    def delete_server(self, name: str) -> bool:
-        servers = self.list_servers()
+    async def delete_server(self, name: str) -> bool:
+        servers = await self.list_servers()
         remaining = [s for s in servers if str(s.get("name") or "") != str(name)]
         if len(remaining) == len(servers):
             return False
-        self.replace_servers(remaining)
+        await self.replace_servers(remaining)
         return True
 
 
     async def connect_all(self) -> list[dict]:
         results = []
-        for server_cfg in self.list_servers():
+        for server_cfg in await self.list_servers():
             name = str(server_cfg.get("name") or utils.new_id())
             try:
                 info = await self.connect_one(name, server_cfg)

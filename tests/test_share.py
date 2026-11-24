@@ -5,9 +5,9 @@ from QvQChat.dashboard.manager import DashboardManager
 from fakes import FakeMain
 
 
-def _manager_with_context(contexts):
+async def _manager_with_context(contexts):
     main = FakeMain()
-    main.sessions.replace_contexts("dashboard:private:web", contexts)
+    await main.sessions.replace_contexts("dashboard:private:web", contexts)
     return DashboardManager(main)
 
 
@@ -22,7 +22,7 @@ class _Req:
 
 @pytest.mark.asyncio
 async def test_share_create_fetch_revoke():
-    mgr = _manager_with_context([
+    mgr = await _manager_with_context([
         {"role": "user", "content": "你好"},
         {"role": "assistant", "content": "你好！"},
         {"role": "user", "content": "再见"},
@@ -43,7 +43,7 @@ async def test_share_create_fetch_revoke():
 
 @pytest.mark.asyncio
 async def test_share_budget_trims_old_messages():
-    mgr = _manager_with_context([
+    mgr = await _manager_with_context([
         {"role": "user", "content": "旧" * 500},
         {"role": "assistant", "content": "中" * 500},
         {"role": "user", "content": "新消息"},
@@ -58,7 +58,7 @@ async def test_share_budget_trims_old_messages():
 
 @pytest.mark.asyncio
 async def test_share_expired_token_rejected():
-    mgr = _manager_with_context([{"role": "user", "content": "hi"}])
+    mgr = await _manager_with_context([{"role": "user", "content": "hi"}])
     resp = await mgr.session_share(_Req({"chat_key": "dashboard:private:web", "expires_hours": 1}))
     token = resp["token"]
     from QvQChat import utils
@@ -73,7 +73,7 @@ async def test_share_expired_token_rejected():
 @pytest.mark.asyncio
 async def test_share_chat_continuation_with_rounds_and_budget():
     """分享续聊：按轮数/token 配额继续对话，纯文本无工具。"""
-    mgr = _manager_with_context([
+    mgr = await _manager_with_context([
         {"role": "user", "content": "我叫小明"},
         {"role": "assistant", "content": "你好小明！"},
     ])
@@ -121,7 +121,7 @@ async def test_share_chat_continuation_with_rounds_and_budget():
 @pytest.mark.asyncio
 async def test_share_chat_disabled_without_rounds():
     """rounds=0（默认）是只读分享，不允许续聊。"""
-    mgr = _manager_with_context([{"role": "user", "content": "hi"}])
+    mgr = await _manager_with_context([{"role": "user", "content": "hi"}])
     resp = await mgr.session_share(_Req({"chat_key": "dashboard:private:web"}))
     out = await mgr.share_chat(_Req({"token": resp["token"], "text": "继续"}))
     assert out[1] == 429

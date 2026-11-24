@@ -26,12 +26,12 @@ def _scope_key(ctx: ToolContext, scope: str) -> str:
 
 async def remember(ctx: ToolContext, content: str, category: str = "", importance: int = 3, scope: str = "chat") -> str:
     store = ctx.main.memory
-    return store.remember(_scope_key(ctx, scope), content, category=category, importance=importance)
+    return await store.remember(_scope_key(ctx, scope), content, category=category, importance=importance)
 
 
 async def recall(ctx: ToolContext, query: str = "", limit: int = 0, scope: str = "chat") -> str:
     store = ctx.main.memory
-    entries = store.recall(_scope_key(ctx, scope), query=query, limit=limit)
+    entries = await store.recall(_scope_key(ctx, scope), query=query, limit=limit)
     if not entries:
         return texts.t("memory_empty")
     lines = [f"[{e.get('category', 'general')}|{e.get('importance', 3)}] {e.get('content', '')}" for e in entries]
@@ -40,7 +40,7 @@ async def recall(ctx: ToolContext, query: str = "", limit: int = 0, scope: str =
 
 async def forget(ctx: ToolContext, query: str, scope: str = "chat") -> str:
     store = ctx.main.memory
-    removed = store.forget(_scope_key(ctx, scope), query)
+    removed = await store.forget(_scope_key(ctx, scope), query)
     return utils.to_text({"removed": removed})
 
 
@@ -48,7 +48,7 @@ async def list_memory(ctx: ToolContext, scope: str = "chat", page: int = 1,
                       category: str = "", q: str = "") -> str:
     """记忆分页浏览：大会话记忆多了以后 AI 自己也要能按页/按类/按关键词翻。"""
     store = ctx.main.memory
-    entries = store.entries(_scope_key(ctx, scope))
+    entries = await store.entries(_scope_key(ctx, scope))
     entries.sort(key=lambda e: e.get("ts", 0), reverse=True)
     if category:
         entries = [e for e in entries if str(e.get("category") or "") == category.strip()]

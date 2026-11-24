@@ -22,13 +22,13 @@ def test_tools_registered_and_flag_gated():
     assert not _names(off) & {"manage_models", "manage_mcp", "manage_config"}
 
 
-def test_builtin_skill_present_and_gated():
+async def test_builtin_skill_present_and_gated():
     main = FakeMain()
-    assert "self-config" in [s["name"] for s in main.skills.list_skills()]
+    assert "self-config" in [s["name"] for s in await main.skills.list_skills()]
     off = FakeMain(self_config=False)
-    assert "self-config" not in [s["name"] for s in off.skills.list_skills()]
+    assert "self-config" not in [s["name"] for s in await off.skills.list_skills()]
     disabled = FakeMain(skills_disabled=["self-config"])
-    skill = next(s for s in disabled.skills.list_skills() if s["name"] == "self-config")
+    skill = next(s for s in await disabled.skills.list_skills() if s["name"] == "self-config")
     assert skill["enabled"] is False
     assert skill["source"] == "builtin"
 
@@ -67,9 +67,9 @@ async def test_manage_mcp_save_remove():
         ctx, action="save", name="srv", transport="http", url="http://127.0.0.1:9",
     ))
     assert out["ok"] is True and out["server"]["url"] == "http://127.0.0.1:9"
-    assert any(s["name"] == "srv" for s in ctx.main.mcp.list_servers())
+    assert any(s["name"] == "srv" for s in await ctx.main.mcp.list_servers())
     assert json.loads(await selfconfig.manage_mcp(ctx, action="remove", name="srv"))["ok"] is True
-    assert ctx.main.mcp.list_servers() == []
+    assert await ctx.main.mcp.list_servers() == []
 
 
 async def test_manage_config_roundtrip():

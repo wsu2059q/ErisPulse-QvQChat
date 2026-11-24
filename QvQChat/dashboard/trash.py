@@ -78,17 +78,27 @@ class TrashStore:
 def build_restore_registry(main) -> dict:
     """kind -> restore(payload)。还原实现挂在 main 的各服务上；
     新的删除类型在这里注册一行，不再往 if/elif 链里塞分支。
-    restore 可为 sync 或 async（调用方 trash_restore 兼容两种）。"""
+    restore 可为 sync 或 async（调用方 trash_restore 兼容两种）。
+    skills.save_skill / knowledge.restore_entry 已异步化（KV 存储走异步接口），
+    对应的 restore 一律 async。"""
     async def _restore_session(payload):
         from ..conversation.service import CONV_PREFIX
 
         await main.sdk.storage.aset(CONV_PREFIX + str(payload.get("chat_key") or ""), payload.get("state"))
 
-    def _restore_skill(payload):
-        main.skills.save_skill(str(payload.get("name") or ""), str(payload.get("description") or ""), str(payload.get("body") or ""))
+    async def _restore_skill(payload):
+        await main.skills.save_skill(str(payload.get("name") or ""), str(payload.get("description") or ""), str(payload.get("body") or ""))
 
-    def _restore_kb(payload):
-        main.knowledge.restore_entry(dict(payload))
+    async def _restore_kb(payload):
+        await main.knowledge.restore_entry(dict(payload))
+
+    async def _restore_kb_batch(payload):
+        for kb_entry in payload.get("entries") or []:
+            await _restore_kb(kb_entry)
+
+    async def _restore_skill_batch(payload):
+        for sk in payload.get("items") or []:
+            await _restore_skill(sk)
 
     return {
         "session": _restore_session,
@@ -97,9 +107,6 @@ def build_restore_registry(main) -> dict:
         "provider": lambda payload: main.pool.save_provider(dict(payload)),
         "kb": _restore_kb,
         "binding": lambda payload: main.personas.bind(str(payload.get("chat_key") or ""), str(payload.get("persona") or "") or None),
-        "kb_batch": lambda payload: [_restore_kb(kb_entry) for kb_entry in payload.get("entries") or []],
-        "skill_batch": lambda payload: [
-            main.skills.save_skill(str(sk.get("name") or ""), str(sk.get("description") or ""), str(sk.get("body") or ""))
-            for sk in payload.get("items") or []
-        ],
+        "kb_batch": _restore_kb_batch,
+        "skill_batch": _restore_skill_batch,
     }
