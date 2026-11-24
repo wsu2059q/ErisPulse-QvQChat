@@ -18,8 +18,10 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: 安装框架依赖
-        run: pip install ErisPulse
+      - name: 安装依赖
+        run: |
+          pip install ErisPulse
+          pip install -e .
 
       - name: 构建演示页
         run: python demo/build.py
