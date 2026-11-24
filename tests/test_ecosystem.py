@@ -57,7 +57,7 @@ async def test_extension_personas_registered_and_cleaned():
     assert main.personas.get("ext.Notes.scholar")["id"] == "ext.Notes.scholar"
     main.sdk.module.handlers[("Notes", "qvq_personas")] = []
     await bridge.refresh()
-    assert main.personas.delete("ext.Notes.scholar") is False
+    assert await main.personas.delete("ext.Notes.scholar") is False
 
 
 async def test_extension_schemas_override_signature():

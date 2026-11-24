@@ -114,7 +114,7 @@ class EcosystemBridge:
                 tool_count += 1
             await self._collect_personas(module_name)
         for ids in self._prev_ext_personas.values():
-            self._remove_personas(ids)
+            await self._remove_personas(ids)
         self._prev_ext_personas = {}
         self.info = {"modules": module_count, "tools": tool_count, "updated": utils.now_ts()}
 # 防抖热刷新（module.load/unload）后自动重发现参与决策提供者
@@ -323,15 +323,15 @@ class EcosystemBridge:
         title = str(title).strip() if title is not None else ""
         self.main.plugin_settings_catalog[module] = title or module
 
-    def _remove_personas(self, ids: list[str]) -> None:
+    async def _remove_personas(self, ids: list[str]) -> None:
         for pid in ids:
             try:
-                self.main.personas.delete(pid)
+                await self.main.personas.delete(pid)
             except Exception:
                 pass
 
     async def _collect_personas(self, module: str) -> None:
-        self._remove_personas(self._prev_ext_personas.pop(module, []))
+        await self._remove_personas(self._prev_ext_personas.pop(module, []))
         data = await self._call_optional(module, PERSONAS_SERVICE)
         if not isinstance(data, list):
             self._ext_personas[module] = []
@@ -357,7 +357,7 @@ class EcosystemBridge:
                 if item.get(key) is not None:
                     payload[key] = item.get(key)
             try:
-                self.main.personas.save(payload)
+                await self.main.personas.save(payload)
             except Exception:
                 continue
             ids.append(pid)

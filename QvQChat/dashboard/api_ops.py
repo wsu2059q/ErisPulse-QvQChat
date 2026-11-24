@@ -705,6 +705,7 @@ class StorageApiMixin:
             removed = len(wanted)
         except Exception:
             pass
+        await self._refresh_model_catalog()
         return {"ok": True, "removed": removed, "freed": freed}
 
     async def storage_cleanup(self, request):
@@ -734,7 +735,25 @@ class StorageApiMixin:
                 removed += len(keys)
             except Exception:
                 continue
+        await self._refresh_model_catalog()
         return {"ok": True, "domains": domains, "removed": removed, "freed": freed}
+
+    async def _refresh_model_catalog(self) -> None:
+        """存储页删除/清域后模型目录与人格表缓存可能已脏（对应键被旁路改写），重读预热。"""
+        pool = getattr(self.main, "pool", None)
+        warm = getattr(pool, "amigrate_and_refresh", None) if pool is not None else None
+        if warm is not None:
+            try:
+                await warm()
+            except Exception as e:
+                self.main.logger.debug(f"model catalog refresh failed: {e}")
+        personas = getattr(self.main, "personas", None)
+        arefresh = getattr(personas, "arefresh", None) if personas is not None else None
+        if arefresh is not None:
+            try:
+                await arefresh()
+            except Exception as e:
+                self.main.logger.debug(f"persona cache refresh failed: {e}")
 
     def _clear_dir(self, path: str) -> int:
         from pathlib import Path

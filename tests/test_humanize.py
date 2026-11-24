@@ -244,8 +244,8 @@ async def test_delete_with_undo_roundtrip():
     from fakes import FakeMain
 
     main = FakeMain()
-    main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1", "api_key": "k",
-                             "models": [{"id": "m", "enabled": True}]})
+    await main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1", "api_key": "k",
+                                   "models": [{"id": "m", "enabled": True}]})
     manager = DashboardManager(main)
 
     class R:

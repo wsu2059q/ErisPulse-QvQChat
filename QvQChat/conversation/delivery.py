@@ -687,7 +687,7 @@ class Delivery:
             return False
         self._replay_tried.add(chat_key)
         try:
-            data = self.sdk.storage.get(pending_key(chat_key), []) or []
+            data = await self.sdk.storage.aget(pending_key(chat_key), []) or []
         except Exception:
             return False
         if not isinstance(data, list) or not data or not isinstance(data[0], dict):
@@ -724,7 +724,7 @@ class Delivery:
             # 不可送达死信（无好友/目标不存在）：留在队列里每次启动都会原样撞墙——直接丢弃
             if is_undeliverable(last_error):
                 try:
-                    self.sdk.storage.set(pending_key(chat_key), data[1:])
+                    await self.sdk.storage.aset(pending_key(chat_key), data[1:])
                     self.main.logger.warning(
                         f"pending send dropped (undeliverable target {platform}/{detail_type}/{target_id}): {last_error}"
                     )
@@ -732,7 +732,7 @@ class Delivery:
                     pass
             return False
         try:
-            self.sdk.storage.set(pending_key(chat_key), data[1:])
+            await self.sdk.storage.aset(pending_key(chat_key), data[1:])
         except Exception:
             pass
         self.main.logger.info(f"replayed pending send for {chat_key}")

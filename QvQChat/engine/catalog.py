@@ -28,6 +28,8 @@ class ProviderCatalog:
 
     def __init__(self, pool):
         self.pool = pool
+        self._providers_cache: list | None = None
+        self._chain_cache: list | None = None
 
     @property
     def sdk(self):
@@ -37,35 +39,44 @@ class ProviderCatalog:
     def config(self):
         return self.pool.config
 
-    def migrate_legacy(self) -> None:
+    async def amigrate_and_refresh(self) -> None:
+        """启动预热：迁移旧版模型表 + 并发批量读 providers/chain 进缓存。
+        预热后事件循环内的 list_providers/model_chain 零存储访问；写路径同步维护缓存。"""
+        providers = await self.sdk.storage.aget(POOL_KEY, [])
+        self._providers_cache = providers if isinstance(providers, list) else []
+        chain = await self.sdk.storage.aget(CHAIN_KEY, [])
+        self._chain_cache = chain if isinstance(chain, list) else []
         try:
-            legacy = self.sdk.storage.get(LEGACY_KEY, [])
-            if isinstance(legacy, list) and legacy and not self.list_providers():
-                models = [m for m in legacy if isinstance(m, dict)]
-                base_url = models[0].get("base_url", "") if models else ""
-                api_key = models[0].get("api_key", "") if models else ""
-                provider = {
-                    "id": "custom",
-                    "name": "Custom",
-                    "base_url": base_url or "https://api.openai.com/v1",
-                    "api_key": api_key,
-                    "models": [
-                        {
-                            "id": m.get("model", ""),
-                            "enabled": True,
-                            "temperature": m.get("temperature"),
-                            "max_tokens": m.get("max_tokens"),
-                        }
-                        for m in models
-                    ],
-                }
-                self.save_provider(provider)
+            if not self._providers_cache:
+                legacy = await self.sdk.storage.aget(LEGACY_KEY, [])
+                if isinstance(legacy, list) and legacy:
+                    models = [m for m in legacy if isinstance(m, dict)]
+                    base_url = models[0].get("base_url", "") if models else ""
+                    api_key = models[0].get("api_key", "") if models else ""
+                    provider = {
+                        "id": "custom",
+                        "name": "Custom",
+                        "base_url": base_url or "https://api.openai.com/v1",
+                        "api_key": api_key,
+                        "models": [
+                            {
+                                "id": m.get("model", ""),
+                                "enabled": True,
+                                "temperature": m.get("temperature"),
+                                "max_tokens": m.get("max_tokens"),
+                            }
+                            for m in models
+                        ],
+                    }
+                    await self.save_provider(provider)
         except Exception:
             pass
 
-
     def list_providers(self) -> list[dict]:
-        providers = self.sdk.storage.get(POOL_KEY, [])
+        providers = self._providers_cache
+        if providers is None:
+# 未预热回退（线程路径/测试环境）：生产事件循环内由 on_load 先行 amigrate_and_refresh
+            providers = self.sdk.storage.get(POOL_KEY, [])
         return providers if isinstance(providers, list) else []
 
     def get_provider(self, provider_id: str) -> dict | None:
@@ -87,7 +98,7 @@ class ProviderCatalog:
             merged.append({**base, **model} if base else model)
         return merged
 
-    def save_provider(self, data: dict) -> dict:
+    async def save_provider(self, data: dict) -> dict:
         providers = self.list_providers()
         provider_id = str(data.get("id") or utils.new_id())
         entry = {
@@ -115,15 +126,17 @@ class ProviderCatalog:
                 break
         else:
             providers.append(entry)
-        self.sdk.storage.set(POOL_KEY, providers)
+        self._providers_cache = providers
+        await self.sdk.storage.aset(POOL_KEY, providers)
         return entry
 
-    def delete_provider(self, provider_id: str) -> bool:
+    async def delete_provider(self, provider_id: str) -> bool:
         providers = self.list_providers()
         remaining = [p for p in providers if p.get("id") != provider_id]
         if len(remaining) == len(providers):
             return False
-        self.sdk.storage.set(POOL_KEY, remaining)
+        self._providers_cache = remaining
+        await self.sdk.storage.aset(POOL_KEY, remaining)
         return True
 
 # 故障转移链是跨 provider 的全局顺序，存在独立键里；provider.models 只能表达组内顺序
@@ -155,7 +168,10 @@ class ProviderCatalog:
         known_set = set(known)
         chain: list[dict] = []
         seen: set[tuple[str, str]] = set()
-        raw = self.sdk.storage.get(CHAIN_KEY, [])
+        raw = self._chain_cache
+        if raw is None:
+# 未预热回退（线程路径/测试环境）
+            raw = self.sdk.storage.get(CHAIN_KEY, [])
         for item in raw if isinstance(raw, list) else []:
             key = self._chain_key(item)
             if key and key in known_set and key not in seen:
@@ -167,7 +183,7 @@ class ProviderCatalog:
                 chain.append({"provider": key[0], "model": key[1]})
         return chain
 
-    def save_chain(self, entries: list) -> list[dict]:
+    async def save_chain(self, entries: list) -> list[dict]:
         """保存编排页拖拽后的全局链序；池中不存在的项直接忽略，缺失项读时自动补齐。"""
         known_set = set(self._known_model_keys())
         ordered: list[dict] = []
@@ -177,7 +193,8 @@ class ProviderCatalog:
             if key and key in known_set and key not in seen:
                 seen.add(key)
                 ordered.append({"provider": key[0], "model": key[1]})
-        self.sdk.storage.set(CHAIN_KEY, ordered)
+        self._chain_cache = ordered
+        await self.sdk.storage.aset(CHAIN_KEY, ordered)
         return self.model_chain()
 
     def presets(self) -> list[dict]:
@@ -188,7 +205,7 @@ class ProviderCatalog:
 
 
     async def _models_dev_catalog(self) -> dict:
-        cached = self.sdk.storage.get(MODELS_DEV_CACHE_KEY, None)
+        cached = await self.sdk.storage.aget(MODELS_DEV_CACHE_KEY, None)
         if isinstance(cached, dict) and time.time() - cached.get("ts", 0) < MODELS_DEV_TTL:
             data = cached.get("data")
             if isinstance(data, dict):
@@ -198,7 +215,7 @@ class ProviderCatalog:
             if resp.status == 200:
                 data = await resp.json()
                 if isinstance(data, dict):
-                    self.sdk.storage.set(MODELS_DEV_CACHE_KEY, {"ts": time.time(), "data": data})
+                    await self.sdk.storage.aset(MODELS_DEV_CACHE_KEY, {"ts": time.time(), "data": data})
                     return data
         except Exception:
             pass
@@ -391,13 +408,13 @@ class ProviderCatalog:
             return 0
         now = time.time()
         try:
-            last = float(self.sdk.storage.get(MODELS_ENRICH_KEY, 0) or 0)
+            last = float(await self.sdk.storage.aget(MODELS_ENRICH_KEY, 0) or 0)
         except (TypeError, ValueError):
             last = 0.0
         if not force and now - last < MODELS_ENRICH_TTL:
             return 0
         catalog = await self._models_dev_catalog()
-        self.sdk.storage.set(MODELS_ENRICH_KEY, now)
+        await self.sdk.storage.aset(MODELS_ENRICH_KEY, now)
         if not isinstance(catalog, dict) or not catalog:
             return 0
         total = 0
@@ -407,7 +424,8 @@ class ProviderCatalog:
                 provider["models"] = models
                 total += updated
         if total:
-            self.sdk.storage.set(POOL_KEY, providers)
+            self._providers_cache = providers
+            await self.sdk.storage.aset(POOL_KEY, providers)
         return total
 
 

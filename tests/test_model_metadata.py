@@ -72,9 +72,9 @@ def test_models_dev_lookup_matches_path_prefixed_model_id():
 # ===== 保存 provider 时按模型 id 合并，不能把已探测的能力/价格冲掉 =====
 
 
-def test_save_provider_preserves_existing_model_metadata():
+async def test_save_provider_preserves_existing_model_metadata():
     pool = make_pool()
-    pool.save_provider({
+    await pool.save_provider({
         "id": "p", "name": "P", "base_url": "https://x/v1", "api_key": "k",
         "models": [{
             "id": "m", "enabled": True, "tool_call": True,
@@ -82,7 +82,7 @@ def test_save_provider_preserves_existing_model_metadata():
         }],
     })
 # 模拟模型池 UI 只回传 id/enabled 的旧保存路径
-    pool.save_provider({
+    await pool.save_provider({
         "id": "p", "name": "P", "base_url": "https://x/v1", "api_key": "",
         "models": [{"id": "m", "enabled": True}],
     })
@@ -115,9 +115,9 @@ async def test_enrich_models_fills_missing_without_overwriting_manual_values():
 # ===== 成本换算要覆盖已停用模型的历史用量 =====
 
 
-def test_model_costs_includes_disabled_models():
+async def test_model_costs_includes_disabled_models():
     pool = make_pool()
-    pool.save_provider({
+    await pool.save_provider({
         "id": "p", "name": "P", "base_url": "https://x/v1", "api_key": "k",
         "models": [
             {"id": "on", "enabled": True, "cost": {"input": 1.0, "output": 2.0}},

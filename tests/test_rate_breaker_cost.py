@@ -26,7 +26,7 @@ async def test_breaker_opens_after_failures_and_skips():
     pool.engine = SimpleNamespace(chat=fake_chat)
     provider = {"id": "p1", "name": "P1", "base_url": "https://x/v1", "api_key": "k",
                 "models": [{"id": "bad"}, {"id": "good"}]}
-    pool.save_provider(provider)
+    await pool.save_provider(provider)
 
     for _ in range(3):
         try:

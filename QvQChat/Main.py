@@ -290,11 +290,16 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         from .engine import tokens
         tokens.configure(self.cfg)
         self.pool = ModelPool(self.sdk, self.cfg)
+        try:
+            await self.pool.catalog.amigrate_and_refresh()
+        except Exception as e:
+            self.logger.debug(f"model catalog warmup failed: {e}")
         self.registry = ToolRegistry()
         self.personas = PersonaManager(self.sdk)
         try:
-# KV 绑定为权威源；conv state.persona 镜像过期则回填一次
-            moved = self.personas.migrate_state_mirror()
+# 缓存预热（人格表 + 绑定表），随后 KV 绑定为权威源回填一次过期镜像
+            await self.personas.arefresh()
+            moved = await self.personas.migrate_state_mirror()
             if moved:
                 self.logger.info(f"persona binding migration: {moved} session mirrors synced from KV")
         except Exception as e:
@@ -664,13 +669,13 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 return entries
 
 # 键级 RMW（并发任务同时记账不再互相覆盖）；未落库则审计页无数据可查。
-# 异步版：同步 storage_update 在事件循环内经框架桥接会阻塞且超时丢数据
+# 走异步版：同步 get/set 在事件循环内经框架桥接会阻塞且超时丢数据
             await utils.storage_aupdate(self.sdk, AUDIT_KEY, _append, [])
         except Exception as e:
 # 审计落盘失败不能完全静默
             self.logger.debug(f"audit persist failed: {e}")
 
-    def _inbox_notice(self, chat_key: str, summary: str) -> None:
+    async def _inbox_notice(self, chat_key: str, summary: str) -> None:
         """合成一条收件箱通知（不依赖平台事件对象）：超限丢弃等静默失败的可见化出口。"""
         try:
             key = EVENT_INBOX_KEY + "default"
@@ -690,7 +695,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 entries.append(notice)
                 return entries[-200:]
 
-            utils.storage_update(self.sdk, key, _append, [])
+            await utils.storage_aupdate(self.sdk, key, _append, [])
         except Exception as e:
             self.logger.debug(f"inbox notice failed: {e}")
 
@@ -708,11 +713,11 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
         if origin in ("plugin", "proactive") and not bool(getattr(self.cfg, "budget_auto_on_limit", False)):
             try:
                 checker = getattr(type(self), "_over_token_limit", None)
-                if checker is not None and checker(self, chat_key):
+                if checker is not None and await checker(self, chat_key):
                     self.logger.info(f"over token limit, {origin} run_prompt skipped ({chat_key})")
 # 静默丢弃可见化：主动来源含子智能体回报——发起者/运营方至少能在收件箱看到"被跳过"
                     if origin == "proactive":
-                        self._inbox_notice(chat_key, "令牌超限，一条主动消息（可能包含子智能体回报）被跳过")
+                        await self._inbox_notice(chat_key, "令牌超限，一条主动消息（可能包含子智能体回报）被跳过")
                     return ""
             except Exception:
                 pass
@@ -1001,12 +1006,12 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                     "ts": utils.now_ts(),
                 })
 
-        ok, why = budget.allow(chat_key, "proactive")
+        ok, why = await budget.allow(chat_key, "proactive")
         if not ok:
             _log_proactive(False, why)
             self.logger.info(f"proactive speak denied ({chat_key}): {why}")
             return why
-        budget.record(chat_key, "proactive")
+        await budget.record(chat_key, "proactive")
 # 主动唤醒场景：明确"没人对你说话"，否则模型会把引导语当成有人在提问
         scene = texts.t("scene_proactive", reason=str(reason or "").strip() or texts.t("scene_proactive_noreason"))
 # 重复话题抑制：列出本会话最近主动发言（30 分钟内），提示避免重复——
@@ -1064,7 +1069,7 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
                 "budget": {},
                 "decisions": [],
             }
-        return manager.status()
+        return await manager.status()
 
     async def get_status(self) -> dict:
         counts = self.registry.count_by_origin()

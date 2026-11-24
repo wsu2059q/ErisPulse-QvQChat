@@ -10,39 +10,39 @@ from QvQChat.engine.openai import OpenAIEngine
 from fakes import FakeMain
 
 
-def test_builtin_persona_present_and_editable():
+async def test_builtin_persona_present_and_editable():
     """内置人格可修改（覆盖存储），删除即恢复默认。"""
     manager = PersonaManager(FakeMain().sdk)
     personas = manager.list()
     assert any(p["id"] == ASSISTANT_ID and p.get("builtin") for p in personas)
-    saved = manager.save({"id": ASSISTANT_ID, "name": "自定义", "system": "覆盖后的系统提示词"})
+    saved = await manager.save({"id": ASSISTANT_ID, "name": "自定义", "system": "覆盖后的系统提示词"})
     assert saved["modified"] is True
     assert manager.get(ASSISTANT_ID)["system"] == "覆盖后的系统提示词"
-    assert manager.delete(ASSISTANT_ID) is True
+    assert await manager.delete(ASSISTANT_ID) is True
     restored = manager.get(ASSISTANT_ID)
     assert restored["builtin"] is True and not restored.get("modified")
-    assert manager.delete(ASSISTANT_ID) is False
+    assert await manager.delete(ASSISTANT_ID) is False
 
 
 async def test_persona_crud_and_binding():
     main = FakeMain()
     manager = PersonaManager(main.sdk)
-    saved = manager.save({"name": "学者", "system": "你是严谨的学者。", "tools": ["recall"]})
+    saved = await manager.save({"name": "学者", "system": "你是严谨的学者。", "tools": ["recall"]})
     pid = saved["id"]
     assert manager.get(pid)["name"] == "学者"
     await manager.bind("a:b:c", pid)
     assert manager.resolve("a:b:c")["id"] == pid
     await manager.bind("a:b:c", None)
     assert manager.resolve("a:b:c")["id"] == ASSISTANT_ID
-    assert manager.delete(pid) is True
+    assert await manager.delete(pid) is True
     assert manager.get(pid)["id"] == ASSISTANT_ID
 
 
-def test_persona_extended_fields_crud_and_defaults():
+async def test_persona_extended_fields_crud_and_defaults():
     """P2新字段存取 + get 缺省兼容（style={} examples=[] 等）。"""
     main = FakeMain()
     manager = PersonaManager(main.sdk)
-    saved = manager.save({
+    saved = await manager.save({
         "name": "猫娘",
         "system": "你是猫娘。",
         "owner_title": "主人",
@@ -63,39 +63,39 @@ def test_persona_extended_fields_crud_and_defaults():
     assert got["nickname"] == "小喵"
     assert got["avatar"] == "https://example.com/a.png"
 # 缺省兼容：不带新字段保存的人格 get 到的是空默认而非 KeyError
-    saved2 = manager.save({"name": "朴素", "system": "朴素人格。"})
+    saved2 = await manager.save({"name": "朴素", "system": "朴素人格。"})
     plain = manager.get(saved2["id"])
     assert plain["style"] == {} and plain["examples"] == []
     assert plain["banned_words"] == [] and plain["catchphrases"] == []
     assert plain["owner_title"] == "" and plain["nickname"] == "" and plain["avatar"] == ""
 
 
-def test_persona_save_merges_unspecified_fields():
+async def test_persona_save_merges_unspecified_fields():
     """P2部分保存不清空未提供的扩展字段（merge 语义）。"""
     main = FakeMain()
     manager = PersonaManager(main.sdk)
-    saved = manager.save({"name": "A", "system": "sys", "owner_title": "老板", "style": {"verbosity": "low"}})
+    saved = await manager.save({"name": "A", "system": "sys", "owner_title": "老板", "style": {"verbosity": "low"}})
     pid = saved["id"]
-    manager.save({"id": pid, "system": "sys2"})# 只改 system
+    await manager.save({"id": pid, "system": "sys2"})# 只改 system
     got = manager.get(pid)
     assert got["system"] == "sys2"
     assert got["owner_title"] == "老板"
     assert got["style"] == {"verbosity": "low"}
 # 显式传空串可清空
-    manager.save({"id": pid, "owner_title": ""})
+    await manager.save({"id": pid, "owner_title": ""})
     assert manager.get(pid)["owner_title"] == ""
 
 
-def test_persona_examples_capped_2000():
+async def test_persona_examples_capped_2000():
     main = FakeMain()
     manager = PersonaManager(main.sdk)
     big = "x" * 1500
-    saved = manager.save({"name": "E", "system": "s", "examples": [
+    saved = await manager.save({"name": "E", "system": "s", "examples": [
         {"user": big, "assistant": big},# 3000 > 2000 → 不收
         {"user": "u1", "assistant": "a1"},# 第一条超限即止
     ]})
     assert saved["examples"] == []
-    saved2 = manager.save({"name": "E2", "system": "s", "examples": [
+    saved2 = await manager.save({"name": "E2", "system": "s", "examples": [
         {"user": "u" * 900, "assistant": "a" * 900},
         {"user": "b" * 100, "assistant": ""},# 累计 1900 ≤ 2000 收
         {"user": "c" * 200, "assistant": "never"},# 累计超 2000 止
@@ -117,7 +117,7 @@ async def test_bindings_listing_and_removal():
     main = FakeMain()
     manager = PersonaManager(main.sdk)
     assert await manager.abindings() == {}
-    saved = manager.save({"name": "P", "system": "s"})
+    saved = await manager.save({"name": "P", "system": "s"})
     await manager.bind("qq:private:1", saved["id"])
     await manager.bind("qq:group:9", "concise")
     assert await manager.abindings() == {"qq:private:1": saved["id"], "qq:group:9": "concise"}
@@ -131,7 +131,7 @@ async def test_resolve_group_fallback_two_levels():
     manager = PersonaManager(main.sdk)
     group_key = "qq:group:100"
     member_key = "qq:group:100:u7"
-    saved = manager.save({"name": "群设", "system": "群人格"})
+    saved = await manager.save({"name": "群设", "system": "群人格"})
 # 1) 群 base 绑定对隔离成员 key 生效
     await manager.bind(group_key, saved["id"])
     assert manager.resolve(member_key)["id"] == saved["id"]
@@ -160,16 +160,17 @@ async def test_migrate_state_mirror_backfills_from_kv():
     main.sdk.storage.set(CONV_PREFIX + "qq:private:1", {"persona": "old", "contexts": []})
     main.sdk.storage.set(CONV_PREFIX + "qq:private:2", {"persona": "keep", "contexts": []})
     await manager.bind("qq:private:1", "concise")
-    moved = manager.migrate_state_mirror()
+    await manager.arefresh()
+    moved = await manager.migrate_state_mirror()
     assert moved == 1
     assert main.sdk.storage.get(CONV_PREFIX + "qq:private:1")["persona"] == "concise"
     assert main.sdk.storage.get(CONV_PREFIX + "qq:private:2")["persona"] == "keep"
 # 收敛后二次迁移为 no-op
-    assert manager.migrate_state_mirror() == 0
+    assert await manager.migrate_state_mirror() == 0
 
 
-def _rich_persona(main) -> str:
-    saved = main.personas.save({
+async def _rich_persona(main) -> str:
+    saved = await main.personas.save({
         "name": "小蝶",
         "system": "你是小蝶。",
         "owner_title": "主人",
@@ -186,7 +187,7 @@ def _rich_persona(main) -> str:
 async def test_build_system_injects_persona_extras():
     """P2身份行在首行；owner_title/style/examples/禁词口头禅注入；persona_extra 部件可被 pack 兜底。"""
     main = FakeMain()
-    pid = _rich_persona(main)
+    pid = await _rich_persona(main)
     persona = main.personas.get(pid)
     parts = await main.sessions.build_system_parts(persona)
     kinds = [p.kind for p in parts]
@@ -287,7 +288,7 @@ async def test_persona_roster_recognition():
     from fakes import FakeMain
 
     main = FakeMain()
-    saved = main.personas.save({"id": "cat", "name": "猫娘", "system": "你是猫娘。", "nickname": "喵喵"})
+    saved = await main.personas.save({"id": "cat", "name": "猫娘", "system": "你是猫娘。", "nickname": "喵喵"})
     # 用内置 assistant 视角看名册：应含 猫娘（别名：喵喵）等其它人格，不含 assistant 自己
     parts = await main.sessions.build_system_parts(main.personas.get("assistant"))
     roster = [p for p in parts if p.kind == "roster"]

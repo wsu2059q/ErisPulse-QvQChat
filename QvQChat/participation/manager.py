@@ -318,13 +318,13 @@ class ParticipationManager:
         except Exception as e:
             self._log("debug", f"decision log append failed: {e}")
 
-    def status(self) -> dict:
+    async def status(self) -> dict:
         cfg = getattr(self.main, "cfg", None)
         return {
             "enabled": bool(getattr(cfg, "participation_enabled", False)),
             "strategy": str(getattr(cfg, "participation_strategy", "first_speak") or "first_speak"),
             "providers": self.providers_status(),
-            "budget": self.budget.status(),
+            "budget": await self.budget.status(),
             "decisions": list(self.decisions),
         }
 

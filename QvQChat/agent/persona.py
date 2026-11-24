@@ -118,19 +118,41 @@ class PersonaManager:
     def __init__(self, sdk: Any):
         self.sdk = sdk
         self._gd_cache: str | None = None
+        self._store_cache: dict | None = None
+        self._binding_cache: dict[str, str] | None = None
+
+    async def arefresh(self) -> None:
+        """预热进程内缓存（人格表 + 绑定表各一次批量读）。
+        预热后事件循环内的 list/get/aresolve 全部零存储访问；写路径同步维护缓存。"""
+        stored = await self.sdk.storage.aget(PERSONAS_KEY, {})
+        self._store_cache = stored if isinstance(stored, dict) else {}
+        keys = [
+            key for key in await self.sdk.storage.aget_all_keys()
+            if isinstance(key, str) and key.startswith(BINDING_PREFIX)
+        ]
+        values = await self.sdk.storage.aget_multi(keys) if keys else {}
+        self._binding_cache = {
+            key[len(BINDING_PREFIX):]: str(value)
+            for key, value in (values or {}).items()
+            if str(value or "")
+        }
 
     def list(self) -> list[dict]:
-        stored = self.sdk.storage.get(PERSONAS_KEY, {})
+        stored = self._store_cache
+        if stored is None:
+# 未预热回退（线程路径/测试环境）：生产事件循环内由 on_load 先行 arefresh
+            stored = self.sdk.storage.get(PERSONAS_KEY, {})
+            if not isinstance(stored, dict):
+                stored = {}
 # 内置默认也过 _normalize：保证 P2 扩展字段在所有人格上类型正确
         personas = {pid: _normalize(entry) for pid, entry in _default_personas().items()}
-        if isinstance(stored, dict):
-            for persona_id, data in stored.items():
-                data = _normalize(data if isinstance(data, dict) else {})
-                data["id"] = persona_id
-                if persona_id in BUILTIN_IDS:
-                    data["builtin"] = True
-                    data["modified"] = True
-                personas[persona_id] = data
+        for persona_id, data in stored.items():
+            data = _normalize(data if isinstance(data, dict) else {})
+            data["id"] = persona_id
+            if persona_id in BUILTIN_IDS:
+                data["builtin"] = True
+                data["modified"] = True
+            personas[persona_id] = data
         return list(personas.values())
 
     def get(self, persona_id: str | None) -> dict:
@@ -153,7 +175,7 @@ class PersonaManager:
             await self.sdk.storage.adelete(DEFAULT_PERSONA_KEY)
         self._gd_cache = str(persona_id or "")
 
-    def save(self, data: dict) -> dict:
+    async def save(self, data: dict) -> dict:
         persona_id = str(data.get("id") or utils.new_id())
 
         def _merge(stored: dict) -> dict:
@@ -229,7 +251,8 @@ class PersonaManager:
             return stored
 
 # 键级 RMW（面板/工具并发保存同一人格表不再互相覆盖）
-        stored = utils.storage_update(self.sdk, PERSONAS_KEY, _merge, {})
+        stored = await utils.storage_aupdate(self.sdk, PERSONAS_KEY, _merge, {})
+        self._store_cache = stored
         result = dict(stored.get(persona_id) or {})
         result["id"] = persona_id
         if persona_id in BUILTIN_IDS:
@@ -237,7 +260,7 @@ class PersonaManager:
             result["modified"] = True
         return result
 
-    def delete(self, persona_id: str) -> bool:
+    async def delete(self, persona_id: str) -> bool:
         found: list = []
 
         def _drop(stored) -> dict:
@@ -248,7 +271,8 @@ class PersonaManager:
                 found.append(True)
             return stored
 
-        utils.storage_update(self.sdk, PERSONAS_KEY, _drop, {})
+        stored = await utils.storage_aupdate(self.sdk, PERSONAS_KEY, _drop, {})
+        self._store_cache = stored
         return bool(found)
 
     async def bind(self, chat_key: str, persona_id: str | None) -> None:
@@ -256,9 +280,16 @@ class PersonaManager:
             await self.sdk.storage.aset(BINDING_PREFIX + chat_key, persona_id)
         else:
             await self.sdk.storage.adelete(BINDING_PREFIX + chat_key)
+        if self._binding_cache is not None:
+            if persona_id:
+                self._binding_cache[str(chat_key)] = str(persona_id)
+            else:
+                self._binding_cache.pop(str(chat_key), None)
 
     async def abindings(self) -> dict[str, str]:
-        """chat_key → persona_id 的权威绑定表（异步路径；按前缀一次取键再批量读值）。"""
+        """chat_key → persona_id 的绑定表（预热后读缓存）。"""
+        if self._binding_cache is not None:
+            return dict(self._binding_cache)
         keys = [
             key for key in await self.sdk.storage.aget_all_keys()
             if isinstance(key, str) and key.startswith(BINDING_PREFIX)
@@ -359,40 +390,53 @@ class PersonaManager:
         return candidates
 
     def resolve(self, chat_key: str) -> dict:
-        """同步版：仅供无事件循环的路径（启动迁移/线程）使用；事件循环内用 aresolve。"""
+        """同步版：仅供无事件循环的路径（线程/测试）使用；事件循环内用 aresolve。
+        缓存未预热时同步读存储。"""
         for candidate in self._binding_candidates(chat_key):
-            bound = str(self.sdk.storage.get(BINDING_PREFIX + candidate, "") or "")
+            bound = (self._binding_cache or {}).get(candidate)
+            if bound is None:
+                bound = str(self.sdk.storage.get(BINDING_PREFIX + candidate, "") or "")
             if bound:
                 return self.get(bound)
         return self.get(None)
 
     async def aresolve(self, chat_key: str) -> dict:
-        """resolve 的异步版（事件循环内一律走这里，避免同步桥阻塞）。"""
+        """事件循环内的绑定解析：预热后纯内存回落链查找，零存储访问。"""
+        cache = self._binding_cache
+        if cache is not None:
+            for candidate in self._binding_candidates(chat_key):
+                bound = str(cache.get(candidate) or "")
+                if bound:
+                    return self.get(bound)
+            return self.get(None)
         for candidate in self._binding_candidates(chat_key):
             bound = str(await self.sdk.storage.aget(BINDING_PREFIX + candidate, "") or "")
             if bound:
                 return self.get(bound)
         return self.get(None)
 
-    def migrate_state_mirror(self) -> int:
+    async def migrate_state_mirror(self) -> int:
         """启动迁移：KV 绑定为权威源，conv state.persona 指向不同则回填一次。
 
         仅在 KV binding 存在时回填（反向不迁，避免把过期镜像升格为绑定）。
+        在 arefresh 之后调用（绑定走缓存）。
         """
         from ..conversation.service import CONV_PREFIX
 
         moved = 0
-        for key in list(self.sdk.storage.keys()):
-            if not (isinstance(key, str) and key.startswith(CONV_PREFIX)):
+        keys = [
+            key for key in await self.sdk.storage.aget_all_keys()
+            if isinstance(key, str) and key.startswith(CONV_PREFIX)
+        ]
+        values = await self.sdk.storage.aget_multi(keys) if keys else {}
+        for key, state in (values or {}).items():
+            if not isinstance(state, dict):
                 continue
             chat_key = key[len(CONV_PREFIX):]
-            bound = str(self.sdk.storage.get(BINDING_PREFIX + chat_key, "") or "")
-            if not bound:
-                continue
-            state = self.sdk.storage.get(key, None)
-            if not isinstance(state, dict) or state.get("persona") == bound:
+            bound = str((self._binding_cache or {}).get(chat_key) or "")
+            if not bound or state.get("persona") == bound:
                 continue
             state["persona"] = bound
-            self.sdk.storage.set(key, state)
+            await self.sdk.storage.aset(key, state)
             moved += 1
         return moved

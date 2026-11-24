@@ -35,8 +35,8 @@ async def test_export_zip_sanitized_masks_keys(tmp_path):
     api_ops.STORAGE_FILE_DOMAINS = [("uploads", str(tmp_path))]
     try:
         main, manager = make_manager(view_token="tok-x")
-        main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1",
-                                 "api_key": os.environ.get("QVQCHAT_TEST_KEY_1", "masked-key-sanitized"), "models": [{"id": "m", "enabled": True}]})
+        await main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1",
+                                       "api_key": os.environ.get("QVQCHAT_TEST_KEY_1", "masked-key-sanitized"), "models": [{"id": "m", "enabled": True}]})
         response = await manager.export_data(FakeQp(format="zip", sanitize="1"))
         assert response.media_type == "application/zip"
         zf = zipfile.ZipFile(io.BytesIO(response.body))
@@ -55,8 +55,8 @@ async def test_export_zip_sanitized_masks_keys(tmp_path):
 
 async def test_export_zip_full_keeps_keys():
     main, manager = make_manager(view_token="tok-x")
-    main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1",
-                             "api_key": os.environ.get("QVQCHAT_TEST_KEY_2", "kept-key-full"), "models": [{"id": "m", "enabled": True}]})
+    await main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1",
+                                   "api_key": os.environ.get("QVQCHAT_TEST_KEY_2", "kept-key-full"), "models": [{"id": "m", "enabled": True}]})
     response = await manager.export_data(FakeQp(format="zip"))
     zf = zipfile.ZipFile(io.BytesIO(response.body))
     data = json.loads(zf.read("data.json").decode("utf-8"))
@@ -245,11 +245,15 @@ def _speakable_main():
     from fakes import FakeMain
 
     main = FakeMain()
+
+    async def allow(chat_key, kind):
+        return (True, "")
+
+    async def record(chat_key, kind):
+        return None
+
     main.participation = SimpleNamespace(
-        budget=SimpleNamespace(
-            allow=lambda chat_key, kind: (True, ""),
-            record=lambda chat_key, kind: None,
-        ),
+        budget=SimpleNamespace(allow=allow, record=record),
         log_decision=lambda entry: None,
     )
     main.prompts = []

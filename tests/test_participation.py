@@ -263,64 +263,64 @@ async def test_decide_provider_exception_treated_as_silent():
 
 # ==================== SpeechBudget ====================
 
-def test_budget_hourly_limit_and_window_reset():
+async def test_budget_hourly_limit_and_window_reset():
     budget = SpeechBudget(FakeMain().sdk, make_config(participation_hourly_limit=2, participation_cooldown_seconds=0))
     t0 = 1000.0
-    assert budget.allow("g", KIND_INTERJECT, now=t0)[0]
-    budget.record("g", KIND_INTERJECT, now=t0)
-    assert budget.allow("g", KIND_INTERJECT, now=t0 + 1)[0]
-    budget.record("g", KIND_INTERJECT, now=t0 + 1)
-    ok, why = budget.allow("g", KIND_INTERJECT, now=t0 + 2)
+    assert (await budget.allow("g", KIND_INTERJECT, now=t0))[0]
+    await budget.record("g", KIND_INTERJECT, now=t0)
+    assert (await budget.allow("g", KIND_INTERJECT, now=t0 + 1))[0]
+    await budget.record("g", KIND_INTERJECT, now=t0 + 1)
+    ok, why = await budget.allow("g", KIND_INTERJECT, now=t0 + 2)
     assert not ok and why
 # 不同群互不影响 / 新小时窗口重置
-    assert budget.allow("g2", KIND_INTERJECT, now=t0 + 2)[0]
-    assert budget.allow("g", KIND_INTERJECT, now=t0 + 3601)[0]
+    assert (await budget.allow("g2", KIND_INTERJECT, now=t0 + 2))[0]
+    assert (await budget.allow("g", KIND_INTERJECT, now=t0 + 3601))[0]
 
 
-def test_budget_cooldown():
+async def test_budget_cooldown():
     budget = SpeechBudget(FakeMain().sdk, make_config(participation_cooldown_seconds=300))
     t0 = 2000.0
-    budget.record("g", KIND_INTERJECT, now=t0)
-    ok, _ = budget.allow("g", KIND_INTERJECT, now=t0 + 10)
+    await budget.record("g", KIND_INTERJECT, now=t0)
+    ok, _ = await budget.allow("g", KIND_INTERJECT, now=t0 + 10)
     assert not ok
-    assert budget.allow("g", KIND_INTERJECT, now=t0 + 301)[0]
+    assert (await budget.allow("g", KIND_INTERJECT, now=t0 + 301))[0]
 
 
-def test_budget_global_daily_limit_only_counts_proactive():
+async def test_budget_global_daily_limit_only_counts_proactive():
     budget = SpeechBudget(
         FakeMain().sdk,
         make_config(participation_proactive_daily_limit=1, participation_cooldown_seconds=0),
     )
     t0 = 3000.0
-    assert budget.allow("g", KIND_PROACTIVE, now=t0)[0]
-    budget.record("g", KIND_PROACTIVE, now=t0)
-    ok, why = budget.allow("g", KIND_PROACTIVE, now=t0 + 10)
+    assert (await budget.allow("g", KIND_PROACTIVE, now=t0))[0]
+    await budget.record("g", KIND_PROACTIVE, now=t0)
+    ok, why = await budget.allow("g", KIND_PROACTIVE, now=t0 + 10)
     assert not ok and why
 # 插话不计入全局日限（冷却 0）
-    assert budget.allow("g", KIND_INTERJECT, now=t0 + 10)[0]
-    status = budget.status(now=t0 + 10)
+    assert (await budget.allow("g", KIND_INTERJECT, now=t0 + 10))[0]
+    status = await budget.status(now=t0 + 10)
     assert status["proactive_today"] == 1
     assert status["limits"]["proactive_daily_limit"] == 1
 
 
-def test_budget_persisted_in_storage():
+async def test_budget_persisted_in_storage():
     main = FakeMain()
     budget = SpeechBudget(main.sdk, make_config(participation_hourly_limit=1, participation_cooldown_seconds=0))
-    budget.record("g", KIND_INTERJECT, now=4000.0)
+    await budget.record("g", KIND_INTERJECT, now=4000.0)
     assert main.sdk.storage.get("QvQChat:participation:g") == [4000.0]
 # 新实例读同一 storage：预算状态延续
     reborn = SpeechBudget(main.sdk, make_config(participation_hourly_limit=1, participation_cooldown_seconds=0))
-    ok, _ = reborn.allow("g", KIND_INTERJECT, now=4000.5)
+    ok, _ = await reborn.allow("g", KIND_INTERJECT, now=4000.5)
     assert not ok
 
 
-def test_budget_daily_resets_next_day():
+async def test_budget_daily_resets_next_day():
     budget = SpeechBudget(FakeMain().sdk, make_config(participation_proactive_daily_limit=1))
     day1 = 5000.0
-    budget.record("g", KIND_PROACTIVE, now=day1)
-    assert not budget.allow("g", KIND_PROACTIVE, now=day1 + 60)[0]
+    await budget.record("g", KIND_PROACTIVE, now=day1)
+    assert not (await budget.allow("g", KIND_PROACTIVE, now=day1 + 60))[0]
 # 次日重置（+24h）
-    assert budget.allow("g", KIND_PROACTIVE, now=day1 + 86400)[0]
+    assert (await budget.allow("g", KIND_PROACTIVE, now=day1 + 86400))[0]
 
 
 # ==================== _on_message：qvq.observe 旁听通道 ====================
@@ -439,7 +439,7 @@ async def test_interject_budget_rejection_observed():
     main = make_part_main(participation_enabled=True)
     add_provider(main, "Stalker", decision="speak")
     await main.participation.discover()
-    main.participation.budget.record(GROUP_KEY, KIND_INTERJECT)# 触发默认 300s 冷却
+    await main.participation.budget.record(GROUP_KEY, KIND_INTERJECT)# 触发默认 300s 冷却
     ev = FakeChatEvent(text="冷却中插话", at=False)
     await Main._on_message(main, ev)
     assert not main.rt.pending and not ev.claimed
@@ -474,7 +474,7 @@ async def test_speak_passes_budget_and_runs_prompt():
     chat_key, prompt, kwargs = main.prompts[0]
     assert chat_key == GROUP_KEY and prompt == "主动开场"
     assert kwargs["origin"] == "proactive" and kwargs["send"] is True
-    assert main.participation.budget.status()["proactive_today"] == 1
+    assert (await main.participation.budget.status())["proactive_today"] == 1
     assert main.participation.decisions[-1]["kind"] == "proactive"
     assert main.participation.decisions[-1]["budget_ok"] is True
 
@@ -488,7 +488,7 @@ async def test_speak_default_prompt_when_empty():
 
 async def test_speak_budget_denied_returns_reason():
     main = make_part_main(participation_proactive_daily_limit=1)
-    main.participation.budget.record(GROUP_KEY, KIND_PROACTIVE)
+    await main.participation.budget.record(GROUP_KEY, KIND_PROACTIVE)
     main.speak = Main.speak.__get__(main)
     out = await main.speak(GROUP_KEY, reason="r", prompt="p")
     assert out and out != "ok"

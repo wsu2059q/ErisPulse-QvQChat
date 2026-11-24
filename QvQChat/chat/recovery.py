@@ -89,7 +89,7 @@ class RecoveryMixin:
             return
         wait = RECOVERY_REPLAY_GAP if gap is None else max(0.0, float(gap))
         try:
-            keys = list(self.sdk.storage.keys())
+            keys = [k for k in await self.sdk.storage.aget_all_keys()]
         except Exception:
             return
         now = time.time()
@@ -101,7 +101,7 @@ class RecoveryMixin:
             if not chat_key:
                 continue
             try:
-                data = self.sdk.storage.get(key, [])
+                data = await self.sdk.storage.aget(key, [])
             except Exception:
                 continue
             if not isinstance(data, list) or not data:
@@ -115,7 +115,7 @@ class RecoveryMixin:
             ]
             if len(fresh) != len(data):
                 try:
-                    self.sdk.storage.set(key, fresh)
+                    await self.sdk.storage.aset(key, fresh)
                     self.logger.warning(
                         f"boot dropped {len(data) - len(fresh)} stale pending send(s) for {chat_key}"
                     )
@@ -143,7 +143,7 @@ class RecoveryMixin:
         min_age = float(getattr(self.cfg, "recovery_min_age", 90) or 0)
         now = time.time()
         try:
-            keys = list(self.sdk.storage.keys())
+            keys = [k for k in await self.sdk.storage.aget_all_keys()]
         except Exception:
             return
         candidates: list[tuple[str, dict, float]] = []
@@ -152,11 +152,11 @@ class RecoveryMixin:
                 continue
             chat_key = key[len(INFLIGHT_KEY_PREFIX):]
             try:
-                marker = self.sdk.storage.get(key, None)
+                marker = await self.sdk.storage.aget(key, None)
             except Exception:
                 marker = None
             try:
-                self.sdk.storage.delete(key)
+                await self.sdk.storage.adelete(key)
             except Exception:
                 pass
             if not isinstance(marker, dict) or not chat_key:

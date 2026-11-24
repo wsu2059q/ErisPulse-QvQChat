@@ -1,11 +1,22 @@
 import asyncio
 
+import pytest
+
 from QvQChat import texts
 from QvQChat.agent.runner import AgentRunner
 from QvQChat.agent.tools import Tool, ToolContext, ToolRegistry
 from QvQChat.engine.base import ChatResponse, ToolCall
 
 from fakes import FakeMain, make_ctx
+
+
+@pytest.fixture(autouse=True)
+def _en_texts():
+    from ErisPulse.Core import i18n
+
+    i18n.set_language("en", persist=False)
+    yield
+    i18n.reset_language()
 
 
 def make_tool(name="echo", handler=None):
@@ -575,22 +586,22 @@ async def test_runner_prefill_fallback_on_error():
     assert runner._prefill_blocked("prov:m1")
 
 
-def test_persona_prefill_and_model_params_save_merge():
+async def test_persona_prefill_and_model_params_save_merge():
     """人格 prefill/temperature/max_tokens 保存；未提供的扩展字段沿用存量（merge）。"""
     from QvQChat.agent.persona import PersonaManager
 
     sdk = FakeMain().sdk
     pm = PersonaManager(sdk)
-    saved = pm.save({"id": "amer", "name": "Amer", "system": "sys",
-                     "prefill": "喵呜~", "temperature": 0.9, "max_tokens": 1024})
+    saved = await pm.save({"id": "amer", "name": "Amer", "system": "sys",
+                           "prefill": "喵呜~", "temperature": 0.9, "max_tokens": 1024})
     assert saved["prefill"] == "喵呜~" and saved["temperature"] == 0.9 and saved["max_tokens"] == 1024
     loaded = pm.get("amer")
     assert loaded["prefill"] == "喵呜~"
 # 只更新 name：prefill/参数不清空（merge）
-    updated = pm.save({"id": "amer", "name": "Amer2"})
+    updated = await pm.save({"id": "amer", "name": "Amer2"})
     assert updated["prefill"] == "喵呜~" and updated["temperature"] == 0.9
 # 显式传空串清除 prefill；非法温度清除
-    cleared = pm.save({"id": "amer", "prefill": "", "temperature": "bogus"})
+    cleared = await pm.save({"id": "amer", "prefill": "", "temperature": "bogus"})
     assert cleared["prefill"] == "" and cleared["temperature"] is None
 
 
@@ -599,7 +610,7 @@ async def test_runner_persona_temp_override_reaches_request():
     from QvQChat.agent.persona import PersonaManager
 
     main = FakeMain()
-    PersonaManager(main.sdk).save({"id": "p1", "name": "P", "system": "s", "temperature": 0.85, "max_tokens": 512})
+    await PersonaManager(main.sdk).save({"id": "p1", "name": "P", "system": "s", "temperature": 0.85, "max_tokens": 512})
     seen = []
 
     class Pool:

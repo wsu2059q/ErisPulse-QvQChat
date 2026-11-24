@@ -11,13 +11,13 @@ class _Request:
         return self._body
 
 
-def make_manager():
+async def make_manager():
     main = FakeMain()
-    main.pool.save_provider({
+    await main.pool.save_provider({
         "id": "p1", "name": "P1", "base_url": "https://a/v1", "api_key": "k1",
         "models": [{"id": "a", "enabled": True}],
     })
-    main.pool.save_provider({
+    await main.pool.save_provider({
         "id": "p2", "name": "P2", "base_url": "https://b/v1", "api_key": "k2",
         "models": [{"id": "c", "enabled": True}],
     })
@@ -25,7 +25,7 @@ def make_manager():
 
 
 async def test_chain_save_roundtrips_through_models_get():
-    main, manager = make_manager()
+    main, manager = await make_manager()
     resp = await manager.chain_save(_Request({"chain": [
         {"provider": "p2", "model": "c"},
         {"provider": "p1", "model": "a"},
@@ -40,13 +40,13 @@ async def test_chain_save_roundtrips_through_models_get():
 
 
 async def test_chain_save_rejects_non_list():
-    _, manager = make_manager()
+    _, manager = await make_manager()
     resp = await manager.chain_save(_Request({"chain": "nope"}))
     assert resp == ({"error": "chain list required"}, 400)
 
 
 async def test_models_detect_returns_metadata(monkeypatch):
-    main, manager = make_manager()
+    main, manager = await make_manager()
     seen = {}
 
     async def fake_detect(provider, model):
@@ -65,13 +65,13 @@ async def test_models_detect_returns_metadata(monkeypatch):
 
 
 async def test_models_detect_requires_model():
-    _, manager = make_manager()
+    _, manager = await make_manager()
     resp = await manager.models_detect(_Request({"model": "  "}))
     assert resp == ({"error": "model required"}, 400)
 
 
 async def test_models_enrich_reports_updated_count(monkeypatch):
-    main, manager = make_manager()
+    main, manager = await make_manager()
 
     async def fake_enrich(force=False):
         assert force is True

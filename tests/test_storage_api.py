@@ -128,10 +128,10 @@ async def test_persona_resolve_tiered_fallback():
     """绑定回落链：会话 → 群 base → @账户 → platform:* → 全局默认。"""
     main, manager = make_manager()
     personas = main.personas
-    cat = personas.save({"name": "猫娘", "system": "喵"})
-    plat = personas.save({"name": "平台助手", "system": "p"})
-    acct = personas.save({"name": "账户人设", "system": "a"})
-    grp = personas.save({"name": "群人设", "system": "g"})
+    cat = await personas.save({"name": "猫娘", "system": "喵"})
+    plat = await personas.save({"name": "平台助手", "system": "p"})
+    acct = await personas.save({"name": "账户人设", "system": "a"})
+    grp = await personas.save({"name": "群人设", "system": "g"})
 
     key = "onebot11:group:777@bot_b"
     # 无任何绑定 → assistant 兜底

@@ -252,8 +252,8 @@ def test_recap_regex_matches_yi_xiang():
 async def test_export_import_roundtrip():
     main = FakeMain()
     manager = DashboardManager(main)
-    main.pool.save_provider({"id": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "api_key": "k", "models": [{"id": "deepseek-chat", "enabled": True}]})
-    main.personas.save({"id": "custom1", "name": "n", "system": "s"})
+    await main.pool.save_provider({"id": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "api_key": "k", "models": [{"id": "deepseek-chat", "enabled": True}]})
+    await main.personas.save({"id": "custom1", "name": "n", "system": "s"})
     await manager.main.memory.remember("c1", "记住我")
 
     data = await manager.export_data(None)

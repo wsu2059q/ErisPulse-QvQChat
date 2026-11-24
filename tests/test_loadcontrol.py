@@ -129,9 +129,9 @@ class _SpyEngine:
         return ChatResponse(content="ok", model=request.model, usage={})
 
 
-def _make_pool():
+async def _make_pool():
     pool = ModelPool(FakeSDK(), make_config())
-    pool.save_provider(
+    await pool.save_provider(
         {
             "id": "p1",
             "name": "P1",
@@ -144,8 +144,8 @@ def _make_pool():
     return pool
 
 
-def test_dispatch_maps_background_kind_to_low_priority():
-    pool = _make_pool()
+async def test_dispatch_maps_background_kind_to_low_priority():
+    pool = await _make_pool()
     spec = TaskSpec(kind="compact", prefer="cheap")
     assert str(spec.kind) != "chat"
     # TaskSpec.priority 默认 0；映射逻辑在 dispatch 内部（chat=0 / 其它=8），这里验证字段可用
@@ -153,27 +153,24 @@ def test_dispatch_maps_background_kind_to_low_priority():
     assert spec_chat.priority == 6
 
 
-def test_pool_chat_releases_gate_on_success_and_failure():
-    pool = _make_pool()
+async def test_pool_chat_releases_gate_on_success_and_failure():
+    pool = await _make_pool()
 
     class _BoomEngine:
         async def chat(self, *a, **k):
             raise RuntimeError("down")
 
-    async def drive():
-        pool.gate.set_limit(1)
+    pool.gate.set_limit(1)
+    await pool.chat(ChatRequest(messages=[], model="p:m1"))
+    assert pool.gate.active == 0  # 成功释放
+    pool.engine = _BoomEngine()
+    with pytest.raises(Exception):
         await pool.chat(ChatRequest(messages=[], model="p:m1"))
-        assert pool.gate.active == 0  # 成功释放
-        pool.engine = _BoomEngine()
-        with pytest.raises(Exception):
-            await pool.chat(ChatRequest(messages=[], model="p:m1"))
-        assert pool.gate.active == 0  # 失败也释放
-
-    asyncio.run(drive())
+    assert pool.gate.active == 0  # 失败也释放
 
 
-def test_saturated_property_reflects_gate():
-    pool = _make_pool()
+async def test_saturated_property_reflects_gate():
+    pool = await _make_pool()
     pool.gate.set_limit(1)
     assert pool.saturated is False
     pool.gate._active = 1
@@ -294,13 +291,13 @@ async def test_interrupt_decide_skips_model_when_saturated():
     assert calls == ["compact"]  # 不饱和时正常判定
 
 
-def test_provider_load_steering_reorders_chain():
+async def test_provider_load_steering_reorders_chain():
     """并发时转移：首选 provider 忙（>=阈值）时，新请求导向池内更闲的一家——不等报错。"""
     pool = ModelPool(FakeSDK(), make_config(provider_load_steering=True, provider_steer_active=2))
-    pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
-                        "models": [{"id": "a", "enabled": True, "tool_call": True}]})
-    pool.save_provider({"id": "p2", "name": "P2", "base_url": "https://2/v1", "api_key": "k",
-                        "models": [{"id": "b", "enabled": True, "tool_call": True}]})
+    await pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
+                              "models": [{"id": "a", "enabled": True, "tool_call": True}]})
+    await pool.save_provider({"id": "p2", "name": "P2", "base_url": "https://2/v1", "api_key": "k",
+                              "models": [{"id": "b", "enabled": True, "tool_call": True}]})
 
     class Busy:
         async def chat(self, *a, **k):
@@ -309,21 +306,18 @@ def test_provider_load_steering_reorders_chain():
     pool.engine = Busy()
     pool._provider_active["p1"] = 3  # 首选已过载
 
-    async def drive():
-        resp = await pool.chat(ChatRequest(messages=[], model="p1:a"))
-        assert resp.content == "ok"
-        assert pool._provider_active["p1"] == 3  # 没走 p1（计数不变）
-        assert pool._provider_active.get("p2", 0) == 0  # p2 已释放
-
-    asyncio.run(drive())
+    resp = await pool.chat(ChatRequest(messages=[], model="p1:a"))
+    assert resp.content == "ok"
+    assert pool._provider_active["p1"] == 3  # 没走 p1（计数不变）
+    assert pool._provider_active.get("p2", 0) == 0  # p2 已释放
 
 
-def test_steering_off_keeps_primary():
+async def test_steering_off_keeps_primary():
     pool = ModelPool(FakeSDK(), make_config(provider_load_steering=False))
-    pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
-                        "models": [{"id": "a", "enabled": True, "tool_call": True}]})
-    pool.save_provider({"id": "p2", "name": "P2", "base_url": "https://2/v1", "api_key": "k",
-                        "models": [{"id": "b", "enabled": True, "tool_call": True}]})
+    await pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
+                              "models": [{"id": "a", "enabled": True, "tool_call": True}]})
+    await pool.save_provider({"id": "p2", "name": "P2", "base_url": "https://2/v1", "api_key": "k",
+                              "models": [{"id": "b", "enabled": True, "tool_call": True}]})
 
     class Spy:
         def __init__(self):
@@ -337,22 +331,19 @@ def test_steering_off_keeps_primary():
     pool.engine = spy
     pool._provider_active["p1"] = 9
 
-    async def drive():
-        await pool.chat(ChatRequest(messages=[], model="p1:a"))
-
-    asyncio.run(drive())
+    await pool.chat(ChatRequest(messages=[], model="p1:a"))
     assert spy.calls and spy.calls[0].endswith("a")  # 关闭分流：仍走首选
 
 
-def test_effort_smalltalk_injected_via_routing():
+async def test_effort_smalltalk_injected_via_routing():
     """简单场景自动降思考：难度路由判为 cheap 时按 effort_smalltalk 注入 reasoning_effort。"""
     from QvQChat.engine.base import ChatRequest, TaskSpec
     from QvQChat.engine.pool import ModelPool
     from fakes import FakeSDK, make_config
 
     pool = ModelPool(FakeSDK(), make_config(routing_enabled=True, effort_smalltalk="off"))
-    pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
-                        "models": [{"id": "a", "enabled": True, "tool_call": True}]})
+    await pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
+                              "models": [{"id": "a", "enabled": True, "tool_call": True}]})
 
     captured = {}
 
@@ -364,22 +355,19 @@ def test_effort_smalltalk_injected_via_routing():
 
     pool.engine = Eng()
 
-    async def drive():
-        spec = TaskSpec(kind="chat", chat_key="c1")
-        await pool.dispatch(spec, ChatRequest(messages=[{"role": "user", "content": "嗯嗯"}]))
-        assert captured["effort"] == "off"
-
-    asyncio.run(drive())
+    spec = TaskSpec(kind="chat", chat_key="c1")
+    await pool.dispatch(spec, ChatRequest(messages=[{"role": "user", "content": "嗯嗯"}]))
+    assert captured["effort"] == "off"
 
 
-def test_effort_empty_means_no_intervention():
+async def test_effort_empty_means_no_intervention():
     from QvQChat.engine.base import ChatRequest, TaskSpec
     from QvQChat.engine.pool import ModelPool
     from fakes import FakeSDK, make_config
 
     pool = ModelPool(FakeSDK(), make_config(routing_enabled=True, effort_smalltalk=""))
-    pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
-                        "models": [{"id": "a", "enabled": True, "tool_call": True}]})
+    await pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
+                              "models": [{"id": "a", "enabled": True, "tool_call": True}]})
 
     captured = {}
 
@@ -391,21 +379,18 @@ def test_effort_empty_means_no_intervention():
 
     pool.engine = Eng()
 
-    async def drive():
-        await pool.dispatch(TaskSpec(kind="chat", chat_key="c2"),
-                            ChatRequest(messages=[{"role": "user", "content": "嗯嗯"}]))
-
-    asyncio.run(drive())
+    await pool.dispatch(TaskSpec(kind="chat", chat_key="c2"),
+                        ChatRequest(messages=[{"role": "user", "content": "嗯嗯"}]))
     assert captured["effort"] == ""
 
 
-def _quality_pool(keep):
+async def _quality_pool(keep):
     pool = ModelPool(FakeSDK(), make_config(provider_steer_keep=keep))
-    pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
-                        "models": [{"id": "a", "enabled": True, "tool_call": True},
-                                   {"id": "a2", "enabled": True, "tool_call": True}]})
-    pool.save_provider({"id": "p2", "name": "P2", "base_url": "https://2/v1", "api_key": "k",
-                        "models": [{"id": "b", "enabled": True, "tool_call": True}]})
+    await pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://1/v1", "api_key": "k",
+                              "models": [{"id": "a", "enabled": True, "tool_call": True},
+                                         {"id": "a2", "enabled": True, "tool_call": True}]})
+    await pool.save_provider({"id": "p2", "name": "P2", "base_url": "https://2/v1", "api_key": "k",
+                              "models": [{"id": "b", "enabled": True, "tool_call": True}]})
     calls = []
 
     class FailP1:
@@ -420,26 +405,20 @@ def _quality_pool(keep):
     return pool, calls
 
 
-def test_steer_keep_guards_breaker_fallback():
+async def test_steer_keep_guards_breaker_fallback():
     """质量绑定：首选 provider ∈ steer_keep，其模型全挂时只允许同家顶上——宁可报错不换弱模型。"""
-    pool, calls = _quality_pool(keep=["p1"])
+    pool, calls = await _quality_pool(keep=["p1"])
 
-    async def drive():
-        from QvQChat.engine.base import EngineError
-        with pytest.raises(EngineError):
-            await pool.chat(ChatRequest(messages=[], model="p1:a"))
-
-    asyncio.run(drive())
+    from QvQChat.engine.base import EngineError
+    with pytest.raises(EngineError):
+        await pool.chat(ChatRequest(messages=[], model="p1:a"))
     assert calls and all(u.endswith("1/v1") for u in calls), calls  # p2 从未被触碰
 
 
-def test_breaker_fallback_cross_provider_without_keep():
+async def test_breaker_fallback_cross_provider_without_keep():
     """未绑定时保持现状：同家全挂跨提供商回退（b 被尝试并成功）。"""
-    pool, calls = _quality_pool(keep=[])
+    pool, calls = await _quality_pool(keep=[])
 
-    async def drive():
-        resp = await pool.chat(ChatRequest(messages=[], model="p1:a"))
-        assert resp.content == "ok"
-
-    asyncio.run(drive())
+    resp = await pool.chat(ChatRequest(messages=[], model="p1:a"))
+    assert resp.content == "ok"
     assert any(u.endswith("2/v1") for u in calls), calls

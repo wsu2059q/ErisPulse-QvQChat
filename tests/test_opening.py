@@ -25,7 +25,7 @@ def bind_cli(main):
 async def persona_with_opening(main, opening, **extra):
     payload = {"name": "阿波", "system": "你是阿波。", "opening": opening}
     payload.update(extra)
-    saved = main.personas.save(payload)
+    saved = await main.personas.save(payload)
     await main.personas.bind("onebot11:private:u1", saved["id"])
     return saved["id"]
 

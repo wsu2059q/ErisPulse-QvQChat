@@ -882,7 +882,7 @@ class CliMixin:
     async def _cmd_quota(self, event, user_id: str) -> None:
         """/qvq quota：查自己今日用量与配额（人人；管理员额外看到配额配置值）。"""
         today = time.strftime("%Y-%m-%d")
-        data = self.sdk.storage.get(f"QvQChat:usage:{today}", {})
+        data = await self.sdk.storage.aget(f"QvQChat:usage:{today}", {})
         data = data if isinstance(data, dict) else {}
         by_user = data.get("by_user") if isinstance(data, dict) else {}
         used = int((by_user or {}).get(user_id, 0) or 0)

@@ -45,12 +45,12 @@ async def manage_models(ctx: ToolContext, action: str = "list", provider: dict |
         if not isinstance(provider, dict):
             return "save needs a provider object: {id?, name, base_url, api_key, models:[{id, enabled, temperature?, max_tokens?, notes?, prefill_ok?(true/false/null=auto), context_length?, max_output_tokens?, vision?, reasoning?, tool_call?, cost?{input,output}}]}"
         try:
-            entry = pool.save_provider(provider)
+            entry = await pool.save_provider(provider)
         except EngineError as e:
             return str(e)
         return utils.to_text({"ok": True, "provider": {**entry, "api_key": _mask_key(str(entry.get("api_key") or ""))}})
     if action == "delete":
-        return utils.to_text({"ok": pool.delete_provider(str(provider_id or ""))})
+        return utils.to_text({"ok": await pool.delete_provider(str(provider_id or ""))})
     if action == "fetch_models":
         data = dict(provider) if isinstance(provider, dict) else {}
         if not str(data.get("api_key") or "") and provider_id:
@@ -191,10 +191,10 @@ async def manage_personas(ctx: ToolContext, action: str = "list", persona_id: st
             payload["banned_words"] = banned_words
         if avatar:
             payload["avatar"] = avatar
-        saved = personas.save(payload)
+        saved = await personas.save(payload)
         return utils.to_text({"ok": True, "persona": saved})
     if action == "delete":
-        return utils.to_text({"ok": personas.delete(str(persona_id or ""))})
+        return utils.to_text({"ok": await personas.delete(str(persona_id or ""))})
     if action == "bind":
         target = str(chat_key or "").strip() or ctx.chat_key
         if persona is None and not persona_id:

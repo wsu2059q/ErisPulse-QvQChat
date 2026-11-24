@@ -5,7 +5,6 @@ import asyncio
 import hashlib
 import json
 import re
-import threading
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -20,38 +19,18 @@ REPLY_PREFERENCE = ("Markdown", "Html", "Text")
 
 # ===== storage 键级读改写（RMW）=====
 # 并发任务对同一键各自 get→modify→set 会互相覆盖（审计丢条目/分享配额回退/
-# 用量计数少记）。per-key 进程锁串行化：临界区只有两次 KV 调用，无 await，
-# threading.Lock 对 async 与线程调用方都安全。键集合有界（audit/shares/当日
-# 用量/人格表/收件箱账户），锁表不清理。
-_RMW_LOCKS: dict[str, threading.Lock] = {}
-_RMW_LOCKS_GUARD = threading.Lock()
-
-# 异步读改写的锁表（事件循环内使用；与同步版锁独立，两条路径不竞争同一把锁）
+# 用量计数少记）。per-key 进程锁串行化：临界区只有两次 KV 调用。
+# 键集合有界（audit/shares/当日用量/人格表/收件箱账户），锁表不清理。
 _ARMW_LOCKS: dict[str, asyncio.Lock] = {}
 
 
-def storage_update(sdk: Any, key: str, fn, default: Any) -> Any:
-    """storage 键级读改写：fn(current) -> new，读改写全程持该键的进程锁。
-
-    fn 内自行判型兜底（存储值可能损坏/为缺省形状）；异常向上抛，
-    由调用方的既有 try 决定吞咽策略。返回 fn 的结果（新值）。
-    同步版仅供无事件循环的路径（启动迁移/后台线程）使用；异步上下文一律用
-    storage_aupdate（同步版在事件循环内会经框架桥接阻塞且超时返回 None）。"""
-    with _RMW_LOCKS_GUARD:
-        lock = _RMW_LOCKS.get(key)
-        if lock is None:
-            _RMW_LOCKS[key] = lock = threading.Lock()
-    with lock:
-        new = fn(sdk.storage.get(key, default))
-        sdk.storage.set(key, new)
-        return new
-
-
 async def storage_aupdate(sdk: Any, key: str, fn, default: Any) -> Any:
-    """storage 键级读改写的异步版：aget/aset 直连后端异步驱动，不经过同步桥。
+    """storage 键级读改写：aget/aset 直连后端异步驱动，不经过同步桥
+    （同步 get/set 在事件循环内会经框架桥接阻塞且超时返回 None）。
 
-    锁语义与同步版一致（同键串行、跨键并行），锁表按事件循环隔离在
-    _ARMW_LOCKS；fn(current) -> new 的契约与 storage_update 相同。"""
+    同键串行、跨键并行；fn(current) -> new 的契约：fn 内自行判型兜底
+    （存储值可能损坏/为缺省形状），异常向上抛由调用方决定吞咽策略。
+    返回 fn 的结果（新值）。"""
     lock = _ARMW_LOCKS.get(key)
     if lock is None:
         lock = asyncio.Lock()

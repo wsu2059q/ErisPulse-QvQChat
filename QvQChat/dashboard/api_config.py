@@ -90,7 +90,7 @@ class ConfigApiMixin:
         chain = (body or {}).get("chain")
         if not isinstance(chain, list):
             return ({"error": "chain list required"}, 400)
-        return {"ok": True, "chain": self.main.pool.save_chain(chain)}
+        return {"ok": True, "chain": await self.main.pool.save_chain(chain)}
 
     async def providers_save(self, request):
         body = dict(await request.json() or {})
@@ -105,7 +105,7 @@ class ConfigApiMixin:
             except Exception:
                 pass
         try:
-            entry = self.main.pool.save_provider(body)
+            entry = await self.main.pool.save_provider(body)
             return {"ok": True, "provider": {**entry, "api_key": ""}, "enriched": enriched}
         except Exception as e:
             return ({"error": str(e)}, 400)
@@ -118,7 +118,7 @@ class ConfigApiMixin:
         if provider is None:
             return ({"error": "provider not found"}, 404)
         enabled = bool((body or {}).get("enabled", True))
-        self.main.pool.save_provider({**provider, "enabled": enabled})
+        await self.main.pool.save_provider({**provider, "enabled": enabled})
         await self.main.audit("provider_toggle", {"id": provider_id, "enabled": enabled})
         return {"ok": True, "id": provider_id, "enabled": enabled}
 
@@ -147,7 +147,7 @@ class ConfigApiMixin:
         body = await request.json()
         provider_id = str((body or {}).get("id") or "")
         snapshot = self.main.pool.get_provider(provider_id) or {}
-        ok = self.main.pool.delete_provider(provider_id)
+        ok = await self.main.pool.delete_provider(provider_id)
         undo = await self._trash_put("provider", snapshot) if ok and snapshot else ""
         return {"ok": ok, "undo": undo}
 
@@ -183,7 +183,7 @@ class ConfigApiMixin:
     async def personas_save(self, request):
         body = await request.json()
         try:
-            persona = self.main.personas.save(body or {})
+            persona = await self.main.personas.save(body or {})
             return {"ok": True, "persona": persona}
         except ValueError as e:
             return ({"error": str(e)}, 400)
@@ -526,14 +526,14 @@ class ConfigApiMixin:
                         if mode == "append" and provider.get("id") in known_ids:
                             continue  # 追加：已存在的不动
                         try:
-                            self.main.pool.save_provider(provider)
+                            await self.main.pool.save_provider(provider)
                         except Exception as e:
                             errors.setdefault("providers", []).append(str(e))
                     applied.append("providers")
                 elif isinstance(data.get("models"), list):
                     for model in data["models"]:
                         try:
-                            self.main.pool.save_provider({
+                            await self.main.pool.save_provider({
                                 "id": "imported",
                                 "name": "Imported",
                                 "base_url": model.get("base_url", ""),
@@ -544,7 +544,7 @@ class ConfigApiMixin:
                             errors.setdefault("models", []).append(str(e))
                     applied.append("models")
                 if isinstance(data.get("chain"), list) and mode == "overwrite":
-                    self.main.pool.save_chain(data["chain"])
+                    await self.main.pool.save_chain(data["chain"])
                     applied.append("chain")
 
 # ---- personas ----
@@ -687,6 +687,14 @@ class ConfigApiMixin:
                 if candidates:
                     await self.sdk.storage.aset_multi(candidates)
                     applied.append("storage")
+# 回灌可能旁路改写 providers/chain/人格表键：预热缓存重读
+        if applied:
+            warm = getattr(self, "_refresh_model_catalog", None)
+            if warm is not None:
+                try:
+                    await warm()
+                except Exception:
+                    pass
         return applied, errors
 
     async def import_zip(self, request):

@@ -11,12 +11,12 @@
 （插话）不计入全局日限
 
 持久化：``QvQChat:participation:{chat_key}`` 时间戳环形列表（按时间窗修剪 + 长度
-上限），``QvQChat:participation:global`` 当日计数（跨日自动重置）。并发安全：内存锁
-（storage get/set 为同步 API）。
+上限），``QvQChat:participation:global`` 当日计数（跨日自动重置）。并发安全：进程内
+asyncio 锁（存储走异步 aget/aset，同步 get/set 在事件循环内经 AsyncBridge 阻塞）。
 """
 from __future__ import annotations
 
-import threading
+import asyncio
 import time
 from datetime import datetime
 
@@ -50,7 +50,7 @@ class SpeechBudget:
     def __init__(self, sdk, config=None):
         self.sdk = sdk
         self._config = config
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
         self._memory: dict[str, object] = {}
         self._touched: set[str] = set()
 
@@ -111,7 +111,7 @@ class SpeechBudget:
             return start <= cur < end
         return cur >= start or cur < end  # 跨零点
 
-    def allow(self, chat_key: str, kind: str, now: float | None = None) -> tuple[bool, str]:
+    async def allow(self, chat_key: str, kind: str, now: float | None = None) -> tuple[bool, str]:
         """预算是否放行一次发言；拒绝时第二个返回值为人类可读原因（texts）。"""
         chat_key = str(chat_key or "")
         if not chat_key:
@@ -123,9 +123,9 @@ class SpeechBudget:
         hourly = self._hourly()
         cooldown = self._cooldown()
         daily = self._daily()
-        with self._lock:
+        async with self._lock:
             self._touched.add(chat_key)
-            stamps = self._chat_stamps(chat_key, now, cooldown)
+            stamps = await self._chat_stamps(chat_key, now, cooldown)
             if cooldown > 0 and stamps:
                 last = max(stamps)
                 if now - last < cooldown:
@@ -134,47 +134,47 @@ class SpeechBudget:
             if hourly > 0 and len([t for t in stamps if now - t < HOUR_SECONDS]) >= hourly:
                 return False, texts.t("participate_budget_hourly", limit=hourly)
             if kind == KIND_PROACTIVE and daily > 0:
-                used, _ = self._daily_state(now)
+                used, _ = await self._daily_state(now)
                 if used >= daily:
                     return False, texts.t("participate_budget_daily", limit=daily)
         return True, ""
 
-    def record(self, chat_key: str, kind: str, now: float | None = None) -> None:
+    async def record(self, chat_key: str, kind: str, now: float | None = None) -> None:
         """记账一次已放行的发言（时间戳入环形列表；proactive 另计全局日限）。"""
         chat_key = str(chat_key or "")
         if not chat_key:
             return
         now = time.time() if now is None else float(now)
         cooldown = self._cooldown()
-        with self._lock:
+        async with self._lock:
             self._touched.add(chat_key)
             key = CHAT_KEY_PREFIX + chat_key
-            stamps = [t for t in self._load(key, []) if isinstance(t, (int, float))]
+            stamps = [t for t in await self._load(key, []) if isinstance(t, (int, float))]
             window = max(HOUR_SECONDS, cooldown)
             stamps = [t for t in stamps if now - t < window]
             stamps.append(now)
-            self._save(key, stamps[-RING_CAP:])
+            await self._save(key, stamps[-RING_CAP:])
             if kind == KIND_PROACTIVE:
-                used, date = self._daily_state(now)
-                self._save(GLOBAL_KEY, {"date": date, "count": used + 1})
+                used, date = await self._daily_state(now)
+                await self._save(GLOBAL_KEY, {"date": date, "count": used + 1})
 
 # ==================== 现状观测 ====================
 
-    def status(self, now: float | None = None) -> dict:
+    async def status(self, now: float | None = None) -> dict:
         """预算现状（Dashboard participation_status 消费）。"""
         now = time.time() if now is None else float(now)
-        with self._lock:
+        async with self._lock:
             chats: dict[str, dict] = {}
             for chat_key in sorted(self._touched):
                 stamps = [
-                    t for t in self._load(CHAT_KEY_PREFIX + chat_key, [])
+                    t for t in await self._load(CHAT_KEY_PREFIX + chat_key, [])
                     if isinstance(t, (int, float))
                 ]
                 chats[chat_key] = {
                     "hour": len([t for t in stamps if now - t < HOUR_SECONDS]),
                     "last": max(stamps) if stamps else 0.0,
                 }
-            used, date = self._daily_state(now)
+            used, date = await self._daily_state(now)
         return {
             "limits": {
                 "hourly_limit": self._hourly(),
@@ -188,18 +188,18 @@ class SpeechBudget:
 
 # ==================== 持久化（锁内调用） ====================
 
-    def _chat_stamps(self, chat_key: str, now: float, cooldown: float) -> list[float]:
+    async def _chat_stamps(self, chat_key: str, now: float, cooldown: float) -> list[float]:
         key = CHAT_KEY_PREFIX + chat_key
-        stamps = [t for t in self._load(key, []) if isinstance(t, (int, float))]
+        stamps = [t for t in await self._load(key, []) if isinstance(t, (int, float))]
         window = max(HOUR_SECONDS, cooldown)
         stamps = [t for t in stamps if now - t < window]
-        self._save(key, stamps[-RING_CAP:])
+        await self._save(key, stamps[-RING_CAP:])
         return stamps
 
-    def _daily_state(self, now: float) -> tuple[int, str]:
+    async def _daily_state(self, now: float) -> tuple[int, str]:
         """当日 proactive 计数（跨日自动重置）。"""
         date = datetime.fromtimestamp(now).strftime("%Y-%m-%d")
-        data = self._load(GLOBAL_KEY, {})
+        data = await self._load(GLOBAL_KEY, {})
         if not isinstance(data, dict) or data.get("date") != date:
             return 0, date
         try:
@@ -207,20 +207,20 @@ class SpeechBudget:
         except (TypeError, ValueError):
             return 0, date
 
-    def _load(self, key: str, default):
+    async def _load(self, key: str, default):
         try:
             storage = getattr(self.sdk, "storage", None)
             if storage is not None:
-                return storage.get(key, default)
+                return await storage.aget(key, default)
         except Exception:
             pass
         return self._memory.get(key, default)
 
-    def _save(self, key: str, value) -> None:
+    async def _save(self, key: str, value) -> None:
         try:
             storage = getattr(self.sdk, "storage", None)
             if storage is not None:
-                storage.set(key, value)
+                await storage.aset(key, value)
                 return
         except Exception:
             pass

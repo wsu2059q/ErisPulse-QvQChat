@@ -150,16 +150,6 @@ class SessionRepository:
 
 # ===== 会话索引（单键 list[chat_key]，免全库 keys() 扫描） =====
 
-    def _index_load(self) -> list[str] | None:
-        """读索引；损坏/缺失返回 None（调用方回退 keys() 扫描自愈）。"""
-        data = self.sdk.storage.get(CONV_INDEX_KEY, None)
-        if not isinstance(data, list):
-            return None
-        return [str(k) for k in data if isinstance(k, str) and k]
-
-    def _index_save(self, keys: list[str]) -> None:
-        self.sdk.storage.set(CONV_INDEX_KEY, keys)
-
     async def _index_add(self, chat_key: str) -> None:
         """会话键落盘时同步维护索引（去重）。索引损坏时先全量对账，防止单键索引覆盖其余会话。"""
         index = await self.a_index_load()
@@ -170,10 +160,10 @@ class SessionRepository:
         await self.a_index_save(index + [chat_key])
 
     async def _index_remove(self, chat_key: str) -> None:
-        index = self._index_load()
+        index = await self.a_index_load()
         if index is None or chat_key not in index:
             return
-        self._index_save([k for k in index if k != chat_key])
+        await self.a_index_save([k for k in index if k != chat_key])
 
     async def rebuild_index(self) -> list[str]:
         """全量对账：keys() 扫描 vs 索引差集修复（首访一次；索引缺失/失同步时自愈）。"""
@@ -359,13 +349,6 @@ class SessionRepository:
         return True
 
 # ===== 用户→群会话倒排（recent_user_messages 免全库扫描） =====
-
-    def _user_seen(self, uid: str) -> list[dict] | None:
-        """读倒排；损坏/缺失返回 None（调用方回退旧全扫）。"""
-        data = self.sdk.storage.get(USER_SEEN_PREFIX + uid, None)
-        if not isinstance(data, list):
-            return None
-        return [item for item in data if isinstance(item, dict) and isinstance(item.get("chat_key"), str) and item["chat_key"]]
 
     async def _user_seen_record(self, uid: str, chat_key: str, head: str) -> None:
         """uid → 最近发言的群会话（新在前、去重、上限 USER_SEEN_MAX）。仅记群会话。"""
@@ -570,7 +553,7 @@ class SessionRepository:
                 import secrets as _secrets
 
                 token = _secrets.token_urlsafe(9)
-                self.sdk.storage.set(
+                await self.sdk.storage.aset(
                     "QvQChat:trash:" + token,
                     {"kind": "session", "payload": {"chat_key": target, "state": tgt_state}, "ts": utils.now_ts()},
                 )

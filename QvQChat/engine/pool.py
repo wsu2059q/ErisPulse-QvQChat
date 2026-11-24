@@ -22,7 +22,6 @@ class ModelPool:
         self.engine = OpenAIEngine()
         self.catalog = ProviderCatalog(self)
         self._dispatch = DispatchGate(self)
-        self.catalog.migrate_legacy()
 
 # ---- 兼容属性面：分派状态容器/闸门（测试与外部读这里）----
 
@@ -71,17 +70,20 @@ class ModelPool:
     def get_provider(self, provider_id: str) -> dict | None:
         return self.catalog.get_provider(provider_id)
 
-    def save_provider(self, data: dict) -> dict:
-        return self.catalog.save_provider(data)
+    async def save_provider(self, data: dict) -> dict:
+        return await self.catalog.save_provider(data)
 
-    def delete_provider(self, provider_id: str) -> bool:
-        return self.catalog.delete_provider(provider_id)
+    async def delete_provider(self, provider_id: str) -> bool:
+        return await self.catalog.delete_provider(provider_id)
 
     def model_chain(self, providers: list[dict] | None = None) -> list[dict]:
         return self.catalog.model_chain(providers)
 
-    def save_chain(self, entries: list) -> list[dict]:
-        return self.catalog.save_chain(entries)
+    async def save_chain(self, entries: list) -> list[dict]:
+        return await self.catalog.save_chain(entries)
+
+    async def amigrate_and_refresh(self) -> None:
+        return await self.catalog.amigrate_and_refresh()
 
     def presets(self) -> list[dict]:
         return self.catalog.presets()

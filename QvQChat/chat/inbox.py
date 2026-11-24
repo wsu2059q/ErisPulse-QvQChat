@@ -1048,9 +1048,9 @@ class InboxMixin(RecoveryMixin):
             if not await self.sessions.member_allowed(chat_key, sender_id, event.get_platform() or ""):
                 budget_ok, budget_reason = False, texts.t("participate_member_denied")
             else:
-                budget_ok, budget_reason = manager.budget.allow(chat_key, "interject")
+                budget_ok, budget_reason = await manager.budget.allow(chat_key, "interject")
                 if budget_ok:
-                    manager.budget.record(chat_key, "interject")
+                    await manager.budget.record(chat_key, "interject")
                     event.done()# 插话由头不消耗发送者 _rate_allow 限额
                     self._batch_message(
                         event, chat_key, text, self._extract_images(event), origin="plugin"

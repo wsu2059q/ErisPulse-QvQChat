@@ -526,15 +526,15 @@ async def test_onboarding_get_set_roundtrip():
 # ---------- provider 级临时禁用 ----------
 
 
-def test_provider_toggle_disables_pool():
+async def test_provider_toggle_disables_pool():
     main = FakeMain()
-    main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1",
-                             "api_key": "k", "models": [{"id": "m", "enabled": True}]})
+    await main.pool.save_provider({"id": "p1", "name": "P1", "base_url": "https://x/v1",
+                                   "api_key": "k", "models": [{"id": "m", "enabled": True}]})
     assert any(m["id"] == "p1:m" for m in main.pool.list_models())
-    main.pool.save_provider({**main.pool.get_provider("p1"), "enabled": False})
+    await main.pool.save_provider({**main.pool.get_provider("p1"), "enabled": False})
     assert not any(m["id"] == "p1:m" for m in main.pool.list_models()), "禁用后链路必须跳过"
     assert main.pool.needs_enrichment() is False or all(
         p.get("enabled") is not False for p in main.pool.list_providers() if p.get("models")
     ) or True  # enrichment 跳过不抛错即可
-    main.pool.save_provider({**main.pool.get_provider("p1"), "enabled": True})
+    await main.pool.save_provider({**main.pool.get_provider("p1"), "enabled": True})
     assert any(m["id"] == "p1:m" for m in main.pool.list_models()), "重新启用即恢复"

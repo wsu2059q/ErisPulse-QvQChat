@@ -32,9 +32,9 @@ NEUTRAL_TEXT = (
 TOOL_HINT_TEXT = "帮我查一下明天北京的天气怎么样，适合出门吗"
 
 
-def make_pool(**cfg):
+async def make_pool(**cfg):
     pool = ModelPool(FakeSDK(), make_config(**cfg))
-    pool.save_provider(
+    await pool.save_provider(
         {
             "id": "p1",
             "name": "P1",
@@ -123,7 +123,7 @@ def test_taskspec_chat_key_default_and_positional_compat():
 
 async def test_dispatch_routing_disabled_by_default_no_change():
 # make_config 未定义 routing_enabled：getattr 兜底 False，零行为变化
-    pool = make_pool()
+    pool = await make_pool()
     requested = fake_engine(pool)
     spec = TaskSpec(kind="chat", chat_key="k1")
     resp = await pool.dispatch(spec, req("嗯嗯"))
@@ -135,7 +135,7 @@ async def test_dispatch_routing_disabled_by_default_no_change():
 
 
 async def test_dispatch_routing_enabled_rewrites_to_cheap():
-    pool = make_pool(routing_enabled=True, routing_ttl=300)
+    pool = await make_pool(routing_enabled=True, routing_ttl=300)
     requested = fake_engine(pool)
     spec = TaskSpec(kind="chat", chat_key="k1")
     resp = await pool.dispatch(spec, req("嗯嗯"))
@@ -154,7 +154,7 @@ async def test_dispatch_routing_enabled_rewrites_to_cheap():
 
 
 async def test_dispatch_routing_quality_labelled_in_log():
-    pool = make_pool(routing_enabled=True, routing_ttl=300)
+    pool = await make_pool(routing_enabled=True, routing_ttl=300)
     requested = fake_engine(pool)
     spec = TaskSpec(kind="chat", chat_key="k1")
     await pool.dispatch(spec, req(QUALITY_TEXT))
@@ -166,7 +166,7 @@ async def test_dispatch_routing_quality_labelled_in_log():
 
 
 async def test_dispatch_routing_skips_explicit_constraints():
-    pool = make_pool(routing_enabled=True, routing_ttl=300)
+    pool = await make_pool(routing_enabled=True, routing_ttl=300)
     requested = fake_engine(pool)
 # 显式 model：不改写
     spec = TaskSpec(kind="chat", model="p1:plain", chat_key="k1")
@@ -189,7 +189,7 @@ async def test_dispatch_routing_skips_explicit_constraints():
 
 
 async def test_dispatch_routing_multimodal_first_user_text():
-    pool = make_pool(routing_enabled=True, routing_ttl=300)
+    pool = await make_pool(routing_enabled=True, routing_ttl=300)
     requested = fake_engine(pool)
     request = ChatRequest(
         messages=[
@@ -214,7 +214,7 @@ async def test_dispatch_routing_multimodal_first_user_text():
 
 
 async def test_routing_ttl_cache_hit_reuses_classification():
-    pool = make_pool(routing_enabled=True, routing_ttl=300)
+    pool = await make_pool(routing_enabled=True, routing_ttl=300)
     fake_engine(pool)
     key = TaskSpec(kind="chat", chat_key="k1")
     await pool.dispatch(key, req(QUALITY_TEXT))
@@ -230,7 +230,7 @@ async def test_routing_ttl_cache_hit_reuses_classification():
 
 
 async def test_routing_ttl_expiry_reclassifies():
-    pool = make_pool(routing_enabled=True, routing_ttl=300)
+    pool = await make_pool(routing_enabled=True, routing_ttl=300)
     fake_engine(pool)
 # 伪造已过期的缓存条目
     pool.routing_cache["k1"] = ("quality", "stale", time.time() - 301)
@@ -242,7 +242,7 @@ async def test_routing_ttl_expiry_reclassifies():
 
 
 async def test_routing_ttl_zero_disables_cache():
-    pool = make_pool(routing_enabled=True, routing_ttl=0)
+    pool = await make_pool(routing_enabled=True, routing_ttl=0)
     fake_engine(pool)
     await pool.dispatch(TaskSpec(kind="chat", chat_key="k1"), req(QUALITY_TEXT))
     await pool.dispatch(TaskSpec(kind="chat", chat_key="k1"), req("嗯嗯"))
@@ -250,7 +250,7 @@ async def test_routing_ttl_zero_disables_cache():
 
 
 async def test_routing_without_chat_key_classifies_each_dispatch():
-    pool = make_pool(routing_enabled=True, routing_ttl=300)
+    pool = await make_pool(routing_enabled=True, routing_ttl=300)
     fake_engine(pool)
     await pool.dispatch(TaskSpec(kind="chat"), req(QUALITY_TEXT))
     await pool.dispatch(TaskSpec(kind="chat"), req("嗯嗯"))

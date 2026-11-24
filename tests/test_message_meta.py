@@ -3,7 +3,7 @@
 import asyncio
 import time
 
-from fakes import FakeMain
+from fakes import FakeMain, FakeSDK, make_config
 
 from QvQChat.conversation.service import ConversationService
 
@@ -87,14 +87,23 @@ async def test_profile_edit_replaces_section():
     assert any(a["tool"] == "profile_edit" for a in main.audits)
 
 
-def test_task_model_type_tier_group_vs_private():
+async def test_task_model_type_tier_group_vs_private():
     """类型级模型：chat_group / chat_private 优先于 task_models.chat。"""
-    import sys
-    sys.path.insert(0, "tests")
-    from test_model_dispatch import make_pool
     from QvQChat.engine.base import TaskSpec
+    from QvQChat.engine.pool import ModelPool
 
-    pool = make_pool()
+    pool = ModelPool(FakeSDK(), make_config())
+    await pool.save_provider({
+        "id": "p1", "name": "P1", "base_url": "https://x/v1", "api_key": "k",
+        "models": [
+            {"id": "plain", "enabled": True, "tool_call": False, "context_length": 8192,
+             "cost": {"input": 10.0, "output": 20.0}},
+            {"id": "smart", "enabled": True, "tool_call": True, "vision": True,
+             "context_length": 32768, "cost": {"input": 5.0, "output": 5.0}},
+            {"id": "cheap", "enabled": True, "tool_call": True,
+             "cost": {"input": 0.5, "output": 0.5}},
+        ],
+    })
     pool.config.task_models = {"chat": "p1:plain", "chat_group": "p1:cheap", "chat_private": "p1:smart"}
     got_group = pool.resolve_task_model(TaskSpec(kind="chat", chat_key="snowluma:group:871"))
     got_private = pool.resolve_task_model(TaskSpec(kind="chat", chat_key="snowluma:private:10001"))
@@ -104,7 +113,7 @@ def test_task_model_type_tier_group_vs_private():
     assert pool.resolve_task_model(TaskSpec(kind="chat"))["id"] == "p1:plain"
 
 
-def test_budget_quiet_hours():
+async def test_budget_quiet_hours():
     """时段礼仪：静默窗内参与预算直接拒；窗外不受影响。"""
     import time
     main = FakeMain()
@@ -115,13 +124,13 @@ def test_budget_quiet_hours():
     # 构造 23:30 与 12:00 两个时刻
     t_night = time.mktime(time.strptime(time.strftime("%Y-%m-%d") + " 23:30", "%Y-%m-%d %H:%M"))
     t_noon = time.mktime(time.strptime(time.strftime("%Y-%m-%d") + " 12:00", "%Y-%m-%d %H:%M"))
-    ok_night, reason = b.allow("s:q:1", "interject", now=t_night)
-    ok_noon, _ = b.allow("s:q:1", "interject", now=t_noon)
+    ok_night, reason = await b.allow("s:q:1", "interject", now=t_night)
+    ok_noon, _ = await b.allow("s:q:1", "interject", now=t_noon)
     assert not ok_night and "静默" in reason or "Quiet" in reason or "silent" in reason.lower() or "quiet" in reason.lower()
     assert ok_noon
     # 跨零点：01:00 仍在窗内
     t_early = time.mktime(time.strptime(time.strftime("%Y-%m-%d") + " 01:00", "%Y-%m-%d %H:%M"))
-    ok_early, _ = b.allow("s:q:2", "interject", now=t_early)
+    ok_early, _ = await b.allow("s:q:2", "interject", now=t_early)
     assert not ok_early
 
 
