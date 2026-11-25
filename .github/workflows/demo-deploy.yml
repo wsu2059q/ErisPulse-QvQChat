@@ -28,6 +28,8 @@ jobs:
 
       - name: 部署到 Cloudflare
         uses: cloudflare/wrangler-action@v3
+        env:
+          NPM_CONFIG_YES: "true"
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
