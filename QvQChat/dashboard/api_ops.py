@@ -169,15 +169,17 @@ class OpsApiMixin:
         return {"running": self._live.overview()}
 
     async def kb_get(self, request):
+        import asyncio as _asyncio
+
         query = self._query(request, "q") or ""
         kb = self.main.knowledge
-        stats = kb.stats()
+        stats = await kb.stats()
         if query:
-            hits = kb.search(query, top_k=8)
-            items = [kb.get(h["id"]) for h in hits]
-            items = [i for i in items if i]
+            hits = await kb.search(query, top_k=8)
+            got = await _asyncio.gather(*(kb.get(h["id"]) for h in hits))
+            items = [i for i in got if i]
         else:
-            items = kb.list()
+            items = await kb.list()
         return {"entries": items, "stats": stats}
 
     async def kb_add(self, request):

@@ -705,7 +705,7 @@ class SessionsApiMixin:
         chat_key = str(self._query(request, "chat_key") or "")
         if not chat_key:
             return ({"error": "chat_key required"}, 400)
-        todos = self._todo_store().items(chat_key)
+        todos = await self._todo_store().items(chat_key)
         return {"todos": todos}
 
     async def todo_save(self, request):
@@ -715,7 +715,7 @@ class SessionsApiMixin:
         items = (body or {}).get("items")
         if not chat_key or not isinstance(items, list):
             return ({"error": "chat_key and items required"}, 400)
-        todos = self._todo_store().replace(chat_key, [str(i) for i in items])
+        todos = await self._todo_store().replace(chat_key, [str(i) for i in items])
         return {"ok": True, "todos": todos}
 
     async def todo_update(self, request):
@@ -725,7 +725,7 @@ class SessionsApiMixin:
         status = str((body or {}).get("status") or "")
         if not chat_key or not todo_id:
             return ({"error": "chat_key and id required"}, 400)
-        todo = self._todo_store().update(chat_key, todo_id, status=status)
+        todo = await self._todo_store().update(chat_key, todo_id, status=status)
         if todo is None:
             return ({"error": "todo not found"}, 404)
         return {"ok": True, "todo": todo}
@@ -736,7 +736,7 @@ class SessionsApiMixin:
         todo_id = str((body or {}).get("id") or "")
         if not chat_key or not todo_id:
             return ({"error": "chat_key and id required"}, 400)
-        if not self._todo_store().remove(chat_key, todo_id):
+        if not await self._todo_store().remove(chat_key, todo_id):
             return ({"error": "todo not found"}, 404)
         return {"ok": True}
 
@@ -746,7 +746,7 @@ class SessionsApiMixin:
         content = str((body or {}).get("content") or "")
         if not chat_key or not content.strip():
             return ({"error": "chat_key and content required"}, 400)
-        todo = self._todo_store().add(chat_key, content)
+        todo = await self._todo_store().add(chat_key, content)
         if todo is None:
             return ({"error": "todo rejected"}, 400)
         return {"ok": True, "todo": todo}
