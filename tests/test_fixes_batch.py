@@ -195,7 +195,7 @@ async def test_storage_slim_strips_old_tool_detail_and_truncates():
 
 
 def test_account_kwarg_prefers_underscore_param():
-    from QvQChat.tools_builtin.erispulse import _account_kwarg_of
+    from QvQChat.utils import account_api_kwarg as _account_kwarg_of
 
     class Underscore:
         async def call_api(self, endpoint, _account_id=None, **params):
@@ -310,7 +310,7 @@ def test_route_kwargs_finds_request_via_alias():
 
 
 def test_resolve_account_name_via_runtime_binding():
-    from QvQChat.tools_builtin.erispulse import _resolve_account_name
+    from QvQChat.utils import resolve_account_name as _resolve_account_name
 
     class Cfg:
         def __init__(self):
@@ -335,7 +335,7 @@ def test_resolve_account_name_via_runtime_binding():
 
 
 def test_resolve_account_name_via_getter_and_cfg_attr():
-    from QvQChat.tools_builtin.erispulse import _resolve_account_name
+    from QvQChat.utils import resolve_account_name as _resolve_account_name
 
     class Cfg:
         def __init__(self, bot_id=""):

@@ -398,64 +398,6 @@ async def list_services(ctx, module: str = "") -> str:
     return "\n".join(lines) or texts.t("services_none")
 
 
-def _account_kwarg_of(adapter) -> str:
-    """账户参数的传参名：适配器生态与框架文档不一致，按签名探测。
-
-    框架标准（developer-guide/adapters/core-concepts.md）是公开的 ``account_id``
-    （由 ApiDSL._merge_context 注入、适配器 params.pop 掉）；但现行适配器普遍把
-    ``_account_id`` 写成具名参数。写错名字的后果很隐蔽——账户不解析（静默落到
-    默认账户），且 ``account_id`` 会被当成平台参数泄漏出去。
-    """
-    try:
-        params = inspect.signature(adapter.call_api).parameters
-    except (TypeError, ValueError):
-        return "account_id"
-    if "_account_id" in params:
-        return "_account_id"
-    return "account_id"  # 含显式 account_id 或仅 **params（按标准传）
-
-
-def _resolve_account_name(adapter, account_id: str) -> str:
-    """把稳定 user_id（数字）映射回账户配置名；映射不到原样返回。
-
-    适配器对配置名是第一优先级精确匹配；数字 id 依赖 bot_id 回填——那是
-    运行时态（连接后识别），重启后未活动的账户没有。数字在框架三层匹配
-    失配时会静默回落第一个启用账户：请求受理/空间操作从错误账户发出
-    （多账户场景下同意操作需绑定来源账户发出）。
-    """
-    acct = str(account_id or "").strip()
-    if not acct:
-        return acct
-    try:
-        accounts = adapter.accounts
-        if not isinstance(accounts, dict):
-            return acct
-        if acct in accounts:
-            return acct  # 已是配置名
-# 运行时绑定表（SnowLuma 惯例：{账户名: bot_id}，事件到达即回填）
-        bot_ids = getattr(adapter, "_bot_ids", None)
-        if isinstance(bot_ids, dict):
-            for name, bot_id in bot_ids.items():
-                if str(bot_id or "") == acct:
-                    return str(name)
-# 逐账户查 _get_bot_id(name) / cfg.bot_id 属性
-        getter = getattr(adapter, "_get_bot_id", None)
-        for name, cfg in accounts.items():
-            bot_id = ""
-            if callable(getter):
-                try:
-                    bot_id = str(getter(name) or "")
-                except Exception:
-                    bot_id = ""
-            if not bot_id:
-                bot_id = str(getattr(cfg, "bot_id", "") or "")
-            if bot_id == acct:
-                return str(name)
-    except Exception:
-        pass
-    return acct
-
-
 async def call_adapter_api(ctx: ToolContext, platform: str, endpoint: str, params: dict | None = None,
                            account: str = "") -> str:
     adapter = ctx.sdk.adapter.get(platform)
@@ -466,8 +408,8 @@ async def call_adapter_api(ctx: ToolContext, platform: str, endpoint: str, param
 # 不带账户会落到适配器默认账户（多账户下看到/操作到别人身上）
     acct = str(account or getattr(ctx, "self_id", "") or "")
     if acct:
-        acct = _resolve_account_name(adapter, acct)
-        kwarg = _account_kwarg_of(adapter)
+        acct = utils.resolve_account_name(adapter, acct)
+        kwarg = utils.account_api_kwarg(adapter)
         try:
             result = await adapter.call_api(endpoint, **{kwarg: acct}, **kwargs)
         except (TypeError, ValueError) as e:
@@ -492,7 +434,7 @@ async def handle_request(ctx: ToolContext, platform: str, request_id: str,
 # 数字依赖 bot_id 回填（运行时态），失配会被静默回落第一个启用账户
         account = str(account or getattr(ctx, "self_id", "") or "")
         if account:
-            account = _resolve_account_name(adapter, account)
+            account = utils.resolve_account_name(adapter, account)
         request = adapter.Request(str(request_id))
         if account:
             request = request.Using(account)

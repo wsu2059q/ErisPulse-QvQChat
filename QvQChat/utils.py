@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import hashlib
+import inspect
 import json
 import re
 import time
@@ -592,6 +593,77 @@ def build_forward_nodes(sections: list[str], nickname: str = "", user_id: str = 
             }
         )
     return nodes
+
+
+def account_api_kwarg(adapter) -> str:
+    """适配器 call_api 的账户参数名：按签名探测（生态与框架文档不一致）。
+
+    框架标准是公开的 ``account_id``（由 ApiDSL._merge_context 注入、适配器
+    params.pop 掉）；但现行适配器普遍把 ``_account_id`` 写成具名参数。写错
+    名字的后果很隐蔽——账户不解析（静默落到默认账户），且 ``account_id``
+    会被当成平台参数泄漏出去。
+    """
+    try:
+        params = inspect.signature(adapter.call_api).parameters
+    except (TypeError, ValueError):
+        return "account_id"
+    if "_account_id" in params:
+        return "_account_id"
+    return "account_id"  # 含显式 account_id 或仅 **params（按标准传）
+
+
+def resolve_account_name(adapter, account_id: str) -> str:
+    """把稳定 user_id（数字）映射回账户配置名；映射不到原样返回。
+
+    适配器对配置名是第一优先级精确匹配；数字 id 依赖 bot_id 回填——那是
+    运行时态（连接后识别），重启后未活动的账户没有。数字在框架三层匹配
+    失配时会静默回落第一个启用账户：请求受理/空间操作从错误账户发出
+    （多账户场景下同意操作需绑定来源账户发出）。
+    """
+    acct = str(account_id or "").strip()
+    if not acct:
+        return acct
+    try:
+        accounts = adapter.accounts
+        if not isinstance(accounts, dict):
+            return acct
+        if acct in accounts:
+            return acct  # 已是配置名
+# 运行时绑定表（SnowLuma 惯例：{账户名: bot_id}，事件到达即回填）
+        bot_ids = getattr(adapter, "_bot_ids", None)
+        if isinstance(bot_ids, dict):
+            for name, bot_id in bot_ids.items():
+                if str(bot_id or "") == acct:
+                    return str(name)
+# 逐账户查 _get_bot_id(name) / cfg.bot_id 属性
+        getter = getattr(adapter, "_get_bot_id", None)
+        for name, cfg in accounts.items():
+            bot_id = ""
+            if callable(getter):
+                try:
+                    bot_id = str(getter(name) or "")
+                except Exception:
+                    bot_id = ""
+            if not bot_id:
+                bot_id = str(getattr(cfg, "bot_id", "") or "")
+            if bot_id == acct:
+                return str(name)
+    except Exception:
+        pass
+    return acct
+
+
+async def call_adapter_endpoint(adapter, endpoint: str, account: str = "", **kwargs):
+    """按账户绑定调用适配器 API：account 非空时绑账户参数（解析失败回退默认账户）。"""
+    acct = str(account or "").strip()
+    if not acct:
+        return await adapter.call_api(endpoint, **kwargs)
+    acct = resolve_account_name(adapter, acct)
+    kwarg = account_api_kwarg(adapter)
+    try:
+        return await adapter.call_api(endpoint, **{kwarg: acct}, **kwargs)
+    except (TypeError, ValueError):
+        return await adapter.call_api(endpoint, **kwargs)
 
 
 def _send_failed(result) -> bool:

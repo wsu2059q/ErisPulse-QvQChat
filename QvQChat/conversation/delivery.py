@@ -316,16 +316,21 @@ class Delivery:
                 return True
         return False
 
-    async def bot_identity(self, platform: str) -> tuple[str, str]:
-        """机器人自己的 (账号, 昵称)：转发节点显示自己，而不是虚构身份。"""
-        if platform in self._identity:
-            return self._identity[platform]
+    async def bot_identity(self, platform: str, account: str = "") -> tuple[str, str]:
+        """机器人自己的 (账号, 昵称)：转发节点显示自己，而不是虚构身份。
+
+        多账户适配器必须按账户查询——不带账户的 get_login_info 返回适配器
+        默认账户，其余账户的转发节点会全部标成别人的名字。
+        """
+        cache_key = f"{platform}@{account or ''}"
+        if cache_key in self._identity:
+            return self._identity[cache_key]
         user_id, nickname = "", ""
         adapter = self.sdk.adapter.get(platform)
         if adapter is not None:
             for endpoint in ("get_login_info", "get_self_info"):
                 try:
-                    info = await adapter.call_api(endpoint)
+                    info = await utils.call_adapter_endpoint(adapter, endpoint, account=account)
                 except Exception:
                     continue
                 if isinstance(info, dict):
@@ -335,7 +340,7 @@ class Delivery:
                     nickname = str(data.get("nickname") or data.get("name") or info.get("name") or "")
                 if user_id or nickname:
                     break
-        self._identity[platform] = (user_id, nickname)
+        self._identity[cache_key] = (user_id, nickname)
         return user_id, nickname
 
     def _reply_methods(self, event) -> list:
@@ -478,8 +483,13 @@ class Delivery:
             target_id = str(event.get_user_id() or "")
         if not target_id:
             return False
+        account = ""
         try:
-            user_id, bot_nickname = await self.bot_identity(platform)
+            account = str(event.get_self_account_id() or "")
+        except Exception:
+            account = ""
+        try:
+            user_id, bot_nickname = await self.bot_identity(platform, account=account)
 # 会话人格配置了转发显示名（nickname）则覆盖机器人自身昵称
             nickname = bot_nickname
             personas = getattr(self.main, "personas", None)
@@ -491,11 +501,6 @@ class Delivery:
                     persona_nick = ""
                 if persona_nick:
                     nickname = persona_nick
-            account = ""
-            try:
-                account = str(event.get_self_account_id() or "")
-            except Exception:
-                account = ""
             used = await utils.deliver_forward(adapter, detail_type, target_id, sections, sends,
                                                nickname=nickname, user_id=user_id, account=account)
         except Exception as e:
