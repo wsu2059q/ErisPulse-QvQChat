@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import secrets
+from json import JSONDecodeError
 from pathlib import Path
 from urllib.parse import quote
 
@@ -359,6 +360,18 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
                 return await handler(request)
             except ApiError as e:
                 return ({"error": str(e)}, e.status)
+            except JSONDecodeError as e:
+# 请求体不是合法 JSON：多为网关/代理吞掉 body 或空 POST；带请求头线索便于定位
+                try:
+                    raw = getattr(request, "raw", request)
+                    headers = raw.headers
+                    self.main.logger.warning(
+                        f"api json body empty/invalid: {getattr(raw, 'url', '')} "
+                        f"content-length={headers.get('content-length')} content-type={headers.get('content-type')}"
+                    )
+                except Exception:
+                    pass
+                return ({"error": "request body is missing or not valid JSON", "detail": str(e)}, 400)
             except Exception as e:
 # 统一错误形状：意外异常不再裸 500，面板能读到原因；服务端留日志
                 try:

@@ -1,3 +1,10 @@
+## 4.8.3（2026-11-26）
+
+### 诊断增强
+
+- 面板 API 请求体非法/为空时返回 400 与明确提示（此前 500 `JSONDecodeError`），并在服务端日志记录 URL / Content-Length / Content-Type——真机经反向代理部署时若代理吞掉 POST body 可一眼定位（真机日志中的 `ErisPulse.Core.router 未处理的异常` 即面板 500 的服务端兜底记录）
+- 本地以框架 2.12 + starlette 1.10 + uvicorn 0.54 组合复测 POST body 读写正常，QvQChat 侧链路无恙
+
 ## 4.8.2（2026-11-24）
 
 ### 修复
