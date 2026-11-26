@@ -558,12 +558,35 @@ class Main(InboxMixin, EventsMixin, UsageMixin, CliMixin, BaseModule):
             if "Dashboard" not in self.sdk.module:
                 self.logger.info("Dashboard module not present, view skipped")
                 return
+            if not getattr(self.sdk.module, "is_loaded", lambda name: True)("Dashboard"):
+# 模块已注册但还在懒加载队列：此时访问 sdk.Dashboard 会触发 SDK 级 ERROR 日志，
+# 改为延后重试注册，避免启动时序噪音
+                self.logger.info("Dashboard module not loaded yet, dashboard entry will register on retry")
+                self.spawn(self._retry_dashboard_register())
+                return
             from .dashboard.manager import DashboardManager
 
             self.dashboard = DashboardManager(self)
             self.dashboard.register()
         except Exception as e:
             self.logger.warning(f"dashboard register failed: {e}")
+
+    async def _retry_dashboard_register(self, attempts: int = 12) -> None:
+        import asyncio as _asyncio
+
+        for index in range(attempts):
+            await _asyncio.sleep(10)
+            if not getattr(self.sdk.module, "is_loaded", lambda name: True)("Dashboard"):
+                continue
+            try:
+                from .dashboard.manager import DashboardManager
+
+                self.dashboard = DashboardManager(self)
+                self.dashboard.register()
+                self.logger.info("dashboard registered (Dashboard module became ready)")
+            except Exception as e:
+                self.logger.warning(f"dashboard register retry failed: {e}")
+            return
 
     def _register_home_entry(self) -> None:
         try:

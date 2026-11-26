@@ -40,6 +40,7 @@ FAVICON_SVG = (
 FAVICON_HREF = "data:image/svg+xml," + quote(FAVICON_SVG)
 
 TOKEN_KEY = "QvQChat:auth_token"
+VIEW_ANNOUNCED_KEY = "QvQChat:view_announced"
 
 
 # ===== 删除回收站（撤销删除）：暂存/还原实现见 trash.py（TrashStore + restore 注册表）=====
@@ -262,6 +263,11 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
             pass
 
     def _register_view(self) -> None:
+        try:
+# 先注销残留注册（崩溃退出后重载会撞 Dashboard 的 already registered 覆盖告警）
+            self.sdk.Dashboard.unregister_view("QvQChat")
+        except Exception:
+            pass
         self.sdk.Dashboard.register_view(
             id="QvQChat",
             title="QvQChat 智能体",
@@ -284,14 +290,48 @@ class DashboardManager(SessionsApiMixin, ConfigApiMixin, OpsApiMixin, StorageApi
         return token
 
     async def _announce_token(self) -> None:
+        """面板入口公告（对齐 Dashboard 风格：令牌脱敏、只在令牌变更后的首次公告）。
+
+        config 已显式配 view_token 时不公告（用户自设，无需提醒）。
+        公告过的令牌记入存储 QvQChat:view_announced：同令牌不重复打扰；
+        令牌变更（重置/换存储）才会再次公告。
+        """
         if self._token_announced:
             return
         self._token_announced = True
         if getattr(self.main.cfg, "view_token", ""):
             return
-        self.main.logger.warning(
-            f"QvQChat standalone access token: {await self._own_token()}  (view at /QvQChat/view)"
-        )
+        token = await self._own_token()
+        try:
+            announced = await self.sdk.storage.aget(VIEW_ANNOUNCED_KEY, "")
+        except Exception:
+            announced = ""
+        if announced == token:
+            return
+        try:
+            await self.sdk.storage.aset(VIEW_ANNOUNCED_KEY, token)
+        except Exception:
+            pass
+        masked = (token[:4] + "****" + token[-4:]) if len(token) > 8 else "******"
+        if self._dashboard_module() is None:
+# 独立访问（Dashboard 未启用）：这是拿到令牌的唯一渠道，仅此一次给出全文
+            self.main.logger.warning(
+                "──────────────────────────────────────────────\n"
+                " QvQChat 智能体面板\n"
+                " 访问地址: /QvQChat/view\n"
+                f" 访问令牌: {token}（仅本次完整显示，重载不再重复）\n"
+                " 固定令牌: config 设 view_token 后不再变化\n"
+                "──────────────────────────────────────────────"
+            )
+        else:
+            self.main.logger.warning(
+                "──────────────────────────────────────────────\n"
+                " QvQChat 智能体面板（经 /Dashboard 免令牌进入）\n"
+                " 独立地址: /QvQChat/view\n"
+                f" 访问令牌: {masked}（已脱敏）\n"
+                " 完整令牌: 存储 QvQChat:auth_token 或 config 的 view_token\n"
+                "──────────────────────────────────────────────"
+            )
 
     @staticmethod
     def _query(request, name: str) -> str | None:
